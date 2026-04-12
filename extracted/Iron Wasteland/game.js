@@ -497,6 +497,17 @@ function buildTextures(scene) {
   g.fillStyle(0x666666); g.fillRect(16, 0, 3, 4);
   g.generateTexture('craftbench', 24, 20);
 
+  // Bed (top-down: wood frame, mattress, pillow, blanket)
+  g.clear();
+  g.fillStyle(0x5a3010); g.fillRect(0, 0, 40, 28);        // dark wood frame
+  g.fillStyle(0xc9a87c); g.fillRect(2, 2, 36, 24);        // inner wood
+  g.fillStyle(0x7755aa); g.fillRect(4, 12, 32, 12);       // purple blanket
+  g.fillStyle(0x9977cc); g.fillRect(4, 12, 32, 5);        // blanket highlight
+  g.fillStyle(0xeeeeff); g.fillRect(6, 4, 14, 9);         // white pillow
+  g.fillStyle(0xccccee); g.fillRect(7, 5, 12, 7);         // pillow shadow
+  g.fillStyle(0x5a3010); g.fillRect(0, 10, 40, 2);        // headboard/footboard divider
+  g.generateTexture('bed', 40, 28);
+
   // Build ghost (translucent wall preview)
   g.clear();
   g.fillStyle(0x88ff88, 0.4); g.fillRect(0, 0, 32, 32);
@@ -1434,6 +1445,8 @@ class GameScene extends Phaser.Scene {
     this.buildGhost = null;
     this.builtWalls = [];
     this.craftBenchPlaced = false;
+    this.beds = [];
+    this.sleepSpeedMult = 1;   // 8x when all players are sleeping through night
 
     this.cameras.main.fadeIn(600, 0, 0, 0);
     this.physics.world.setBounds(0, 0, worldW, worldH);
@@ -1504,19 +1517,19 @@ class GameScene extends Phaser.Scene {
       p1atk: K.F, p1alt: K.G, p1build: K.Q,
       p2atk: K.FORWARD_SLASH, p2alt: K.PERIOD, p2build: K.ZERO,
     });
-    this.atkKeys.p1atk.on('down', () => { if (!this.barrackOpen && !this.isOver && !this.p1.isDowned) { if (this.buildMode && this.buildOwner===this.p1) this.placeBuild(); else this.doAttack(this.p1); }});
-    this.atkKeys.p1alt.on('down', () => { if (!this.barrackOpen && !this.isOver && !this.p1.isDowned) this.doAlt(this.p1); });
-    this.atkKeys.p1build.on('down', () => { if (!this.barrackOpen && !this.isOver && !this.p1.isDowned) this.toggleBuildMode(this.p1); });
+    this.atkKeys.p1atk.on('down', () => { if (!this.barrackOpen && !this.isOver && !this.p1.isDowned && !this.p1.isSleeping) { if (this.buildMode && this.buildOwner===this.p1) this.placeBuild(); else this.doAttack(this.p1); }});
+    this.atkKeys.p1alt.on('down', () => { if (!this.barrackOpen && !this.isOver && !this.p1.isDowned && !this.p1.isSleeping) this.doAlt(this.p1); });
+    this.atkKeys.p1build.on('down', () => { if (!this.barrackOpen && !this.isOver && !this.p1.isDowned && !this.p1.isSleeping) this.toggleBuildMode(this.p1); });
     if (this.p2) {
-      this.atkKeys.p2atk.on('down', () => { if (!this.barrackOpen && !this.isOver && !this.p2.isDowned) { if (this.buildMode && this.buildOwner===this.p2) this.placeBuild(); else this.doAttack(this.p2); }});
-      this.atkKeys.p2alt.on('down', () => { if (!this.barrackOpen && !this.isOver && !this.p2.isDowned) this.doAlt(this.p2); });
-      this.atkKeys.p2build.on('down', () => { if (!this.barrackOpen && !this.isOver && !this.p2.isDowned) this.toggleBuildMode(this.p2); });
+      this.atkKeys.p2atk.on('down', () => { if (!this.barrackOpen && !this.isOver && !this.p2.isDowned && !this.p2.isSleeping) { if (this.buildMode && this.buildOwner===this.p2) this.placeBuild(); else this.doAttack(this.p2); }});
+      this.atkKeys.p2alt.on('down', () => { if (!this.barrackOpen && !this.isOver && !this.p2.isDowned && !this.p2.isSleeping) this.doAlt(this.p2); });
+      this.atkKeys.p2build.on('down', () => { if (!this.barrackOpen && !this.isOver && !this.p2.isDowned && !this.p2.isSleeping) this.toggleBuildMode(this.p2); });
     }
 
     // Mouse controls for 1P mode
     if (this.solo) {
       this.input.on('pointerdown', (pointer) => {
-        if (this.barrackOpen || this.isOver || this.p1.isDowned) return;
+        if (this.barrackOpen || this.isOver || this.p1.isDowned || this.p1.isSleeping) return;
         if (pointer.leftButtonDown()) {
           if (this.buildMode && this.buildOwner === this.p1) this.placeBuild();
           else this.doAttack(this.p1);
@@ -2039,6 +2052,7 @@ class GameScene extends Phaser.Scene {
       hpBar, dir: 'front', walkTimer: 0,
       atkCooldown: 0, reloading: false,
       rallyCooldown: 0, turretCooldown: 0,
+      isSleeping: false, zzzText: null,
       inv: { wood:0, metal:0, fiber:0, food:0 },
     };
   }
@@ -2175,8 +2189,9 @@ class GameScene extends Phaser.Scene {
         else if (poi.type === 'den') col = 0xcc4444;
         else if (poi.type === 'tower') col = 0x66aaff;
         else if (poi.type === 'camp') col = 0x44cc66;
-        else if (poi.type === 'campfire') col = 0xff8833;  // orange — player-built campfire
+        else if (poi.type === 'campfire') col = 0xff8833;   // orange — player-built campfire
         else if (poi.type === 'craftbench') col = 0xddcc44; // yellow — player-built workbench
+        else if (poi.type === 'bed') col = 0xaa88ff;        // purple — player-built bed
         // Only show if revealed
         if (this.fogRevealed.has(poi.tx + ',' + poi.ty)) {
           this.minimapDots.fillStyle(col);
@@ -2523,7 +2538,100 @@ class GameScene extends Phaser.Scene {
         // Reveal large area around the tower itself
         this.revealFog(this.radioTower.tx, this.radioTower.ty, 35);
         if (this.radioTower.prompt) this.radioTower.prompt.setVisible(false);
+        return;
       }
+    }
+
+    // Bed interaction — toggle sleep
+    for (const bed of (this.beds || [])) {
+      const bd = Phaser.Math.Distance.Between(player.spr.x, player.spr.y, bed.x, bed.y);
+      if (bd < 70) {
+        this.toggleSleep(player, bed);
+        return;
+      }
+    }
+  }
+
+  toggleSleep(player, bed) {
+    if (player.isSleeping) {
+      this.wakePlayer(player);
+    } else {
+      if (player.isDowned || player.isPermanentlyDead) return;
+      player.isSleeping = true;
+      player.spr.setTint(0x9977cc);
+      player.spr.setAlpha(0.75);
+      // Floating Zzz text
+      if (player.zzzText) player.zzzText.destroy();
+      player.zzzText = this._w(this.add.text(player.spr.x, player.spr.y - 30, 'Zzz…', {
+        fontFamily: 'monospace', fontSize: '13px', color: '#ccaaff'
+      }).setDepth(30).setOrigin(0.5));
+      if (this.hudCam) this.hudCam.ignore(player.zzzText);
+      this.tweens.add({ targets: player.zzzText, y: player.spr.y - 52, alpha: 0.7,
+        duration: 2000, yoyo: true, repeat: -1, ease: 'Sine.easeInOut' });
+      SFX._play(220, 'sine', 0.05, 0.6);
+      const allNote = this.solo ? '' : ' Both asleep = night speeds up!';
+      this.hint(player.charData.player + ' is sleeping… (+8 HP/tick)' + allNote, 3000);
+    }
+  }
+
+  wakePlayer(player) {
+    if (!player.isSleeping) return;
+    player.isSleeping = false;
+    player.spr.clearTint();
+    player.spr.setAlpha(1);
+    if (player.zzzText) { player.zzzText.destroy(); player.zzzText = null; }
+  }
+
+  updateSleep(delta) {
+    if (!this.beds || this.beds.length === 0) return;
+    const players = [this.p1, this.p2].filter(p => p && !p.isPermanentlyDead);
+    const sleeping = players.filter(p => p.isSleeping);
+
+    // Show/hide bed proximity prompts
+    if (this._bedPrompts) {
+      this._bedPrompts.forEach(({ bed, prompt }) => {
+        if (!prompt.active) return;
+        const near = players.some(p => Phaser.Math.Distance.Between(p.spr.x, p.spr.y, bed.x, bed.y) < 70);
+        prompt.setVisible(near && !players.every(p => p.isSleeping));
+      });
+    }
+
+    // Auto-wake at dawn (pct just crossed back to < 0.05 = new day)
+    const cycle = this.dayTimer % this.DAY_DUR;
+    const pct = cycle / this.DAY_DUR;
+    if (pct < 0.05 && sleeping.length > 0) {
+      sleeping.forEach(p => {
+        this.wakePlayer(p);
+        this.hint(p.charData.player + ' wakes up refreshed!', 2000);
+      });
+      return;
+    }
+
+    // Move Zzz text with player
+    sleeping.forEach(p => {
+      if (p.zzzText && p.zzzText.active) {
+        p.zzzText.x = p.spr.x;
+      }
+    });
+
+    // Heal tick (every 2s via accumulator)
+    this._sleepHealAcc = (this._sleepHealAcc || 0) + delta;
+    if (this._sleepHealAcc >= 2000) {
+      this._sleepHealAcc -= 2000;
+      sleeping.forEach(p => {
+        if (!p.isDowned) p.hp = Math.min(p.maxHp, p.hp + 8);
+      });
+    }
+
+    // Night speed: all players sleeping during night → 8x
+    const allSleeping = players.length > 0 && sleeping.length === players.length;
+    if (allSleeping && this.isNight) {
+      if (this.sleepSpeedMult !== 8) {
+        this.sleepSpeedMult = 8;
+        this.hint('Everyone asleep \u2014 night rushing by!', 3000);
+      }
+    } else {
+      this.sleepSpeedMult = 1;
     }
   }
 
@@ -2623,8 +2731,8 @@ class GameScene extends Phaser.Scene {
 
     this.timeAlive += delta / 1000;
 
-    // Movement — skip if downed
-    if (!this.p1.isDowned) {
+    // Movement — skip if downed or sleeping
+    if (!this.p1.isDowned && !this.p1.isSleeping) {
       this.movePlayer(this.p1, this.wasd.left, this.wasd.right, this.wasd.up, this.wasd.down);
       // In 1P mode, facing is determined by mouse position
       if (this.solo) this.aimAtMouse(this.p1);
@@ -2632,7 +2740,7 @@ class GameScene extends Phaser.Scene {
     else this.p1.spr.setVelocity(0,0);
 
     if (this.p2) {
-      if (!this.p2.isDowned) this.movePlayer(this.p2, this.cursors.left, this.cursors.right, this.cursors.up, this.cursors.down);
+      if (!this.p2.isDowned && !this.p2.isSleeping) this.movePlayer(this.p2, this.cursors.left, this.cursors.right, this.cursors.up, this.cursors.down);
       else this.p2.spr.setVelocity(0,0);
     }
 
@@ -2658,6 +2766,7 @@ class GameScene extends Phaser.Scene {
     this.updateEnemies(delta);
     this.updateWaves(delta);
     this.updateEnemyDens(delta);
+    this.updateSleep(delta);
     this.updateDayNight(delta);
     this.updateBuildMode();
     this.updateFog();
@@ -3167,6 +3276,7 @@ class GameScene extends Phaser.Scene {
             nearest.hp -= e.dmg;
             nearest.hp = Math.max(0, nearest.hp);
             SFX.playerHurt();
+            if (nearest.isSleeping) { this.wakePlayer(nearest); this.hint(nearest.charData.player + ' woke up!', 1500); }
             nearest.spr.setTint(0xff0000);
             this.time.delayedCall(150, () => { if(nearest.spr.active) nearest.spr.clearTint(); });
             e.attackTimer = e.type==='bear' ? 2200 : e.type==='wolf' ? 1400 : 900;
@@ -3186,7 +3296,7 @@ class GameScene extends Phaser.Scene {
   }
 
   updateDayNight(delta) {
-    this.dayTimer += delta;
+    this.dayTimer += delta * (this.sleepSpeedMult || 1);
     const cycle = this.dayTimer % this.DAY_DUR;
     const pct = cycle / this.DAY_DUR;
     const worldW = CFG.MAP_W * CFG.TILE, worldH = CFG.MAP_H * CFG.TILE;
@@ -3270,7 +3380,7 @@ class GameScene extends Phaser.Scene {
 
   // ── BUILD SYSTEM ──────────────────────────────────────────────
   toggleBuildMode(player) {
-    const BUILD_TYPES = ['wall', 'gate', 'campfire', 'craftbench'];
+    const BUILD_TYPES = ['wall', 'gate', 'campfire', 'craftbench', 'bed'];
     if (this.buildMode && this.buildOwner === player) {
       // Cycle to next build type, exit after last
       const idx = BUILD_TYPES.indexOf(this.buildType);
@@ -3328,6 +3438,13 @@ class GameScene extends Phaser.Scene {
     if (!this.buildMode || !this.buildGhost) return;
     const p = this.buildOwner;
     const x = this.buildGhost.x, y = this.buildGhost.y;
+
+    // Bed requires craftbench to be built first
+    if (this.buildType === 'bed' && !this.craftBenchPlaced) {
+      this.hint('Need a Craftbench first to build a bed!', 2500);
+      return;
+    }
+
     const cost = this.getBuildCost(this.buildType);
     // Check resources (use team total — both players)
     const team = this.getTeamInv();
@@ -3398,6 +3515,20 @@ class GameScene extends Phaser.Scene {
       // Register as minimap POI
       const cbTX = Math.floor(x / CFG.TILE), cbTY = Math.floor(y / CFG.TILE);
       this.pois.push({ type: 'craftbench', tx: cbTX, ty: cbTY, spr: cb });
+    } else if (this.buildType === 'bed') {
+      const bd = this.add.image(x, y, 'bed').setScale(2).setDepth(5);
+      if (this.hudCam) this.hudCam.ignore(bd);
+      this._w(bd);
+      const bedTX = Math.floor(x / CFG.TILE), bedTY = Math.floor(y / CFG.TILE);
+      this.beds.push({ x, y, spr: bd });
+      this.pois.push({ type: 'bed', tx: bedTX, ty: bedTY, spr: bd });
+      // Show E prompt when players are nearby
+      const bedPrompt = this._w(this.add.text(x, y - 30, 'E / Enter \u2014 sleep', {
+        fontFamily: 'monospace', fontSize: '11px', color: '#ccaaff', backgroundColor: '#110022'
+      }).setDepth(20).setOrigin(0.5).setVisible(false));
+      if (this.hudCam) this.hudCam.ignore(bedPrompt);
+      this._bedPrompts = this._bedPrompts || [];
+      this._bedPrompts.push({ bed: { x, y }, prompt: bedPrompt });
     }
 
     SFX._play(400, 'triangle', 0.08, 0.2);
@@ -3422,6 +3553,7 @@ class GameScene extends Phaser.Scene {
       gate:       { wood: 4, metal: 2 },
       campfire:   { wood: 5 },
       craftbench: { wood: 5, metal: 3 },
+      bed:        { wood: 8, fiber: 6, metal: 2 },  // requires craftbench — deliberately costly
     };
     return costs[type] || {};
   }
