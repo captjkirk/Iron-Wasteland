@@ -2588,19 +2588,27 @@ class GameScene extends Phaser.Scene {
       mtns.push({ tx, ty });
     };
 
-    // Ring of mountains around the grasslands/center — dense ridgeline with 4 walkable gaps
+    // Ring of mountains around the grasslands/center — dense ridgeline with randomised exits
     const ringR = SAFE_R + 18;
+
+    // Choose 2 or 3 random cardinal exits (different every game)
+    const cardinalDirs = [0, Math.PI / 2, Math.PI, -Math.PI / 2]; // E, S, W, N
+    Phaser.Utils.Array.Shuffle(cardinalDirs);
+    const exitAngles = cardinalDirs.slice(0, Phaser.Math.Between(2, 3));
+    this._exitAngles = exitAngles; // stored for future minimap markers
+    const EXIT_HALF_ARC = 0.30; // radians each side — gives ~17-tile wide corridor at ringR=32
+    const angDist = (a, b) => { let d = Math.abs(a - b) % (Math.PI * 2); return d > Math.PI ? Math.PI * 2 - d : d; };
+
     for (let angle = 0; angle < Math.PI * 2; angle += 0.08) {
-      // 4 gaps evenly spaced (N/S/E/W corridors into the outer biomes)
-      const gapPhase = angle % (Math.PI / 2);
-      if (gapPhase < 0.18) continue; // gap ≈ 2 tile opening per direction
+      // Skip mountains inside any exit corridor
+      if (exitAngles.some(ea => angDist(angle, ea) < EXIT_HALF_ARC)) continue;
       const tx = Math.round(stx + Math.cos(angle) * (ringR + Math.sin(angle*3)*3));
       const ty = Math.round(sty + Math.sin(angle) * (ringR + Math.cos(angle*5)*3));
       if (tx < 2 || tx > CFG.MAP_W-3 || ty < 2 || ty > CFG.MAP_H-3) continue;
       const key = Math.random() < 0.45 ? 'mountain2' : 'mountain';
       const sc = Phaser.Math.FloatBetween(2.0, 3.2);
       placeMtn(tx, ty, key, sc);
-      // Double-layer: second ring row for a thick visible ridge
+      // Double-layer: second ring row for a thick visible ridge (skip in exit zones)
       if (Math.random() < 0.6) {
         const tx2 = Math.round(stx + Math.cos(angle) * (ringR + 3 + Math.sin(angle*5)*2));
         const ty2 = Math.round(sty + Math.sin(angle) * (ringR + 3 + Math.cos(angle*3)*2));
