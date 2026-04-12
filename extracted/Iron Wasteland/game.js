@@ -88,7 +88,7 @@ const CHARS = [
     color: 0xcc8833, dark: 0x7a4a1a,
     speed: 200, maxHp: 120,
     stats: [3, 5, 5, 1],
-    desc: ['Fastest. 8-bullet clip. Reload!', 'DEAD EYE: slow time to aim'],
+    desc: ['Fastest. 8-bullet clip (40 max).', 'RELOAD: draw from ammo belt'],
   },
   {
     id: 'architect', player: 'Jared', title: 'The Architect',
