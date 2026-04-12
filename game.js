@@ -165,18 +165,25 @@ const Music = {
     if (!this.playing || !this.ctx) return;
     if (this.mode === 'night') { this._nightLoop(this.ctx.currentTime); return; }
     const b = 60/125; // beats at 125 bpm
-    const o = startAt - this.ctx.currentTime;
+    const len = b*16;
+    const now = this.ctx.currentTime;
+    // If browser throttled us and we've fallen behind, snap forward to stay in sync
+    if (startAt + len < now) {
+      const skips = Math.ceil((now - startAt) / len);
+      startAt += skips * len;
+    }
+    const o = startAt - now;
     // Melody (A minor pentatonic — adventure feel)
     [[220,0,b*.7],[261.63,b,b*.7],[329.63,b*2,b*.35],[293.66,b*2.5,b*.35],
      [261.63,b*3,b*.7],[220,b*4,b*.7],[196,b*5,b*.35],[220,b*5.5,b*.35],
      [261.63,b*6,b*1.4],[329.63,b*8,b*.7],[349.23,b*9,b*.7],
      [329.63,b*10,b*.35],[293.66,b*10.5,b*.35],[261.63,b*11,b*.7],
      [220,b*12,b*1.4],[196,b*14,b*.7],[220,b*15,b*.7]
-    ].forEach(([f,t,d]) => this._note(f, o+t, d, 'square', 0.55));
+    ].forEach(([f,t,d]) => { if (o+t > -0.05) this._note(f, o+t, d, 'square', 0.55); });
     // Bass
     [[55,0,b*1.8],[55,b*4,b*.8],[49,b*6,b*1.8],[49,b*8,b*.8],
      [43.65,b*10,b*1.8],[49,b*14,b*1.8]
-    ].forEach(([f,t,d]) => this._note(f, o+t, d, 'sawtooth', 0.7));
+    ].forEach(([f,t,d]) => { if (o+t > -0.05) this._note(f, o+t, d, 'sawtooth', 0.7); });
     // High arpeggios
     [[440,0,b*.25],[523.25,b*.5,b*.25],[659.25,b,b*.25],[523.25,b*1.5,b*.25],
      [440,b*2,b*.25],[523.25,b*2.5,b*.25],[659.25,b*3,b*.25],[523.25,b*3.5,b*.25],
@@ -186,43 +193,54 @@ const Music = {
      [523.25,b*10,b*.25],[622.25,b*10.5,b*.25],[698.46,b*11,b*.25],[622.25,b*11.5,b*.25],
      [392,b*12,b*.25],[493.88,b*12.5,b*.25],[587.33,b*13,b*.25],[493.88,b*13.5,b*.25],
      [440,b*14,b*.25],[523.25,b*14.5,b*.25],[587.33,b*15,b*.25],[523.25,b*15.5,b*.25]
-    ].forEach(([f,t,d]) => this._note(f, o+t, d, 'triangle', 0.25));
+    ].forEach(([f,t,d]) => { if (o+t > -0.05) this._note(f, o+t, d, 'triangle', 0.25); });
 
-    const len = b*16;
-    setTimeout(() => this._dayLoop(startAt+len), (len-0.5)*1000);
+    // Schedule next loop using audio clock so browser throttling can't cause drift
+    const nextStart = startAt + len;
+    const delay = Math.max(50, (nextStart - 0.5 - this.ctx.currentTime) * 1000);
+    setTimeout(() => this._dayLoop(nextStart), delay);
   },
   _nightLoop(startAt) {
     if (!this.playing || !this.ctx) return;
     if (this.mode === 'day') { this._dayLoop(this.ctx.currentTime); return; }
     const b = 60/80; // slower tempo — 80 bpm, more menacing
-    const o = startAt - this.ctx.currentTime;
+    const len = b*16;
+    const now = this.ctx.currentTime;
+    // Snap forward if browser throttled us
+    if (startAt + len < now) {
+      const skips = Math.ceil((now - startAt) / len);
+      startAt += skips * len;
+    }
+    const o = startAt - now;
     // Low eerie melody — chromatic, dissonant
     [[110,0,b*1.5],[116.54,b*2,b*1.5],[103.83,b*4,b*1.5],[110,b*6,b*.7],
      [92.5,b*7,b*2],[87.31,b*9,b*1],[98,b*10,b*.5],[92.5,b*10.5,b*.5],
      [87.31,b*11,b*2],[82.41,b*13,b*1.5],[87.31,b*15,b*.7],
-    ].forEach(([f,t,d]) => this._note(f, o+t, d, 'sawtooth', 0.45));
+    ].forEach(([f,t,d]) => { if (o+t > -0.05) this._note(f, o+t, d, 'sawtooth', 0.45); });
     // Rumbling bass drone
     [[36.71,0,b*4],[34.65,b*4,b*4],[32.7,b*8,b*4],[36.71,b*12,b*4],
-    ].forEach(([f,t,d]) => this._note(f, o+t, d, 'sawtooth', 0.55));
+    ].forEach(([f,t,d]) => { if (o+t > -0.05) this._note(f, o+t, d, 'sawtooth', 0.55); });
     // Unsettling high stabs — sparse, sudden
-    [[659.25,b*1,b*.12],[0,0,0],[698.46,b*5,b*.12],
+    [[659.25,b*1,b*.12],[698.46,b*5,b*.12],
      [622.25,b*8.5,b*.15],[739.99,b*12,b*.12],[659.25,b*14.5,b*.1],
-    ].filter(([f])=>f>0).forEach(([f,t,d]) => this._note(f, o+t, d, 'square', 0.2));
+    ].forEach(([f,t,d]) => { if (o+t > -0.05) this._note(f, o+t, d, 'square', 0.2); });
     // Creepy whisper arpeggios — tritone intervals
     [[220,b*0,b*.3],[311.13,b*.5,b*.3],[220,b*1,b*.3],
      [207.65,b*4,b*.3],[293.66,b*4.5,b*.3],[207.65,b*5,b*.3],
      [196,b*8,b*.3],[277.18,b*8.5,b*.3],[196,b*9,b*.3],
      [207.65,b*12,b*.3],[293.66,b*12.5,b*.3],[207.65,b*13,b*.3],
-    ].forEach(([f,t,d]) => this._note(f, o+t, d, 'triangle', 0.18));
+    ].forEach(([f,t,d]) => { if (o+t > -0.05) this._note(f, o+t, d, 'triangle', 0.18); });
     // Heartbeat-like pulse
     [[55,b*3,b*.08],[55,b*3.3,b*.08],
      [55,b*7,b*.08],[55,b*7.3,b*.08],
      [55,b*11,b*.08],[55,b*11.3,b*.08],
      [55,b*15,b*.08],[55,b*15.3,b*.08],
-    ].forEach(([f,t,d]) => this._note(f, o+t, d, 'square', 0.35));
+    ].forEach(([f,t,d]) => { if (o+t > -0.05) this._note(f, o+t, d, 'square', 0.35); });
 
-    const len = b*16;
-    setTimeout(() => this._nightLoop(startAt+len), (len-0.5)*1000);
+    // Schedule next loop using audio clock so browser throttling can't cause drift
+    const nextStart = startAt + len;
+    const delay = Math.max(50, (nextStart - 0.5 - this.ctx.currentTime) * 1000);
+    setTimeout(() => this._nightLoop(nextStart), delay);
   },
 };
 
@@ -411,12 +429,18 @@ function buildTextures(scene) {
   drawKnight(g);       drawKnightStep(g);
   drawKnightFront(g);  drawKnightFrontStep(g);
   drawKnightBack(g);   drawKnightBackStep(g);
+  drawKnightFSide(g);  drawKnightFSideStep(g);
+  drawKnightBSide(g);  drawKnightBSideStep(g);
   drawGunslinger(g);       drawGunslingerStep(g);
   drawGunslingerFront(g);  drawGunslingerFrontStep(g);
   drawGunslingerBack(g);   drawGunslingerBackStep(g);
+  drawGunslingerFSide(g);  drawGunslingerFSideStep(g);
+  drawGunslingerBSide(g);  drawGunslingerBSideStep(g);
   drawArchitect(g);       drawArchitectStep(g);
   drawArchitectFront(g);  drawArchitectFrontStep(g);
   drawArchitectBack(g);   drawArchitectBackStep(g);
+  drawArchitectFSide(g);  drawArchitectFSideStep(g);
+  drawArchitectBSide(g);  drawArchitectBSideStep(g);
 
   // Bullet
   g.clear();
@@ -465,6 +489,13 @@ function buildTextures(scene) {
   g.fillStyle(0xcc4433); g.fillEllipse(5, 4, 9, 7);
   g.fillStyle(0xddccbb); g.fillRect(2, 5, 2, 3);
   g.generateTexture('item_food', 10, 8);
+
+  // Rare boss drop — glowing crystal shard
+  g.clear();
+  g.fillStyle(0xff6600); g.fillTriangle(5, 0, 0, 10, 10, 10);
+  g.fillStyle(0xffaa44); g.fillTriangle(5, 2, 2, 9, 8, 9);
+  g.fillStyle(0xffdd88); g.fillRect(4, 3, 2, 4);
+  g.generateTexture('item_rare', 10, 10);
 
   // Buildable structures
   // Wall segment
@@ -612,26 +643,36 @@ function buildTextures(scene) {
   g.fillStyle(0xddeeff); g.fillEllipse(6, 4, 3, 2);
   g.generateTexture('ice_rock', 22, 16);
 
-  // Mountain — large impassable rock formation (48x40)
+  // Mountain — large terrain feature (96x80) — visible from across the map
   g.clear();
-  g.fillStyle(0x555555); g.fillTriangle(24, 0, 0, 38, 48, 38); // main peak
-  g.fillStyle(0x666666); g.fillTriangle(24, 4, 4, 36, 44, 36); // lighter face
-  g.fillStyle(0x777777); g.fillTriangle(24, 8, 10, 34, 38, 34); // highlight
-  g.fillStyle(0xcccccc); g.fillTriangle(24, 0, 18, 12, 30, 12); // snow cap
-  g.fillStyle(0xeeeeee); g.fillTriangle(24, 2, 20, 10, 28, 10); // snow shine
-  g.fillStyle(0x444444); g.fillRect(0, 36, 48, 4); // base shadow
-  g.generateTexture('mountain', 48, 40);
+  g.fillStyle(0x333030); g.fillTriangle(48, 0, 0, 76, 96, 76);   // dark base mass
+  g.fillStyle(0x454040); g.fillTriangle(48, 6, 8, 70, 88, 70);   // mid face
+  g.fillStyle(0x575252); g.fillTriangle(48, 18, 20, 62, 76, 62); // upper face
+  g.fillStyle(0x2e2b2b); g.fillTriangle(48, 0, 0, 76, 32, 44);  // left shadow face
+  g.fillStyle(0x3e3b3b); g.fillTriangle(20, 52, 8, 72, 40, 68); // left rock detail
+  g.fillStyle(0x3e3b3b); g.fillTriangle(72, 46, 58, 70, 88, 70); // right rock detail
+  g.fillStyle(0xcccccc); g.fillTriangle(48, 0, 34, 28, 62, 28); // snow cap
+  g.fillStyle(0xdedede); g.fillTriangle(48, 2, 38, 20, 58, 20); // snow mid
+  g.fillStyle(0xf5f5f5); g.fillTriangle(48, 4, 42, 14, 54, 14); // snow tip
+  g.fillStyle(0x201e1e); g.fillRect(0, 73, 96, 7);               // base shadow
+  g.generateTexture('mountain', 96, 80);
 
-  // Mountain variant 2 — wider, double peak (56x44)
+  // Mountain variant 2 — wide double-peak ridge (112x88)
   g.clear();
-  g.fillStyle(0x4a4a4a); g.fillTriangle(18, 2, 0, 42, 36, 42); // left peak
-  g.fillStyle(0x555555); g.fillTriangle(38, 0, 20, 42, 56, 42); // right peak
-  g.fillStyle(0x666666); g.fillTriangle(18, 6, 6, 38, 30, 38);
-  g.fillStyle(0x666666); g.fillTriangle(38, 4, 24, 38, 52, 38);
-  g.fillStyle(0xbbbbbb); g.fillTriangle(18, 2, 13, 10, 23, 10); // snow left
-  g.fillStyle(0xcccccc); g.fillTriangle(38, 0, 33, 8, 43, 8);   // snow right
-  g.fillStyle(0x3a3a3a); g.fillRect(0, 40, 56, 4); // base shadow
-  g.generateTexture('mountain2', 56, 44);
+  g.fillStyle(0x303030); g.fillTriangle(30, 2, 0, 84, 62, 84);   // left peak
+  g.fillStyle(0x303030); g.fillTriangle(82, 0, 50, 84, 112, 84); // right peak
+  g.fillStyle(0x424040); g.fillTriangle(30, 8, 8, 78, 56, 78);
+  g.fillStyle(0x424040); g.fillTriangle(82, 6, 54, 78, 108, 78);
+  g.fillStyle(0x282828); g.fillTriangle(30, 2, 0, 84, 22, 50);   // left shadow
+  g.fillStyle(0x282828); g.fillTriangle(82, 0, 50, 84, 64, 46);  // right shadow
+  g.fillStyle(0x3a3838); g.fillTriangle(44, 46, 58, 84, 72, 84); // saddle
+  g.fillStyle(0x484646); g.fillTriangle(46, 48, 60, 80, 70, 80);
+  g.fillStyle(0xbbbbbb); g.fillTriangle(30, 2, 20, 24, 40, 24); // left snow
+  g.fillStyle(0xcccccc); g.fillTriangle(30, 4, 23, 18, 37, 18);
+  g.fillStyle(0xbbbbbb); g.fillTriangle(82, 0, 72, 22, 92, 22); // right snow
+  g.fillStyle(0xcccccc); g.fillTriangle(82, 2, 75, 16, 89, 16);
+  g.fillStyle(0x1e1e1e); g.fillRect(0, 81, 112, 7);
+  g.generateTexture('mountain2', 112, 88);
 
   // Supply cache — small chest/crate
   g.clear();
@@ -641,6 +682,42 @@ function buildTextures(scene) {
   g.fillStyle(0xccaa00); g.fillRect(10, 8, 4, 4); // lock
   g.fillStyle(0xeedd22); g.fillRect(11, 9, 2, 2);
   g.generateTexture('supply_cache', 24, 20);
+
+  // Ruin wall block — crumbling brick wall tile
+  g.clear();
+  g.fillStyle(0x555566); g.fillRect(0, 0, 32, 32);
+  g.fillStyle(0x666677); g.fillRect(0, 0, 32, 8); g.fillRect(0, 16, 32, 8);
+  g.fillStyle(0x4a4a5a); g.fillRect(0, 8, 32, 8); g.fillRect(0, 24, 32, 8);
+  g.fillStyle(0x333344); g.fillRect(0, 7, 32, 2); g.fillRect(0, 15, 32, 2); g.fillRect(0, 23, 32, 2);
+  g.fillStyle(0x333344); g.fillRect(15, 0, 2, 7); g.fillRect(7, 8, 2, 7); g.fillRect(22, 8, 2, 7);
+  g.fillStyle(0x333344); g.fillRect(10, 16, 2, 7); g.fillRect(25, 16, 2, 7); g.fillRect(4, 24, 2, 8);
+  g.fillStyle(0x222233); g.fillRect(2, 2, 3, 3); g.fillRect(20, 18, 4, 4); g.fillRect(27, 10, 4, 3);
+  g.lineStyle(1, 0x222233, 1); g.lineBetween(5, 0, 3, 7); g.lineBetween(18, 8, 22, 14); g.lineBetween(9, 16, 7, 24);
+  g.generateTexture('ruin_block', 32, 32);
+
+  // Ruin interior floor — worn stone tile
+  g.clear();
+  g.fillStyle(0x3a3a48); g.fillRect(0, 0, 32, 32);
+  g.fillStyle(0x424252); g.fillRect(1, 1, 14, 14); g.fillRect(17, 17, 14, 14);
+  g.fillStyle(0x383846); g.fillRect(1, 17, 14, 14); g.fillRect(17, 1, 14, 14);
+  g.fillStyle(0x2e2e3a); g.fillRect(0, 15, 32, 2); g.fillRect(15, 0, 2, 32);
+  g.fillStyle(0x2a2a38); g.fillRect(4, 4, 3, 3); g.fillRect(22, 20, 3, 2);
+  g.generateTexture('ruin_floor', 32, 32);
+
+  // Crater (large) — decorative ground depression
+  g.clear();
+  g.fillStyle(0x1e1e1e); g.fillEllipse(24, 19, 44, 34);
+  g.fillStyle(0x2a2a2a); g.fillEllipse(24, 18, 36, 26);
+  g.fillStyle(0x343434); g.fillEllipse(24, 17, 24, 17);
+  g.fillStyle(0x151515); g.fillEllipse(24, 19, 12, 9);
+  g.generateTexture('crater_large', 48, 38);
+
+  // Crater (small) — decorative ground depression
+  g.clear();
+  g.fillStyle(0x1e1e1e); g.fillEllipse(14, 12, 26, 20);
+  g.fillStyle(0x2a2a2a); g.fillEllipse(14, 11, 20, 14);
+  g.fillStyle(0x151515); g.fillEllipse(14, 12, 10, 7);
+  g.generateTexture('crater_small', 28, 24);
 
   // Enemy den — dark cave/burrow
   g.clear();
@@ -678,6 +755,106 @@ function buildTextures(scene) {
   g.fillStyle(0x5c3317); g.fillRect(4, 10, 6, 3); g.fillRect(22, 10, 6, 3);
   g.fillRect(4, 19, 6, 3); g.fillRect(22, 19, 6, 3);
   g.generateTexture('campsite', 32, 32);
+
+  // Raider camp — rough tent cluster
+  g.clear();
+  g.fillStyle(0x553311); g.fillTriangle(16, 2, 0, 28, 32, 28); // tent shape
+  g.fillStyle(0x442200); g.fillRect(0, 26, 32, 6);
+  g.fillStyle(0x664422); g.fillTriangle(16, 4, 4, 26, 28, 26);
+  g.fillStyle(0x220000); g.fillRect(14, 18, 4, 10); // door
+  g.fillStyle(0xff4400); g.fillEllipse(8, 30, 6, 4); // small fire
+  g.fillStyle(0xff8800); g.fillEllipse(8, 29, 4, 3);
+  g.generateTexture('raid_camp', 32, 32);
+
+  // Raider: Brawler (melee tank — dark red, stocky)
+  g.clear();
+  g.fillStyle(0x993322); g.fillRect(6, 8, 14, 16); // body
+  g.fillStyle(0x773311); g.fillRect(4, 14, 4, 8);  // left arm
+  g.fillStyle(0x773311); g.fillRect(18, 14, 4, 8); // right arm
+  g.fillStyle(0xcc8855); g.fillEllipse(13, 7, 12, 10); // head
+  g.fillStyle(0x551111); g.fillRect(6, 2, 14, 5);  // helmet
+  g.fillStyle(0x664422); g.fillRect(6, 24, 5, 6); g.fillRect(15, 24, 5, 6); // legs
+  g.generateTexture('raider_brawler', 26, 30);
+
+  // Raider: Shooter (ranged — brown coat, slim)
+  g.clear();
+  g.fillStyle(0x775533); g.fillRect(7, 8, 12, 16);
+  g.fillStyle(0x664422); g.fillRect(5, 14, 4, 7);
+  g.fillStyle(0x664422); g.fillRect(17, 13, 6, 4); // gun arm extended
+  g.fillStyle(0x444433); g.fillRect(21, 14, 6, 2); // gun barrel
+  g.fillStyle(0xcc9966); g.fillEllipse(13, 7, 10, 10); // head
+  g.fillStyle(0x553322); g.fillRect(7, 24, 4, 6); g.fillRect(15, 24, 4, 6);
+  g.generateTexture('raider_shooter', 26, 30);
+
+  // Raider: Heavy (both — dark gray, large)
+  g.clear();
+  g.fillStyle(0x445566); g.fillRect(4, 7, 18, 18); // armored body
+  g.fillStyle(0x334455); g.fillRect(2, 13, 4, 10); g.fillRect(20, 13, 4, 10); // arms
+  g.fillStyle(0x556677); g.fillRect(4, 7, 18, 6);  // chest plate
+  g.fillStyle(0xbbaa88); g.fillEllipse(13, 6, 12, 10); // head
+  g.fillStyle(0x334455); g.fillRect(4, 25, 7, 5); g.fillRect(15, 25, 7, 5);
+  g.generateTexture('raider_heavy', 26, 30);
+
+  // Boss sprites — one per biome boss type
+  // Iron Golem (wasteland) — large, armored
+  g.clear();
+  g.fillStyle(0x778899); g.fillRect(6, 4, 28, 30); // massive body
+  g.fillStyle(0x667788); g.fillRect(2, 10, 6, 18); g.fillRect(32, 10, 6, 18); // arms
+  g.fillStyle(0x556677); g.fillRect(6, 4, 28, 8);  // shoulder plates
+  g.fillStyle(0x99aaaa); g.fillRect(8, 6, 24, 6);  // chest gleam
+  g.fillStyle(0x889999); g.fillRect(10, 34, 8, 8); g.fillRect(22, 34, 8, 8); // legs
+  g.fillStyle(0xbbccdd); g.fillEllipse(20, 4, 18, 14); // head
+  g.fillStyle(0xff3300); g.fillRect(13, 2, 4, 2); g.fillRect(21, 2, 4, 2); // eye glow
+  g.generateTexture('boss_golem', 40, 44);
+
+  // Alpha Wolf (grassland) — sleek, large wolf
+  g.clear();
+  g.fillStyle(0x888855); g.fillEllipse(20, 20, 30, 20); // body
+  g.fillStyle(0x777744); g.fillEllipse(32, 14, 14, 12); // head
+  g.fillStyle(0x999966); g.fillTriangle(36, 8, 32, 16, 40, 14); // ear
+  g.fillStyle(0x888855); g.fillRect(6, 22, 4, 10); g.fillRect(14, 22, 4, 10); // front legs
+  g.fillStyle(0x888855); g.fillRect(24, 22, 4, 10); g.fillRect(32, 22, 4, 10); // back legs
+  g.fillStyle(0x666633); g.fillRect(2, 18, 6, 6); // tail stub
+  g.fillStyle(0xeeeecc); g.fillEllipse(34, 14, 6, 5); // snout
+  g.fillStyle(0xff2200); g.fillRect(34, 16, 4, 2); // fangs hint
+  g.generateTexture('boss_wolf', 40, 36);
+
+  // Spider Queen (ruins) — large spider body
+  g.clear();
+  g.fillStyle(0x442255); g.fillEllipse(20, 22, 24, 18); // abdomen
+  g.fillStyle(0x553366); g.fillEllipse(20, 12, 16, 14); // cephalothorax
+  g.fillStyle(0x332244); // legs — 4 pairs
+  for (let i = 0; i < 4; i++) {
+    g.fillRect(4 - i*1, 10 + i*4, 12, 3);  // left legs
+    g.fillRect(24 + i*1, 10 + i*4, 12, 3); // right legs
+  }
+  g.fillStyle(0xff3333); g.fillRect(16, 8, 3, 3); g.fillRect(21, 8, 3, 3); // eyes
+  g.fillStyle(0x221133); g.fillEllipse(20, 23, 16, 10); // abdomen pattern
+  g.generateTexture('boss_spider', 40, 38);
+
+  // Frost Troll (tundra) — hulking blue-white giant
+  g.clear();
+  g.fillStyle(0x8899bb); g.fillRect(8, 6, 24, 28); // body
+  g.fillStyle(0x7788aa); g.fillRect(4, 10, 6, 20); g.fillRect(30, 10, 6, 20); // long arms
+  g.fillStyle(0xaabbcc); g.fillRect(8, 6, 24, 10); // upper body highlight
+  g.fillStyle(0xbbccdd); g.fillEllipse(20, 5, 20, 16); // large head
+  g.fillStyle(0x334466); g.fillRect(14, 34, 7, 8); g.fillRect(23, 34, 7, 8); // legs
+  g.fillStyle(0x6688aa); g.fillRect(8, 2, 4, 6); g.fillRect(28, 2, 4, 6); // horns
+  g.generateTexture('boss_troll', 40, 44);
+
+  // Bog Hydra (swamp) — multi-headed serpent
+  g.clear();
+  g.fillStyle(0x334422); g.fillEllipse(20, 28, 28, 20); // main body
+  g.fillStyle(0x445533); g.fillEllipse(20, 26, 22, 14); // body highlight
+  // Three necks/heads
+  g.fillStyle(0x334422); g.fillRect(8, 8, 6, 20); // left neck
+  g.fillStyle(0x334422); g.fillRect(18, 4, 6, 22); // center neck
+  g.fillStyle(0x334422); g.fillRect(28, 9, 6, 19); // right neck
+  g.fillStyle(0x446633); g.fillEllipse(11, 6, 10, 8); // left head
+  g.fillStyle(0x446633); g.fillEllipse(21, 3, 10, 8); // center head
+  g.fillStyle(0x446633); g.fillEllipse(31, 7, 10, 8); // right head
+  g.fillStyle(0xff2200); g.fillRect(9,4,2,2); g.fillRect(19,1,2,2); g.fillRect(29,5,2,2); // eyes
+  g.generateTexture('boss_hydra', 40, 40);
 
   // Enemy sprites
   drawWolf(g); drawRat(g); drawBear(g);
@@ -1071,6 +1248,230 @@ function drawArchitectBackStep(g) {
   g.generateTexture('architect_back_step', 22, 30);
 }
 
+// ── 8-DIRECTIONAL DIAGONAL SPRITES ───────────────────────────
+// fside = front-diagonal (moving toward-camera + sideways)
+// bside = back-diagonal  (moving away-from-camera + sideways)
+
+function drawKnightFSide(g) {
+  g.clear();
+  g.fillStyle(0x1a2d3d); g.fillRect(4, 26, 6, 4); g.fillRect(13, 26, 5, 4);
+  g.fillStyle(0x2d4a63); g.fillRect(4, 17, 6, 10); g.fillRect(13, 17, 5, 10);
+  g.fillStyle(0x111111); g.fillRect(2, 16, 17, 2);
+  g.fillStyle(0x4a6d8c); g.fillRect(2, 8, 17, 9);
+  g.fillStyle(0x3a5a7a); g.fillRect(6, 9, 9, 7); g.fillStyle(0x5588aa); g.fillRect(6, 9, 9, 2);
+  g.fillStyle(0xccaa00); g.fillCircle(10, 13, 1);
+  g.fillStyle(0x2244aa); g.fillRect(0, 8, 3, 10); g.fillStyle(0x4466cc); g.fillRect(1, 9, 2, 8);
+  g.fillStyle(0x4a6d8c); g.fillRect(19, 8, 3, 9);
+  g.fillStyle(0xbbbbbb); g.fillRect(21, 4, 2, 16); g.fillStyle(0xcc9900); g.fillRect(18, 7, 5, 2);
+  g.fillStyle(0xffcc99); g.fillRect(7, 5, 7, 4);
+  g.fillStyle(0x4a6d8c); g.fillRect(4, 0, 14, 8);
+  g.fillStyle(0x2d4a63); g.fillRect(4, 2, 14, 5); g.fillStyle(0x080808); g.fillRect(5, 3, 11, 2);
+  g.fillStyle(0x6688bb); g.fillRect(4, 0, 14, 2);
+  g.fillStyle(0x3a5a7a); g.fillRect(4, 0, 2, 8); g.fillRect(16, 0, 2, 8);
+  g.generateTexture('knight_fside', 22, 30);
+}
+function drawKnightFSideStep(g) {
+  g.clear();
+  g.fillStyle(0x1a2d3d); g.fillRect(4, 24, 6, 5); g.fillRect(13, 27, 5, 3);
+  g.fillStyle(0x2d4a63); g.fillRect(4, 15, 6, 10); g.fillRect(13, 19, 5, 9);
+  g.fillStyle(0x111111); g.fillRect(2, 16, 17, 2);
+  g.fillStyle(0x4a6d8c); g.fillRect(2, 8, 17, 9);
+  g.fillStyle(0x3a5a7a); g.fillRect(6, 9, 9, 7); g.fillStyle(0x5588aa); g.fillRect(6, 9, 9, 2);
+  g.fillStyle(0xccaa00); g.fillCircle(10, 13, 1);
+  g.fillStyle(0x2244aa); g.fillRect(0, 8, 3, 10); g.fillStyle(0x4466cc); g.fillRect(1, 9, 2, 8);
+  g.fillStyle(0x4a6d8c); g.fillRect(19, 8, 3, 9);
+  g.fillStyle(0xbbbbbb); g.fillRect(21, 4, 2, 16); g.fillStyle(0xcc9900); g.fillRect(18, 7, 5, 2);
+  g.fillStyle(0xffcc99); g.fillRect(7, 5, 7, 4);
+  g.fillStyle(0x4a6d8c); g.fillRect(4, 0, 14, 8);
+  g.fillStyle(0x2d4a63); g.fillRect(4, 2, 14, 5); g.fillStyle(0x080808); g.fillRect(5, 3, 11, 2);
+  g.fillStyle(0x6688bb); g.fillRect(4, 0, 14, 2);
+  g.fillStyle(0x3a5a7a); g.fillRect(4, 0, 2, 8); g.fillRect(16, 0, 2, 8);
+  g.generateTexture('knight_fside_step', 22, 30);
+}
+function drawKnightBSide(g) {
+  g.clear();
+  g.fillStyle(0x1a2d3d); g.fillRect(4, 26, 6, 4); g.fillRect(12, 26, 6, 4);
+  g.fillStyle(0x2d4a63); g.fillRect(4, 17, 6, 10); g.fillRect(12, 17, 6, 10);
+  g.fillStyle(0x111111); g.fillRect(2, 16, 18, 2);
+  g.fillStyle(0x4a6d8c); g.fillRect(2, 8, 18, 9);
+  g.fillStyle(0x2d4a63); g.fillRect(5, 9, 11, 7); g.fillStyle(0x1a2d3d); g.fillRect(9, 9, 3, 7);
+  g.fillStyle(0x4a6d8c); g.fillRect(0, 8, 3, 9); g.fillRect(19, 8, 3, 9);
+  g.fillStyle(0xbbbbbb); g.fillRect(21, 4, 2, 14); g.fillStyle(0xcc9900); g.fillRect(18, 7, 6, 2);
+  g.fillStyle(0xffcc99); g.fillRect(8, 4, 7, 5);
+  g.fillStyle(0x4a6d8c); g.fillRect(4, 0, 14, 8);
+  g.fillStyle(0x2d4a63); g.fillRect(4, 1, 14, 6); g.fillStyle(0x1a2d3d); g.fillRect(9, 0, 3, 8);
+  g.fillStyle(0x6688bb); g.fillRect(4, 0, 14, 2);
+  g.fillStyle(0x3a5a7a); g.fillRect(4, 0, 2, 8); g.fillRect(16, 0, 2, 8);
+  g.generateTexture('knight_bside', 22, 30);
+}
+function drawKnightBSideStep(g) {
+  g.clear();
+  g.fillStyle(0x1a2d3d); g.fillRect(4, 24, 6, 5); g.fillRect(12, 27, 6, 3);
+  g.fillStyle(0x2d4a63); g.fillRect(4, 15, 6, 10); g.fillRect(12, 19, 6, 9);
+  g.fillStyle(0x111111); g.fillRect(2, 16, 18, 2);
+  g.fillStyle(0x4a6d8c); g.fillRect(2, 8, 18, 9);
+  g.fillStyle(0x2d4a63); g.fillRect(5, 9, 11, 7); g.fillStyle(0x1a2d3d); g.fillRect(9, 9, 3, 7);
+  g.fillStyle(0x4a6d8c); g.fillRect(0, 8, 3, 9); g.fillRect(19, 8, 3, 9);
+  g.fillStyle(0xbbbbbb); g.fillRect(21, 4, 2, 14); g.fillStyle(0xcc9900); g.fillRect(18, 7, 6, 2);
+  g.fillStyle(0xffcc99); g.fillRect(8, 4, 7, 5);
+  g.fillStyle(0x4a6d8c); g.fillRect(4, 0, 14, 8);
+  g.fillStyle(0x2d4a63); g.fillRect(4, 1, 14, 6); g.fillStyle(0x1a2d3d); g.fillRect(9, 0, 3, 8);
+  g.fillStyle(0x6688bb); g.fillRect(4, 0, 14, 2);
+  g.fillStyle(0x3a5a7a); g.fillRect(4, 0, 2, 8); g.fillRect(16, 0, 2, 8);
+  g.generateTexture('knight_bside_step', 22, 30);
+}
+
+function drawGunslingerFSide(g) {
+  g.clear();
+  g.fillStyle(0x3d2010); g.fillRect(4, 24, 6, 6); g.fillRect(13, 25, 5, 5);
+  g.fillStyle(0x3a5a7a); g.fillRect(4, 16, 6, 9); g.fillRect(13, 17, 5, 9);
+  g.fillStyle(0x3d2010); g.fillRect(14, 19, 4, 4); g.fillStyle(0x222222); g.fillRect(15, 21, 3, 3);
+  g.fillStyle(0xcc8833); g.fillRect(2, 8, 17, 9);
+  g.fillStyle(0xffeedd); g.fillRect(7, 8, 7, 8);
+  g.fillStyle(0x9a6622); g.fillRect(2, 15, 17, 2);
+  g.fillStyle(0xcc8833); g.fillRect(0, 8, 3, 9); g.fillRect(19, 8, 3, 9);
+  g.fillStyle(0x333333); g.fillRect(19, 11, 4, 3); g.fillStyle(0x555555); g.fillRect(20, 9, 3, 5);
+  g.fillStyle(0xffcc99); g.fillRect(7, 4, 7, 6);
+  g.fillStyle(0x7a4a1a); g.fillRect(3, 2, 15, 3);
+  g.fillStyle(0x553311); g.fillRect(5, 0, 12, 4); g.fillStyle(0x7a5533); g.fillRect(5, 0, 12, 1);
+  g.generateTexture('gunslinger_fside', 22, 30);
+}
+function drawGunslingerFSideStep(g) {
+  g.clear();
+  g.fillStyle(0x3d2010); g.fillRect(4, 23, 6, 6); g.fillRect(13, 26, 5, 4);
+  g.fillStyle(0x3a5a7a); g.fillRect(4, 15, 6, 9); g.fillRect(13, 18, 5, 9);
+  g.fillStyle(0x3d2010); g.fillRect(14, 19, 4, 4); g.fillStyle(0x222222); g.fillRect(15, 21, 3, 3);
+  g.fillStyle(0xcc8833); g.fillRect(2, 8, 17, 9);
+  g.fillStyle(0xffeedd); g.fillRect(7, 8, 7, 8);
+  g.fillStyle(0x9a6622); g.fillRect(2, 15, 17, 2);
+  g.fillStyle(0xcc8833); g.fillRect(0, 8, 3, 9); g.fillRect(19, 8, 3, 9);
+  g.fillStyle(0x333333); g.fillRect(19, 11, 4, 3); g.fillStyle(0x555555); g.fillRect(20, 9, 3, 5);
+  g.fillStyle(0xffcc99); g.fillRect(7, 4, 7, 6);
+  g.fillStyle(0x7a4a1a); g.fillRect(3, 2, 15, 3);
+  g.fillStyle(0x553311); g.fillRect(5, 0, 12, 4); g.fillStyle(0x7a5533); g.fillRect(5, 0, 12, 1);
+  g.generateTexture('gunslinger_fside_step', 22, 30);
+}
+function drawGunslingerBSide(g) {
+  g.clear();
+  g.fillStyle(0x3d2010); g.fillRect(4, 24, 6, 6); g.fillRect(12, 24, 6, 6);
+  g.fillStyle(0x3a5a7a); g.fillRect(4, 16, 6, 9); g.fillRect(12, 16, 6, 9);
+  g.fillStyle(0xcc8833); g.fillRect(2, 8, 18, 9);
+  g.fillStyle(0x9a5511); g.fillRect(5, 8, 12, 9);
+  g.fillStyle(0xaa6622); g.fillRect(2, 12, 18, 2);
+  g.fillStyle(0xcc8833); g.fillRect(0, 8, 3, 9); g.fillRect(19, 8, 3, 9);
+  g.fillStyle(0x333333); g.fillRect(19, 11, 6, 3); g.fillStyle(0x555555); g.fillRect(20, 9, 5, 5);
+  g.fillStyle(0xffcc99); g.fillRect(7, 4, 7, 5);
+  g.fillStyle(0x7a4a1a); g.fillRect(3, 2, 16, 3);
+  g.fillStyle(0x553311); g.fillRect(5, 0, 12, 4); g.fillStyle(0x3d2010); g.fillRect(7, 0, 8, 3);
+  g.generateTexture('gunslinger_bside', 22, 30);
+}
+function drawGunslingerBSideStep(g) {
+  g.clear();
+  g.fillStyle(0x3d2010); g.fillRect(4, 23, 6, 6); g.fillRect(12, 26, 6, 4);
+  g.fillStyle(0x3a5a7a); g.fillRect(4, 15, 6, 9); g.fillRect(12, 18, 6, 9);
+  g.fillStyle(0xcc8833); g.fillRect(2, 8, 18, 9);
+  g.fillStyle(0x9a5511); g.fillRect(5, 8, 12, 9);
+  g.fillStyle(0xaa6622); g.fillRect(2, 12, 18, 2);
+  g.fillStyle(0xcc8833); g.fillRect(0, 8, 3, 9); g.fillRect(19, 8, 3, 9);
+  g.fillStyle(0x333333); g.fillRect(19, 11, 6, 3); g.fillStyle(0x555555); g.fillRect(20, 9, 5, 5);
+  g.fillStyle(0xffcc99); g.fillRect(7, 4, 7, 5);
+  g.fillStyle(0x7a4a1a); g.fillRect(3, 2, 16, 3);
+  g.fillStyle(0x553311); g.fillRect(5, 0, 12, 4); g.fillStyle(0x3d2010); g.fillRect(7, 0, 8, 3);
+  g.generateTexture('gunslinger_bside_step', 22, 30);
+}
+
+function drawArchitectFSide(g) {
+  g.clear();
+  g.fillStyle(0x222222); g.fillRect(4, 24, 6, 6); g.fillRect(13, 25, 5, 5);
+  g.fillStyle(0x334477); g.fillRect(4, 16, 6, 9); g.fillRect(13, 17, 5, 9);
+  g.fillStyle(0x445588); g.fillRect(4, 16, 6, 2); g.fillRect(13, 17, 5, 2);
+  g.fillStyle(0x8b6914); g.fillRect(2, 15, 17, 3);
+  g.fillStyle(0xaaaaaa); g.fillRect(3, 14, 2, 5); g.fillStyle(0xcc8833); g.fillRect(8, 14, 2, 5);
+  g.fillStyle(0x3a9a55); g.fillRect(2, 8, 17, 8);
+  g.fillStyle(0xffcc00); g.fillRect(2, 8, 2, 8); g.fillRect(17, 8, 2, 8);
+  g.fillStyle(0x1a5533); g.fillRect(7, 8, 8, 8);
+  g.fillStyle(0x3a9a55); g.fillRect(0, 8, 3, 8); g.fillRect(19, 8, 3, 8);
+  g.fillStyle(0x999999); g.fillRect(20, 6, 3, 9); g.fillStyle(0x777777); g.fillRect(19, 5, 5, 3);
+  g.fillStyle(0xffcc99); g.fillRect(7, 4, 7, 6);
+  g.fillStyle(0x222222); g.fillRect(3, 3, 15, 2);
+  g.fillStyle(0xddcc22); g.fillRect(5, 0, 12, 5); g.fillStyle(0xeeee44); g.fillRect(5, 0, 12, 1);
+  g.fillStyle(0x666600); g.fillRect(5, 4, 12, 1);
+  g.generateTexture('architect_fside', 22, 30);
+}
+function drawArchitectFSideStep(g) {
+  g.clear();
+  g.fillStyle(0x222222); g.fillRect(4, 23, 6, 6); g.fillRect(13, 26, 5, 4);
+  g.fillStyle(0x334477); g.fillRect(4, 15, 6, 9); g.fillRect(13, 18, 5, 9);
+  g.fillStyle(0x445588); g.fillRect(4, 15, 6, 2); g.fillRect(13, 18, 5, 2);
+  g.fillStyle(0x8b6914); g.fillRect(2, 15, 17, 3);
+  g.fillStyle(0xaaaaaa); g.fillRect(3, 14, 2, 5); g.fillStyle(0xcc8833); g.fillRect(8, 14, 2, 5);
+  g.fillStyle(0x3a9a55); g.fillRect(2, 8, 17, 8);
+  g.fillStyle(0xffcc00); g.fillRect(2, 8, 2, 8); g.fillRect(17, 8, 2, 8);
+  g.fillStyle(0x1a5533); g.fillRect(7, 8, 8, 8);
+  g.fillStyle(0x3a9a55); g.fillRect(0, 8, 3, 8); g.fillRect(19, 8, 3, 8);
+  g.fillStyle(0x999999); g.fillRect(20, 6, 3, 9); g.fillStyle(0x777777); g.fillRect(19, 5, 5, 3);
+  g.fillStyle(0xffcc99); g.fillRect(7, 4, 7, 6);
+  g.fillStyle(0x222222); g.fillRect(3, 3, 15, 2);
+  g.fillStyle(0xddcc22); g.fillRect(5, 0, 12, 5); g.fillStyle(0xeeee44); g.fillRect(5, 0, 12, 1);
+  g.fillStyle(0x666600); g.fillRect(5, 4, 12, 1);
+  g.generateTexture('architect_fside_step', 22, 30);
+}
+function drawArchitectBSide(g) {
+  g.clear();
+  g.fillStyle(0x222222); g.fillRect(4, 24, 6, 6); g.fillRect(12, 24, 6, 6);
+  g.fillStyle(0x334477); g.fillRect(4, 16, 6, 9); g.fillRect(12, 16, 6, 9);
+  g.fillStyle(0x8b6914); g.fillRect(2, 15, 18, 3);
+  g.fillStyle(0x3a9a55); g.fillRect(2, 8, 18, 8);
+  g.fillStyle(0xffcc00); g.fillRect(2, 8, 2, 8); g.fillRect(18, 8, 2, 8);
+  g.fillStyle(0x2a7a45); g.fillRect(7, 8, 8, 8);
+  g.fillStyle(0xffcc00); g.fillRect(3, 11, 14, 1);
+  g.fillStyle(0x3a9a55); g.fillRect(0, 8, 3, 8); g.fillRect(19, 8, 3, 8);
+  g.fillStyle(0x999999); g.fillRect(20, 4, 3, 13); g.fillStyle(0x777777); g.fillRect(19, 3, 5, 3);
+  g.fillStyle(0xffcc99); g.fillRect(7, 4, 7, 5);
+  g.fillStyle(0x222222); g.fillRect(3, 3, 16, 2);
+  g.fillStyle(0xddcc22); g.fillRect(5, 0, 12, 5); g.fillStyle(0xaa9900); g.fillRect(6, 1, 10, 3);
+  g.fillStyle(0x666600); g.fillRect(5, 4, 12, 1);
+  g.generateTexture('architect_bside', 22, 30);
+}
+function drawArchitectBSideStep(g) {
+  g.clear();
+  g.fillStyle(0x222222); g.fillRect(4, 23, 6, 6); g.fillRect(12, 26, 6, 4);
+  g.fillStyle(0x334477); g.fillRect(4, 15, 6, 9); g.fillRect(12, 18, 6, 9);
+  g.fillStyle(0x8b6914); g.fillRect(2, 15, 18, 3);
+  g.fillStyle(0x3a9a55); g.fillRect(2, 8, 18, 8);
+  g.fillStyle(0xffcc00); g.fillRect(2, 8, 2, 8); g.fillRect(18, 8, 2, 8);
+  g.fillStyle(0x2a7a45); g.fillRect(7, 8, 8, 8);
+  g.fillStyle(0xffcc00); g.fillRect(3, 11, 14, 1);
+  g.fillStyle(0x3a9a55); g.fillRect(0, 8, 3, 8); g.fillRect(19, 8, 3, 8);
+  g.fillStyle(0x999999); g.fillRect(20, 4, 3, 13); g.fillStyle(0x777777); g.fillRect(19, 3, 5, 3);
+  g.fillStyle(0xffcc99); g.fillRect(7, 4, 7, 5);
+  g.fillStyle(0x222222); g.fillRect(3, 3, 16, 2);
+  g.fillStyle(0xddcc22); g.fillRect(5, 0, 12, 5); g.fillStyle(0xaa9900); g.fillRect(6, 1, 10, 3);
+  g.fillStyle(0x666600); g.fillRect(5, 4, 12, 1);
+  g.generateTexture('architect_bside_step', 22, 30);
+}
+
+// ── SETTINGS HELPERS ─────────────────────────────────────────
+function loadSettings() {
+  try { return JSON.parse(localStorage.getItem('iw_settings') || '{}'); } catch(e) { return {}; }
+}
+function saveSettings(obj) {
+  try {
+    const cur = loadSettings();
+    localStorage.setItem('iw_settings', JSON.stringify(Object.assign(cur, obj)));
+  } catch(e) {}
+}
+function isTouchDevice() {
+  return ('ontouchstart' in window) || (navigator.maxTouchPoints > 0);
+}
+// Returns 'touch' or 'keyboard' based on saved pref (or device auto-detect)
+function activeInputMode() {
+  const s = loadSettings();
+  if (s.inputMode === 'touch')    return 'touch';
+  if (s.inputMode === 'keyboard') return 'keyboard';
+  return isTouchDevice() ? 'touch' : 'keyboard';  // auto
+}
+
 // ── SCENE: BOOT ───────────────────────────────────────────────
 class BootScene extends Phaser.Scene {
   constructor() { super('Boot'); }
@@ -1170,6 +1571,17 @@ class ModeSelectScene extends Phaser.Scene {
       fontFamily:'monospace', fontSize:'12px', color:'#334433',
     }).setOrigin(0.5);
 
+    // Settings button — bottom left
+    const settingsTxt = this.add.text(16, H - 16, '\u2699 Settings', {
+      fontFamily:'monospace', fontSize:'13px', color:'#445544',
+    }).setOrigin(0, 1).setInteractive({ useHandCursor: true });
+    settingsTxt.on('pointerover', () => settingsTxt.setColor('#88cc88'));
+    settingsTxt.on('pointerout',  () => settingsTxt.setColor('#445544'));
+    settingsTxt.on('pointerdown', () => {
+      this.cameras.main.fadeOut(200, 0, 0, 0);
+      this.time.delayedCall(200, () => this.scene.start('Settings'));
+    });
+
     const exitTxt = this.add.text(W - 16, H - 16, '[ EXIT GAME ]', {
       fontFamily:'monospace', fontSize:'12px', color:'#554444',
     }).setOrigin(1, 1).setInteractive({ useHandCursor: true });
@@ -1241,6 +1653,136 @@ class ModeSelectScene extends Phaser.Scene {
     Music.start();
     this.cameras.main.fadeOut(300, 0, 0, 0);
     this.time.delayedCall(300, () => this.scene.start('CharSelect'));
+  }
+}
+
+// ── SCENE: SETTINGS ──────────────────────────────────────────
+class SettingsScene extends Phaser.Scene {
+  constructor() { super('Settings'); }
+
+  create() {
+    const { W, H } = CFG;
+    this.cameras.main.fadeIn(300, 0, 0, 0);
+
+    const bg = this.add.graphics();
+    bg.fillGradientStyle(0x0a0a14, 0x0a0a14, 0x080810, 0x080810, 1);
+    bg.fillRect(0, 0, W, H);
+
+    this.add.text(W/2, 44, 'SETTINGS', {
+      fontFamily:'monospace', fontSize:'36px', color:'#cc8833',
+      stroke:'#7a4a1a', strokeThickness:4,
+    }).setOrigin(0.5);
+
+    // ── Input mode section ──────────────────────────────────
+    this.add.text(W/2, 115, 'INPUT MODE', {
+      fontFamily:'monospace', fontSize:'13px', color:'#556655', letterSpacing: 3,
+    }).setOrigin(0.5);
+
+    this.add.text(W/2, 140, 'Choose how you control the game. "Auto" detects your device automatically.', {
+      fontFamily:'monospace', fontSize:'11px', color:'#445544',
+    }).setOrigin(0.5);
+
+    const inputOpts = [
+      { key:'auto',     label:'AUTO',     sub: isTouchDevice() ? '(will use Touch on this device)' : '(will use Keyboard on this device)' },
+      { key:'touch',    label:'TOUCH',    sub: 'Virtual joystick + on-screen buttons' },
+      { key:'keyboard', label:'KEYBOARD', sub: 'WASD + Mouse (or arrow keys for P2)' },
+    ];
+
+    const curMode = loadSettings().inputMode || 'auto';
+    this._inputSel = curMode;
+    this._inputBoxes = inputOpts.map((o, i) => {
+      const x = W/2 + (i - 1) * 290;
+      const y = 240;
+      const box = this.add.graphics();
+      const lbl = this.add.text(x, y, o.label, {
+        fontFamily:'monospace', fontSize:'22px', color:'#ffffff', stroke:'#000', strokeThickness:2,
+      }).setOrigin(0.5);
+      this.add.text(x, y + 30, o.sub, {
+        fontFamily:'monospace', fontSize:'10px', color:'#667755', wordWrap:{width:240},
+      }).setOrigin(0.5, 0);
+      const zone = this.add.zone(x, y + 20, 260, 80).setInteractive({ useHandCursor: true });
+      zone.on('pointerover', () => this.setInput(o.key));
+      zone.on('pointerdown', () => { this.setInput(o.key); saveSettings({ inputMode: o.key }); });
+      return { box, lbl, x, y, key: o.key };
+    });
+
+    // Current device note
+    const deviceNote = isTouchDevice()
+      ? '\uD83D\uDCF1  iPad / touch device detected'
+      : '\uD83D\uDCBB  Keyboard device detected';
+    this.add.text(W/2, 340, deviceNote, {
+      fontFamily:'monospace', fontSize:'12px', color:'#4a6a4a',
+    }).setOrigin(0.5);
+
+    // ── Touch controls preview ───────────────────────────────
+    this.add.text(W/2, 390, 'TOUCH CONTROLS LAYOUT', {
+      fontFamily:'monospace', fontSize:'11px', color:'#334433', letterSpacing: 2,
+    }).setOrigin(0.5);
+
+    // Mini preview diagram
+    const prev = this.add.graphics();
+    const px = W/2 - 220, py = 410, pw = 440, ph = 160;
+    prev.lineStyle(1, 0x223322, 0.6); prev.strokeRoundedRect(px, py, pw, ph, 6);
+    prev.fillStyle(0x0d160d, 0.7); prev.fillRoundedRect(px, py, pw, ph, 6);
+    // Joystick placeholder
+    prev.lineStyle(1, 0x448844, 0.5); prev.strokeCircle(px + 75, py + ph/2, 45);
+    prev.fillStyle(0x448844, 0.3); prev.fillCircle(px + 75, py + ph/2, 25);
+    this.add.text(px + 75, py + ph/2, 'MOVE', { fontFamily:'monospace', fontSize:'9px', color:'#66aa66' }).setOrigin(0.5);
+    // Buttons placeholder
+    const btnDefs = [
+      { lx: pw - 65, ly: ph/2 + 12, r: 34, col: 0xff6644, label: 'ATK' },
+      { lx: pw - 140, ly: ph/2 + 20, r: 24, col: 0x44cc66, label: 'USE' },
+      { lx: pw - 65, ly: ph/2 - 48, r: 24, col: 0x6699ff, label: 'ALT' },
+      { lx: pw - 148, ly: ph/2 - 48, r: 24, col: 0xccaa33, label: 'BLD' },
+    ];
+    btnDefs.forEach(b => {
+      prev.fillStyle(b.col, 0.25); prev.fillCircle(px + b.lx, py + b.ly, b.r);
+      prev.lineStyle(1, b.col, 0.6); prev.strokeCircle(px + b.lx, py + b.ly, b.r);
+      this.add.text(px + b.lx, py + b.ly, b.label, { fontFamily:'monospace', fontSize:'8px', color:'#ffffff' }).setOrigin(0.5);
+    });
+    this.add.text(px + pw - 65, py + 14, 'MENU', { fontFamily:'monospace', fontSize:'8px', color:'#888888' }).setOrigin(0.5);
+    prev.fillStyle(0x888888, 0.2); prev.fillCircle(px + pw - 65, py + 14, 16);
+    prev.lineStyle(1, 0x888888, 0.4); prev.strokeCircle(px + pw - 65, py + 14, 16);
+
+    this.add.text(W/2, py + ph + 14, 'Joystick appears wherever you touch on the left side — no need to aim precisely!', {
+      fontFamily:'monospace', fontSize:'10px', color:'#334433',
+    }).setOrigin(0.5);
+
+    // ── Back button ──────────────────────────────────────────
+    const backBtn = this.add.text(W/2, H - 44, '[ BACK TO MAIN MENU ]', {
+      fontFamily:'monospace', fontSize:'18px', color:'#aaffaa',
+    }).setOrigin(0.5).setInteractive({ useHandCursor: true });
+    backBtn.on('pointerover', () => backBtn.setColor('#ffffff'));
+    backBtn.on('pointerout',  () => backBtn.setColor('#aaffaa'));
+    backBtn.on('pointerdown', () => {
+      this.cameras.main.fadeOut(200, 0, 0, 0);
+      this.time.delayedCall(200, () => this.scene.start('ModeSelect'));
+    });
+    this.tweens.add({ targets: backBtn, alpha: 0.4, duration: 700, yoyo: true, repeat: -1 });
+
+    const K = Phaser.Input.Keyboard.KeyCodes;
+    this.input.keyboard.addKey(K.ESC).on('down', () => {
+      this.cameras.main.fadeOut(200, 0, 0, 0);
+      this.time.delayedCall(200, () => this.scene.start('ModeSelect'));
+    });
+
+    this.setInput(curMode);
+  }
+
+  drawSettingsBox(g, x, y, selected) {
+    g.clear();
+    g.fillStyle(selected ? 0x142014 : 0x0d0d14, 0.95);
+    g.fillRoundedRect(x - 130, y - 46, 260, 90, 8);
+    g.lineStyle(2, selected ? 0x88cc44 : 0x222233);
+    g.strokeRoundedRect(x - 130, y - 46, 260, 90, 8);
+  }
+
+  setInput(key) {
+    this._inputSel = key;
+    this._inputBoxes.forEach(b => {
+      this.drawSettingsBox(b.box, b.x, b.y, b.key === key);
+      b.lbl.setColor(b.key === key ? '#aaffaa' : '#888899');
+    });
   }
 }
 
@@ -1439,6 +1981,14 @@ class GameScene extends Phaser.Scene {
 
     // Day/night state
     this.dayNum = 1; this.dayTimer = 0; this.DAY_DUR = 150000; this.isNight = false;
+    this.kills = 0;
+    this.resourcesGathered = 0;
+    this.bossSpawned = false;
+    this.bossDefeated = false;
+    this.boss = null;
+    this.raiders = [];
+    this.raidCamp = null;
+    this.raidRespawnDay = null;
 
     // Build system state
     this.buildMode = false;
@@ -1526,9 +2076,10 @@ class GameScene extends Phaser.Scene {
       this.atkKeys.p2build.on('down', () => { if (!this.barrackOpen && !this.isOver && !this.p2.isDowned && !this.p2.isSleeping) this.toggleBuildMode(this.p2); });
     }
 
-    // Mouse controls for 1P mode
+    // Mouse controls for 1P keyboard mode (touch mode uses button overlay instead)
     if (this.solo) {
       this.input.on('pointerdown', (pointer) => {
+        if (activeInputMode() === 'touch') return; // touch mode handles its own attack
         if (this.barrackOpen || this.isOver || this.p1.isDowned || this.p1.isSleeping) return;
         if (pointer.leftButtonDown()) {
           if (this.buildMode && this.buildOwner === this.p1) this.placeBuild();
@@ -1538,8 +2089,8 @@ class GameScene extends Phaser.Scene {
           this.doAlt(this.p1);
         }
       });
-      // Disable context menu on right-click
-      this.input.mouse.disableContextMenu();
+      // Disable context menu on right-click (no-op on iOS but safe to call)
+      if (this.input.mouse) this.input.mouse.disableContextMenu();
     }
 
     // Camera
@@ -1564,6 +2115,12 @@ class GameScene extends Phaser.Scene {
 
     // Spawn enemies after camera setup
     this.spawnEnemies(worldW, worldH, cx, cy);
+    this.placeRaiderCamp(worldW, worldH);
+
+    // Touch controls (1P only — 2P touch is out of scope)
+    if (this.solo && activeInputMode() === 'touch') {
+      this.initTouchControls();
+    }
 
     // Opening hints (delayed to appear after the startup controls popup fades)
     const modeNote = this.hardcore ? '\u2620 HARDCORE \u2014 death is permanent!' : '\u2665 SURVIVAL mode';
@@ -1696,26 +2253,48 @@ class GameScene extends Phaser.Scene {
     this.obstacles = this.physics.add.staticGroup();
     this.toxicPools = []; // for swamp damage
 
-    // Trees — biome-appropriate
-    for (let i = 0; i < CFG.TREES; i++) {
-      const tx = Phaser.Math.Between(1, CFG.MAP_W-2), ty = Phaser.Math.Between(1, CFG.MAP_H-2);
-      if (Math.abs(tx-stx)<SAFE_R+2 && Math.abs(ty-sty)<SAFE_R+2) continue;
-      const biome = getBiome(tx, ty);
+    // Trees — dense forest clusters, biome-appropriate, non-overlapping
+    const treesPlaced = [];
+    const placeTree = (tx, ty, biome) => {
+      if (tx < 2 || tx > CFG.MAP_W-2 || ty < 2 || ty > CFG.MAP_H-2) return;
+      if (Math.abs(tx-stx) < SAFE_R+3 && Math.abs(ty-sty) < SAFE_R+3) return;
+      if (treesPlaced.some(p => Math.abs(p.tx-tx) <= 1 && Math.abs(p.ty-ty) <= 1)) return;
       let treeKey = 'tree';
       if (biome === 'waste') treeKey = 'tree_dead';
       else if (biome === 'tundra') treeKey = 'tree_snow';
-      else if (biome === 'ruins') { if (Math.random() < 0.5) treeKey = 'tree_dead'; }
-      else if (biome === 'swamp') { if (Math.random() < 0.4) treeKey = 'tree_dead'; }
-
-      let sc;
-      const roll = Math.random();
-      if (roll < 0.70) sc = Phaser.Math.FloatBetween(1.8, 4.0);
-      else if (roll < 0.90) sc = Phaser.Math.FloatBetween(0.6, 1.2);
-      else sc = Phaser.Math.FloatBetween(1.2, 1.8);
+      else if (biome === 'ruins' && Math.random() < 0.5) treeKey = 'tree_dead';
+      else if (biome === 'swamp' && Math.random() < 0.4) treeKey = 'tree_dead';
+      const sc = Phaser.Math.FloatBetween(1.6, 2.8);
       const t = this.obstacles.create(tx*TILE+14, ty*TILE+18, treeKey);
-      t.setScale(sc).setDepth(5).setImmovable(true);
-      t.body.setSize(Math.floor(10*sc), Math.floor(12*sc)).setOffset(Math.floor(9/sc), Math.floor(24/sc));
+      t.setScale(sc).setDepth(5 + ty*0.01).setImmovable(true);
+      // Trunk-only hitbox: 8px wide × 12px tall at the base of the sprite (28×36)
+      t.body.setSize(8, 12).setOffset(10, 24);
       t.refreshBody();
+      treesPlaced.push({ tx, ty });
+    };
+
+    // 12 forest clusters — each is a tight pack of 20-35 trees
+    for (let f = 0; f < 12; f++) {
+      let cx, cy, attempts = 0;
+      do {
+        cx = Phaser.Math.Between(18, CFG.MAP_W-18);
+        cy = Phaser.Math.Between(18, CFG.MAP_H-18);
+        attempts++;
+      } while (attempts < 40 && (Math.abs(cx-stx) < SAFE_R+20 && Math.abs(cy-sty) < SAFE_R+20));
+      const biome = getBiome(cx, cy);
+      const radius = Phaser.Math.Between(5, 9); // 5-9 tile radius cluster
+      const count  = Phaser.Math.Between(22, 35);
+      for (let i = 0; i < count; i++) {
+        const angle = Math.random() * Math.PI * 2;
+        const dist  = Math.sqrt(Math.random()) * radius; // sqrt = uniform density
+        placeTree(Math.round(cx + Math.cos(angle)*dist), Math.round(cy + Math.sin(angle)*dist), biome);
+      }
+    }
+
+    // Scattered fringe trees outside clusters (sparse woodland, not in clusters)
+    for (let i = 0; i < 100; i++) {
+      const tx = Phaser.Math.Between(2, CFG.MAP_W-2), ty = Phaser.Math.Between(2, CFG.MAP_H-2);
+      placeTree(tx, ty, getBiome(tx, ty));
     }
 
     // Rocks — biome-appropriate
@@ -1726,8 +2305,9 @@ class GameScene extends Phaser.Scene {
       const rockKey = biome === 'tundra' ? 'ice_rock' : 'rock';
       const sc = Phaser.Math.FloatBetween(0.4, 3.5);
       const r = this.obstacles.create(tx*TILE+11, ty*TILE+8, rockKey);
-      r.setScale(sc).setDepth(5).setImmovable(true);
-      r.body.setSize(Math.floor(22*sc), Math.floor(16*sc));
+      r.setScale(sc).setDepth(5 + ty*0.01).setImmovable(true);
+      // Tighter oval hitbox (rock sprite is 22×16, use ~65% size)
+      r.body.setCircle(6, 5, 2);
       r.refreshBody();
     }
 
@@ -1737,8 +2317,8 @@ class GameScene extends Phaser.Scene {
       if (getBiome(tx, ty) !== 'waste') continue;
       const sc = Phaser.Math.FloatBetween(0.3, 2.0);
       const r = this.obstacles.create(tx*TILE+11, ty*TILE+8, 'rock');
-      r.setScale(sc).setDepth(5).setImmovable(true);
-      r.body.setSize(Math.floor(22*sc), Math.floor(16*sc));
+      r.setScale(sc).setDepth(5 + ty*0.01).setImmovable(true);
+      r.body.setCircle(6, 5, 2);
       r.refreshBody();
     }
 
@@ -1755,15 +2335,25 @@ class GameScene extends Phaser.Scene {
       this._w(this.add.image(tx*TILE, ty*TILE, decKey).setScale(sc).setDepth(4).setAlpha(0.9));
     }
 
-    // Pillars in ruins biome
-    for (let i = 0; i < 50; i++) {
-      const tx = Phaser.Math.Between(1, CFG.MAP_W-2), ty = Phaser.Math.Between(1, CFG.MAP_H-2);
-      if (getBiome(tx, ty) !== 'ruins') continue;
-      const sc = Phaser.Math.FloatBetween(1.0, 2.5);
-      const p = this.obstacles.create(tx*TILE+11, ty*TILE+18, 'pillar');
-      p.setScale(sc).setDepth(5).setImmovable(true);
-      p.body.setSize(Math.floor(14*sc), Math.floor(28*sc));
-      p.refreshBody();
+    // Ruins city — navigable abandoned city grid (replaces scattered pillars)
+    this.buildRuinsCity(stx, sty, TILE);
+
+    // Decorative craters — visual only, non-blocking
+    for (let i = 0; i < 28; i++) {
+      const tx = Phaser.Math.Between(3, CFG.MAP_W-4), ty = Phaser.Math.Between(3, CFG.MAP_H-4);
+      if (Math.abs(tx-stx) < SAFE_R+4 && Math.abs(ty-sty) < SAFE_R+4) continue;
+      const b = getBiome(tx, ty);
+      if (b !== 'waste' && b !== 'ruins') continue;
+      const key = Math.random() < 0.45 ? 'crater_large' : 'crater_small';
+      const sc = Phaser.Math.FloatBetween(0.8, 2.2);
+      this._w(this.add.image(tx*TILE, ty*TILE, key).setScale(sc).setDepth(1.5).setAlpha(0.7));
+    }
+    // Dense small craters in wasteland
+    for (let i = 0; i < 45; i++) {
+      const tx = Phaser.Math.Between(3, CFG.MAP_W-4), ty = Phaser.Math.Between(3, CFG.MAP_H-4);
+      if (getBiome(tx, ty) !== 'waste') continue;
+      const sc = Phaser.Math.FloatBetween(0.5, 1.4);
+      this._w(this.add.image(tx*TILE + Phaser.Math.Between(-8, 8), ty*TILE + Phaser.Math.Between(-8, 8), 'crater_small').setScale(sc).setDepth(1.5).setAlpha(0.55));
     }
 
     // Toxic pools in swamp biome
@@ -1779,59 +2369,98 @@ class GameScene extends Phaser.Scene {
       this.toxicPools.push(pool);
     }
 
-    // Mountain ranges — impassable formations with guaranteed gaps for navigation
-    // Place ridgelines between biome transitions (ring around center, plus cross-biome ranges)
-    this.mountainTiles = []; // stored for minimap rendering
+    // Pre-compute supply cache positions — must happen BEFORE mountain placement
+    // so that placeMtn can leave fjord-style entrance gaps around each cache
+    this._preCacheTiles = [];
+    for (const biome of ['waste', 'swamp', 'tundra', 'ruins']) {
+      for (let att = 0; att < 80; att++) {
+        const tx = Phaser.Math.Between(12, CFG.MAP_W - 12);
+        const ty = Phaser.Math.Between(12, CFG.MAP_H - 12);
+        if (Math.abs(tx - stx) < SAFE_R + 10 && Math.abs(ty - sty) < SAFE_R + 10) continue;
+        if (getBiome(tx, ty) === biome) {
+          // Entrance gap faces toward map center (players approach from there)
+          const gapAngle = Math.atan2(sty - ty, stx - tx);
+          this._preCacheTiles.push({ tx, ty, gapAngle });
+          break;
+        }
+      }
+    }
+
+    // Mountain ranges — impassable ridgelines with walkable gaps
+    this.mountainTiles = [];
     const mtns = this.mountainTiles;
-    const mtnMinDist = 4; // min tiles between mountains (gap check)
+    const mtnMinDist = 2; // tighter packing for visible ridgeline
     const placeMtn = (tx, ty, key, sc) => {
-      // Don't place near spawn
       if (Math.abs(tx-stx)<SAFE_R+6 && Math.abs(ty-sty)<SAFE_R+6) return;
-      // Don't place too close to other mountains (leave walking gaps)
       for (const m of mtns) {
         if (Math.abs(m.tx-tx) < mtnMinDist && Math.abs(m.ty-ty) < mtnMinDist) return;
       }
+      // Fjord protection: leave entrance gap toward map center for each supply cache
+      for (const cache of this._preCacheTiles) {
+        const dx = tx - cache.tx, dy = ty - cache.ty;
+        const dist = Math.sqrt(dx*dx + dy*dy);
+        if (dist < 8 && dist > 0.5) {
+          // Angle from cache to this mountain position
+          const mtnAngle = Math.atan2(dy, dx);
+          let relAngle = mtnAngle - cache.gapAngle;
+          while (relAngle > Math.PI)  relAngle -= 2*Math.PI;
+          while (relAngle < -Math.PI) relAngle += 2*Math.PI;
+          // Block mountains in the entrance sector (~100° gap toward center)
+          if (Math.abs(relAngle) < 0.87) return; // 0.87 rad ≈ 50° each side
+        }
+      }
       const px = tx*TILE+24, py = ty*TILE+20;
       const ob = this.obstacles.create(px, py, key);
-      ob.setScale(sc).setDepth(6).setImmovable(true);
-      const bw = key === 'mountain2' ? 48 : 40;
-      const bh = key === 'mountain2' ? 36 : 32;
-      ob.body.setSize(Math.floor(bw*sc), Math.floor(bh*sc));
+      ob.setScale(sc).setDepth(6 + ty*0.01).setImmovable(true);
+      // Circle hitbox centered on lower triangle mass (eliminates square corners)
+      if (key === 'mountain2') {
+        ob.body.setCircle(28, 28, 52); // mountain2 (112×88): center at (56,80)
+      } else {
+        ob.body.setCircle(24, 24, 52); // mountain (96×80): center at (48,76)
+      }
       ob.refreshBody();
       mtns.push({ tx, ty });
     };
 
-    // Ring of mountains around the grasslands/center (with regular gaps every ~8 tiles)
+    // Ring of mountains around the grasslands/center — dense ridgeline with 4 walkable gaps
     const ringR = SAFE_R + 18;
-    for (let angle = 0; angle < Math.PI * 2; angle += 0.12) {
-      // Leave a gap every ~0.5 radians for paths through
-      const gapPhase = angle % 0.5;
-      if (gapPhase > 0.3 && gapPhase < 0.5) continue; // gap
-      const tx = Math.round(stx + Math.cos(angle) * (ringR + Math.sin(angle*3)*4));
+    for (let angle = 0; angle < Math.PI * 2; angle += 0.08) {
+      // 4 gaps evenly spaced (N/S/E/W corridors into the outer biomes)
+      const gapPhase = angle % (Math.PI / 2);
+      if (gapPhase < 0.18) continue; // gap ≈ 2 tile opening per direction
+      const tx = Math.round(stx + Math.cos(angle) * (ringR + Math.sin(angle*3)*3));
       const ty = Math.round(sty + Math.sin(angle) * (ringR + Math.cos(angle*5)*3));
       if (tx < 2 || tx > CFG.MAP_W-3 || ty < 2 || ty > CFG.MAP_H-3) continue;
-      const key = Math.random() < 0.4 ? 'mountain2' : 'mountain';
-      const sc = Phaser.Math.FloatBetween(1.2, 2.0);
+      const key = Math.random() < 0.45 ? 'mountain2' : 'mountain';
+      const sc = Phaser.Math.FloatBetween(2.0, 3.2);
       placeMtn(tx, ty, key, sc);
+      // Double-layer: second ring row for a thick visible ridge
+      if (Math.random() < 0.6) {
+        const tx2 = Math.round(stx + Math.cos(angle) * (ringR + 3 + Math.sin(angle*5)*2));
+        const ty2 = Math.round(sty + Math.sin(angle) * (ringR + 3 + Math.cos(angle*3)*2));
+        placeMtn(tx2, ty2, Math.random() < 0.4 ? 'mountain2' : 'mountain', Phaser.Math.FloatBetween(1.8, 2.6));
+      }
     }
 
-    // Scattered mountain clusters in outer biomes (small groups of 3-6)
+    // Large mountain clusters in outer biomes — 8-15 mountains each
     const clusterCenters = [
       { tx: Math.round(stx - CFG.MAP_W*0.3), ty: Math.round(sty - CFG.MAP_H*0.3) }, // tundra
       { tx: Math.round(stx + CFG.MAP_W*0.3), ty: Math.round(sty - CFG.MAP_H*0.25) }, // ruins
       { tx: Math.round(stx - CFG.MAP_W*0.25), ty: Math.round(sty + CFG.MAP_H*0.3) }, // wasteland
-      { tx: Math.round(stx + CFG.MAP_W*0.28), ty: Math.round(sty + CFG.MAP_H*0.28) }, // swamp edge
-      { tx: Math.round(stx - CFG.MAP_W*0.1), ty: Math.round(sty - CFG.MAP_H*0.35) }, // north
-      { tx: Math.round(stx + CFG.MAP_W*0.1), ty: Math.round(sty + CFG.MAP_H*0.35) }, // south
+      { tx: Math.round(stx + CFG.MAP_W*0.28), ty: Math.round(sty + CFG.MAP_H*0.28) }, // swamp
+      { tx: Math.round(stx - CFG.MAP_W*0.1),  ty: Math.round(sty - CFG.MAP_H*0.38) }, // far north
+      { tx: Math.round(stx + CFG.MAP_W*0.1),  ty: Math.round(sty + CFG.MAP_H*0.38) }, // far south
+      { tx: Math.round(stx - CFG.MAP_W*0.38), ty: Math.round(sty + CFG.MAP_H*0.05) }, // far west
+      { tx: Math.round(stx + CFG.MAP_W*0.38), ty: Math.round(sty - CFG.MAP_H*0.05) }, // far east
     ];
     for (const cc of clusterCenters) {
-      const count = Phaser.Math.Between(3, 6);
+      const count = Phaser.Math.Between(8, 15);
       for (let i = 0; i < count; i++) {
-        const tx = cc.tx + Phaser.Math.Between(-5, 5);
-        const ty = cc.ty + Phaser.Math.Between(-5, 5);
+        const tx = cc.tx + Phaser.Math.Between(-8, 8);
+        const ty = cc.ty + Phaser.Math.Between(-8, 8);
         if (tx < 2 || tx > CFG.MAP_W-3 || ty < 2 || ty > CFG.MAP_H-3) continue;
-        const key = Math.random() < 0.35 ? 'mountain2' : 'mountain';
-        const sc = Phaser.Math.FloatBetween(1.0, 2.2);
+        const key = Math.random() < 0.4 ? 'mountain2' : 'mountain';
+        const sc = Phaser.Math.FloatBetween(2.2, 4.0);
         placeMtn(tx, ty, key, sc);
       }
     }
@@ -1898,10 +2527,12 @@ class GameScene extends Phaser.Scene {
       return { tx: Phaser.Math.Between(20, MAP_W - 20), ty: Phaser.Math.Between(20, MAP_H - 20) };
     };
 
-    // Supply Caches (3-4 across map)
-    for (let i = 0; i < 4; i++) {
-      const biomes = ['waste', 'swamp', 'tundra', 'ruins'];
-      const pos = findInBiome(biomes[i % biomes.length], 50);
+    // Supply Caches — use pre-computed positions (set before mountains to guarantee fjord approach)
+    const cachePositions = (this._preCacheTiles && this._preCacheTiles.length)
+      ? this._preCacheTiles
+      : ['waste', 'swamp', 'tundra', 'ruins'].map(b => findInBiome(b, 50));
+    for (let i = 0; i < cachePositions.length; i++) {
+      const pos = cachePositions[i];
       const px = pos.tx * TILE, py = pos.ty * TILE;
       const spr = this._w(this.add.image(px, py, 'supply_cache').setScale(2.5).setDepth(6));
       const lbl = this._w(this.add.text(px, py - 24, 'SUPPLY CACHE', {
@@ -1980,6 +2611,112 @@ class GameScene extends Phaser.Scene {
         });
       }
     });
+  }
+
+  // ── RUINS CITY ────────────────────────────────────────────────
+  // Procedural navigable city grid in the ruins biome (NE quadrant)
+  buildRuinsCity(stx, sty, TILE) {
+    const blockW = 9, blockH = 8;    // block size in tiles (walls inclusive)
+    const streetW = 4, streetH = 4;  // street width in tiles
+    const cols = 5, rows = 4;
+
+    // Place city in ruins biome (NE quadrant: right + up from center)
+    const cityTX = Math.round(stx + CFG.MAP_W * 0.21);
+    const cityTY = Math.round(sty - CFG.MAP_H * 0.21);
+    const totalW = cols * blockW + (cols - 1) * streetW;
+    const totalH = rows * blockH + (rows - 1) * streetH;
+    const cityLeft = cityTX - Math.floor(totalW / 2);
+    const cityTop  = cityTY - Math.floor(totalH / 2);
+
+    // Clamp to map bounds
+    const cl = Math.max(3, cityLeft), ct = Math.max(3, cityTop);
+
+    // Helper — place one wall segment (obstacle with tight hitbox)
+    const placeWall = (tx, ty) => {
+      if (tx < 2 || tx > CFG.MAP_W-3 || ty < 2 || ty > CFG.MAP_H-3) return;
+      if (Math.abs(tx-stx) < CFG.SAFE_R+3 && Math.abs(ty-sty) < CFG.SAFE_R+3) return;
+      const w = this.obstacles.create(tx*TILE+16, ty*TILE+16, 'ruin_block');
+      w.setDepth(5 + ty*0.01).setImmovable(true);
+      w.body.setSize(28, 28); // slightly smaller than full tile for passability at seams
+      w.refreshBody();
+    };
+
+    for (let col = 0; col < cols; col++) {
+      for (let row = 0; row < rows; row++) {
+        const bx = cl + col * (blockW + streetW);
+        const by = ct + row * (blockH + streetH);
+
+        // Randomize which sides have doorways (street-facing sides always have one)
+        // Doorway = 2-tile gap near the center of each wall
+        const doorCenter = { N: Math.floor(blockW/2)-1, S: Math.floor(blockW/2)-1,
+                             W: Math.floor(blockH/2)-1, E: Math.floor(blockH/2)-1 };
+        const hasDoorN = row > 0;         // always open toward street above
+        const hasDoorS = row < rows-1;    // always open toward street below
+        const hasDoorW = col > 0;         // always open toward street left
+        const hasDoorE = col < cols-1;    // always open toward street right
+
+        // Interior floor tiles (decorative)
+        for (let wx = bx+1; wx < bx+blockW-1; wx++) {
+          for (let wy = by+1; wy < by+blockH-1; wy++) {
+            if (wx < 2 || wx > CFG.MAP_W-3 || wy < 2 || wy > CFG.MAP_H-3) continue;
+            this._w(this.add.tileSprite(wx*TILE, wy*TILE, TILE, TILE, 'ruin_floor').setOrigin(0).setDepth(0.6));
+          }
+        }
+
+        // Scatter interior rubble / decorative pillars
+        const rubbleCount = Phaser.Math.Between(1, 3);
+        for (let r = 0; r < rubbleCount; r++) {
+          const rx = bx + 1 + Phaser.Math.Between(0, blockW-3);
+          const ry = by + 1 + Phaser.Math.Between(0, blockH-3);
+          if (rx < 2 || rx > CFG.MAP_W-3 || ry < 2 || ry > CFG.MAP_H-3) continue;
+          const sc = Phaser.Math.FloatBetween(0.5, 1.2);
+          this._w(this.add.image(rx*TILE + Phaser.Math.Between(-6, 6), ry*TILE + Phaser.Math.Between(-6, 6),
+            'pillar').setScale(sc).setDepth(4 + ry*0.01).setAlpha(0.9));
+        }
+
+        // North wall
+        for (let i = 0; i < blockW; i++) {
+          const isDoor = hasDoorN && (i === doorCenter.N || i === doorCenter.N+1);
+          const isRuined = !isDoor && Math.random() < 0.1;
+          if (!isDoor && !isRuined) placeWall(bx+i, by);
+        }
+        // South wall
+        for (let i = 0; i < blockW; i++) {
+          const isDoor = hasDoorS && (i === doorCenter.S || i === doorCenter.S+1);
+          const isRuined = !isDoor && Math.random() < 0.1;
+          if (!isDoor && !isRuined) placeWall(bx+i, by+blockH-1);
+        }
+        // West wall (skip corners — they're handled by N/S)
+        for (let j = 1; j < blockH-1; j++) {
+          const isDoor = hasDoorW && (j === doorCenter.W || j === doorCenter.W+1);
+          const isRuined = !isDoor && Math.random() < 0.1;
+          if (!isDoor && !isRuined) placeWall(bx, by+j);
+        }
+        // East wall (skip corners)
+        for (let j = 1; j < blockH-1; j++) {
+          const isDoor = hasDoorE && (j === doorCenter.E || j === doorCenter.E+1);
+          const isRuined = !isDoor && Math.random() < 0.1;
+          if (!isDoor && !isRuined) placeWall(bx+blockW-1, by+j);
+        }
+      }
+    }
+
+    // Outskirt rubble — scattered ruined walls outside the main grid
+    for (let i = 0; i < 30; i++) {
+      const tx = cl + Phaser.Math.Between(-8, totalW+8);
+      const ty = ct + Phaser.Math.Between(-8, totalH+8);
+      if (tx >= cl-2 && tx <= cl+totalW+2 && ty >= ct-2 && ty <= ct+totalH+2) continue; // skip inside city
+      if (getBiome(tx, ty) !== 'ruins') continue;
+      const sc = Phaser.Math.FloatBetween(0.8, 1.8);
+      if (Math.random() < 0.5) {
+        const p = this.obstacles.create(tx*TILE+11, ty*TILE+18, 'pillar');
+        p.setScale(sc).setDepth(5 + ty*0.01).setImmovable(true);
+        p.body.setSize(10, 20).setOffset(6, 16);
+        p.refreshBody();
+      } else {
+        placeWall(tx, ty);
+      }
+    }
   }
 
   // ── FOG OF WAR ────────────────────────────────────────────────
@@ -2088,7 +2825,15 @@ class GameScene extends Phaser.Scene {
     const diffColor = this.hardcore ? '#ff4444' : '#44cc66';
     const diffLabel = this.hardcore ? '\u2620 HARDCORE' : '\u2665 SURVIVAL';
     this._h(this.add.text(W/2, 42, diffLabel, { fontFamily:'monospace', fontSize:'9px', color:diffColor }).setOrigin(0.5,0).setDepth(101));
-    this._h(this.add.text(W-140, H-10, 'TAB = controls', { fontFamily:'monospace', fontSize:'10px', color:'#444455' }).setOrigin(1,1).setDepth(100));
+
+    // Persistent MENU button — bottom-right, works for both keyboard and touch
+    const menuBtn = this._h(this.add.text(W - 14, H - 12, '\u2630  MENU', {
+      fontFamily:'monospace', fontSize:'12px', color:'#557755',
+      backgroundColor:'#00000088', padding:{ x:8, y:4 },
+    }).setOrigin(1, 1).setDepth(104).setInteractive({ useHandCursor: true }));
+    menuBtn.on('pointerover', () => menuBtn.setColor('#aaffaa'));
+    menuBtn.on('pointerout',  () => menuBtn.setColor('#557755'));
+    menuBtn.on('pointerdown', () => { if (!this.isOver) this.toggleControls(); });
 
     // Down status texts
     this.p1DownStatus = this._h(this.add.text(12, 54, '', { fontFamily:'monospace', fontSize:'11px', color:'#ff4444' }).setDepth(103));
@@ -2192,6 +2937,7 @@ class GameScene extends Phaser.Scene {
         else if (poi.type === 'campfire') col = 0xff8833;   // orange — player-built campfire
         else if (poi.type === 'craftbench') col = 0xddcc44; // yellow — player-built workbench
         else if (poi.type === 'bed') col = 0xaa88ff;        // purple — player-built bed
+        else if (poi.type === 'raidcamp') col = 0xff2222;   // red — raider camp
         // Only show if revealed
         if (this.fogRevealed.has(poi.tx + ',' + poi.ty)) {
           this.minimapDots.fillStyle(col);
@@ -2429,6 +3175,12 @@ class GameScene extends Phaser.Scene {
         timeAlive: this.timeAlive,
         mode: STATE.mode,
         difficulty: STATE.difficulty,
+        kills: this.kills,
+        days: this.dayNum,
+        resources: this.resourcesGathered,
+        bossDefeated: this.bossDefeated,
+        p1Name: this.p1 ? this.p1.charData.player : 'P1',
+        p2Name: this.p2 ? this.p2.charData.player : null,
       });
     });
   }
@@ -2446,18 +3198,18 @@ class GameScene extends Phaser.Scene {
     // Dimming backdrop (only visible when controls open)
     push(this.add.graphics().setDepth(94)).fillStyle(0x000000, 0.55).fillRect(0, 0, W, H);
 
-    // P1 controls — left side
+    // P1 controls — left side (margin from edge to avoid browser chrome clipping)
     const p1Lines = getControls(1, p1Ch.id, this.solo);
     const lbg = push(this.add.graphics().setDepth(95));
     lbg.fillStyle(0x000011, 0.88);
-    lbg.fillRoundedRect(4, H/2 - 14 - p1Lines.length*10, 172, p1Lines.length*20 + 36, 8);
+    lbg.fillRoundedRect(20, H/2 - 14 - p1Lines.length*10, 188, p1Lines.length*20 + 36, 8);
     lbg.lineStyle(1, 0x4466aa, 0.7);
-    lbg.strokeRoundedRect(4, H/2 - 14 - p1Lines.length*10, 172, p1Lines.length*20 + 36, 8);
-    push(this.add.text(10, H/2 - 10 - p1Lines.length*10, p1Ch.player + ' — ' + p1Ch.title, {
+    lbg.strokeRoundedRect(20, H/2 - 14 - p1Lines.length*10, 188, p1Lines.length*20 + 36, 8);
+    push(this.add.text(28, H/2 - 10 - p1Lines.length*10, p1Ch.player + ' — ' + p1Ch.title, {
       fontFamily:'monospace', fontSize:'10px', color:'#88aaff', stroke:'#000', strokeThickness:2,
     }).setDepth(96));
     p1Lines.forEach((l, i) => {
-      push(this.add.text(12, H/2 + 8 - p1Lines.length*10 + i*20, l, {
+      push(this.add.text(28, H/2 + 8 - p1Lines.length*10 + i*20, l, {
         fontFamily:'monospace', fontSize:'9px', color:'#ccd8ee', stroke:'#000', strokeThickness:2,
       }).setDepth(96));
     });
@@ -2467,21 +3219,50 @@ class GameScene extends Phaser.Scene {
       const p2Lines = getControls(2, p2Ch.id);
       const rbg = push(this.add.graphics().setDepth(95));
       rbg.fillStyle(0x110008, 0.88);
-      rbg.fillRoundedRect(W-176, H/2 - 14 - p2Lines.length*10, 172, p2Lines.length*20 + 36, 8);
+      rbg.fillRoundedRect(W-208, H/2 - 14 - p2Lines.length*10, 188, p2Lines.length*20 + 36, 8);
       rbg.lineStyle(1, 0xaa6633, 0.7);
-      rbg.strokeRoundedRect(W-176, H/2 - 14 - p2Lines.length*10, 172, p2Lines.length*20 + 36, 8);
-      push(this.add.text(W-170, H/2 - 10 - p2Lines.length*10, p2Ch.player + ' — ' + p2Ch.title, {
+      rbg.strokeRoundedRect(W-208, H/2 - 14 - p2Lines.length*10, 188, p2Lines.length*20 + 36, 8);
+      push(this.add.text(W-200, H/2 - 10 - p2Lines.length*10, p2Ch.player + ' — ' + p2Ch.title, {
         fontFamily:'monospace', fontSize:'10px', color:'#ffbb77', stroke:'#000', strokeThickness:2,
       }).setDepth(96));
       p2Lines.forEach((l, i) => {
-        push(this.add.text(W-170, H/2 + 8 - p2Lines.length*10 + i*20, l, {
+        push(this.add.text(W-200, H/2 + 8 - p2Lines.length*10 + i*20, l, {
           fontFamily:'monospace', fontSize:'9px', color:'#eeddcc', stroke:'#000', strokeThickness:2,
         }).setDepth(96));
       });
     }
 
-    push(this.add.text(W/2, H - 26, 'TAB or ESC to close', {
-      fontFamily:'monospace', fontSize:'10px', color:'#556677', stroke:'#000', strokeThickness:2,
+    // Bottom action buttons — Settings and Quit
+    const btnY = H - 64;
+    const btnStyle = (col) => ({
+      fontFamily:'monospace', fontSize:'14px', color: col,
+      backgroundColor:'#00000099', padding:{ x:16, y:8 },
+      stroke:'#000', strokeThickness:2,
+    });
+
+    const settBtn = push(this.add.text(W/2 - 140, btnY, '\u2699  SETTINGS', btnStyle('#88aacc'))
+      .setOrigin(0.5).setDepth(97).setInteractive({ useHandCursor: true }));
+    settBtn.on('pointerover', () => settBtn.setColor('#ccddff'));
+    settBtn.on('pointerout',  () => settBtn.setColor('#88aacc'));
+    settBtn.on('pointerdown', () => {
+      this.ctrlObjs.forEach(o => o.setVisible(false));
+      this.controlsVis = false;
+      this.cameras.main.fadeOut(200, 0, 0, 0);
+      this.time.delayedCall(200, () => this.scene.start('Settings'));
+    });
+
+    const quitBtn = push(this.add.text(W/2 + 140, btnY, '\u2715  QUIT TO MENU', btnStyle('#cc6655'))
+      .setOrigin(0.5).setDepth(97).setInteractive({ useHandCursor: true }));
+    quitBtn.on('pointerover', () => quitBtn.setColor('#ff9988'));
+    quitBtn.on('pointerout',  () => quitBtn.setColor('#cc6655'));
+    quitBtn.on('pointerdown', () => {
+      this.ctrlObjs.forEach(o => o.setVisible(false));
+      this.controlsVis = false;
+      this.triggerGameOver('Run abandoned — better luck next time.');
+    });
+
+    push(this.add.text(W/2, H - 18, 'TAB  or  ESC  to close   \u2022   \u2630 MENU button bottom-right', {
+      fontFamily:'monospace', fontSize:'9px', color:'#334455', stroke:'#000', strokeThickness:2,
     }).setOrigin(0.5).setDepth(96));
   }
 
@@ -2733,9 +3514,12 @@ class GameScene extends Phaser.Scene {
 
     // Movement — skip if downed or sleeping
     if (!this.p1.isDowned && !this.p1.isSleeping) {
-      this.movePlayer(this.p1, this.wasd.left, this.wasd.right, this.wasd.up, this.wasd.down);
-      // In 1P mode, facing is determined by mouse position
-      if (this.solo) this.aimAtMouse(this.p1);
+      if (this._touchActive) {
+        this.applyTouchInput();  // touch: joystick drives movement + facing
+      } else {
+        this.movePlayer(this.p1, this.wasd.left, this.wasd.right, this.wasd.up, this.wasd.down);
+        if (this.solo) this.aimAtMouse(this.p1); // 1P: mouse aims
+      }
     }
     else this.p1.spr.setVelocity(0,0);
 
@@ -2766,12 +3550,217 @@ class GameScene extends Phaser.Scene {
     this.updateEnemies(delta);
     this.updateWaves(delta);
     this.updateEnemyDens(delta);
+    this.updateRaiders(delta);
+    this.updateBoss(delta);
     this.updateSleep(delta);
     this.updateDayNight(delta);
     this.updateBuildMode();
     this.updateFog();
     this.updateMinimap();
     this.redrawHUD();
+    if (this._touchActive) this._drawTouchHUD();
+  }
+
+  // ── TOUCH CONTROLS ────────────────────────────────────────────
+  initTouchControls() {
+    const { W, H } = CFG;
+    this._touchActive = true;
+
+    // Support up to 4 simultaneous touches
+    this.input.addPointer(4);
+
+    // Joystick state — dynamic base: appears where finger lands
+    this._joy = {
+      active: false, pointerId: -1,
+      baseX: 0, baseY: 0,
+      knobX: 0, knobY: 0,
+      radius: 72,
+      vec: { x: 0, y: 0 },
+    };
+
+    // Buttons (HUD-space coordinates, radius for hit detection)
+    // Layout: ATK bottom-right, ALT above ATK, USE left of ATK, BLD left of ALT, MENU top-right
+    this._tcBtns = {
+      attack:   { hx: W - 100, hy: H - 100, r: 52, down: false, pid: -1, col: 0xff6644, label: '\u2694 ATK' },
+      alt:      { hx: W - 185, hy: H - 195, r: 38, down: false, pid: -1, col: 0x6699ff, label: '\u2605 ALT' },
+      interact: { hx: W - 195, hy: H - 95,  r: 34, down: false, pid: -1, col: 0x44cc66, label: 'E USE' },
+      build:    { hx: W - 282, hy: H - 195, r: 34, down: false, pid: -1, col: 0xccaa33, label: '\u25a0 BLD' },
+      menu:     { hx: W - 32,  hy: 32,      r: 22, down: false, pid: -1, col: 0x888888, label: '\u2630' },
+    };
+
+    // Graphics layer on HUD (single object, redrawn each frame)
+    this._tcGfx = this.add.graphics().setDepth(150);
+    this._h(this._tcGfx);
+
+    // Text labels for buttons (created once, positioned at button centers)
+    this._tcLabels = {};
+    for (const [name, btn] of Object.entries(this._tcBtns)) {
+      const t = this.add.text(btn.hx, btn.hy, btn.label, {
+        fontFamily: 'monospace', fontSize: name === 'attack' ? '11px' : '9px',
+        color: '#ffffff', stroke: '#000', strokeThickness: 2,
+      }).setOrigin(0.5).setDepth(151);
+      this._h(t);
+      this._tcLabels[name] = t;
+    }
+
+    // Pointer event handlers
+    this.input.on('pointerdown', this._onTouchDown, this);
+    this.input.on('pointermove', this._onTouchMove, this);
+    this.input.on('pointerup',   this._onTouchUp,   this);
+    this.input.on('pointerupoutside', this._onTouchUp, this);
+  }
+
+  _onTouchDown(pointer) {
+    if (!this._touchActive) return;
+    const { W, H } = CFG;
+    const px = pointer.x, py = pointer.y;
+
+    // Left 45% of screen and bottom 55% → joystick
+    if (px < W * 0.45 && py > H * 0.35 && !this._joy.active) {
+      this._joy.active = true;
+      this._joy.pointerId = pointer.id;
+      this._joy.baseX = px;
+      this._joy.baseY = py;
+      this._joy.knobX = px;
+      this._joy.knobY = py;
+      this._joy.vec = { x: 0, y: 0 };
+      return;
+    }
+
+    // Check action buttons
+    for (const [name, btn] of Object.entries(this._tcBtns)) {
+      if (btn.down) continue;
+      const dx = px - btn.hx, dy = py - btn.hy;
+      if (dx*dx + dy*dy <= btn.r * btn.r) {
+        btn.down = true;
+        btn.pid = pointer.id;
+        this._onBtnPress(name);
+        return;
+      }
+    }
+  }
+
+  _onTouchMove(pointer) {
+    if (!this._touchActive || !this._joy.active) return;
+    if (pointer.id !== this._joy.pointerId) return;
+    const dx = pointer.x - this._joy.baseX;
+    const dy = pointer.y - this._joy.baseY;
+    const dist = Math.sqrt(dx*dx + dy*dy);
+    const r = this._joy.radius;
+    if (dist > r) {
+      this._joy.knobX = this._joy.baseX + (dx/dist)*r;
+      this._joy.knobY = this._joy.baseY + (dy/dist)*r;
+    } else {
+      this._joy.knobX = pointer.x;
+      this._joy.knobY = pointer.y;
+    }
+    const clamped = Math.min(dist, r);
+    this._joy.vec.x = (dx/Math.max(dist,1)) * (clamped/r);
+    this._joy.vec.y = (dy/Math.max(dist,1)) * (clamped/r);
+  }
+
+  _onTouchUp(pointer) {
+    if (!this._touchActive) return;
+    if (this._joy.active && pointer.id === this._joy.pointerId) {
+      this._joy.active = false;
+      this._joy.pointerId = -1;
+      this._joy.vec = { x: 0, y: 0 };
+      if (this.p1) this.p1.spr.setVelocity(0, 0);
+    }
+    for (const btn of Object.values(this._tcBtns)) {
+      if (btn.pid === pointer.id) { btn.down = false; btn.pid = -1; }
+    }
+  }
+
+  _onBtnPress(name) {
+    if (this.isOver || !this.p1) return;
+    if (name === 'attack') {
+      if (this.barrackOpen || this.p1.isDowned || this.p1.isSleeping) return;
+      if (this.buildMode && this.buildOwner === this.p1) this.placeBuild();
+      else this.doAttack(this.p1);
+    } else if (name === 'alt') {
+      if (!this.p1.isDowned && !this.p1.isSleeping) this.doAlt(this.p1);
+    } else if (name === 'interact') {
+      if (!this.barrackOpen) this.tryInteract(this.p1);
+    } else if (name === 'build') {
+      if (!this.p1.isDowned && !this.p1.isSleeping) this.toggleBuildMode(this.p1);
+    } else if (name === 'menu') {
+      this.toggleControls();
+    }
+  }
+
+  applyTouchInput() {
+    const p = this.p1;
+    if (!p || p.isDowned || p.isSleeping) return;
+    const jv = this._joy.vec;
+    const spd = p.charData.speed;
+    const vx = jv.x * spd, vy = jv.y * spd;
+    p.spr.setVelocity(vx, vy);
+
+    const moving = Math.abs(vx) > 8 || Math.abs(vy) > 8;
+    const isDiag = Math.abs(vx) > 8 && Math.abs(vy) > 8;
+    const id = p.charData.id;
+    if (moving) {
+      // 8-directional facing from joystick vector
+      if (isDiag) {
+        p.dir = vy > 0 ? 'fside' : 'bside';
+      } else if (Math.abs(vy) > Math.abs(vx)) {
+        p.dir = vy > 0 ? 'front' : 'back';
+      } else {
+        p.dir = 'side';
+      }
+      p.walkTimer = (p.walkTimer + 1) % 20;
+      const step = p.walkTimer < 10 ? '' : '_step';
+      const dirSuffix = p.dir === 'side' ? '' : ('_' + p.dir);
+      p.spr.setTexture(id + dirSuffix + step);
+      if (p.dir === 'side' || p.dir === 'fside' || p.dir === 'bside') {
+        p.spr.setFlipX(vx < 0);
+      } else {
+        p.spr.setFlipX(false);
+      }
+      p.aimAngle = Math.atan2(vy, vx);
+    } else {
+      p.walkTimer = 0;
+      const dirSuffix = p.dir === 'side' ? '' : ('_' + p.dir);
+      p.spr.setTexture(id + dirSuffix);
+    }
+  }
+
+  _drawTouchHUD() {
+    const gfx = this._tcGfx;
+    if (!gfx || !gfx.active) return;
+    gfx.clear();
+
+    // Joystick
+    const joy = this._joy;
+    if (joy.active) {
+      // Base ring
+      gfx.lineStyle(2, 0xffffff, 0.35);
+      gfx.strokeCircle(joy.baseX, joy.baseY, joy.radius);
+      gfx.fillStyle(0xffffff, 0.07);
+      gfx.fillCircle(joy.baseX, joy.baseY, joy.radius);
+      // Knob
+      gfx.fillStyle(0xffffff, 0.55);
+      gfx.fillCircle(joy.knobX, joy.knobY, 30);
+      gfx.lineStyle(2, 0xffffff, 0.7);
+      gfx.strokeCircle(joy.knobX, joy.knobY, 30);
+    } else {
+      // Hint ring — very faint, shows where joystick zone is
+      const { W, H } = CFG;
+      gfx.lineStyle(1, 0xffffff, 0.1);
+      gfx.strokeCircle(W * 0.12, H * 0.82, 55);
+      gfx.fillStyle(0xffffff, 0.03);
+      gfx.fillCircle(W * 0.12, H * 0.82, 55);
+    }
+
+    // Action buttons
+    for (const [name, btn] of Object.entries(this._tcBtns)) {
+      const alpha = btn.down ? 0.75 : 0.4;
+      gfx.fillStyle(btn.col, alpha * 0.38);
+      gfx.fillCircle(btn.hx, btn.hy, btn.r);
+      gfx.lineStyle(2, btn.col, alpha);
+      gfx.strokeCircle(btn.hx, btn.hy, btn.r);
+    }
   }
 
   applyTundraSlowdown(player) {
@@ -2794,6 +3783,277 @@ class GameScene extends Phaser.Scene {
     }
     const near = p => p && Phaser.Math.Distance.Between(p.spr.x, p.spr.y, this.radioTower.x, this.radioTower.y) < 80;
     this.radioTower.prompt.setVisible(near(this.p1) || near(this.p2));
+  }
+
+  // ── RAIDER CAMP ───────────────────────────────────────────────
+  placeRaiderCamp(worldW, worldH) {
+    const { TILE } = CFG;
+    // Pick a location in wasteland or ruins biome, away from center
+    let cx, cy, attempts = 0;
+    do {
+      const side = Phaser.Math.Between(0, 3);
+      const edgePad = TILE * 15;
+      if (side === 0) { cx = Phaser.Math.Between(edgePad, worldW * 0.4); cy = Phaser.Math.Between(edgePad, worldH - edgePad); }
+      else if (side === 1) { cx = Phaser.Math.Between(worldW * 0.6, worldW - edgePad); cy = Phaser.Math.Between(edgePad, worldH - edgePad); }
+      else if (side === 2) { cx = Phaser.Math.Between(edgePad, worldW - edgePad); cy = Phaser.Math.Between(edgePad, worldH * 0.4); }
+      else { cx = Phaser.Math.Between(edgePad, worldW - edgePad); cy = Phaser.Math.Between(worldH * 0.6, worldH - edgePad); }
+      attempts++;
+    } while (attempts < 20 && Phaser.Math.Distance.Between(cx, cy, worldW/2, worldH/2) < TILE * 40);
+
+    const campSpr = this.physics.add.image(cx, cy, 'raid_camp').setScale(3).setDepth(6);
+    campSpr.body.setImmovable(true);
+    campSpr.body.allowGravity = false;
+    if (this.hudCam) this.hudCam.ignore(campSpr);
+
+    this.raidCamp = { x: cx, y: cy, spr: campSpr };
+    const tx = Math.floor(cx / TILE), ty = Math.floor(cy / TILE);
+    this.pois.push({ type: 'raidcamp', tx, ty, spr: campSpr });
+
+    this.spawnRaiders(cx, cy);
+  }
+
+  spawnRaiders(cx, cy) {
+    const { TILE } = CFG;
+    const count = Phaser.Math.Between(5, 10);
+    const types = ['brawler', 'shooter', 'brawler', 'shooter', 'heavy', 'brawler', 'shooter', 'heavy', 'brawler', 'shooter'];
+    for (let i = 0; i < count; i++) {
+      const rtype = types[i % types.length];
+      const angle = Math.random() * Math.PI * 2;
+      const dist = Phaser.Math.Between(40, 90);
+      const rx = cx + Math.cos(angle) * dist;
+      const ry = cy + Math.sin(angle) * dist;
+      const texKey = 'raider_' + rtype;
+      const spr = this.physics.add.image(rx, ry, texKey).setScale(2.2).setDepth(9);
+      spr.setCollideWorldBounds(true);
+      spr.body.setSize(18, 22);
+      if (this.hudCam) this.hudCam.ignore(spr);
+      this.physics.add.collider(spr, this.obstacles);
+
+      const stats = {
+        brawler: { hp: 90,  speed: 95,  dmg: 14, range: 36, atkInterval: 1400, shootRange: 0 },
+        shooter: { hp: 55,  speed: 80,  dmg: 10, range: 40, atkInterval: 1800, shootRange: 260 },
+        heavy:   { hp: 140, speed: 65,  dmg: 18, range: 42, atkInterval: 1600, shootRange: 180 },
+      }[rtype];
+
+      const raider = {
+        spr, type: rtype, isRaider: true,
+        hp: stats.hp, maxHp: stats.hp,
+        speed: stats.speed, dmg: stats.dmg,
+        attackRange: stats.range, attackTimer: 0, atkInterval: stats.atkInterval,
+        shootRange: stats.shootRange, rangedTimer: 0,
+        aggroRange: 320, wanderTimer: Phaser.Math.Between(0, 2000), sizeMult: 1,
+      };
+      this.raiders.push(raider);
+      this.enemies.push(raider); // raiders participate in the normal enemy array so updateEnemies handles them
+    }
+  }
+
+  updateRaiders(delta) {
+    // Shooters fire projectiles — handled separately from melee in updateEnemies
+    // Here we manage raider-specific ranged behavior
+    if (!this.raiders || this.isOver) return;
+    const players = [this.p1, this.p2].filter(p => p && !p.isDowned && p.hp > 0 && p.spr.visible);
+
+    this.raiders.forEach(raider => {
+      if (raider.hp <= 0 || !raider.spr.active) return;
+      if (!raider.shootRange) return; // brawlers skip
+
+      let nearest = null, nearDist = Infinity;
+      players.forEach(p => {
+        const d = Phaser.Math.Distance.Between(raider.spr.x, raider.spr.y, p.spr.x, p.spr.y);
+        if (d < nearDist) { nearDist = d; nearest = p; }
+      });
+      if (!nearest) return;
+
+      if (nearDist < raider.shootRange && nearDist > raider.attackRange * 1.5) {
+        // In shoot range but not melee range — fire
+        raider.rangedTimer -= delta;
+        if (raider.rangedTimer <= 0) {
+          raider.rangedTimer = raider.atkInterval;
+          this._fireRaiderShot(raider, nearest);
+        }
+      }
+    });
+  }
+
+  _fireRaiderShot(raider, target) {
+    const ang = Phaser.Math.Angle.Between(raider.spr.x, raider.spr.y, target.spr.x, target.spr.y);
+    const bullet = this.physics.add.image(raider.spr.x, raider.spr.y, 'bullet').setScale(2).setDepth(10);
+    bullet.body.allowGravity = false;
+    if (this.hudCam) this.hudCam.ignore(bullet);
+    const speed = 380;
+    bullet.setVelocity(Math.cos(ang) * speed, Math.sin(ang) * speed);
+    SFX._play(320, 'square', 0.04, 0.15);
+
+    const hitPlayers = [this.p1, this.p2].filter(Boolean);
+    hitPlayers.forEach(p => {
+      this.physics.add.overlap(p.spr, bullet, () => {
+        if (!bullet.active) return;
+        bullet.destroy();
+        p.hp = Math.max(0, p.hp - raider.dmg * 0.7);
+        SFX.playerHurt();
+        p.spr.setTint(0xff0000);
+        this.time.delayedCall(150, () => { if (p.spr.active) p.spr.clearTint(); });
+        this.checkDeaths();
+      });
+    });
+    // Auto-destroy after 2s
+    this.time.delayedCall(2000, () => { if (bullet.active) bullet.destroy(); });
+  }
+
+  // ── BOSS SYSTEM ───────────────────────────────────────────────
+  spawnBoss() {
+    if (this.bossSpawned) return;
+    this.bossSpawned = true;
+
+    const worldW = CFG.MAP_W * CFG.TILE, worldH = CFG.MAP_H * CFG.TILE;
+    const { TILE } = CFG;
+
+    // Pick boss type based on biome spread — random for now
+    const bossTypes = [
+      { key: 'boss_golem',  name: 'Iron Golem',   biome: 'waste',  hp: 600, speed: 55,  dmg: 22 },
+      { key: 'boss_wolf',   name: 'Alpha Wolf',    biome: 'grass',  hp: 420, speed: 130, dmg: 16 },
+      { key: 'boss_spider', name: 'Spider Queen',  biome: 'ruins',  hp: 480, speed: 85,  dmg: 18 },
+      { key: 'boss_troll',  name: 'Frost Troll',   biome: 'tundra', hp: 700, speed: 45,  dmg: 28 },
+      { key: 'boss_hydra',  name: 'Bog Hydra',     biome: 'swamp',  hp: 540, speed: 65,  dmg: 20 },
+    ];
+    const bt = bossTypes[Phaser.Math.Between(0, bossTypes.length - 1)];
+
+    // Spawn at a random map edge
+    let bx, by;
+    const side = Phaser.Math.Between(0, 3);
+    if (side === 0)      { bx = Phaser.Math.Between(TILE*4, worldW-TILE*4); by = TILE*4; }
+    else if (side === 1) { bx = Phaser.Math.Between(TILE*4, worldW-TILE*4); by = worldH-TILE*4; }
+    else if (side === 2) { bx = TILE*4; by = Phaser.Math.Between(TILE*4, worldH-TILE*4); }
+    else                 { bx = worldW-TILE*4; by = Phaser.Math.Between(TILE*4, worldH-TILE*4); }
+
+    const spr = this.physics.add.image(bx, by, bt.key).setScale(4).setDepth(12);
+    spr.setCollideWorldBounds(true);
+    spr.body.setSize(28, 28);
+    if (this.hudCam) this.hudCam.ignore(spr);
+    this.physics.add.collider(spr, this.obstacles);
+
+    // HP bar (world-space, follows boss)
+    const hpBg  = this.add.graphics().setDepth(13);
+    const hpBar = this.add.graphics().setDepth(14);
+    if (this.hudCam) { this.hudCam.ignore(hpBg); this.hudCam.ignore(hpBar); }
+
+    this.boss = {
+      spr, hp: bt.hp, maxHp: bt.hp,
+      speed: bt.speed, dmg: bt.dmg, name: bt.name,
+      isBoss: true, type: bt.key,
+      attackTimer: 0, atkInterval: 2200,
+      aggroRange: 99999, attackRange: 70, wanderTimer: 0, sizeMult: 1,
+      hpBg, hpBar,
+    };
+    // Add boss to main enemy array so melee + bullets can hit it
+    this.enemies.push(this.boss);
+
+    // Announce arrival
+    this.hint('\u2620 ' + bt.name.toUpperCase() + ' APPROACHES! \u2620', 6000);
+    SFX._play(80,  'sawtooth', 0.6, 0.7, 'drop');
+    SFX._play(60,  'sawtooth', 0.4, 0.6, 'drop');
+
+    // Camera shake
+    this.cameras.main.shake(800, 0.012);
+
+    // Spawn entourage — 4-8 regular enemies nearby
+    const entourageCount = Phaser.Math.Between(4, 8);
+    for (let i = 0; i < entourageCount; i++) {
+      const ang = (i / entourageCount) * Math.PI * 2;
+      const ex = bx + Math.cos(ang) * 100;
+      const ey = by + Math.sin(ang) * 100;
+      const typeKey = (bt.biome === 'tundra') ? 'wolf' : (bt.biome === 'swamp') ? 'rat' : 'wolf';
+      const t = typeKey === 'wolf'
+        ? { key:'wolf', hp:60, speed:100, dmg:9, baseScale:1.8, w:20, h:12 }
+        : { key:'rat',  hp:30, speed:140, dmg:6, baseScale:1.4, w:15, h:9  };
+      const sizeMult = Phaser.Math.FloatBetween(0.9, 1.3);
+      const sc = t.baseScale * sizeMult;
+      const eSpr = this.physics.add.image(
+        Phaser.Math.Clamp(ex, TILE*4, worldW-TILE*4),
+        Phaser.Math.Clamp(ey, TILE*4, worldH-TILE*4), t.key
+      ).setScale(sc).setDepth(9);
+      eSpr.setCollideWorldBounds(true);
+      eSpr.body.setSize(t.w, t.h);
+      if (this.hudCam) this.hudCam.ignore(eSpr);
+      this.physics.add.collider(eSpr, this.obstacles);
+      const baseAggro = { wolf: 190, rat: 110 }[t.key] || 160;
+      this.enemies.push({
+        spr: eSpr, hp: Math.floor(t.hp * sizeMult), maxHp: Math.floor(t.hp * sizeMult),
+        speed: t.speed * sizeMult, dmg: Math.max(1, Math.floor(t.dmg * sizeMult)),
+        type: t.key, attackTimer: 0,
+        wanderTimer: Phaser.Math.Between(0, 1000),
+        aggroRange: baseAggro * 1.4, attackRange: (30 + t.w/2) * sizeMult,
+        sizeMult,
+      });
+    }
+  }
+
+  updateBoss(delta) {
+    if (!this.boss || this.isOver) return;
+    const b = this.boss;
+    if (b.hp <= 0 || !b.spr.active) {
+      // Clean up HP bar
+      if (b.hpBg && b.hpBg.active) b.hpBg.destroy();
+      if (b.hpBar && b.hpBar.active) b.hpBar.destroy();
+      this.boss = null;
+      return;
+    }
+
+    // Update world-space HP bar above boss
+    const bx = b.spr.x, by = b.spr.y;
+    const barW = 80, barH = 8;
+    b.hpBg.clear();
+    b.hpBg.fillStyle(0x220000, 0.85);
+    b.hpBg.fillRect(bx - barW/2 - 1, by - 90, barW + 2, barH + 2);
+    b.hpBar.clear();
+    const pct = Math.max(0, b.hp / b.maxHp);
+    const col = pct > 0.5 ? 0xff3300 : pct > 0.25 ? 0xff8800 : 0xff0000;
+    b.hpBar.fillStyle(col, 1);
+    b.hpBar.fillRect(bx - barW/2, by - 89, barW * pct, barH);
+    // Boss name label above bar
+    b.hpBg.fillStyle(0x440000, 0.7);
+    b.hpBg.fillRect(bx - barW/2 - 1, by - 103, barW + 2, 14);
+    b.hpBar.fillStyle(0xffaaaa, 1);
+    // (we'll draw text via label instead of graphics)
+    if (!b.nameLabel) {
+      b.nameLabel = this.add.text(0, 0, '\u2620 ' + b.name.toUpperCase(), {
+        fontFamily:'monospace', fontSize:'9px', color:'#ffaaaa',
+      }).setDepth(15).setOrigin(0.5, 0);
+      if (this.hudCam) this.hudCam.ignore(b.nameLabel);
+    }
+    b.nameLabel.setPosition(bx, by - 103);
+
+    // Boss chases nearest player — relentless, no wander
+    const players = [this.p1, this.p2].filter(p => p && !p.isDowned && p.hp > 0);
+    if (players.length === 0) { b.spr.setVelocity(0, 0); return; }
+
+    let nearest = players[0], nearDist = Phaser.Math.Distance.Between(b.spr.x, b.spr.y, players[0].spr.x, players[0].spr.y);
+    players.forEach(p => {
+      const d = Phaser.Math.Distance.Between(b.spr.x, b.spr.y, p.spr.x, p.spr.y);
+      if (d < nearDist) { nearDist = d; nearest = p; }
+    });
+
+    const ang = Phaser.Math.Angle.Between(b.spr.x, b.spr.y, nearest.spr.x, nearest.spr.y);
+    b.spr.setVelocity(Math.cos(ang) * b.speed, Math.sin(ang) * b.speed);
+    b.spr.setFlipX(nearest.spr.x < b.spr.x);
+
+    // Attack when in range
+    if (nearDist < 70) {
+      b.attackTimer -= delta;
+      if (b.attackTimer <= 0) {
+        b.attackTimer = b.atkInterval;
+        nearest.hp = Math.max(0, nearest.hp - b.dmg);
+        SFX.playerHurt();
+        nearest.spr.setTint(0xff0000);
+        this.cameras.main.shake(300, 0.008);
+        this.time.delayedCall(200, () => { if (nearest.spr.active) nearest.spr.clearTint(); });
+        this.checkDeaths();
+      }
+    }
+
+    // Boss can be damaged by player attacks — handled in doAttack via enemies array
+    // Add boss to enemies array for bullet hit detection (done in spawnBoss)
   }
 
   updateEnemyDens(delta) {
@@ -2835,28 +4095,30 @@ class GameScene extends Phaser.Scene {
 
     const moving = vx !== 0 || vy !== 0;
     const id = player.charData.id;
+    const isDiag = vx !== 0 && vy !== 0;
 
     if (moving) {
-      // Determine facing direction
-      if (Math.abs(vy) > Math.abs(vx)) {
+      // 8-directional facing: diagonal uses fside/bside variants
+      if (isDiag) {
+        player.dir = vy > 0 ? 'fside' : 'bside';
+      } else if (Math.abs(vy) > Math.abs(vx)) {
         player.dir = vy > 0 ? 'front' : 'back';
       } else {
         player.dir = 'side';
       }
-      // Walk cycle: toggle frame every ~10 update ticks
       player.walkTimer = (player.walkTimer + 1) % 20;
       const step = player.walkTimer < 10 ? '' : '_step';
-      const dirSuffix = player.dir === 'side' ? '' : ('_' + player.dir);
+      const dirSuffix = (player.dir === 'side') ? '' : ('_' + player.dir);
       player.spr.setTexture(id + dirSuffix + step);
-      // Flip for left movement (side view only)
-      if (player.dir === 'side') {
+      // Flip for leftward movement on all side-facing variants
+      if (player.dir === 'side' || player.dir === 'fside' || player.dir === 'bside') {
         player.spr.setFlipX(vx < 0);
       } else {
         player.spr.setFlipX(false);
       }
     } else {
       player.walkTimer = 0;
-      const dirSuffix = player.dir === 'side' ? '' : ('_' + player.dir);
+      const dirSuffix = (player.dir === 'side') ? '' : ('_' + player.dir);
       player.spr.setTexture(id + dirSuffix);
     }
   }
@@ -2867,31 +4129,39 @@ class GameScene extends Phaser.Scene {
     const worldX = pointer.x / cam.zoom + cam.worldView.x;
     const worldY = pointer.y / cam.zoom + cam.worldView.y;
     const angle = Phaser.Math.Angle.Between(player.spr.x, player.spr.y, worldX, worldY);
-    // Convert angle to facing direction
-    if (angle > -Math.PI/4 && angle <= Math.PI/4) {
-      player.dir = 'side'; player.spr.setFlipX(false);
-    } else if (angle > Math.PI/4 && angle <= 3*Math.PI/4) {
-      player.dir = 'front';
-    } else if (angle > -3*Math.PI/4 && angle <= -Math.PI/4) {
-      player.dir = 'back';
-    } else {
-      player.dir = 'side'; player.spr.setFlipX(true);
-    }
+    // 8-directional facing from mouse angle (8 sectors of 45°)
+    const PI8 = Math.PI / 8;  // 22.5°
+    const a = angle;
+    let flip = false;
+    if (a > -PI8 && a <= PI8)          { player.dir = 'side';  flip = false; }  // E
+    else if (a > PI8 && a <= 3*PI8)    { player.dir = 'fside'; flip = false; }  // SE
+    else if (a > 3*PI8 && a <= 5*PI8)  { player.dir = 'front'; }                // S
+    else if (a > 5*PI8 && a <= 7*PI8)  { player.dir = 'fside'; flip = true;  }  // SW
+    else if (a > -3*PI8 && a <= -PI8)  { player.dir = 'bside'; flip = false; }  // NE
+    else if (a > -5*PI8 && a <= -3*PI8){ player.dir = 'back';  }                // N
+    else if (a > -7*PI8 && a <= -5*PI8){ player.dir = 'bside'; flip = true;  }  // NW
+    else                               { player.dir = 'side';  flip = true;  }  // W
+    player.spr.setFlipX(flip);
     // Store precise aim angle for attacks
     player.aimAngle = angle;
-    // Update sprite
+    // Update sprite — preserve walk cycle step frame
     const id = player.charData.id;
     const dirSuffix = player.dir === 'side' ? '' : ('_' + player.dir);
-    player.spr.setTexture(id + dirSuffix);
+    const moving = player.spr.body.velocity.x !== 0 || player.spr.body.velocity.y !== 0;
+    const step = (moving && player.walkTimer >= 10) ? '_step' : '';
+    player.spr.setTexture(id + dirSuffix + step);
   }
 
   getAimAngle(player) {
     // In 1P mode, use precise mouse aim angle
     if (this.solo && player.aimAngle !== undefined) return player.aimAngle;
-    // In 2P mode, use directional facing
-    return player.dir === 'front'  ? Math.PI/2
-         : player.dir === 'back'   ? -Math.PI/2
-         : player.spr.flipX        ? Math.PI : 0;
+    // In 2P mode, derive aim angle from 8-directional facing
+    const flip = player.spr.flipX;
+    if (player.dir === 'front')      return Math.PI/2;
+    if (player.dir === 'back')       return -Math.PI/2;
+    if (player.dir === 'fside')      return flip ? 3*Math.PI/4  : Math.PI/4;
+    if (player.dir === 'bside')      return flip ? -3*Math.PI/4 : -Math.PI/4;
+    return flip ? Math.PI : 0; // side
   }
 
   syncLabels() {
@@ -3123,6 +4393,7 @@ class GameScene extends Phaser.Scene {
 
   killEnemy(e) {
     e.hp = 0;
+    this.kills++;
     SFX.enemyDie();
     e.spr.setTint(0xff2200);
     const ex = e.spr.x, ey = e.spr.y;
@@ -3130,25 +4401,58 @@ class GameScene extends Phaser.Scene {
       if (e.spr.active) e.spr.destroy();
       if (e.lbl && e.lbl.active) e.lbl.destroy();
     });
-    // Drop resources
+    // Raider kill — check if camp cleared
+    if (e.isRaider) {
+      this.raiders = this.raiders.filter(r => r !== e);
+      if (this.raiders.length === 0 && this.raidCamp) {
+        this.hint('Raider camp cleared! They\'ll return in 10 days…', 4000);
+        this.raidRespawnDay = this.dayNum + 10;
+        if (this.raidCamp.spr && this.raidCamp.spr.active) this.raidCamp.spr.setTint(0x555555);
+      }
+    }
+    // Boss kill
+    if (e.isBoss) {
+      if (e.hpBg && e.hpBg.active) e.hpBg.destroy();
+      if (e.hpBar && e.hpBar.active) e.hpBar.destroy();
+      if (e.nameLabel && e.nameLabel.active) e.nameLabel.destroy();
+      this.boss = null;
+      this.bossDefeated = true;
+      this.hint('BOSS DEFEATED! A rare material was left behind…', 5000);
+      SFX._play(880, 'triangle', 0.3, 0.6, 'rise');
+      SFX._play(1100, 'triangle', 0.25, 0.5, 'rise');
+      this.cameras.main.shake(600, 0.018);
+      this.dropResource(ex, ey, 'rare');
+    }
     this.dropResource(ex, ey, e.type);
   }
 
   dropResource(x, y, enemyType) {
     const drops = [];
-    // All enemies drop food sometimes
-    if (Math.random() < 0.4) drops.push('item_food');
-    // Type-specific drops
-    if (enemyType === 'wolf') {
-      if (Math.random() < 0.5) drops.push('item_fiber');
-      if (Math.random() < 0.3) drops.push('item_metal');
-    } else if (enemyType === 'rat') {
-      if (Math.random() < 0.6) drops.push('item_fiber');
-      if (Math.random() < 0.25) drops.push('item_ammo');
-    } else if (enemyType === 'bear') {
+    // Rare boss drop — guaranteed crystal shard
+    if (enemyType === 'rare') {
+      drops.push('item_rare');
       drops.push('item_metal');
-      if (Math.random() < 0.5) drops.push('item_wood');
-      if (Math.random() < 0.4) drops.push('item_fiber');
+      drops.push('item_ammo');
+    } else {
+      // All enemies drop food sometimes
+      if (Math.random() < 0.4) drops.push('item_food');
+      // Type-specific drops
+      if (enemyType === 'wolf') {
+        if (Math.random() < 0.5) drops.push('item_fiber');
+        if (Math.random() < 0.3) drops.push('item_metal');
+      } else if (enemyType === 'rat') {
+        if (Math.random() < 0.6) drops.push('item_fiber');
+        if (Math.random() < 0.25) drops.push('item_ammo');
+      } else if (enemyType === 'bear') {
+        drops.push('item_metal');
+        if (Math.random() < 0.5) drops.push('item_wood');
+        if (Math.random() < 0.4) drops.push('item_fiber');
+      } else if (enemyType === 'brawler' || enemyType === 'shooter' || enemyType === 'heavy') {
+        // Raiders drop ammo and supplies
+        if (Math.random() < 0.6) drops.push('item_ammo');
+        if (Math.random() < 0.4) drops.push('item_metal');
+        if (Math.random() < 0.3) drops.push('item_food');
+      }
     }
     drops.forEach((key, i) => {
       const dx = x + (i-drops.length/2) * 14;
@@ -3169,6 +4473,7 @@ class GameScene extends Phaser.Scene {
           player.hp = Math.min(player.maxHp, player.hp + 15);
         } else {
           player.inv[item.itemType] = (player.inv[item.itemType] || 0) + 1;
+          this.resourcesGathered++;
         }
         SFX._play(600, 'triangle', 0.06, 0.2);
         item.destroy();
@@ -3256,6 +4561,7 @@ class GameScene extends Phaser.Scene {
 
     this.enemies.forEach(e => {
       if (e.hp <= 0 || !e.spr.active) return;
+      if (e.isBoss) return; // boss movement/attack handled by updateBoss
       let nearest = null, nearDist = Infinity;
       players.forEach(p => {
         const d = Phaser.Math.Distance.Between(e.spr.x, e.spr.y, p.spr.x, p.spr.y);
@@ -3325,6 +4631,23 @@ class GameScene extends Phaser.Scene {
       this.dayNum = newDay;
       Music.switchToDay();
       this.hint('Dawn of Day ' + this.dayNum + ' \u2014 enemies grow stronger!', 3000);
+      // Raider respawn check
+      if (this.raidRespawnDay !== null && this.dayNum >= this.raidRespawnDay) {
+        this.raidRespawnDay = null;
+        this.time.delayedCall(3000, () => {
+          if (!this.isOver) {
+            this.hint('\u26a0 Raiders have returned to their camp!', 5000);
+            SFX._play(180, 'sawtooth', 0.4, 0.5, 'drop');
+            if (this.raidCamp) this.spawnRaiders(this.raidCamp.x, this.raidCamp.y);
+          }
+        });
+      }
+      // Boss daily check: after day 5, 25% chance each dawn
+      if (!this.bossSpawned && this.dayNum > 5 && Math.random() < 0.25) {
+        this.time.delayedCall(5000, () => {
+          if (!this.isOver && !this.bossSpawned) this.spawnBoss();
+        });
+      }
     }
 
     if (this.dayText) this.dayText.setText('DAY ' + this.dayNum);
@@ -3369,6 +4692,7 @@ class GameScene extends Phaser.Scene {
           player.hp = Math.min(player.maxHp, player.hp + 20);
         } else {
           player.inv[crate.itemType] = (player.inv[crate.itemType] || 0) + 2;
+          this.resourcesGathered += 2;
         }
         SFX._play(600, 'triangle', 0.06, 0.2);
         crate.destroy();
@@ -3420,6 +4744,8 @@ class GameScene extends Phaser.Scene {
     // Position ghost in front of player
     const dirAngle = p.dir === 'front'  ? Math.PI/2
                    : p.dir === 'back'   ? -Math.PI/2
+                   : p.dir === 'fside'  ? (p.spr.flipX ? 3*Math.PI/4 : Math.PI/4)
+                   : p.dir === 'bside'  ? (p.spr.flipX ? -3*Math.PI/4 : -Math.PI/4)
                    : p.spr.flipX        ? Math.PI : 0;
     const gx = Math.round((p.spr.x + Math.cos(dirAngle) * 48) / TILE) * TILE;
     const gy = Math.round((p.spr.y + Math.sin(dirAngle) * 48) / TILE) * TILE;
@@ -3572,61 +4898,141 @@ class GameOverScene extends Phaser.Scene {
   constructor() { super('GameOver'); }
 
   init(data) {
-    this.reason    = data.reason    || 'You have fallen.';
-    this.timeAlive = data.timeAlive || 0;
-    this.mode      = data.mode      || 1;
-    this.difficulty= data.difficulty|| 'survival';
+    this.reason        = data.reason        || 'You have fallen.';
+    this.timeAlive     = data.timeAlive     || 0;
+    this.mode          = data.mode          || 1;
+    this.difficulty    = data.difficulty    || 'survival';
+    this.kills         = data.kills         || 0;
+    this.days          = data.days          || 1;
+    this.resources     = data.resources     || 0;
+    this.bossDefeated  = data.bossDefeated  || false;
+    this.p1Name        = data.p1Name        || 'P1';
+    this.p2Name        = data.p2Name        || null;
+  }
+
+  _calcScore() {
+    let s = 0;
+    s += this.days * 100;
+    s += this.kills * 25;
+    s += this.resources * 5;
+    s += Math.floor(this.timeAlive) * 2;
+    if (this.bossDefeated) s += 500;
+    if (this.difficulty === 'hardcore') s = Math.floor(s * 1.5);
+    return s;
   }
 
   create() {
     const { W, H } = CFG;
-    this.cameras.main.fadeIn(500, 0, 0, 0);
+    this.cameras.main.fadeIn(600, 0, 0, 0);
+    const score = this._calcScore();
 
+    // Background
     const bg = this.add.graphics();
     bg.fillGradientStyle(0x1a0000, 0x1a0000, 0x000000, 0x000000, 1);
     bg.fillRect(0, 0, W, H);
 
-    // Skull or title
-    this.add.text(W/2, H*0.22, 'GAME OVER', {
-      fontFamily:'monospace', fontSize:'72px', color:'#cc2222',
+    this.add.text(W/2, 46, 'GAME OVER', {
+      fontFamily:'monospace', fontSize:'64px', color:'#cc2222',
       stroke:'#440000', strokeThickness:8,
-      shadow:{offsetX:6, offsetY:6, color:'#000', blur:10, fill:true},
     }).setOrigin(0.5);
 
-    this.add.text(W/2, H*0.40, this.reason, {
-      fontFamily:'monospace', fontSize:'22px', color:'#cc8855',
-      stroke:'#000', strokeThickness:3,
+    this.add.text(W/2, 116, this.reason, {
+      fontFamily:'monospace', fontSize:'18px', color:'#cc8855', stroke:'#000', strokeThickness:3,
     }).setOrigin(0.5);
 
-    // Stats
-    const mins = Math.floor(this.timeAlive / 60);
-    const secs = Math.floor(this.timeAlive % 60);
+    // ── Score breakdown panel ──────────────────────────────
+    const panelX = W/2 - 220, panelY = 148, panelW = 440, panelH = 210;
+    const panel = this.add.graphics();
+    panel.fillStyle(0x110000, 0.85); panel.fillRoundedRect(panelX, panelY, panelW, panelH, 10);
+    panel.lineStyle(1, 0x553333, 0.8); panel.strokeRoundedRect(panelX, panelY, panelW, panelH, 10);
+
+    const mins = Math.floor(this.timeAlive / 60), secs = Math.floor(this.timeAlive % 60);
     const timeStr = mins > 0 ? mins + 'm ' + secs + 's' : secs + 's';
-    const modeTxt = (this.mode===1?'1 Player':'2 Players') + '  ·  ' + (this.difficulty==='hardcore'?'HARDCORE':'SURVIVAL');
+    const names = this.p2Name ? this.p1Name + ' & ' + this.p2Name : this.p1Name;
+    const modeLabel = (this.mode===1?'1P':'2P') + ' ' + (this.difficulty==='hardcore'?'HARDCORE':'SURVIVAL');
 
-    this.add.text(W/2, H*0.52, 'Time survived:  ' + timeStr, {
-      fontFamily:'monospace', fontSize:'20px', color:'#888888',
+    const rows = [
+      ['Survivors',       names,                          '#aabbcc'],
+      ['Mode',            modeLabel,                      '#8899aa'],
+      ['Days survived',   'Day ' + this.days,             '#ffee44'],
+      ['Time alive',      timeStr,                        '#cccccc'],
+      ['Enemies killed',  this.kills + ' kills',          '#ff8844'],
+      ['Resources found', this.resources + ' items',      '#88cc66'],
+      ['Boss defeated',   this.bossDefeated ? 'YES +500':'No',  this.bossDefeated?'#ffdd44':'#556666'],
+    ];
+    rows.forEach(([label, val, col], i) => {
+      const y = panelY + 18 + i * 26;
+      this.add.text(panelX + 18, y, label, { fontFamily:'monospace', fontSize:'13px', color:'#556677' }).setOrigin(0,0);
+      this.add.text(panelX + panelW - 18, y, val, { fontFamily:'monospace', fontSize:'13px', color: col }).setOrigin(1,0);
+    });
+
+    // Total score
+    this.add.text(W/2, panelY + panelH + 18, 'SCORE   ' + score.toLocaleString(), {
+      fontFamily:'monospace', fontSize:'32px', color:'#ffdd44',
+      stroke:'#000', strokeThickness:4,
     }).setOrigin(0.5);
 
-    this.add.text(W/2, H*0.60, modeTxt, {
-      fontFamily:'monospace', fontSize:'16px', color:'#555566',
-    }).setOrigin(0.5);
+    // ── Local leaderboard ──────────────────────────────────
+    const lb = this._loadLeaderboard();
+    const isHighScore = lb.length < 5 || score > lb[lb.length-1].score;
 
-    // Prompt
-    const prompt = this.add.text(W/2, H*0.76, 'PRESS ENTER or SPACE to try again', {
-      fontFamily:'monospace', fontSize:'20px', color:'#ffffff',
-    }).setOrigin(0.5);
-    this.tweens.add({ targets:prompt, alpha:0.2, duration:600, yoyo:true, repeat:-1 });
+    if (isHighScore) {
+      this._saveScore(lb, score);
+      this.add.text(W/2, panelY + panelH + 62, '★  NEW HIGH SCORE  ★', {
+        fontFamily:'monospace', fontSize:'16px', color:'#ffcc22',
+      }).setOrigin(0.5);
+    }
 
-    this.add.text(W/2, H*0.86, 'ESC — back to mode select', {
-      fontFamily:'monospace', fontSize:'14px', color:'#444455',
-    }).setOrigin(0.5);
+    // Top 5 board
+    const lbX = W/2 + 10, lbY = panelY + panelH + 86;
+    this.add.text(lbX - 200, lbY - 2, 'TOP SCORES', { fontFamily:'monospace', fontSize:'11px', color:'#445566' });
+    this._loadLeaderboard().slice(0,5).forEach((entry, i) => {
+      const col = i === 0 ? '#ffdd44' : '#778899';
+      const txt = (i+1) + '.  ' + entry.name.padEnd(14) + entry.score.toLocaleString() + '  Day ' + entry.days;
+      this.add.text(lbX - 200, lbY + 16 + i*18, txt, { fontFamily:'monospace', fontSize:'11px', color:col });
+    });
+
+    // ── Navigation buttons — tappable for touch, keyboard shortcuts too ──
+    const makeBtn = (x, label, sublabel, col, borderCol, action) => {
+      const g = this.add.graphics();
+      g.fillStyle(0x110000, 0.9); g.fillRoundedRect(x - 140, H - 84, 280, 64, 10);
+      g.lineStyle(2, borderCol, 0.9); g.strokeRoundedRect(x - 140, H - 84, 280, 64, 10);
+      const t = this.add.text(x, H - 63, label, {
+        fontFamily:'monospace', fontSize:'20px', color: col, stroke:'#000', strokeThickness:3,
+      }).setOrigin(0.5);
+      this.add.text(x, H - 37, sublabel, {
+        fontFamily:'monospace', fontSize:'10px', color:'#445566',
+      }).setOrigin(0.5);
+      const zone = this.add.zone(x, H - 52, 280, 64).setInteractive({ useHandCursor: true });
+      zone.on('pointerover', () => { t.setColor('#ffffff'); g.clear(); g.fillStyle(borderCol, 0.25); g.fillRoundedRect(x-140, H-84, 280, 64, 10); g.lineStyle(2, borderCol, 1); g.strokeRoundedRect(x-140, H-84, 280, 64, 10); });
+      zone.on('pointerout',  () => { t.setColor(col); g.clear(); g.fillStyle(0x110000, 0.9); g.fillRoundedRect(x-140, H-84, 280, 64, 10); g.lineStyle(2, borderCol, 0.9); g.strokeRoundedRect(x-140, H-84, 280, 64, 10); });
+      zone.on('pointerdown', action);
+      this.tweens.add({ targets: t, alpha: 0.45, duration: 700, yoyo: true, repeat: -1 });
+      return zone;
+    };
+
+    makeBtn(W/2 - 165, '\u25b6  PLAY AGAIN', 'ENTER  /  SPACE', '#aaffaa', 0x44aa44, () => this.restart());
+    makeBtn(W/2 + 165, '\u2302  MAIN MENU',  'ESC', '#aaccff', 0x4466aa, () => this.goMenu());
 
     const K = Phaser.Input.Keyboard.KeyCodes;
     const keys = this.input.keyboard.addKeys({ enter:K.ENTER, space:K.SPACE, esc:K.ESC });
     keys.enter.on('down', () => this.restart());
     keys.space.on('down', () => this.restart());
     keys.esc.on('down',   () => this.goMenu());
+  }
+
+  _loadLeaderboard() {
+    try {
+      return JSON.parse(localStorage.getItem('iw_scores') || '[]');
+    } catch(e) { return []; }
+  }
+
+  _saveScore(lb, score) {
+    const names = this.p2Name ? this.p1Name + '/' + this.p2Name : this.p1Name;
+    lb.push({ name: names, score, days: this.days, time: Math.floor(this.timeAlive) });
+    lb.sort((a,b) => b.score - a.score);
+    lb.splice(10); // keep top 10
+    try { localStorage.setItem('iw_scores', JSON.stringify(lb)); } catch(e) {}
   }
 
   restart() {
@@ -3648,5 +5054,5 @@ new Phaser.Game({
   pixelArt: true,
   physics: { default:'arcade', arcade:{ gravity:{y:0}, debug:false } },
   scale: { mode:Phaser.Scale.FIT, autoCenter:Phaser.Scale.CENTER_BOTH },
-  scene: [BootScene, ModeSelectScene, CharSelectScene, GameScene, GameOverScene],
+  scene: [BootScene, ModeSelectScene, SettingsScene, CharSelectScene, GameScene, GameOverScene],
 });
