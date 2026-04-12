@@ -1414,6 +1414,7 @@ class GameScene extends Phaser.Scene {
     this.barrackOwner = null;
     this.barrackSel  = 0;
     this.controlsVis = false;
+    this.fogRevealMult = 1; // doubled permanently when Radio Tower is activated
     this.reviveProgress = 0;
     this.reviving    = false;
     this.reviveTarget = null;
@@ -1551,10 +1552,101 @@ class GameScene extends Phaser.Scene {
     // Spawn enemies after camera setup
     this.spawnEnemies(worldW, worldH, cx, cy);
 
-    // Opening hints
+    // Opening hints (delayed to appear after the startup controls popup fades)
     const modeNote = this.hardcore ? '\u2620 HARDCORE \u2014 death is permanent!' : '\u2665 SURVIVAL mode';
-    this.hint(modeNote + ' Explore the biomes! Watch your minimap.', 5000);
-    this.time.delayedCall(6200, () => this.hint('TAB for controls  |  Beware toxic swamps and frozen tundra!', 3500));
+    this.time.delayedCall(10000, () => this.hint(modeNote + ' Explore the biomes! Watch your minimap.', 5000));
+    this.time.delayedCall(16500, () => this.hint('TAB for controls  |  Beware toxic swamps and frozen tundra!', 3500));
+
+    this.showStartupControls();
+  }
+
+  showStartupControls() {
+    const { W, H } = CFG;
+    const objs = [];
+    const push = o => { objs.push(o); this._h(o); return o; };
+
+    // Dim backdrop
+    const bg = push(this.add.graphics().setDepth(200));
+    bg.fillStyle(0x000000, 0.75);
+    bg.fillRect(0, 0, W, H);
+
+    push(this.add.text(W/2, 34, 'IRON WASTELAND', {
+      fontFamily:'monospace', fontSize:'22px', color:'#cc8833', stroke:'#000', strokeThickness:4,
+    }).setOrigin(0.5).setDepth(201));
+
+    const p1Ch = this.p1.charData;
+    const p2Ch = this.p2 ? this.p2.charData : null;
+
+    // ── P1 panel ──
+    const p1Lines = getControls(1, p1Ch.id, this.solo);
+    const p1Title = this.solo
+      ? p1Ch.player + ' — ' + p1Ch.title + '  (1 Player)'
+      : p1Ch.player + ' — ' + p1Ch.title + '  (Player 1)';
+    const p1PanelW = 280, p1PanelH = p1Lines.length * 22 + 70;
+    const p1X = this.solo ? W/2 - p1PanelW/2 : W/2 - p1PanelW - 20;
+    const p1Y = H/2 - p1PanelH/2;
+
+    const p1bg = push(this.add.graphics().setDepth(200));
+    p1bg.fillStyle(0x000e22, 0.92);
+    p1bg.fillRoundedRect(p1X, p1Y, p1PanelW, p1PanelH, 10);
+    p1bg.lineStyle(2, 0x3355aa, 0.9);
+    p1bg.strokeRoundedRect(p1X, p1Y, p1PanelW, p1PanelH, 10);
+
+    push(this.add.text(p1X + p1PanelW/2, p1Y + 16, p1Title, {
+      fontFamily:'monospace', fontSize:'11px', color:'#88aaff', stroke:'#000', strokeThickness:2,
+    }).setOrigin(0.5).setDepth(201));
+
+    if (this.solo) {
+      push(this.add.text(p1X + p1PanelW/2, p1Y + 34, 'Mouse = aim & shoot direction', {
+        fontFamily:'monospace', fontSize:'9px', color:'#aaccee', stroke:'#000', strokeThickness:2,
+      }).setOrigin(0.5).setDepth(201));
+    }
+
+    p1Lines.forEach((l, i) => {
+      push(this.add.text(p1X + 16, p1Y + (this.solo ? 50 : 38) + i * 22, l, {
+        fontFamily:'monospace', fontSize:'10px', color:'#ccd8ee', stroke:'#000', strokeThickness:2,
+      }).setDepth(201));
+    });
+
+    // ── P2 panel (2P mode only) ──
+    if (p2Ch) {
+      const p2Lines = getControls(2, p2Ch.id);
+      const p2Title = p2Ch.player + ' — ' + p2Ch.title + '  (Player 2)';
+      const p2PanelW = 280, p2PanelH = p2Lines.length * 22 + 58;
+      const p2X = W/2 + 20;
+      const p2Y = H/2 - p2PanelH/2;
+
+      const p2bg = push(this.add.graphics().setDepth(200));
+      p2bg.fillStyle(0x22000e, 0.92);
+      p2bg.fillRoundedRect(p2X, p2Y, p2PanelW, p2PanelH, 10);
+      p2bg.lineStyle(2, 0xaa5522, 0.9);
+      p2bg.strokeRoundedRect(p2X, p2Y, p2PanelW, p2PanelH, 10);
+
+      push(this.add.text(p2X + p2PanelW/2, p2Y + 16, p2Title, {
+        fontFamily:'monospace', fontSize:'11px', color:'#ffbb77', stroke:'#000', strokeThickness:2,
+      }).setOrigin(0.5).setDepth(201));
+
+      p2Lines.forEach((l, i) => {
+        push(this.add.text(p2X + 16, p2Y + 38 + i * 22, l, {
+          fontFamily:'monospace', fontSize:'10px', color:'#eeddcc', stroke:'#000', strokeThickness:2,
+        }).setDepth(201));
+      });
+    }
+
+    push(this.add.text(W/2, H - 42, 'Press any key or wait to start', {
+      fontFamily:'monospace', fontSize:'11px', color:'#667788', stroke:'#000', strokeThickness:2,
+    }).setOrigin(0.5).setDepth(201));
+
+    // Fade out after 8 seconds (or on any key press)
+    const dismiss = () => {
+      if (!objs[0] || !objs[0].active) return;
+      this.tweens.add({
+        targets: objs, alpha: 0, duration: 600,
+        onComplete: () => objs.forEach(o => { if (o.active) o.destroy(); }),
+      });
+    };
+    this.time.delayedCall(8000, dismiss);
+    this.input.keyboard.once('keydown', dismiss);
   }
 
   // ── WORLD ──────────────────────────────────────────────────
@@ -1879,7 +1971,7 @@ class GameScene extends Phaser.Scene {
 
   // ── FOG OF WAR ────────────────────────────────────────────────
   revealFog(centerTX, centerTY, radius) {
-    const r = radius || CFG.FOG_REVEAL_R;
+    const r = radius || (CFG.FOG_REVEAL_R * (this.fogRevealMult || 1));
     for (let dx = -r; dx <= r; dx++) {
       for (let dy = -r; dy <= r; dy++) {
         if (dx*dx + dy*dy > r*r) continue;
@@ -1942,7 +2034,8 @@ class GameScene extends Phaser.Scene {
       spr, lbl, charData, pNum,
       hp: charData.maxHp, maxHp: charData.maxHp,
       ammo: charData.id==='gunslinger' ? 8 : Infinity,
-      isDowned: false, downTimer: 0, downText: null,
+      reserveAmmo: charData.id==='gunslinger' ? 32 : 0, // 8 loaded + 32 reserve = 40 max
+      isDowned: false, isPermanentlyDead: false, downTimer: 0, downText: null,
       hpBar, dir: 'front', walkTimer: 0,
       atkCooldown: 0, reloading: false,
       rallyCooldown: 0, turretCooldown: 0,
@@ -1959,6 +2052,19 @@ class GameScene extends Phaser.Scene {
     if (!this.solo && STATE.p2CharId==='gunslinger') this.ammoIcons.p2 = this.makeAmmoRow(W-108, 14, 0xff9944);
     if (this.ammoIcons.p1) this.ammoIcons.p1.forEach(ic => this._h(ic));
     if (this.ammoIcons.p2) this.ammoIcons.p2.forEach(ic => this._h(ic));
+
+    // Reserve ammo counter (shown below clip icons for gunslinger players)
+    this.ammoReserveText = { p1: null, p2: null };
+    if (STATE.p1CharId === 'gunslinger') {
+      this.ammoReserveText.p1 = this._h(this.add.text(14, 30, '', {
+        fontFamily:'monospace', fontSize:'9px', color:'#aaaacc',
+      }).setDepth(101));
+    }
+    if (!this.solo && STATE.p2CharId === 'gunslinger') {
+      this.ammoReserveText.p2 = this._h(this.add.text(W - 12, 30, '', {
+        fontFamily:'monospace', fontSize:'9px', color:'#ccaa88',
+      }).setOrigin(1, 0).setDepth(101));
+    }
 
     const dayBg = this._h(this.add.graphics().setDepth(100));
     dayBg.fillStyle(0x000000, 0.6); dayBg.fillRoundedRect(W/2-95, 5, 190, 50, 8);
@@ -1991,7 +2097,7 @@ class GameScene extends Phaser.Scene {
 
     // ── MINIMAP ─────────────────────────────────────────────────
     const mmW = 120, mmH = 120;
-    const mmX = W - mmW - 10, mmY = H - mmH - 26;
+    const mmX = W - mmW - 10, mmY = 80; // top-right so it doesn't overlap P2 inventory
     // Background
     const mmBg = this._h(this.add.graphics().setDepth(110));
     mmBg.fillStyle(0x000000, 0.7); mmBg.fillRoundedRect(mmX - 2, mmY - 2, mmW + 4, mmH + 4, 4);
@@ -2069,6 +2175,8 @@ class GameScene extends Phaser.Scene {
         else if (poi.type === 'den') col = 0xcc4444;
         else if (poi.type === 'tower') col = 0x66aaff;
         else if (poi.type === 'camp') col = 0x44cc66;
+        else if (poi.type === 'campfire') col = 0xff8833;  // orange — player-built campfire
+        else if (poi.type === 'craftbench') col = 0xddcc44; // yellow — player-built workbench
         // Only show if revealed
         if (this.fogRevealed.has(poi.tx + ',' + poi.ty)) {
           this.minimapDots.fillStyle(col);
@@ -2103,13 +2211,14 @@ class GameScene extends Phaser.Scene {
   }
 
   redrawHUD() {
-    // Update ammo icons
-    const refreshAmmo = (icons, player) => {
+    // Update ammo icons and reserve counter
+    const refreshAmmo = (icons, reserveText, player) => {
       if (!icons || !player || player.charData.id!=='gunslinger') return;
       icons.forEach((ic, i) => ic.setAlpha(i<player.ammo ? 1 : 0.18));
+      if (reserveText) reserveText.setText('+' + (player.reserveAmmo || 0) + ' reserve');
     };
-    refreshAmmo(this.ammoIcons.p1, this.p1);
-    if (this.p2) refreshAmmo(this.ammoIcons.p2, this.p2);
+    refreshAmmo(this.ammoIcons.p1, this.ammoReserveText && this.ammoReserveText.p1, this.p1);
+    if (this.p2) refreshAmmo(this.ammoIcons.p2, this.ammoReserveText && this.ammoReserveText.p2, this.p2);
 
     // Update name badges
     if (this.p1Badge) this.p1Badge.setText(this.p1.charData.player + ' — ' + this.p1.charData.title);
@@ -2145,7 +2254,7 @@ class GameScene extends Phaser.Scene {
 
   // ── DEATH & REVIVE ──────────────────────────────────────────
   checkDeaths() {
-    const check = p => { if (p && !p.isDowned && p.hp <= 0) this.handleDeath(p); };
+    const check = p => { if (p && !p.isDowned && !p.isPermanentlyDead && p.hp <= 0) this.handleDeath(p); };
     check(this.p1);
     if (this.p2) check(this.p2);
   }
@@ -2157,7 +2266,14 @@ class GameScene extends Phaser.Scene {
       return;
     }
 
-    // 2P Survival: go downed
+    // 2P Survival: if partner is already permanently dead, no one to revive — game over
+    const partner = player === this.p1 ? this.p2 : this.p1;
+    if (partner && partner.isPermanentlyDead) {
+      this.triggerGameOver('Both survivors have fallen.');
+      return;
+    }
+
+    // Go downed — partner has a chance to revive
     player.hp = 0;
     player.isDowned = true;
     player.downTimer = CFG.DOWN_TIME;
@@ -2193,8 +2309,12 @@ class GameScene extends Phaser.Scene {
         // Time ran out — permanently dead
         if (p.downText) { p.downText.destroy(); p.downText = null; }
         p.isDowned = false;
+        p.isPermanentlyDead = true;
         p.hp = 0;
         p.spr.setVisible(false);
+        p.spr.setVelocity(0, 0);
+        if (p.hpBar) p.hpBar.clear();
+        if (p.lbl) p.lbl.setVisible(false);
         statusText.setText('');
         this.checkBothDead();
       }
@@ -2300,55 +2420,65 @@ class GameScene extends Phaser.Scene {
 
   // ── CONTROLS OVERLAY ─────────────────────────────────────────
   buildControlsOverlay() {
-    // Always-visible translucent sidebars
+    // Hidden by default — shown only when Tab is pressed
     const { W, H } = CFG;
     this.ctrlObjs = [];
-    const push = o => { this.ctrlObjs.push(o); this._h(o); return o; };
+    const push = o => { this.ctrlObjs.push(o); this._h(o); o.setVisible(false); return o; };
 
     const p1Ch = this.p1 ? this.p1.charData : CHARS.find(c => c.id === STATE.p1CharId);
     const p2Ch = this.p2 ? this.p2.charData : (this.solo ? null : CHARS.find(c => c.id === STATE.p2CharId));
 
+    // Dimming backdrop (only visible when controls open)
+    push(this.add.graphics().setDepth(94)).fillStyle(0x000000, 0.55).fillRect(0, 0, W, H);
+
     // P1 controls — left side
     const p1Lines = getControls(1, p1Ch.id, this.solo);
     const lbg = push(this.add.graphics().setDepth(95));
-    lbg.fillStyle(0x000000, 0.25);
-    lbg.fillRoundedRect(4, H/2 - 10 - p1Lines.length*9, 160, p1Lines.length*18 + 28, 6);
-    push(this.add.text(10, H/2 - 8 - p1Lines.length*9, p1Ch.title, {
-      fontFamily:'monospace', fontSize:'9px', color:'#6699ff',
-    }).setDepth(96).setAlpha(0.6));
+    lbg.fillStyle(0x000011, 0.88);
+    lbg.fillRoundedRect(4, H/2 - 14 - p1Lines.length*10, 172, p1Lines.length*20 + 36, 8);
+    lbg.lineStyle(1, 0x4466aa, 0.7);
+    lbg.strokeRoundedRect(4, H/2 - 14 - p1Lines.length*10, 172, p1Lines.length*20 + 36, 8);
+    push(this.add.text(10, H/2 - 10 - p1Lines.length*10, p1Ch.player + ' — ' + p1Ch.title, {
+      fontFamily:'monospace', fontSize:'10px', color:'#88aaff', stroke:'#000', strokeThickness:2,
+    }).setDepth(96));
     p1Lines.forEach((l, i) => {
-      push(this.add.text(10, H/2 + 6 - p1Lines.length*9 + i*18, l, {
-        fontFamily:'monospace', fontSize:'8px', color:'#aabbcc',
-      }).setDepth(96).setAlpha(0.5));
+      push(this.add.text(12, H/2 + 8 - p1Lines.length*10 + i*20, l, {
+        fontFamily:'monospace', fontSize:'9px', color:'#ccd8ee', stroke:'#000', strokeThickness:2,
+      }).setDepth(96));
     });
 
     // P2 controls — right side
     if (p2Ch) {
       const p2Lines = getControls(2, p2Ch.id);
       const rbg = push(this.add.graphics().setDepth(95));
-      rbg.fillStyle(0x000000, 0.25);
-      rbg.fillRoundedRect(W-164, H/2 - 10 - p2Lines.length*9, 160, p2Lines.length*18 + 28, 6);
-      push(this.add.text(W-158, H/2 - 8 - p2Lines.length*9, p2Ch.title, {
-        fontFamily:'monospace', fontSize:'9px', color:'#ff9944',
-      }).setDepth(96).setAlpha(0.6));
+      rbg.fillStyle(0x110008, 0.88);
+      rbg.fillRoundedRect(W-176, H/2 - 14 - p2Lines.length*10, 172, p2Lines.length*20 + 36, 8);
+      rbg.lineStyle(1, 0xaa6633, 0.7);
+      rbg.strokeRoundedRect(W-176, H/2 - 14 - p2Lines.length*10, 172, p2Lines.length*20 + 36, 8);
+      push(this.add.text(W-170, H/2 - 10 - p2Lines.length*10, p2Ch.player + ' — ' + p2Ch.title, {
+        fontFamily:'monospace', fontSize:'10px', color:'#ffbb77', stroke:'#000', strokeThickness:2,
+      }).setDepth(96));
       p2Lines.forEach((l, i) => {
-        push(this.add.text(W-158, H/2 + 6 - p2Lines.length*9 + i*18, l, {
-          fontFamily:'monospace', fontSize:'8px', color:'#ccbbaa',
-        }).setDepth(96).setAlpha(0.5));
+        push(this.add.text(W-170, H/2 + 8 - p2Lines.length*10 + i*20, l, {
+          fontFamily:'monospace', fontSize:'9px', color:'#eeddcc', stroke:'#000', strokeThickness:2,
+        }).setDepth(96));
       });
     }
+
+    push(this.add.text(W/2, H - 26, 'TAB or ESC to close', {
+      fontFamily:'monospace', fontSize:'10px', color:'#556677', stroke:'#000', strokeThickness:2,
+    }).setOrigin(0.5).setDepth(96));
   }
 
   toggleControls() {
     this.controlsVis = !this.controlsVis;
-    // Rebuild with current character data and toggle visibility
+    // Destroy old overlay and rebuild with current character data, then show/hide
     this.ctrlObjs.forEach(o => o.destroy());
+    this.buildControlsOverlay();
     if (this.controlsVis) {
-      this.buildControlsOverlay();
-      this.ctrlObjs.forEach(o => o.setAlpha(o.alpha < 0.3 ? 0.25 : 0.9));
-    } else {
-      this.buildControlsOverlay();
+      this.ctrlObjs.forEach(o => o.setVisible(true));
     }
+    // When hiding: objects stay invisible (default from buildControlsOverlay)
   }
 
   // ── BARRACKS OVERLAY ─────────────────────────────────────────
@@ -2386,11 +2516,12 @@ class GameScene extends Phaser.Scene {
       if (td < 80) {
         this.radioTower.used = true;
         this.radioTower.spr.setTint(0x66aaff);
-        this.hint('Radio Tower activated! Map revealed!', 4000);
+        this.fogRevealMult = 2; // permanently doubles player fog-of-war radius
+        this.hint('Radio Tower online! Vision range doubled permanently!', 5000);
         SFX._play(800, 'triangle', 0.2, 0.3, 'rise');
         SFX._play(1200, 'triangle', 0.15, 0.2, 'rise');
-        // Reveal large area around tower (30 tile radius)
-        this.revealFog(this.radioTower.tx, this.radioTower.ty, 30);
+        // Reveal large area around the tower itself
+        this.revealFog(this.radioTower.tx, this.radioTower.ty, 35);
         if (this.radioTower.prompt) this.radioTower.prompt.setVisible(false);
       }
     }
@@ -2463,14 +2594,20 @@ class GameScene extends Phaser.Scene {
 
   // ── HINT ─────────────────────────────────────────────────────
   hint(text, duration) {
+    // Destroy any existing hint immediately so they never overlap
+    if (this._activeHint && this._activeHint.active) {
+      this.tweens.killTweensOf(this._activeHint);
+      this._activeHint.destroy();
+    }
     const h = this.add.text(CFG.W/2, 112, text, {
       fontFamily:'monospace', fontSize:'14px', color:'#ffffff',
       stroke:'#000', strokeThickness:3, backgroundColor:'#00000099', padding:{x:12,y:6},
     }).setOrigin(0.5).setDepth(160).setAlpha(0);
     this.cameras.main.ignore(h);
+    this._activeHint = h;
     this.tweens.add({ targets:h, alpha:1, duration:280,
       onComplete:()=>this.time.delayedCall(duration,()=>
-        this.tweens.add({targets:h,alpha:0,duration:450,onComplete:()=>h.destroy()}))
+        this.tweens.add({targets:h,alpha:0,duration:450,onComplete:()=>{ if(h===this._activeHint) this._activeHint=null; h.destroy(); }}))
     });
   }
 
@@ -2560,7 +2697,7 @@ class GameScene extends Phaser.Scene {
         const type = types[Phaser.Math.Between(0, types.length-1)];
         const typeDef = { wolf:{hp:60,speed:90,dmg:8,baseScale:1.8,w:20,h:12}, rat:{hp:30,speed:130,dmg:5,baseScale:1.4,w:15,h:9} };
         const t = typeDef[type];
-        const sizeMult = Phaser.Math.FloatBetween(0.7, 1.3);
+        const sizeMult = Phaser.Math.FloatBetween(0.85, 1.3);
         const sc = t.baseScale * sizeMult;
         const ex = den.x + Phaser.Math.Between(-60, 60);
         const ey = den.y + Phaser.Math.Between(-60, 60);
@@ -2572,7 +2709,8 @@ class GameScene extends Phaser.Scene {
         const hp = Math.floor(t.hp * sizeMult);
         const dmg = Math.max(1, Math.floor(t.dmg * sizeMult));
         const spd = t.speed * (sizeMult < 0.85 ? 1.3 : sizeMult > 1.2 ? 0.8 : 1);
-        const e = { spr, hp, maxHp:hp, speed:spd, dmg, type, attackTimer:0, wanderTimer:0, aggroRange:160, attackRange:30*sizeMult, sizeMult };
+        const denBaseAggro = { wolf: 190, rat: 110, bear: 290 }[type] || 160;
+        const e = { spr, hp, maxHp:hp, speed:spd, dmg, type, attackTimer:0, wanderTimer:0, aggroRange:denBaseAggro, attackRange:30*sizeMult, sizeMult };
         this.enemies.push(e);
       }
     });
@@ -2685,7 +2823,14 @@ class GameScene extends Phaser.Scene {
     if (player.atkCooldown > 0) return;
     const id = player.charData.id;
     if (id === 'gunslinger') {
-      if (player.ammo <= 0) { SFX.reload(); return; }
+      if (player.ammo <= 0) {
+        // Pistol whip — melee fallback when out of ammo in clip
+        SFX.wrench();
+        player.atkCooldown = 500;
+        this.meleeSwing(player, 38, 0xcc8833, 0.22, 0);
+        this.hint('Out of ammo! Pistol whip!', 1200);
+        return;
+      }
       player.ammo--;
       this.redrawHUD();
       SFX.shoot();
@@ -2725,14 +2870,20 @@ class GameScene extends Phaser.Scene {
   doAlt(player) {
     const id = player.charData.id;
     if (id === 'gunslinger') {
-      if (player.ammo < 8 && !player.reloading) {
+      if (player.ammo < 8 && !player.reloading && player.reserveAmmo > 0) {
         player.reloading = true;
         SFX.reload();
-        this.hint('Reloading\u2026', 1500);
+        this.hint('Reloading\u2026 (' + player.reserveAmmo + ' in reserve)', 1500);
         this.time.delayedCall(1500, () => {
-          player.ammo = 8; player.reloading = false;
+          const needed = 8 - player.ammo;
+          const fill = Math.min(needed, player.reserveAmmo);
+          player.ammo += fill;
+          player.reserveAmmo -= fill;
+          player.reloading = false;
           this.redrawHUD(); SFX.reload();
         });
+      } else if (player.reserveAmmo <= 0 && player.ammo < 8) {
+        this.hint('No ammo left! Find more drops.', 2000);
       }
     } else if (id === 'knight') {
       // RALLY — war cry boosts partner's speed for 5 seconds
@@ -2902,7 +3053,8 @@ class GameScene extends Phaser.Scene {
         const player = playerSpr === this.p1.spr ? this.p1 : this.p2;
         if (!player) return;
         if (item.itemType === 'ammo' && player.charData.id === 'gunslinger') {
-          player.ammo = Math.min(8, player.ammo + 3);
+          const maxReserve = 40 - player.ammo;
+          player.reserveAmmo = Math.min(maxReserve, player.reserveAmmo + 3);
           this.redrawHUD();
         } else if (item.itemType === 'food') {
           player.hp = Math.min(player.maxHp, player.hp + 15);
@@ -2953,8 +3105,8 @@ class GameScene extends Phaser.Scene {
             ey = Phaser.Math.Between(TILE*3, worldH-TILE*3);
           } while (Phaser.Math.Distance.Between(ex, ey, cx, cy) < SAFE_R*TILE*2.5);
         }
-        // Size variance: 0.6x to 1.5x base scale — smaller ones are babies, bigger are elders
-        const sizeMult = Phaser.Math.FloatBetween(0.6, 1.5);
+        // Size variance: 0.85x to 1.5x — floor raised so enemies are never too small to see
+        const sizeMult = Phaser.Math.FloatBetween(0.85, 1.5);
         const sc = t.baseScale * sizeMult;
         const hp = Math.floor(t.hp * sizeMult);
         const dmg = Math.max(1, Math.floor(t.dmg * sizeMult));
@@ -2964,7 +3116,9 @@ class GameScene extends Phaser.Scene {
         spr.body.setSize(t.w, t.h);
         if (this.hudCam) this.hudCam.ignore(spr);
         this.physics.add.collider(spr, this.obstacles);
-        const aggroR = 160 * (sizeMult > 1.2 ? 1.3 : 1);
+        // Per-type aggro ranges: bears are territorial (wide), rats are skittish (narrow)
+        const baseAggro = { wolf: 190, rat: 110, bear: 290 }[t.key] || 160;
+        const aggroR = baseAggro * (sizeMult > 1.2 ? 1.2 : 1);
         const atkR = (30 + t.w/2) * sizeMult;
         const e = { spr, hp, maxHp:hp, speed:spd, dmg, type:t.key, attackTimer:0, wanderTimer:Phaser.Math.Between(0,2000), aggroRange:aggroR, attackRange:atkR, sizeMult };
         this.enemies.push(e);
@@ -3098,7 +3252,8 @@ class GameScene extends Phaser.Scene {
       const pickupCrate = (player) => {
         if (!crate.active) return;
         if (crate.itemType === 'ammo' && player.charData.id === 'gunslinger') {
-          player.ammo = Math.min(8, player.ammo + 4);
+          const maxReserve = 40 - player.ammo;
+          player.reserveAmmo = Math.min(maxReserve, player.reserveAmmo + 4);
           this.redrawHUD();
         } else if (crate.itemType === 'food') {
           player.hp = Math.min(player.maxHp, player.hp + 20);
@@ -3217,6 +3372,9 @@ class GameScene extends Phaser.Scene {
       const cf = this.add.image(x, y, 'campfire').setScale(2).setDepth(5);
       if (this.hudCam) this.hudCam.ignore(cf);
       this._w(cf);
+      // Register as minimap POI
+      const cfTX = Math.floor(x / CFG.TILE), cfTY = Math.floor(y / CFG.TILE);
+      this.pois.push({ type: 'campfire', tx: cfTX, ty: cfTY, spr: cf });
       // Campfire heals nearby players over time
       this.time.addEvent({
         delay: 2000, loop: true,
@@ -3237,6 +3395,9 @@ class GameScene extends Phaser.Scene {
       this._w(cb);
       this.craftBenchPlaced = true;
       this.craftBenchPos = { x, y };
+      // Register as minimap POI
+      const cbTX = Math.floor(x / CFG.TILE), cbTY = Math.floor(y / CFG.TILE);
+      this.pois.push({ type: 'craftbench', tx: cbTX, ty: cbTY, spr: cb });
     }
 
     SFX._play(400, 'triangle', 0.08, 0.2);
