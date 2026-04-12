@@ -1714,26 +1714,47 @@ class GameScene extends Phaser.Scene {
     this.obstacles = this.physics.add.staticGroup();
     this.toxicPools = []; // for swamp damage
 
-    // Trees — biome-appropriate
-    for (let i = 0; i < CFG.TREES; i++) {
-      const tx = Phaser.Math.Between(1, CFG.MAP_W-2), ty = Phaser.Math.Between(1, CFG.MAP_H-2);
-      if (Math.abs(tx-stx)<SAFE_R+2 && Math.abs(ty-sty)<SAFE_R+2) continue;
-      const biome = getBiome(tx, ty);
+    // Trees — dense forest clusters, biome-appropriate, non-overlapping
+    const treesPlaced = [];
+    const placeTree = (tx, ty, biome) => {
+      if (tx < 2 || tx > CFG.MAP_W-2 || ty < 2 || ty > CFG.MAP_H-2) return;
+      if (Math.abs(tx-stx) < SAFE_R+3 && Math.abs(ty-sty) < SAFE_R+3) return;
+      if (treesPlaced.some(p => Math.abs(p.tx-tx) <= 1 && Math.abs(p.ty-ty) <= 1)) return;
       let treeKey = 'tree';
       if (biome === 'waste') treeKey = 'tree_dead';
       else if (biome === 'tundra') treeKey = 'tree_snow';
-      else if (biome === 'ruins') { if (Math.random() < 0.5) treeKey = 'tree_dead'; }
-      else if (biome === 'swamp') { if (Math.random() < 0.4) treeKey = 'tree_dead'; }
-
-      let sc;
-      const roll = Math.random();
-      if (roll < 0.70) sc = Phaser.Math.FloatBetween(1.8, 4.0);
-      else if (roll < 0.90) sc = Phaser.Math.FloatBetween(0.6, 1.2);
-      else sc = Phaser.Math.FloatBetween(1.2, 1.8);
+      else if (biome === 'ruins' && Math.random() < 0.5) treeKey = 'tree_dead';
+      else if (biome === 'swamp' && Math.random() < 0.4) treeKey = 'tree_dead';
+      const sc = Phaser.Math.FloatBetween(1.6, 2.8);
       const t = this.obstacles.create(tx*TILE+14, ty*TILE+18, treeKey);
       t.setScale(sc).setDepth(5).setImmovable(true);
       t.body.setSize(Math.floor(10*sc), Math.floor(12*sc)).setOffset(Math.floor(9/sc), Math.floor(24/sc));
       t.refreshBody();
+      treesPlaced.push({ tx, ty });
+    };
+
+    // 12 forest clusters — each is a tight pack of 20-35 trees
+    for (let f = 0; f < 12; f++) {
+      let cx, cy, attempts = 0;
+      do {
+        cx = Phaser.Math.Between(18, CFG.MAP_W-18);
+        cy = Phaser.Math.Between(18, CFG.MAP_H-18);
+        attempts++;
+      } while (attempts < 40 && (Math.abs(cx-stx) < SAFE_R+20 && Math.abs(cy-sty) < SAFE_R+20));
+      const biome = getBiome(cx, cy);
+      const radius = Phaser.Math.Between(5, 9); // 5-9 tile radius cluster
+      const count  = Phaser.Math.Between(22, 35);
+      for (let i = 0; i < count; i++) {
+        const angle = Math.random() * Math.PI * 2;
+        const dist  = Math.sqrt(Math.random()) * radius; // sqrt = uniform density
+        placeTree(Math.round(cx + Math.cos(angle)*dist), Math.round(cy + Math.sin(angle)*dist), biome);
+      }
+    }
+
+    // Scattered fringe trees outside clusters (sparse woodland, not in clusters)
+    for (let i = 0; i < 100; i++) {
+      const tx = Phaser.Math.Between(2, CFG.MAP_W-2), ty = Phaser.Math.Between(2, CFG.MAP_H-2);
+      placeTree(tx, ty, getBiome(tx, ty));
     }
 
     // Rocks — biome-appropriate
@@ -1797,15 +1818,12 @@ class GameScene extends Phaser.Scene {
       this.toxicPools.push(pool);
     }
 
-    // Mountain ranges — impassable formations with guaranteed gaps for navigation
-    // Place ridgelines between biome transitions (ring around center, plus cross-biome ranges)
-    this.mountainTiles = []; // stored for minimap rendering
+    // Mountain ranges — impassable ridgelines with walkable gaps
+    this.mountainTiles = [];
     const mtns = this.mountainTiles;
-    const mtnMinDist = 4; // min tiles between mountains (gap check)
+    const mtnMinDist = 2; // tighter packing for visible ridgeline
     const placeMtn = (tx, ty, key, sc) => {
-      // Don't place near spawn
       if (Math.abs(tx-stx)<SAFE_R+6 && Math.abs(ty-sty)<SAFE_R+6) return;
-      // Don't place too close to other mountains (leave walking gaps)
       for (const m of mtns) {
         if (Math.abs(m.tx-tx) < mtnMinDist && Math.abs(m.ty-ty) < mtnMinDist) return;
       }
@@ -1819,37 +1837,45 @@ class GameScene extends Phaser.Scene {
       mtns.push({ tx, ty });
     };
 
-    // Ring of mountains around the grasslands/center (with regular gaps every ~8 tiles)
+    // Ring of mountains around the grasslands/center — dense ridgeline with 4 walkable gaps
     const ringR = SAFE_R + 18;
-    for (let angle = 0; angle < Math.PI * 2; angle += 0.12) {
-      // Leave a gap every ~0.5 radians for paths through
-      const gapPhase = angle % 0.5;
-      if (gapPhase > 0.3 && gapPhase < 0.5) continue; // gap
-      const tx = Math.round(stx + Math.cos(angle) * (ringR + Math.sin(angle*3)*4));
+    for (let angle = 0; angle < Math.PI * 2; angle += 0.08) {
+      // 4 gaps evenly spaced (N/S/E/W corridors into the outer biomes)
+      const gapPhase = angle % (Math.PI / 2);
+      if (gapPhase < 0.18) continue; // gap ≈ 2 tile opening per direction
+      const tx = Math.round(stx + Math.cos(angle) * (ringR + Math.sin(angle*3)*3));
       const ty = Math.round(sty + Math.sin(angle) * (ringR + Math.cos(angle*5)*3));
       if (tx < 2 || tx > CFG.MAP_W-3 || ty < 2 || ty > CFG.MAP_H-3) continue;
-      const key = Math.random() < 0.4 ? 'mountain2' : 'mountain';
-      const sc = Phaser.Math.FloatBetween(1.2, 2.0);
+      const key = Math.random() < 0.45 ? 'mountain2' : 'mountain';
+      const sc = Phaser.Math.FloatBetween(1.4, 2.2);
       placeMtn(tx, ty, key, sc);
+      // Double-layer: add a second ring row to make it look like a real ridge
+      if (Math.random() < 0.6) {
+        const tx2 = Math.round(stx + Math.cos(angle) * (ringR + 3 + Math.sin(angle*5)*2));
+        const ty2 = Math.round(sty + Math.sin(angle) * (ringR + 3 + Math.cos(angle*3)*2));
+        placeMtn(tx2, ty2, Math.random() < 0.4 ? 'mountain2' : 'mountain', Phaser.Math.FloatBetween(1.2, 1.8));
+      }
     }
 
-    // Scattered mountain clusters in outer biomes (small groups of 3-6)
+    // Large mountain clusters in outer biomes — 8-15 mountains each
     const clusterCenters = [
       { tx: Math.round(stx - CFG.MAP_W*0.3), ty: Math.round(sty - CFG.MAP_H*0.3) }, // tundra
       { tx: Math.round(stx + CFG.MAP_W*0.3), ty: Math.round(sty - CFG.MAP_H*0.25) }, // ruins
       { tx: Math.round(stx - CFG.MAP_W*0.25), ty: Math.round(sty + CFG.MAP_H*0.3) }, // wasteland
-      { tx: Math.round(stx + CFG.MAP_W*0.28), ty: Math.round(sty + CFG.MAP_H*0.28) }, // swamp edge
-      { tx: Math.round(stx - CFG.MAP_W*0.1), ty: Math.round(sty - CFG.MAP_H*0.35) }, // north
-      { tx: Math.round(stx + CFG.MAP_W*0.1), ty: Math.round(sty + CFG.MAP_H*0.35) }, // south
+      { tx: Math.round(stx + CFG.MAP_W*0.28), ty: Math.round(sty + CFG.MAP_H*0.28) }, // swamp
+      { tx: Math.round(stx - CFG.MAP_W*0.1),  ty: Math.round(sty - CFG.MAP_H*0.38) }, // far north
+      { tx: Math.round(stx + CFG.MAP_W*0.1),  ty: Math.round(sty + CFG.MAP_H*0.38) }, // far south
+      { tx: Math.round(stx - CFG.MAP_W*0.38), ty: Math.round(sty + CFG.MAP_H*0.05) }, // far west
+      { tx: Math.round(stx + CFG.MAP_W*0.38), ty: Math.round(sty - CFG.MAP_H*0.05) }, // far east
     ];
     for (const cc of clusterCenters) {
-      const count = Phaser.Math.Between(3, 6);
+      const count = Phaser.Math.Between(8, 15);
       for (let i = 0; i < count; i++) {
-        const tx = cc.tx + Phaser.Math.Between(-5, 5);
-        const ty = cc.ty + Phaser.Math.Between(-5, 5);
+        const tx = cc.tx + Phaser.Math.Between(-8, 8);
+        const ty = cc.ty + Phaser.Math.Between(-8, 8);
         if (tx < 2 || tx > CFG.MAP_W-3 || ty < 2 || ty > CFG.MAP_H-3) continue;
-        const key = Math.random() < 0.35 ? 'mountain2' : 'mountain';
-        const sc = Phaser.Math.FloatBetween(1.0, 2.2);
+        const key = Math.random() < 0.4 ? 'mountain2' : 'mountain';
+        const sc = Phaser.Math.FloatBetween(1.2, 2.5);
         placeMtn(tx, ty, key, sc);
       }
     }
@@ -2464,18 +2490,18 @@ class GameScene extends Phaser.Scene {
     // Dimming backdrop (only visible when controls open)
     push(this.add.graphics().setDepth(94)).fillStyle(0x000000, 0.55).fillRect(0, 0, W, H);
 
-    // P1 controls — left side
+    // P1 controls — left side (margin from edge to avoid browser chrome clipping)
     const p1Lines = getControls(1, p1Ch.id, this.solo);
     const lbg = push(this.add.graphics().setDepth(95));
     lbg.fillStyle(0x000011, 0.88);
-    lbg.fillRoundedRect(4, H/2 - 14 - p1Lines.length*10, 172, p1Lines.length*20 + 36, 8);
+    lbg.fillRoundedRect(20, H/2 - 14 - p1Lines.length*10, 188, p1Lines.length*20 + 36, 8);
     lbg.lineStyle(1, 0x4466aa, 0.7);
-    lbg.strokeRoundedRect(4, H/2 - 14 - p1Lines.length*10, 172, p1Lines.length*20 + 36, 8);
-    push(this.add.text(10, H/2 - 10 - p1Lines.length*10, p1Ch.player + ' — ' + p1Ch.title, {
+    lbg.strokeRoundedRect(20, H/2 - 14 - p1Lines.length*10, 188, p1Lines.length*20 + 36, 8);
+    push(this.add.text(28, H/2 - 10 - p1Lines.length*10, p1Ch.player + ' — ' + p1Ch.title, {
       fontFamily:'monospace', fontSize:'10px', color:'#88aaff', stroke:'#000', strokeThickness:2,
     }).setDepth(96));
     p1Lines.forEach((l, i) => {
-      push(this.add.text(12, H/2 + 8 - p1Lines.length*10 + i*20, l, {
+      push(this.add.text(28, H/2 + 8 - p1Lines.length*10 + i*20, l, {
         fontFamily:'monospace', fontSize:'9px', color:'#ccd8ee', stroke:'#000', strokeThickness:2,
       }).setDepth(96));
     });
@@ -2485,14 +2511,14 @@ class GameScene extends Phaser.Scene {
       const p2Lines = getControls(2, p2Ch.id);
       const rbg = push(this.add.graphics().setDepth(95));
       rbg.fillStyle(0x110008, 0.88);
-      rbg.fillRoundedRect(W-176, H/2 - 14 - p2Lines.length*10, 172, p2Lines.length*20 + 36, 8);
+      rbg.fillRoundedRect(W-208, H/2 - 14 - p2Lines.length*10, 188, p2Lines.length*20 + 36, 8);
       rbg.lineStyle(1, 0xaa6633, 0.7);
-      rbg.strokeRoundedRect(W-176, H/2 - 14 - p2Lines.length*10, 172, p2Lines.length*20 + 36, 8);
-      push(this.add.text(W-170, H/2 - 10 - p2Lines.length*10, p2Ch.player + ' — ' + p2Ch.title, {
+      rbg.strokeRoundedRect(W-208, H/2 - 14 - p2Lines.length*10, 188, p2Lines.length*20 + 36, 8);
+      push(this.add.text(W-200, H/2 - 10 - p2Lines.length*10, p2Ch.player + ' — ' + p2Ch.title, {
         fontFamily:'monospace', fontSize:'10px', color:'#ffbb77', stroke:'#000', strokeThickness:2,
       }).setDepth(96));
       p2Lines.forEach((l, i) => {
-        push(this.add.text(W-170, H/2 + 8 - p2Lines.length*10 + i*20, l, {
+        push(this.add.text(W-200, H/2 + 8 - p2Lines.length*10 + i*20, l, {
           fontFamily:'monospace', fontSize:'9px', color:'#eeddcc', stroke:'#000', strokeThickness:2,
         }).setDepth(96));
       });
