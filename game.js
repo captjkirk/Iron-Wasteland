@@ -165,18 +165,25 @@ const Music = {
     if (!this.playing || !this.ctx) return;
     if (this.mode === 'night') { this._nightLoop(this.ctx.currentTime); return; }
     const b = 60/125; // beats at 125 bpm
-    const o = startAt - this.ctx.currentTime;
+    const len = b*16;
+    const now = this.ctx.currentTime;
+    // If browser throttled us and we've fallen behind, snap forward to stay in sync
+    if (startAt + len < now) {
+      const skips = Math.ceil((now - startAt) / len);
+      startAt += skips * len;
+    }
+    const o = startAt - now;
     // Melody (A minor pentatonic — adventure feel)
     [[220,0,b*.7],[261.63,b,b*.7],[329.63,b*2,b*.35],[293.66,b*2.5,b*.35],
      [261.63,b*3,b*.7],[220,b*4,b*.7],[196,b*5,b*.35],[220,b*5.5,b*.35],
      [261.63,b*6,b*1.4],[329.63,b*8,b*.7],[349.23,b*9,b*.7],
      [329.63,b*10,b*.35],[293.66,b*10.5,b*.35],[261.63,b*11,b*.7],
      [220,b*12,b*1.4],[196,b*14,b*.7],[220,b*15,b*.7]
-    ].forEach(([f,t,d]) => this._note(f, o+t, d, 'square', 0.55));
+    ].forEach(([f,t,d]) => { if (o+t > -0.05) this._note(f, o+t, d, 'square', 0.55); });
     // Bass
     [[55,0,b*1.8],[55,b*4,b*.8],[49,b*6,b*1.8],[49,b*8,b*.8],
      [43.65,b*10,b*1.8],[49,b*14,b*1.8]
-    ].forEach(([f,t,d]) => this._note(f, o+t, d, 'sawtooth', 0.7));
+    ].forEach(([f,t,d]) => { if (o+t > -0.05) this._note(f, o+t, d, 'sawtooth', 0.7); });
     // High arpeggios
     [[440,0,b*.25],[523.25,b*.5,b*.25],[659.25,b,b*.25],[523.25,b*1.5,b*.25],
      [440,b*2,b*.25],[523.25,b*2.5,b*.25],[659.25,b*3,b*.25],[523.25,b*3.5,b*.25],
@@ -186,43 +193,54 @@ const Music = {
      [523.25,b*10,b*.25],[622.25,b*10.5,b*.25],[698.46,b*11,b*.25],[622.25,b*11.5,b*.25],
      [392,b*12,b*.25],[493.88,b*12.5,b*.25],[587.33,b*13,b*.25],[493.88,b*13.5,b*.25],
      [440,b*14,b*.25],[523.25,b*14.5,b*.25],[587.33,b*15,b*.25],[523.25,b*15.5,b*.25]
-    ].forEach(([f,t,d]) => this._note(f, o+t, d, 'triangle', 0.25));
+    ].forEach(([f,t,d]) => { if (o+t > -0.05) this._note(f, o+t, d, 'triangle', 0.25); });
 
-    const len = b*16;
-    setTimeout(() => this._dayLoop(startAt+len), (len-0.5)*1000);
+    // Schedule next loop using audio clock so browser throttling can't cause drift
+    const nextStart = startAt + len;
+    const delay = Math.max(50, (nextStart - 0.5 - this.ctx.currentTime) * 1000);
+    setTimeout(() => this._dayLoop(nextStart), delay);
   },
   _nightLoop(startAt) {
     if (!this.playing || !this.ctx) return;
     if (this.mode === 'day') { this._dayLoop(this.ctx.currentTime); return; }
     const b = 60/80; // slower tempo — 80 bpm, more menacing
-    const o = startAt - this.ctx.currentTime;
+    const len = b*16;
+    const now = this.ctx.currentTime;
+    // Snap forward if browser throttled us
+    if (startAt + len < now) {
+      const skips = Math.ceil((now - startAt) / len);
+      startAt += skips * len;
+    }
+    const o = startAt - now;
     // Low eerie melody — chromatic, dissonant
     [[110,0,b*1.5],[116.54,b*2,b*1.5],[103.83,b*4,b*1.5],[110,b*6,b*.7],
      [92.5,b*7,b*2],[87.31,b*9,b*1],[98,b*10,b*.5],[92.5,b*10.5,b*.5],
      [87.31,b*11,b*2],[82.41,b*13,b*1.5],[87.31,b*15,b*.7],
-    ].forEach(([f,t,d]) => this._note(f, o+t, d, 'sawtooth', 0.45));
+    ].forEach(([f,t,d]) => { if (o+t > -0.05) this._note(f, o+t, d, 'sawtooth', 0.45); });
     // Rumbling bass drone
     [[36.71,0,b*4],[34.65,b*4,b*4],[32.7,b*8,b*4],[36.71,b*12,b*4],
-    ].forEach(([f,t,d]) => this._note(f, o+t, d, 'sawtooth', 0.55));
+    ].forEach(([f,t,d]) => { if (o+t > -0.05) this._note(f, o+t, d, 'sawtooth', 0.55); });
     // Unsettling high stabs — sparse, sudden
-    [[659.25,b*1,b*.12],[0,0,0],[698.46,b*5,b*.12],
+    [[659.25,b*1,b*.12],[698.46,b*5,b*.12],
      [622.25,b*8.5,b*.15],[739.99,b*12,b*.12],[659.25,b*14.5,b*.1],
-    ].filter(([f])=>f>0).forEach(([f,t,d]) => this._note(f, o+t, d, 'square', 0.2));
+    ].forEach(([f,t,d]) => { if (o+t > -0.05) this._note(f, o+t, d, 'square', 0.2); });
     // Creepy whisper arpeggios — tritone intervals
     [[220,b*0,b*.3],[311.13,b*.5,b*.3],[220,b*1,b*.3],
      [207.65,b*4,b*.3],[293.66,b*4.5,b*.3],[207.65,b*5,b*.3],
      [196,b*8,b*.3],[277.18,b*8.5,b*.3],[196,b*9,b*.3],
      [207.65,b*12,b*.3],[293.66,b*12.5,b*.3],[207.65,b*13,b*.3],
-    ].forEach(([f,t,d]) => this._note(f, o+t, d, 'triangle', 0.18));
+    ].forEach(([f,t,d]) => { if (o+t > -0.05) this._note(f, o+t, d, 'triangle', 0.18); });
     // Heartbeat-like pulse
     [[55,b*3,b*.08],[55,b*3.3,b*.08],
      [55,b*7,b*.08],[55,b*7.3,b*.08],
      [55,b*11,b*.08],[55,b*11.3,b*.08],
      [55,b*15,b*.08],[55,b*15.3,b*.08],
-    ].forEach(([f,t,d]) => this._note(f, o+t, d, 'square', 0.35));
+    ].forEach(([f,t,d]) => { if (o+t > -0.05) this._note(f, o+t, d, 'square', 0.35); });
 
-    const len = b*16;
-    setTimeout(() => this._nightLoop(startAt+len), (len-0.5)*1000);
+    // Schedule next loop using audio clock so browser throttling can't cause drift
+    const nextStart = startAt + len;
+    const delay = Math.max(50, (nextStart - 0.5 - this.ctx.currentTime) * 1000);
+    setTimeout(() => this._nightLoop(nextStart), delay);
   },
 };
 
@@ -2879,10 +2897,12 @@ class GameScene extends Phaser.Scene {
     }
     // Store precise aim angle for attacks
     player.aimAngle = angle;
-    // Update sprite
+    // Update sprite — preserve walk cycle step frame
     const id = player.charData.id;
     const dirSuffix = player.dir === 'side' ? '' : ('_' + player.dir);
-    player.spr.setTexture(id + dirSuffix);
+    const moving = player.spr.body.velocity.x !== 0 || player.spr.body.velocity.y !== 0;
+    const step = (moving && player.walkTimer >= 10) ? '_step' : '';
+    player.spr.setTexture(id + dirSuffix + step);
   }
 
   getAimAngle(player) {
