@@ -5022,6 +5022,43 @@ class GameScene extends Phaser.Scene {
     }
   }
 
+  // ── Structure damage ─────────────────────────────────────────
+  // Subtract dmg from a player-built wall/gate. Updates tint to reflect health.
+  // Destroys the wall with a fade when hp reaches 0.
+  damageStructure(wall, dmg) {
+    if (!wall.active) return;
+    wall.hp = Math.max(0, (wall.hp || 200) - dmg);
+    const pct = wall.hp / (wall.maxHp || 200);
+    if (wall.hp <= 0) {
+      this.builtWalls = this.builtWalls.filter(w => w !== wall);
+      this.tweens.add({ targets: wall, alpha: 0, duration: 200, onComplete: () => { if (wall.active) wall.destroy(); } });
+      this.hint('Structure destroyed!', 1500);
+    } else if (pct < 0.25) {
+      wall.setTint(0xff2200); // nearly gone — red
+    } else if (pct < 0.5) {
+      wall.setTint(0xff8800); // damaged — orange
+    } else {
+      wall.clearTint();
+    }
+  }
+
+  // Find the nearest player-built wall that sits between (ex,ey) and (px,py)
+  // and is within 80px of the enemy. Returns the wall, or null.
+  _findWallOnPath(ex, ey, px, py) {
+    if (!this.builtWalls || this.builtWalls.length === 0) return null;
+    const playerAngDeg = Phaser.Math.RadToDeg(Phaser.Math.Angle.Between(ex, ey, px, py));
+    let best = null, bestDist = Infinity;
+    for (const w of this.builtWalls) {
+      if (!w.active) continue;
+      const wd = Phaser.Math.Distance.Between(ex, ey, w.x, w.y);
+      if (wd > 80) continue;
+      const wallAngDeg = Phaser.Math.RadToDeg(Phaser.Math.Angle.Between(ex, ey, w.x, w.y));
+      const diff = Math.abs(Phaser.Math.Angle.ShortestBetween(wallAngDeg, playerAngDeg));
+      if (diff < 70 && wd < bestDist) { best = w; bestDist = wd; }
+    }
+    return best;
+  }
+
   // ── Enemy LOS helpers ────────────────────────────────────────
   // Returns true if the straight line from (x1,y1) to (x2,y2) is NOT blocked
   // by any mountain tile or player-built wall.  Fast: uses pre-built tile Set.
@@ -5102,14 +5139,50 @@ class GameScene extends Phaser.Scene {
           e.lastKnownX = nearest.spr.x;
           e.lastKnownY = nearest.spr.y;
         }
-        // Chase toward player if visible, or toward last known position if blocked
-        const chaseX = e.lastKnownX !== undefined ? e.lastKnownX : nearest.spr.x;
-        const chaseY = e.lastKnownY !== undefined ? e.lastKnownY : nearest.spr.y;
 
-        // Steer around obstacles instead of running straight into them
-        const vel = this._steerToward(e, chaseX, chaseY, spd);
-        e.spr.setVelocity(vel.x, vel.y);
-        e.spr.setFlipX(chaseX < e.spr.x);
+        // When LOS is blocked, check if a player-built wall is the obstacle — attack it if so
+        let attackingWall = false;
+        if (!canSee && this.builtWalls && this.builtWalls.length > 0) {
+          const blockingWall = this._findWallOnPath(e.spr.x, e.spr.y, nearest.spr.x, nearest.spr.y);
+          if (blockingWall) {
+            const wallDist = Phaser.Math.Distance.Between(e.spr.x, e.spr.y, blockingWall.x, blockingWall.y);
+            if (wallDist < 58) {
+              // Count walls clustered near the blocker — 3+ nearby = enclosed space → always attack
+              const clusterCount = this.builtWalls.filter(w => w.active &&
+                Phaser.Math.Distance.Between(w.x, w.y, blockingWall.x, blockingWall.y) < 130).length;
+              if (clusterCount >= 3) {
+                attackingWall = true; // enclosure — break through
+              } else {
+                // Single stray wall: 35% chance, re-evaluated every 3 seconds
+                e._wallDecideTimer = (e._wallDecideTimer || 0) - delta;
+                if (e._wallDecideTimer <= 0) {
+                  e._wallDecide = Math.random() < 0.35;
+                  e._wallDecideTimer = 3000;
+                }
+                attackingWall = !!e._wallDecide;
+              }
+            }
+            if (attackingWall) {
+              e.wallAttackTimer = (e.wallAttackTimer || 0) - delta;
+              if (e.wallAttackTimer <= 0) {
+                this.damageStructure(blockingWall, e.dmg * 0.7);
+                e.wallAttackTimer = 1400;
+              }
+              e.spr.setVelocity(0, 0);
+              e.spr.setFlipX(blockingWall.x < e.spr.x);
+            }
+          }
+        }
+
+        if (!attackingWall) {
+          // Chase toward player if visible, or toward last known position if blocked
+          const chaseX = e.lastKnownX !== undefined ? e.lastKnownX : nearest.spr.x;
+          const chaseY = e.lastKnownY !== undefined ? e.lastKnownY : nearest.spr.y;
+          // Steer around obstacles instead of running straight into them
+          const vel = this._steerToward(e, chaseX, chaseY, spd);
+          e.spr.setVelocity(vel.x, vel.y);
+          e.spr.setFlipX(chaseX < e.spr.x);
+        }
 
         if (nearDist < e.attackRange) {
           e.attackTimer -= delta;
@@ -5331,6 +5404,7 @@ class GameScene extends Phaser.Scene {
       const w = this.obstacles.create(x, y, 'wall').setDepth(5).setImmovable(true);
       w.setAngle(this.buildRotation * 90);
       w.refreshBody();
+      w.hp = 200; w.maxHp = 200; // destructible
       this.builtWalls.push(w);
       if (this.hudCam) this.hudCam.ignore(w);
     } else if (this.buildType === 'gate') {
@@ -5339,6 +5413,7 @@ class GameScene extends Phaser.Scene {
       gate.body.setImmovable(true);
       gate.body.allowGravity = false;
       gate.isGate = true; gate.gateOpen = false;
+      gate.hp = 200; gate.maxHp = 200; // destructible
       if (this.hudCam) this.hudCam.ignore(gate);
       // Players can open/close by walking near
       this.builtWalls.push(gate);
