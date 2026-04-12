@@ -1206,6 +1206,27 @@ function drawArchitectBackStep(g) {
   g.generateTexture('architect_back_step', 22, 30);
 }
 
+// ── SETTINGS HELPERS ─────────────────────────────────────────
+function loadSettings() {
+  try { return JSON.parse(localStorage.getItem('iw_settings') || '{}'); } catch(e) { return {}; }
+}
+function saveSettings(obj) {
+  try {
+    const cur = loadSettings();
+    localStorage.setItem('iw_settings', JSON.stringify(Object.assign(cur, obj)));
+  } catch(e) {}
+}
+function isTouchDevice() {
+  return ('ontouchstart' in window) || (navigator.maxTouchPoints > 0);
+}
+// Returns 'touch' or 'keyboard' based on saved pref (or device auto-detect)
+function activeInputMode() {
+  const s = loadSettings();
+  if (s.inputMode === 'touch')    return 'touch';
+  if (s.inputMode === 'keyboard') return 'keyboard';
+  return isTouchDevice() ? 'touch' : 'keyboard';  // auto
+}
+
 // ── SCENE: BOOT ───────────────────────────────────────────────
 class BootScene extends Phaser.Scene {
   constructor() { super('Boot'); }
@@ -1305,6 +1326,17 @@ class ModeSelectScene extends Phaser.Scene {
       fontFamily:'monospace', fontSize:'12px', color:'#334433',
     }).setOrigin(0.5);
 
+    // Settings button — bottom left
+    const settingsTxt = this.add.text(16, H - 16, '\u2699 Settings', {
+      fontFamily:'monospace', fontSize:'13px', color:'#445544',
+    }).setOrigin(0, 1).setInteractive({ useHandCursor: true });
+    settingsTxt.on('pointerover', () => settingsTxt.setColor('#88cc88'));
+    settingsTxt.on('pointerout',  () => settingsTxt.setColor('#445544'));
+    settingsTxt.on('pointerdown', () => {
+      this.cameras.main.fadeOut(200, 0, 0, 0);
+      this.time.delayedCall(200, () => this.scene.start('Settings'));
+    });
+
     const exitTxt = this.add.text(W - 16, H - 16, '[ EXIT GAME ]', {
       fontFamily:'monospace', fontSize:'12px', color:'#554444',
     }).setOrigin(1, 1).setInteractive({ useHandCursor: true });
@@ -1376,6 +1408,136 @@ class ModeSelectScene extends Phaser.Scene {
     Music.start();
     this.cameras.main.fadeOut(300, 0, 0, 0);
     this.time.delayedCall(300, () => this.scene.start('CharSelect'));
+  }
+}
+
+// ── SCENE: SETTINGS ──────────────────────────────────────────
+class SettingsScene extends Phaser.Scene {
+  constructor() { super('Settings'); }
+
+  create() {
+    const { W, H } = CFG;
+    this.cameras.main.fadeIn(300, 0, 0, 0);
+
+    const bg = this.add.graphics();
+    bg.fillGradientStyle(0x0a0a14, 0x0a0a14, 0x080810, 0x080810, 1);
+    bg.fillRect(0, 0, W, H);
+
+    this.add.text(W/2, 44, 'SETTINGS', {
+      fontFamily:'monospace', fontSize:'36px', color:'#cc8833',
+      stroke:'#7a4a1a', strokeThickness:4,
+    }).setOrigin(0.5);
+
+    // ── Input mode section ──────────────────────────────────
+    this.add.text(W/2, 115, 'INPUT MODE', {
+      fontFamily:'monospace', fontSize:'13px', color:'#556655', letterSpacing: 3,
+    }).setOrigin(0.5);
+
+    this.add.text(W/2, 140, 'Choose how you control the game. "Auto" detects your device automatically.', {
+      fontFamily:'monospace', fontSize:'11px', color:'#445544',
+    }).setOrigin(0.5);
+
+    const inputOpts = [
+      { key:'auto',     label:'AUTO',     sub: isTouchDevice() ? '(will use Touch on this device)' : '(will use Keyboard on this device)' },
+      { key:'touch',    label:'TOUCH',    sub: 'Virtual joystick + on-screen buttons' },
+      { key:'keyboard', label:'KEYBOARD', sub: 'WASD + Mouse (or arrow keys for P2)' },
+    ];
+
+    const curMode = loadSettings().inputMode || 'auto';
+    this._inputSel = curMode;
+    this._inputBoxes = inputOpts.map((o, i) => {
+      const x = W/2 + (i - 1) * 290;
+      const y = 240;
+      const box = this.add.graphics();
+      const lbl = this.add.text(x, y, o.label, {
+        fontFamily:'monospace', fontSize:'22px', color:'#ffffff', stroke:'#000', strokeThickness:2,
+      }).setOrigin(0.5);
+      this.add.text(x, y + 30, o.sub, {
+        fontFamily:'monospace', fontSize:'10px', color:'#667755', wordWrap:{width:240},
+      }).setOrigin(0.5, 0);
+      const zone = this.add.zone(x, y + 20, 260, 80).setInteractive({ useHandCursor: true });
+      zone.on('pointerover', () => this.setInput(o.key));
+      zone.on('pointerdown', () => { this.setInput(o.key); saveSettings({ inputMode: o.key }); });
+      return { box, lbl, x, y, key: o.key };
+    });
+
+    // Current device note
+    const deviceNote = isTouchDevice()
+      ? '\uD83D\uDCF1  iPad / touch device detected'
+      : '\uD83D\uDCBB  Keyboard device detected';
+    this.add.text(W/2, 340, deviceNote, {
+      fontFamily:'monospace', fontSize:'12px', color:'#4a6a4a',
+    }).setOrigin(0.5);
+
+    // ── Touch controls preview ───────────────────────────────
+    this.add.text(W/2, 390, 'TOUCH CONTROLS LAYOUT', {
+      fontFamily:'monospace', fontSize:'11px', color:'#334433', letterSpacing: 2,
+    }).setOrigin(0.5);
+
+    // Mini preview diagram
+    const prev = this.add.graphics();
+    const px = W/2 - 220, py = 410, pw = 440, ph = 160;
+    prev.lineStyle(1, 0x223322, 0.6); prev.strokeRoundedRect(px, py, pw, ph, 6);
+    prev.fillStyle(0x0d160d, 0.7); prev.fillRoundedRect(px, py, pw, ph, 6);
+    // Joystick placeholder
+    prev.lineStyle(1, 0x448844, 0.5); prev.strokeCircle(px + 75, py + ph/2, 45);
+    prev.fillStyle(0x448844, 0.3); prev.fillCircle(px + 75, py + ph/2, 25);
+    this.add.text(px + 75, py + ph/2, 'MOVE', { fontFamily:'monospace', fontSize:'9px', color:'#66aa66' }).setOrigin(0.5);
+    // Buttons placeholder
+    const btnDefs = [
+      { lx: pw - 65, ly: ph/2 + 12, r: 34, col: 0xff6644, label: 'ATK' },
+      { lx: pw - 140, ly: ph/2 + 20, r: 24, col: 0x44cc66, label: 'USE' },
+      { lx: pw - 65, ly: ph/2 - 48, r: 24, col: 0x6699ff, label: 'ALT' },
+      { lx: pw - 148, ly: ph/2 - 48, r: 24, col: 0xccaa33, label: 'BLD' },
+    ];
+    btnDefs.forEach(b => {
+      prev.fillStyle(b.col, 0.25); prev.fillCircle(px + b.lx, py + b.ly, b.r);
+      prev.lineStyle(1, b.col, 0.6); prev.strokeCircle(px + b.lx, py + b.ly, b.r);
+      this.add.text(px + b.lx, py + b.ly, b.label, { fontFamily:'monospace', fontSize:'8px', color:'#ffffff' }).setOrigin(0.5);
+    });
+    this.add.text(px + pw - 65, py + 14, 'MENU', { fontFamily:'monospace', fontSize:'8px', color:'#888888' }).setOrigin(0.5);
+    prev.fillStyle(0x888888, 0.2); prev.fillCircle(px + pw - 65, py + 14, 16);
+    prev.lineStyle(1, 0x888888, 0.4); prev.strokeCircle(px + pw - 65, py + 14, 16);
+
+    this.add.text(W/2, py + ph + 14, 'Joystick appears wherever you touch on the left side — no need to aim precisely!', {
+      fontFamily:'monospace', fontSize:'10px', color:'#334433',
+    }).setOrigin(0.5);
+
+    // ── Back button ──────────────────────────────────────────
+    const backBtn = this.add.text(W/2, H - 44, '[ BACK TO MAIN MENU ]', {
+      fontFamily:'monospace', fontSize:'18px', color:'#aaffaa',
+    }).setOrigin(0.5).setInteractive({ useHandCursor: true });
+    backBtn.on('pointerover', () => backBtn.setColor('#ffffff'));
+    backBtn.on('pointerout',  () => backBtn.setColor('#aaffaa'));
+    backBtn.on('pointerdown', () => {
+      this.cameras.main.fadeOut(200, 0, 0, 0);
+      this.time.delayedCall(200, () => this.scene.start('ModeSelect'));
+    });
+    this.tweens.add({ targets: backBtn, alpha: 0.4, duration: 700, yoyo: true, repeat: -1 });
+
+    const K = Phaser.Input.Keyboard.KeyCodes;
+    this.input.keyboard.addKey(K.ESC).on('down', () => {
+      this.cameras.main.fadeOut(200, 0, 0, 0);
+      this.time.delayedCall(200, () => this.scene.start('ModeSelect'));
+    });
+
+    this.setInput(curMode);
+  }
+
+  drawSettingsBox(g, x, y, selected) {
+    g.clear();
+    g.fillStyle(selected ? 0x142014 : 0x0d0d14, 0.95);
+    g.fillRoundedRect(x - 130, y - 46, 260, 90, 8);
+    g.lineStyle(2, selected ? 0x88cc44 : 0x222233);
+    g.strokeRoundedRect(x - 130, y - 46, 260, 90, 8);
+  }
+
+  setInput(key) {
+    this._inputSel = key;
+    this._inputBoxes.forEach(b => {
+      this.drawSettingsBox(b.box, b.x, b.y, b.key === key);
+      b.lbl.setColor(b.key === key ? '#aaffaa' : '#888899');
+    });
   }
 }
 
@@ -1669,9 +1831,10 @@ class GameScene extends Phaser.Scene {
       this.atkKeys.p2build.on('down', () => { if (!this.barrackOpen && !this.isOver && !this.p2.isDowned && !this.p2.isSleeping) this.toggleBuildMode(this.p2); });
     }
 
-    // Mouse controls for 1P mode
+    // Mouse controls for 1P keyboard mode (touch mode uses button overlay instead)
     if (this.solo) {
       this.input.on('pointerdown', (pointer) => {
+        if (activeInputMode() === 'touch') return; // touch mode handles its own attack
         if (this.barrackOpen || this.isOver || this.p1.isDowned || this.p1.isSleeping) return;
         if (pointer.leftButtonDown()) {
           if (this.buildMode && this.buildOwner === this.p1) this.placeBuild();
@@ -1681,8 +1844,8 @@ class GameScene extends Phaser.Scene {
           this.doAlt(this.p1);
         }
       });
-      // Disable context menu on right-click
-      this.input.mouse.disableContextMenu();
+      // Disable context menu on right-click (no-op on iOS but safe to call)
+      if (this.input.mouse) this.input.mouse.disableContextMenu();
     }
 
     // Camera
@@ -1708,6 +1871,11 @@ class GameScene extends Phaser.Scene {
     // Spawn enemies after camera setup
     this.spawnEnemies(worldW, worldH, cx, cy);
     this.placeRaiderCamp(worldW, worldH);
+
+    // Touch controls (1P only — 2P touch is out of scope)
+    if (this.solo && activeInputMode() === 'touch') {
+      this.initTouchControls();
+    }
 
     // Opening hints (delayed to appear after the startup controls popup fades)
     const modeNote = this.hardcore ? '\u2620 HARDCORE \u2014 death is permanent!' : '\u2665 SURVIVAL mode';
@@ -2911,9 +3079,12 @@ class GameScene extends Phaser.Scene {
 
     // Movement — skip if downed or sleeping
     if (!this.p1.isDowned && !this.p1.isSleeping) {
-      this.movePlayer(this.p1, this.wasd.left, this.wasd.right, this.wasd.up, this.wasd.down);
-      // In 1P mode, facing is determined by mouse position
-      if (this.solo) this.aimAtMouse(this.p1);
+      if (this._touchActive) {
+        this.applyTouchInput();  // touch: joystick drives movement + facing
+      } else {
+        this.movePlayer(this.p1, this.wasd.left, this.wasd.right, this.wasd.up, this.wasd.down);
+        if (this.solo) this.aimAtMouse(this.p1); // 1P: mouse aims
+      }
     }
     else this.p1.spr.setVelocity(0,0);
 
@@ -2952,6 +3123,204 @@ class GameScene extends Phaser.Scene {
     this.updateFog();
     this.updateMinimap();
     this.redrawHUD();
+    if (this._touchActive) this._drawTouchHUD();
+  }
+
+  // ── TOUCH CONTROLS ────────────────────────────────────────────
+  initTouchControls() {
+    const { W, H } = CFG;
+    this._touchActive = true;
+
+    // Support up to 4 simultaneous touches
+    this.input.addPointer(4);
+
+    // Joystick state — dynamic base: appears where finger lands
+    this._joy = {
+      active: false, pointerId: -1,
+      baseX: 0, baseY: 0,
+      knobX: 0, knobY: 0,
+      radius: 72,
+      vec: { x: 0, y: 0 },
+    };
+
+    // Buttons (HUD-space coordinates, radius for hit detection)
+    // Layout: ATK bottom-right, ALT above ATK, USE left of ATK, BLD left of ALT, MENU top-right
+    this._tcBtns = {
+      attack:   { hx: W - 100, hy: H - 100, r: 52, down: false, pid: -1, col: 0xff6644, label: '\u2694 ATK' },
+      alt:      { hx: W - 185, hy: H - 195, r: 38, down: false, pid: -1, col: 0x6699ff, label: '\u2605 ALT' },
+      interact: { hx: W - 195, hy: H - 95,  r: 34, down: false, pid: -1, col: 0x44cc66, label: 'E USE' },
+      build:    { hx: W - 282, hy: H - 195, r: 34, down: false, pid: -1, col: 0xccaa33, label: '\u25a0 BLD' },
+      menu:     { hx: W - 32,  hy: 32,      r: 22, down: false, pid: -1, col: 0x888888, label: '\u2630' },
+    };
+
+    // Graphics layer on HUD (single object, redrawn each frame)
+    this._tcGfx = this.add.graphics().setDepth(150);
+    this._h(this._tcGfx);
+
+    // Text labels for buttons (created once, positioned at button centers)
+    this._tcLabels = {};
+    for (const [name, btn] of Object.entries(this._tcBtns)) {
+      const t = this.add.text(btn.hx, btn.hy, btn.label, {
+        fontFamily: 'monospace', fontSize: name === 'attack' ? '11px' : '9px',
+        color: '#ffffff', stroke: '#000', strokeThickness: 2,
+      }).setOrigin(0.5).setDepth(151);
+      this._h(t);
+      this._tcLabels[name] = t;
+    }
+
+    // Pointer event handlers
+    this.input.on('pointerdown', this._onTouchDown, this);
+    this.input.on('pointermove', this._onTouchMove, this);
+    this.input.on('pointerup',   this._onTouchUp,   this);
+    this.input.on('pointerupoutside', this._onTouchUp, this);
+  }
+
+  _onTouchDown(pointer) {
+    if (!this._touchActive) return;
+    const { W, H } = CFG;
+    const px = pointer.x, py = pointer.y;
+
+    // Left 45% of screen and bottom 55% → joystick
+    if (px < W * 0.45 && py > H * 0.35 && !this._joy.active) {
+      this._joy.active = true;
+      this._joy.pointerId = pointer.id;
+      this._joy.baseX = px;
+      this._joy.baseY = py;
+      this._joy.knobX = px;
+      this._joy.knobY = py;
+      this._joy.vec = { x: 0, y: 0 };
+      return;
+    }
+
+    // Check action buttons
+    for (const [name, btn] of Object.entries(this._tcBtns)) {
+      if (btn.down) continue;
+      const dx = px - btn.hx, dy = py - btn.hy;
+      if (dx*dx + dy*dy <= btn.r * btn.r) {
+        btn.down = true;
+        btn.pid = pointer.id;
+        this._onBtnPress(name);
+        return;
+      }
+    }
+  }
+
+  _onTouchMove(pointer) {
+    if (!this._touchActive || !this._joy.active) return;
+    if (pointer.id !== this._joy.pointerId) return;
+    const dx = pointer.x - this._joy.baseX;
+    const dy = pointer.y - this._joy.baseY;
+    const dist = Math.sqrt(dx*dx + dy*dy);
+    const r = this._joy.radius;
+    if (dist > r) {
+      this._joy.knobX = this._joy.baseX + (dx/dist)*r;
+      this._joy.knobY = this._joy.baseY + (dy/dist)*r;
+    } else {
+      this._joy.knobX = pointer.x;
+      this._joy.knobY = pointer.y;
+    }
+    const clamped = Math.min(dist, r);
+    this._joy.vec.x = (dx/Math.max(dist,1)) * (clamped/r);
+    this._joy.vec.y = (dy/Math.max(dist,1)) * (clamped/r);
+  }
+
+  _onTouchUp(pointer) {
+    if (!this._touchActive) return;
+    if (this._joy.active && pointer.id === this._joy.pointerId) {
+      this._joy.active = false;
+      this._joy.pointerId = -1;
+      this._joy.vec = { x: 0, y: 0 };
+      if (this.p1) this.p1.spr.setVelocity(0, 0);
+    }
+    for (const btn of Object.values(this._tcBtns)) {
+      if (btn.pid === pointer.id) { btn.down = false; btn.pid = -1; }
+    }
+  }
+
+  _onBtnPress(name) {
+    if (this.isOver || !this.p1) return;
+    if (name === 'attack') {
+      if (this.barrackOpen || this.p1.isDowned || this.p1.isSleeping) return;
+      if (this.buildMode && this.buildOwner === this.p1) this.placeBuild();
+      else this.doAttack(this.p1);
+    } else if (name === 'alt') {
+      if (!this.p1.isDowned && !this.p1.isSleeping) this.doAlt(this.p1);
+    } else if (name === 'interact') {
+      if (!this.barrackOpen) this.tryInteract(this.p1);
+    } else if (name === 'build') {
+      if (!this.p1.isDowned && !this.p1.isSleeping) this.toggleBuildMode(this.p1);
+    } else if (name === 'menu') {
+      this.toggleControls();
+    }
+  }
+
+  applyTouchInput() {
+    const p = this.p1;
+    if (!p || p.isDowned || p.isSleeping) return;
+    const jv = this._joy.vec;
+    const spd = p.charData.speed;
+    const vx = jv.x * spd, vy = jv.y * spd;
+    p.spr.setVelocity(vx, vy);
+
+    const moving = Math.abs(vx) > 8 || Math.abs(vy) > 8;
+    const id = p.charData.id;
+    if (moving) {
+      if (Math.abs(vy) > Math.abs(vx)) {
+        p.dir = vy > 0 ? 'front' : 'back';
+      } else {
+        p.dir = 'side';
+      }
+      p.walkTimer = (p.walkTimer + 1) % 20;
+      const step = p.walkTimer < 10 ? '' : '_step';
+      const dirSuffix = p.dir === 'side' ? '' : ('_' + p.dir);
+      p.spr.setTexture(id + dirSuffix + step);
+      if (p.dir === 'side') p.spr.setFlipX(vx < 0);
+      else p.spr.setFlipX(false);
+      // Store aim angle so attacks fire in movement direction
+      p.aimAngle = Math.atan2(vy, vx);
+    } else {
+      p.walkTimer = 0;
+      const dirSuffix = p.dir === 'side' ? '' : ('_' + p.dir);
+      p.spr.setTexture(id + dirSuffix);
+      // Keep last aimAngle so attacks still fire in last-moved direction
+    }
+  }
+
+  _drawTouchHUD() {
+    const gfx = this._tcGfx;
+    if (!gfx || !gfx.active) return;
+    gfx.clear();
+
+    // Joystick
+    const joy = this._joy;
+    if (joy.active) {
+      // Base ring
+      gfx.lineStyle(2, 0xffffff, 0.35);
+      gfx.strokeCircle(joy.baseX, joy.baseY, joy.radius);
+      gfx.fillStyle(0xffffff, 0.07);
+      gfx.fillCircle(joy.baseX, joy.baseY, joy.radius);
+      // Knob
+      gfx.fillStyle(0xffffff, 0.55);
+      gfx.fillCircle(joy.knobX, joy.knobY, 30);
+      gfx.lineStyle(2, 0xffffff, 0.7);
+      gfx.strokeCircle(joy.knobX, joy.knobY, 30);
+    } else {
+      // Hint ring — very faint, shows where joystick zone is
+      const { W, H } = CFG;
+      gfx.lineStyle(1, 0xffffff, 0.1);
+      gfx.strokeCircle(W * 0.12, H * 0.82, 55);
+      gfx.fillStyle(0xffffff, 0.03);
+      gfx.fillCircle(W * 0.12, H * 0.82, 55);
+    }
+
+    // Action buttons
+    for (const [name, btn] of Object.entries(this._tcBtns)) {
+      const alpha = btn.down ? 0.75 : 0.4;
+      gfx.fillStyle(btn.col, alpha * 0.38);
+      gfx.fillCircle(btn.hx, btn.hy, btn.r);
+      gfx.lineStyle(2, btn.col, alpha);
+      gfx.strokeCircle(btn.hx, btn.hy, btn.r);
+    }
   }
 
   applyTundraSlowdown(player) {
@@ -4222,5 +4591,5 @@ new Phaser.Game({
   pixelArt: true,
   physics: { default:'arcade', arcade:{ gravity:{y:0}, debug:false } },
   scale: { mode:Phaser.Scale.FIT, autoCenter:Phaser.Scale.CENTER_BOTH },
-  scene: [BootScene, ModeSelectScene, CharSelectScene, GameScene, GameOverScene],
+  scene: [BootScene, ModeSelectScene, SettingsScene, CharSelectScene, GameScene, GameOverScene],
 });
