@@ -8,35 +8,46 @@
   <meta name="mobile-web-app-capable" content="yes">
   <title>Iron Wasteland</title>
   <style>
-    html {
-      height: 100%;
-      height: -webkit-fill-available;
-    }
-    * { margin: 0; padding: 0; box-sizing: border-box; }
-    body {
-      background: #0a0a0a;
-      display: flex;
-      justify-content: center;
-      align-items: center;
-      height: 100vh;
-      height: -webkit-fill-available;
+    *, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
+
+    /* position:fixed ensures the element truly fills the screen in iOS PWA
+       standalone mode regardless of viewport quirks or safe-area offsets */
+    html, body {
+      position: fixed;
+      top: 0; left: 0;
+      width: 100%; height: 100%;
       overflow: hidden;
+      background: #0a0a0a;
       touch-action: none;
       -webkit-user-select: none;
       user-select: none;
       -webkit-tap-highlight-color: transparent;
     }
+
+    /* Phaser mounts the canvas here.  Flex centers it; Phaser handles scaling. */
+    #game-container {
+      position: fixed;
+      top: 0; left: 0;
+      width: 100%; height: 100%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      overflow: hidden;
+    }
+
     canvas {
+      display: block;
       image-rendering: pixelated;
       image-rendering: crisp-edges;
       touch-action: none;
-      /* Fill the safe area on notched iPads */
-      max-width: 100vw;
-      max-height: 100vh;
+      /* never exceed the viewport — Phaser already sizes it correctly */
+      max-width: 100%;
+      max-height: 100%;
     }
   </style>
 </head>
 <body>
+  <div id="game-container"></div>
   <script src="lib/phaser.min.js"></script>
   <script src="game.js"></script>
 </body>

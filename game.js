@@ -5663,11 +5663,13 @@ const _phaserGame = new Phaser.Game({
   backgroundColor: '#0a0a0a',
   pixelArt: true,
   physics: { default:'arcade', arcade:{ gravity:{y:0}, debug:false } },
-  scale: { mode:Phaser.Scale.FIT, autoCenter:Phaser.Scale.CENTER_BOTH },
+  // Mount into our CSS-centered container.  NO_CENTER tells Phaser not to
+  // fight the flex layout by setting its own margin offsets on the canvas.
+  parent: 'game-container',
+  scale: { mode: Phaser.Scale.FIT, autoCenter: Phaser.Scale.NO_CENTER },
   scene: [BootScene, ModeSelectScene, SettingsScene, CharSelectScene, GameScene, GameOverScene],
 });
-// iOS PWA standalone mode: the viewport dimensions may not be final when Phaser
-// initialises (status bar / safe-area settle slightly later).  A deferred refresh
-// forces the canvas to fill the screen correctly.
+// iOS PWA standalone mode: viewport layout may settle slightly after JS starts.
+// A deferred refresh ensures the canvas fills the container correctly.
 setTimeout(() => _phaserGame.scale.refresh(), 150);
 window.addEventListener('resize', () => _phaserGame.scale.refresh());
