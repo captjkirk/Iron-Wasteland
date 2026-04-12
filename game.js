@@ -2125,10 +2125,18 @@ class GameScene extends Phaser.Scene {
     this.beds = [];
     this.sleepSpeedMult = 1;   // 8x when all players are sleeping through night
 
-    this.cameras.main.fadeIn(600, 0, 0, 0);
-    this.physics.world.setBounds(0, 0, worldW, worldH);
+    // Show loading indicator on the black screen — iOS PWA needs at least one yielded
+    // frame before heavy synchronous work, otherwise WKWebView may not render at all.
+    const _loadTxt = this.add.text(CFG.W / 2, CFG.H / 2, 'Building world...', {
+      fontFamily: 'monospace', fontSize: '16px', color: '#555555'
+    }).setOrigin(0.5).setScrollFactor(0).setDepth(999);
 
-    this.buildWorld(worldW, worldH, cx, cy);
+    this.time.delayedCall(64, () => {
+      if (_loadTxt.active) _loadTxt.destroy();
+      this.cameras.main.fadeIn(600, 0, 0, 0);
+      this.physics.world.setBounds(0, 0, worldW, worldH);
+
+      this.buildWorld(worldW, worldH, cx, cy);
 
     const p1Ch = CHARS.find(c => c.id === STATE.p1CharId);
     const p2Ch = this.solo ? null : CHARS.find(c => c.id === STATE.p2CharId);
@@ -2257,7 +2265,9 @@ class GameScene extends Phaser.Scene {
     this.time.delayedCall(10000, () => this.hint(modeNote + ' Explore the biomes! Watch your minimap.', 5000));
     this.time.delayedCall(16500, () => this.hint('TAB for controls  |  Beware toxic swamps and frozen tundra!', 3500));
 
-    this.showStartupControls();
+      this._worldReady = true;
+      this.showStartupControls();
+    }); // end deferred world init
   }
 
   showStartupControls() {
@@ -3788,6 +3798,7 @@ class GameScene extends Phaser.Scene {
 
   // ── UPDATE ────────────────────────────────────────────────────
   update(time, delta) {
+    if (!this._worldReady) return; // deferred world init not yet complete
     if (this.isOver) return;
 
     if (this.controlsVis || this.barrackOpen) {
@@ -5475,7 +5486,7 @@ class GameOverScene extends Phaser.Scene {
 }
 
 // ── LAUNCH ────────────────────────────────────────────────────
-new Phaser.Game({
+const _phaserGame = new Phaser.Game({
   type: Phaser.AUTO,
   width: CFG.W, height: CFG.H,
   backgroundColor: '#0a0a0a',
@@ -5484,3 +5495,8 @@ new Phaser.Game({
   scale: { mode:Phaser.Scale.FIT, autoCenter:Phaser.Scale.CENTER_BOTH },
   scene: [BootScene, ModeSelectScene, SettingsScene, CharSelectScene, GameScene, GameOverScene],
 });
+// iOS PWA standalone mode: the viewport dimensions may not be final when Phaser
+// initialises (status bar / safe-area settle slightly later).  A deferred refresh
+// forces the canvas to fill the screen correctly.
+setTimeout(() => _phaserGame.scale.refresh(), 150);
+window.addEventListener('resize', () => _phaserGame.scale.refresh());
