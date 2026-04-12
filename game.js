@@ -429,12 +429,18 @@ function buildTextures(scene) {
   drawKnight(g);       drawKnightStep(g);
   drawKnightFront(g);  drawKnightFrontStep(g);
   drawKnightBack(g);   drawKnightBackStep(g);
+  drawKnightFSide(g);  drawKnightFSideStep(g);
+  drawKnightBSide(g);  drawKnightBSideStep(g);
   drawGunslinger(g);       drawGunslingerStep(g);
   drawGunslingerFront(g);  drawGunslingerFrontStep(g);
   drawGunslingerBack(g);   drawGunslingerBackStep(g);
+  drawGunslingerFSide(g);  drawGunslingerFSideStep(g);
+  drawGunslingerBSide(g);  drawGunslingerBSideStep(g);
   drawArchitect(g);       drawArchitectStep(g);
   drawArchitectFront(g);  drawArchitectFrontStep(g);
   drawArchitectBack(g);   drawArchitectBackStep(g);
+  drawArchitectFSide(g);  drawArchitectFSideStep(g);
+  drawArchitectBSide(g);  drawArchitectBSideStep(g);
 
   // Bullet
   g.clear();
@@ -676,6 +682,42 @@ function buildTextures(scene) {
   g.fillStyle(0xccaa00); g.fillRect(10, 8, 4, 4); // lock
   g.fillStyle(0xeedd22); g.fillRect(11, 9, 2, 2);
   g.generateTexture('supply_cache', 24, 20);
+
+  // Ruin wall block — crumbling brick wall tile
+  g.clear();
+  g.fillStyle(0x555566); g.fillRect(0, 0, 32, 32);
+  g.fillStyle(0x666677); g.fillRect(0, 0, 32, 8); g.fillRect(0, 16, 32, 8);
+  g.fillStyle(0x4a4a5a); g.fillRect(0, 8, 32, 8); g.fillRect(0, 24, 32, 8);
+  g.fillStyle(0x333344); g.fillRect(0, 7, 32, 2); g.fillRect(0, 15, 32, 2); g.fillRect(0, 23, 32, 2);
+  g.fillStyle(0x333344); g.fillRect(15, 0, 2, 7); g.fillRect(7, 8, 2, 7); g.fillRect(22, 8, 2, 7);
+  g.fillStyle(0x333344); g.fillRect(10, 16, 2, 7); g.fillRect(25, 16, 2, 7); g.fillRect(4, 24, 2, 8);
+  g.fillStyle(0x222233); g.fillRect(2, 2, 3, 3); g.fillRect(20, 18, 4, 4); g.fillRect(27, 10, 4, 3);
+  g.lineStyle(1, 0x222233, 1); g.lineBetween(5, 0, 3, 7); g.lineBetween(18, 8, 22, 14); g.lineBetween(9, 16, 7, 24);
+  g.generateTexture('ruin_block', 32, 32);
+
+  // Ruin interior floor — worn stone tile
+  g.clear();
+  g.fillStyle(0x3a3a48); g.fillRect(0, 0, 32, 32);
+  g.fillStyle(0x424252); g.fillRect(1, 1, 14, 14); g.fillRect(17, 17, 14, 14);
+  g.fillStyle(0x383846); g.fillRect(1, 17, 14, 14); g.fillRect(17, 1, 14, 14);
+  g.fillStyle(0x2e2e3a); g.fillRect(0, 15, 32, 2); g.fillRect(15, 0, 2, 32);
+  g.fillStyle(0x2a2a38); g.fillRect(4, 4, 3, 3); g.fillRect(22, 20, 3, 2);
+  g.generateTexture('ruin_floor', 32, 32);
+
+  // Crater (large) — decorative ground depression
+  g.clear();
+  g.fillStyle(0x1e1e1e); g.fillEllipse(24, 19, 44, 34);
+  g.fillStyle(0x2a2a2a); g.fillEllipse(24, 18, 36, 26);
+  g.fillStyle(0x343434); g.fillEllipse(24, 17, 24, 17);
+  g.fillStyle(0x151515); g.fillEllipse(24, 19, 12, 9);
+  g.generateTexture('crater_large', 48, 38);
+
+  // Crater (small) — decorative ground depression
+  g.clear();
+  g.fillStyle(0x1e1e1e); g.fillEllipse(14, 12, 26, 20);
+  g.fillStyle(0x2a2a2a); g.fillEllipse(14, 11, 20, 14);
+  g.fillStyle(0x151515); g.fillEllipse(14, 12, 10, 7);
+  g.generateTexture('crater_small', 28, 24);
 
   // Enemy den — dark cave/burrow
   g.clear();
@@ -1204,6 +1246,209 @@ function drawArchitectBackStep(g) {
   g.fillStyle(0xaa9900); g.fillRect(6, 1, 10, 3);
   g.fillStyle(0x666600); g.fillRect(5, 4, 12, 1);
   g.generateTexture('architect_back_step', 22, 30);
+}
+
+// ── 8-DIRECTIONAL DIAGONAL SPRITES ───────────────────────────
+// fside = front-diagonal (moving toward-camera + sideways)
+// bside = back-diagonal  (moving away-from-camera + sideways)
+
+function drawKnightFSide(g) {
+  g.clear();
+  g.fillStyle(0x1a2d3d); g.fillRect(4, 26, 6, 4); g.fillRect(13, 26, 5, 4);
+  g.fillStyle(0x2d4a63); g.fillRect(4, 17, 6, 10); g.fillRect(13, 17, 5, 10);
+  g.fillStyle(0x111111); g.fillRect(2, 16, 17, 2);
+  g.fillStyle(0x4a6d8c); g.fillRect(2, 8, 17, 9);
+  g.fillStyle(0x3a5a7a); g.fillRect(6, 9, 9, 7); g.fillStyle(0x5588aa); g.fillRect(6, 9, 9, 2);
+  g.fillStyle(0xccaa00); g.fillCircle(10, 13, 1);
+  g.fillStyle(0x2244aa); g.fillRect(0, 8, 3, 10); g.fillStyle(0x4466cc); g.fillRect(1, 9, 2, 8);
+  g.fillStyle(0x4a6d8c); g.fillRect(19, 8, 3, 9);
+  g.fillStyle(0xbbbbbb); g.fillRect(21, 4, 2, 16); g.fillStyle(0xcc9900); g.fillRect(18, 7, 5, 2);
+  g.fillStyle(0xffcc99); g.fillRect(7, 5, 7, 4);
+  g.fillStyle(0x4a6d8c); g.fillRect(4, 0, 14, 8);
+  g.fillStyle(0x2d4a63); g.fillRect(4, 2, 14, 5); g.fillStyle(0x080808); g.fillRect(5, 3, 11, 2);
+  g.fillStyle(0x6688bb); g.fillRect(4, 0, 14, 2);
+  g.fillStyle(0x3a5a7a); g.fillRect(4, 0, 2, 8); g.fillRect(16, 0, 2, 8);
+  g.generateTexture('knight_fside', 22, 30);
+}
+function drawKnightFSideStep(g) {
+  g.clear();
+  g.fillStyle(0x1a2d3d); g.fillRect(4, 24, 6, 5); g.fillRect(13, 27, 5, 3);
+  g.fillStyle(0x2d4a63); g.fillRect(4, 15, 6, 10); g.fillRect(13, 19, 5, 9);
+  g.fillStyle(0x111111); g.fillRect(2, 16, 17, 2);
+  g.fillStyle(0x4a6d8c); g.fillRect(2, 8, 17, 9);
+  g.fillStyle(0x3a5a7a); g.fillRect(6, 9, 9, 7); g.fillStyle(0x5588aa); g.fillRect(6, 9, 9, 2);
+  g.fillStyle(0xccaa00); g.fillCircle(10, 13, 1);
+  g.fillStyle(0x2244aa); g.fillRect(0, 8, 3, 10); g.fillStyle(0x4466cc); g.fillRect(1, 9, 2, 8);
+  g.fillStyle(0x4a6d8c); g.fillRect(19, 8, 3, 9);
+  g.fillStyle(0xbbbbbb); g.fillRect(21, 4, 2, 16); g.fillStyle(0xcc9900); g.fillRect(18, 7, 5, 2);
+  g.fillStyle(0xffcc99); g.fillRect(7, 5, 7, 4);
+  g.fillStyle(0x4a6d8c); g.fillRect(4, 0, 14, 8);
+  g.fillStyle(0x2d4a63); g.fillRect(4, 2, 14, 5); g.fillStyle(0x080808); g.fillRect(5, 3, 11, 2);
+  g.fillStyle(0x6688bb); g.fillRect(4, 0, 14, 2);
+  g.fillStyle(0x3a5a7a); g.fillRect(4, 0, 2, 8); g.fillRect(16, 0, 2, 8);
+  g.generateTexture('knight_fside_step', 22, 30);
+}
+function drawKnightBSide(g) {
+  g.clear();
+  g.fillStyle(0x1a2d3d); g.fillRect(4, 26, 6, 4); g.fillRect(12, 26, 6, 4);
+  g.fillStyle(0x2d4a63); g.fillRect(4, 17, 6, 10); g.fillRect(12, 17, 6, 10);
+  g.fillStyle(0x111111); g.fillRect(2, 16, 18, 2);
+  g.fillStyle(0x4a6d8c); g.fillRect(2, 8, 18, 9);
+  g.fillStyle(0x2d4a63); g.fillRect(5, 9, 11, 7); g.fillStyle(0x1a2d3d); g.fillRect(9, 9, 3, 7);
+  g.fillStyle(0x4a6d8c); g.fillRect(0, 8, 3, 9); g.fillRect(19, 8, 3, 9);
+  g.fillStyle(0xbbbbbb); g.fillRect(21, 4, 2, 14); g.fillStyle(0xcc9900); g.fillRect(18, 7, 6, 2);
+  g.fillStyle(0xffcc99); g.fillRect(8, 4, 7, 5);
+  g.fillStyle(0x4a6d8c); g.fillRect(4, 0, 14, 8);
+  g.fillStyle(0x2d4a63); g.fillRect(4, 1, 14, 6); g.fillStyle(0x1a2d3d); g.fillRect(9, 0, 3, 8);
+  g.fillStyle(0x6688bb); g.fillRect(4, 0, 14, 2);
+  g.fillStyle(0x3a5a7a); g.fillRect(4, 0, 2, 8); g.fillRect(16, 0, 2, 8);
+  g.generateTexture('knight_bside', 22, 30);
+}
+function drawKnightBSideStep(g) {
+  g.clear();
+  g.fillStyle(0x1a2d3d); g.fillRect(4, 24, 6, 5); g.fillRect(12, 27, 6, 3);
+  g.fillStyle(0x2d4a63); g.fillRect(4, 15, 6, 10); g.fillRect(12, 19, 6, 9);
+  g.fillStyle(0x111111); g.fillRect(2, 16, 18, 2);
+  g.fillStyle(0x4a6d8c); g.fillRect(2, 8, 18, 9);
+  g.fillStyle(0x2d4a63); g.fillRect(5, 9, 11, 7); g.fillStyle(0x1a2d3d); g.fillRect(9, 9, 3, 7);
+  g.fillStyle(0x4a6d8c); g.fillRect(0, 8, 3, 9); g.fillRect(19, 8, 3, 9);
+  g.fillStyle(0xbbbbbb); g.fillRect(21, 4, 2, 14); g.fillStyle(0xcc9900); g.fillRect(18, 7, 6, 2);
+  g.fillStyle(0xffcc99); g.fillRect(8, 4, 7, 5);
+  g.fillStyle(0x4a6d8c); g.fillRect(4, 0, 14, 8);
+  g.fillStyle(0x2d4a63); g.fillRect(4, 1, 14, 6); g.fillStyle(0x1a2d3d); g.fillRect(9, 0, 3, 8);
+  g.fillStyle(0x6688bb); g.fillRect(4, 0, 14, 2);
+  g.fillStyle(0x3a5a7a); g.fillRect(4, 0, 2, 8); g.fillRect(16, 0, 2, 8);
+  g.generateTexture('knight_bside_step', 22, 30);
+}
+
+function drawGunslingerFSide(g) {
+  g.clear();
+  g.fillStyle(0x3d2010); g.fillRect(4, 24, 6, 6); g.fillRect(13, 25, 5, 5);
+  g.fillStyle(0x3a5a7a); g.fillRect(4, 16, 6, 9); g.fillRect(13, 17, 5, 9);
+  g.fillStyle(0x3d2010); g.fillRect(14, 19, 4, 4); g.fillStyle(0x222222); g.fillRect(15, 21, 3, 3);
+  g.fillStyle(0xcc8833); g.fillRect(2, 8, 17, 9);
+  g.fillStyle(0xffeedd); g.fillRect(7, 8, 7, 8);
+  g.fillStyle(0x9a6622); g.fillRect(2, 15, 17, 2);
+  g.fillStyle(0xcc8833); g.fillRect(0, 8, 3, 9); g.fillRect(19, 8, 3, 9);
+  g.fillStyle(0x333333); g.fillRect(19, 11, 4, 3); g.fillStyle(0x555555); g.fillRect(20, 9, 3, 5);
+  g.fillStyle(0xffcc99); g.fillRect(7, 4, 7, 6);
+  g.fillStyle(0x7a4a1a); g.fillRect(3, 2, 15, 3);
+  g.fillStyle(0x553311); g.fillRect(5, 0, 12, 4); g.fillStyle(0x7a5533); g.fillRect(5, 0, 12, 1);
+  g.generateTexture('gunslinger_fside', 22, 30);
+}
+function drawGunslingerFSideStep(g) {
+  g.clear();
+  g.fillStyle(0x3d2010); g.fillRect(4, 23, 6, 6); g.fillRect(13, 26, 5, 4);
+  g.fillStyle(0x3a5a7a); g.fillRect(4, 15, 6, 9); g.fillRect(13, 18, 5, 9);
+  g.fillStyle(0x3d2010); g.fillRect(14, 19, 4, 4); g.fillStyle(0x222222); g.fillRect(15, 21, 3, 3);
+  g.fillStyle(0xcc8833); g.fillRect(2, 8, 17, 9);
+  g.fillStyle(0xffeedd); g.fillRect(7, 8, 7, 8);
+  g.fillStyle(0x9a6622); g.fillRect(2, 15, 17, 2);
+  g.fillStyle(0xcc8833); g.fillRect(0, 8, 3, 9); g.fillRect(19, 8, 3, 9);
+  g.fillStyle(0x333333); g.fillRect(19, 11, 4, 3); g.fillStyle(0x555555); g.fillRect(20, 9, 3, 5);
+  g.fillStyle(0xffcc99); g.fillRect(7, 4, 7, 6);
+  g.fillStyle(0x7a4a1a); g.fillRect(3, 2, 15, 3);
+  g.fillStyle(0x553311); g.fillRect(5, 0, 12, 4); g.fillStyle(0x7a5533); g.fillRect(5, 0, 12, 1);
+  g.generateTexture('gunslinger_fside_step', 22, 30);
+}
+function drawGunslingerBSide(g) {
+  g.clear();
+  g.fillStyle(0x3d2010); g.fillRect(4, 24, 6, 6); g.fillRect(12, 24, 6, 6);
+  g.fillStyle(0x3a5a7a); g.fillRect(4, 16, 6, 9); g.fillRect(12, 16, 6, 9);
+  g.fillStyle(0xcc8833); g.fillRect(2, 8, 18, 9);
+  g.fillStyle(0x9a5511); g.fillRect(5, 8, 12, 9);
+  g.fillStyle(0xaa6622); g.fillRect(2, 12, 18, 2);
+  g.fillStyle(0xcc8833); g.fillRect(0, 8, 3, 9); g.fillRect(19, 8, 3, 9);
+  g.fillStyle(0x333333); g.fillRect(19, 11, 6, 3); g.fillStyle(0x555555); g.fillRect(20, 9, 5, 5);
+  g.fillStyle(0xffcc99); g.fillRect(7, 4, 7, 5);
+  g.fillStyle(0x7a4a1a); g.fillRect(3, 2, 16, 3);
+  g.fillStyle(0x553311); g.fillRect(5, 0, 12, 4); g.fillStyle(0x3d2010); g.fillRect(7, 0, 8, 3);
+  g.generateTexture('gunslinger_bside', 22, 30);
+}
+function drawGunslingerBSideStep(g) {
+  g.clear();
+  g.fillStyle(0x3d2010); g.fillRect(4, 23, 6, 6); g.fillRect(12, 26, 6, 4);
+  g.fillStyle(0x3a5a7a); g.fillRect(4, 15, 6, 9); g.fillRect(12, 18, 6, 9);
+  g.fillStyle(0xcc8833); g.fillRect(2, 8, 18, 9);
+  g.fillStyle(0x9a5511); g.fillRect(5, 8, 12, 9);
+  g.fillStyle(0xaa6622); g.fillRect(2, 12, 18, 2);
+  g.fillStyle(0xcc8833); g.fillRect(0, 8, 3, 9); g.fillRect(19, 8, 3, 9);
+  g.fillStyle(0x333333); g.fillRect(19, 11, 6, 3); g.fillStyle(0x555555); g.fillRect(20, 9, 5, 5);
+  g.fillStyle(0xffcc99); g.fillRect(7, 4, 7, 5);
+  g.fillStyle(0x7a4a1a); g.fillRect(3, 2, 16, 3);
+  g.fillStyle(0x553311); g.fillRect(5, 0, 12, 4); g.fillStyle(0x3d2010); g.fillRect(7, 0, 8, 3);
+  g.generateTexture('gunslinger_bside_step', 22, 30);
+}
+
+function drawArchitectFSide(g) {
+  g.clear();
+  g.fillStyle(0x222222); g.fillRect(4, 24, 6, 6); g.fillRect(13, 25, 5, 5);
+  g.fillStyle(0x334477); g.fillRect(4, 16, 6, 9); g.fillRect(13, 17, 5, 9);
+  g.fillStyle(0x445588); g.fillRect(4, 16, 6, 2); g.fillRect(13, 17, 5, 2);
+  g.fillStyle(0x8b6914); g.fillRect(2, 15, 17, 3);
+  g.fillStyle(0xaaaaaa); g.fillRect(3, 14, 2, 5); g.fillStyle(0xcc8833); g.fillRect(8, 14, 2, 5);
+  g.fillStyle(0x3a9a55); g.fillRect(2, 8, 17, 8);
+  g.fillStyle(0xffcc00); g.fillRect(2, 8, 2, 8); g.fillRect(17, 8, 2, 8);
+  g.fillStyle(0x1a5533); g.fillRect(7, 8, 8, 8);
+  g.fillStyle(0x3a9a55); g.fillRect(0, 8, 3, 8); g.fillRect(19, 8, 3, 8);
+  g.fillStyle(0x999999); g.fillRect(20, 6, 3, 9); g.fillStyle(0x777777); g.fillRect(19, 5, 5, 3);
+  g.fillStyle(0xffcc99); g.fillRect(7, 4, 7, 6);
+  g.fillStyle(0x222222); g.fillRect(3, 3, 15, 2);
+  g.fillStyle(0xddcc22); g.fillRect(5, 0, 12, 5); g.fillStyle(0xeeee44); g.fillRect(5, 0, 12, 1);
+  g.fillStyle(0x666600); g.fillRect(5, 4, 12, 1);
+  g.generateTexture('architect_fside', 22, 30);
+}
+function drawArchitectFSideStep(g) {
+  g.clear();
+  g.fillStyle(0x222222); g.fillRect(4, 23, 6, 6); g.fillRect(13, 26, 5, 4);
+  g.fillStyle(0x334477); g.fillRect(4, 15, 6, 9); g.fillRect(13, 18, 5, 9);
+  g.fillStyle(0x445588); g.fillRect(4, 15, 6, 2); g.fillRect(13, 18, 5, 2);
+  g.fillStyle(0x8b6914); g.fillRect(2, 15, 17, 3);
+  g.fillStyle(0xaaaaaa); g.fillRect(3, 14, 2, 5); g.fillStyle(0xcc8833); g.fillRect(8, 14, 2, 5);
+  g.fillStyle(0x3a9a55); g.fillRect(2, 8, 17, 8);
+  g.fillStyle(0xffcc00); g.fillRect(2, 8, 2, 8); g.fillRect(17, 8, 2, 8);
+  g.fillStyle(0x1a5533); g.fillRect(7, 8, 8, 8);
+  g.fillStyle(0x3a9a55); g.fillRect(0, 8, 3, 8); g.fillRect(19, 8, 3, 8);
+  g.fillStyle(0x999999); g.fillRect(20, 6, 3, 9); g.fillStyle(0x777777); g.fillRect(19, 5, 5, 3);
+  g.fillStyle(0xffcc99); g.fillRect(7, 4, 7, 6);
+  g.fillStyle(0x222222); g.fillRect(3, 3, 15, 2);
+  g.fillStyle(0xddcc22); g.fillRect(5, 0, 12, 5); g.fillStyle(0xeeee44); g.fillRect(5, 0, 12, 1);
+  g.fillStyle(0x666600); g.fillRect(5, 4, 12, 1);
+  g.generateTexture('architect_fside_step', 22, 30);
+}
+function drawArchitectBSide(g) {
+  g.clear();
+  g.fillStyle(0x222222); g.fillRect(4, 24, 6, 6); g.fillRect(12, 24, 6, 6);
+  g.fillStyle(0x334477); g.fillRect(4, 16, 6, 9); g.fillRect(12, 16, 6, 9);
+  g.fillStyle(0x8b6914); g.fillRect(2, 15, 18, 3);
+  g.fillStyle(0x3a9a55); g.fillRect(2, 8, 18, 8);
+  g.fillStyle(0xffcc00); g.fillRect(2, 8, 2, 8); g.fillRect(18, 8, 2, 8);
+  g.fillStyle(0x2a7a45); g.fillRect(7, 8, 8, 8);
+  g.fillStyle(0xffcc00); g.fillRect(3, 11, 14, 1);
+  g.fillStyle(0x3a9a55); g.fillRect(0, 8, 3, 8); g.fillRect(19, 8, 3, 8);
+  g.fillStyle(0x999999); g.fillRect(20, 4, 3, 13); g.fillStyle(0x777777); g.fillRect(19, 3, 5, 3);
+  g.fillStyle(0xffcc99); g.fillRect(7, 4, 7, 5);
+  g.fillStyle(0x222222); g.fillRect(3, 3, 16, 2);
+  g.fillStyle(0xddcc22); g.fillRect(5, 0, 12, 5); g.fillStyle(0xaa9900); g.fillRect(6, 1, 10, 3);
+  g.fillStyle(0x666600); g.fillRect(5, 4, 12, 1);
+  g.generateTexture('architect_bside', 22, 30);
+}
+function drawArchitectBSideStep(g) {
+  g.clear();
+  g.fillStyle(0x222222); g.fillRect(4, 23, 6, 6); g.fillRect(12, 26, 6, 4);
+  g.fillStyle(0x334477); g.fillRect(4, 15, 6, 9); g.fillRect(12, 18, 6, 9);
+  g.fillStyle(0x8b6914); g.fillRect(2, 15, 18, 3);
+  g.fillStyle(0x3a9a55); g.fillRect(2, 8, 18, 8);
+  g.fillStyle(0xffcc00); g.fillRect(2, 8, 2, 8); g.fillRect(18, 8, 2, 8);
+  g.fillStyle(0x2a7a45); g.fillRect(7, 8, 8, 8);
+  g.fillStyle(0xffcc00); g.fillRect(3, 11, 14, 1);
+  g.fillStyle(0x3a9a55); g.fillRect(0, 8, 3, 8); g.fillRect(19, 8, 3, 8);
+  g.fillStyle(0x999999); g.fillRect(20, 4, 3, 13); g.fillStyle(0x777777); g.fillRect(19, 3, 5, 3);
+  g.fillStyle(0xffcc99); g.fillRect(7, 4, 7, 5);
+  g.fillStyle(0x222222); g.fillRect(3, 3, 16, 2);
+  g.fillStyle(0xddcc22); g.fillRect(5, 0, 12, 5); g.fillStyle(0xaa9900); g.fillRect(6, 1, 10, 3);
+  g.fillStyle(0x666600); g.fillRect(5, 4, 12, 1);
+  g.generateTexture('architect_bside_step', 22, 30);
 }
 
 // ── SETTINGS HELPERS ─────────────────────────────────────────
@@ -2021,8 +2266,9 @@ class GameScene extends Phaser.Scene {
       else if (biome === 'swamp' && Math.random() < 0.4) treeKey = 'tree_dead';
       const sc = Phaser.Math.FloatBetween(1.6, 2.8);
       const t = this.obstacles.create(tx*TILE+14, ty*TILE+18, treeKey);
-      t.setScale(sc).setDepth(5).setImmovable(true);
-      t.body.setSize(Math.floor(10*sc), Math.floor(12*sc)).setOffset(Math.floor(9/sc), Math.floor(24/sc));
+      t.setScale(sc).setDepth(5 + ty*0.01).setImmovable(true);
+      // Trunk-only hitbox: 8px wide × 12px tall at the base of the sprite (28×36)
+      t.body.setSize(8, 12).setOffset(10, 24);
       t.refreshBody();
       treesPlaced.push({ tx, ty });
     };
@@ -2059,8 +2305,9 @@ class GameScene extends Phaser.Scene {
       const rockKey = biome === 'tundra' ? 'ice_rock' : 'rock';
       const sc = Phaser.Math.FloatBetween(0.4, 3.5);
       const r = this.obstacles.create(tx*TILE+11, ty*TILE+8, rockKey);
-      r.setScale(sc).setDepth(5).setImmovable(true);
-      r.body.setSize(Math.floor(22*sc), Math.floor(16*sc));
+      r.setScale(sc).setDepth(5 + ty*0.01).setImmovable(true);
+      // Tighter oval hitbox (rock sprite is 22×16, use ~65% size)
+      r.body.setCircle(6, 5, 2);
       r.refreshBody();
     }
 
@@ -2070,8 +2317,8 @@ class GameScene extends Phaser.Scene {
       if (getBiome(tx, ty) !== 'waste') continue;
       const sc = Phaser.Math.FloatBetween(0.3, 2.0);
       const r = this.obstacles.create(tx*TILE+11, ty*TILE+8, 'rock');
-      r.setScale(sc).setDepth(5).setImmovable(true);
-      r.body.setSize(Math.floor(22*sc), Math.floor(16*sc));
+      r.setScale(sc).setDepth(5 + ty*0.01).setImmovable(true);
+      r.body.setCircle(6, 5, 2);
       r.refreshBody();
     }
 
@@ -2088,15 +2335,25 @@ class GameScene extends Phaser.Scene {
       this._w(this.add.image(tx*TILE, ty*TILE, decKey).setScale(sc).setDepth(4).setAlpha(0.9));
     }
 
-    // Pillars in ruins biome
-    for (let i = 0; i < 50; i++) {
-      const tx = Phaser.Math.Between(1, CFG.MAP_W-2), ty = Phaser.Math.Between(1, CFG.MAP_H-2);
-      if (getBiome(tx, ty) !== 'ruins') continue;
-      const sc = Phaser.Math.FloatBetween(1.0, 2.5);
-      const p = this.obstacles.create(tx*TILE+11, ty*TILE+18, 'pillar');
-      p.setScale(sc).setDepth(5).setImmovable(true);
-      p.body.setSize(Math.floor(14*sc), Math.floor(28*sc));
-      p.refreshBody();
+    // Ruins city — navigable abandoned city grid (replaces scattered pillars)
+    this.buildRuinsCity(stx, sty, TILE);
+
+    // Decorative craters — visual only, non-blocking
+    for (let i = 0; i < 28; i++) {
+      const tx = Phaser.Math.Between(3, CFG.MAP_W-4), ty = Phaser.Math.Between(3, CFG.MAP_H-4);
+      if (Math.abs(tx-stx) < SAFE_R+4 && Math.abs(ty-sty) < SAFE_R+4) continue;
+      const b = getBiome(tx, ty);
+      if (b !== 'waste' && b !== 'ruins') continue;
+      const key = Math.random() < 0.45 ? 'crater_large' : 'crater_small';
+      const sc = Phaser.Math.FloatBetween(0.8, 2.2);
+      this._w(this.add.image(tx*TILE, ty*TILE, key).setScale(sc).setDepth(1.5).setAlpha(0.7));
+    }
+    // Dense small craters in wasteland
+    for (let i = 0; i < 45; i++) {
+      const tx = Phaser.Math.Between(3, CFG.MAP_W-4), ty = Phaser.Math.Between(3, CFG.MAP_H-4);
+      if (getBiome(tx, ty) !== 'waste') continue;
+      const sc = Phaser.Math.FloatBetween(0.5, 1.4);
+      this._w(this.add.image(tx*TILE + Phaser.Math.Between(-8, 8), ty*TILE + Phaser.Math.Between(-8, 8), 'crater_small').setScale(sc).setDepth(1.5).setAlpha(0.55));
     }
 
     // Toxic pools in swamp biome
@@ -2112,6 +2369,23 @@ class GameScene extends Phaser.Scene {
       this.toxicPools.push(pool);
     }
 
+    // Pre-compute supply cache positions — must happen BEFORE mountain placement
+    // so that placeMtn can leave fjord-style entrance gaps around each cache
+    this._preCacheTiles = [];
+    for (const biome of ['waste', 'swamp', 'tundra', 'ruins']) {
+      for (let att = 0; att < 80; att++) {
+        const tx = Phaser.Math.Between(12, CFG.MAP_W - 12);
+        const ty = Phaser.Math.Between(12, CFG.MAP_H - 12);
+        if (Math.abs(tx - stx) < SAFE_R + 10 && Math.abs(ty - sty) < SAFE_R + 10) continue;
+        if (getBiome(tx, ty) === biome) {
+          // Entrance gap faces toward map center (players approach from there)
+          const gapAngle = Math.atan2(sty - ty, stx - tx);
+          this._preCacheTiles.push({ tx, ty, gapAngle });
+          break;
+        }
+      }
+    }
+
     // Mountain ranges — impassable ridgelines with walkable gaps
     this.mountainTiles = [];
     const mtns = this.mountainTiles;
@@ -2121,13 +2395,29 @@ class GameScene extends Phaser.Scene {
       for (const m of mtns) {
         if (Math.abs(m.tx-tx) < mtnMinDist && Math.abs(m.ty-ty) < mtnMinDist) return;
       }
+      // Fjord protection: leave entrance gap toward map center for each supply cache
+      for (const cache of this._preCacheTiles) {
+        const dx = tx - cache.tx, dy = ty - cache.ty;
+        const dist = Math.sqrt(dx*dx + dy*dy);
+        if (dist < 8 && dist > 0.5) {
+          // Angle from cache to this mountain position
+          const mtnAngle = Math.atan2(dy, dx);
+          let relAngle = mtnAngle - cache.gapAngle;
+          while (relAngle > Math.PI)  relAngle -= 2*Math.PI;
+          while (relAngle < -Math.PI) relAngle += 2*Math.PI;
+          // Block mountains in the entrance sector (~100° gap toward center)
+          if (Math.abs(relAngle) < 0.87) return; // 0.87 rad ≈ 50° each side
+        }
+      }
       const px = tx*TILE+24, py = ty*TILE+20;
       const ob = this.obstacles.create(px, py, key);
-      ob.setScale(sc).setDepth(6).setImmovable(true);
-      // New larger sprites: 96x80 / 112x88 — collision body covers lower 2/3
-      const bw = key === 'mountain2' ? 90 : 76;
-      const bh = key === 'mountain2' ? 52 : 48;
-      ob.body.setSize(Math.floor(bw*sc), Math.floor(bh*sc));
+      ob.setScale(sc).setDepth(6 + ty*0.01).setImmovable(true);
+      // Circle hitbox centered on lower triangle mass (eliminates square corners)
+      if (key === 'mountain2') {
+        ob.body.setCircle(28, 28, 52); // mountain2 (112×88): center at (56,80)
+      } else {
+        ob.body.setCircle(24, 24, 52); // mountain (96×80): center at (48,76)
+      }
       ob.refreshBody();
       mtns.push({ tx, ty });
     };
@@ -2237,10 +2527,12 @@ class GameScene extends Phaser.Scene {
       return { tx: Phaser.Math.Between(20, MAP_W - 20), ty: Phaser.Math.Between(20, MAP_H - 20) };
     };
 
-    // Supply Caches (3-4 across map)
-    for (let i = 0; i < 4; i++) {
-      const biomes = ['waste', 'swamp', 'tundra', 'ruins'];
-      const pos = findInBiome(biomes[i % biomes.length], 50);
+    // Supply Caches — use pre-computed positions (set before mountains to guarantee fjord approach)
+    const cachePositions = (this._preCacheTiles && this._preCacheTiles.length)
+      ? this._preCacheTiles
+      : ['waste', 'swamp', 'tundra', 'ruins'].map(b => findInBiome(b, 50));
+    for (let i = 0; i < cachePositions.length; i++) {
+      const pos = cachePositions[i];
       const px = pos.tx * TILE, py = pos.ty * TILE;
       const spr = this._w(this.add.image(px, py, 'supply_cache').setScale(2.5).setDepth(6));
       const lbl = this._w(this.add.text(px, py - 24, 'SUPPLY CACHE', {
@@ -2319,6 +2611,112 @@ class GameScene extends Phaser.Scene {
         });
       }
     });
+  }
+
+  // ── RUINS CITY ────────────────────────────────────────────────
+  // Procedural navigable city grid in the ruins biome (NE quadrant)
+  buildRuinsCity(stx, sty, TILE) {
+    const blockW = 9, blockH = 8;    // block size in tiles (walls inclusive)
+    const streetW = 4, streetH = 4;  // street width in tiles
+    const cols = 5, rows = 4;
+
+    // Place city in ruins biome (NE quadrant: right + up from center)
+    const cityTX = Math.round(stx + CFG.MAP_W * 0.21);
+    const cityTY = Math.round(sty - CFG.MAP_H * 0.21);
+    const totalW = cols * blockW + (cols - 1) * streetW;
+    const totalH = rows * blockH + (rows - 1) * streetH;
+    const cityLeft = cityTX - Math.floor(totalW / 2);
+    const cityTop  = cityTY - Math.floor(totalH / 2);
+
+    // Clamp to map bounds
+    const cl = Math.max(3, cityLeft), ct = Math.max(3, cityTop);
+
+    // Helper — place one wall segment (obstacle with tight hitbox)
+    const placeWall = (tx, ty) => {
+      if (tx < 2 || tx > CFG.MAP_W-3 || ty < 2 || ty > CFG.MAP_H-3) return;
+      if (Math.abs(tx-stx) < CFG.SAFE_R+3 && Math.abs(ty-sty) < CFG.SAFE_R+3) return;
+      const w = this.obstacles.create(tx*TILE+16, ty*TILE+16, 'ruin_block');
+      w.setDepth(5 + ty*0.01).setImmovable(true);
+      w.body.setSize(28, 28); // slightly smaller than full tile for passability at seams
+      w.refreshBody();
+    };
+
+    for (let col = 0; col < cols; col++) {
+      for (let row = 0; row < rows; row++) {
+        const bx = cl + col * (blockW + streetW);
+        const by = ct + row * (blockH + streetH);
+
+        // Randomize which sides have doorways (street-facing sides always have one)
+        // Doorway = 2-tile gap near the center of each wall
+        const doorCenter = { N: Math.floor(blockW/2)-1, S: Math.floor(blockW/2)-1,
+                             W: Math.floor(blockH/2)-1, E: Math.floor(blockH/2)-1 };
+        const hasDoorN = row > 0;         // always open toward street above
+        const hasDoorS = row < rows-1;    // always open toward street below
+        const hasDoorW = col > 0;         // always open toward street left
+        const hasDoorE = col < cols-1;    // always open toward street right
+
+        // Interior floor tiles (decorative)
+        for (let wx = bx+1; wx < bx+blockW-1; wx++) {
+          for (let wy = by+1; wy < by+blockH-1; wy++) {
+            if (wx < 2 || wx > CFG.MAP_W-3 || wy < 2 || wy > CFG.MAP_H-3) continue;
+            this._w(this.add.tileSprite(wx*TILE, wy*TILE, TILE, TILE, 'ruin_floor').setOrigin(0).setDepth(0.6));
+          }
+        }
+
+        // Scatter interior rubble / decorative pillars
+        const rubbleCount = Phaser.Math.Between(1, 3);
+        for (let r = 0; r < rubbleCount; r++) {
+          const rx = bx + 1 + Phaser.Math.Between(0, blockW-3);
+          const ry = by + 1 + Phaser.Math.Between(0, blockH-3);
+          if (rx < 2 || rx > CFG.MAP_W-3 || ry < 2 || ry > CFG.MAP_H-3) continue;
+          const sc = Phaser.Math.FloatBetween(0.5, 1.2);
+          this._w(this.add.image(rx*TILE + Phaser.Math.Between(-6, 6), ry*TILE + Phaser.Math.Between(-6, 6),
+            'pillar').setScale(sc).setDepth(4 + ry*0.01).setAlpha(0.9));
+        }
+
+        // North wall
+        for (let i = 0; i < blockW; i++) {
+          const isDoor = hasDoorN && (i === doorCenter.N || i === doorCenter.N+1);
+          const isRuined = !isDoor && Math.random() < 0.1;
+          if (!isDoor && !isRuined) placeWall(bx+i, by);
+        }
+        // South wall
+        for (let i = 0; i < blockW; i++) {
+          const isDoor = hasDoorS && (i === doorCenter.S || i === doorCenter.S+1);
+          const isRuined = !isDoor && Math.random() < 0.1;
+          if (!isDoor && !isRuined) placeWall(bx+i, by+blockH-1);
+        }
+        // West wall (skip corners — they're handled by N/S)
+        for (let j = 1; j < blockH-1; j++) {
+          const isDoor = hasDoorW && (j === doorCenter.W || j === doorCenter.W+1);
+          const isRuined = !isDoor && Math.random() < 0.1;
+          if (!isDoor && !isRuined) placeWall(bx, by+j);
+        }
+        // East wall (skip corners)
+        for (let j = 1; j < blockH-1; j++) {
+          const isDoor = hasDoorE && (j === doorCenter.E || j === doorCenter.E+1);
+          const isRuined = !isDoor && Math.random() < 0.1;
+          if (!isDoor && !isRuined) placeWall(bx+blockW-1, by+j);
+        }
+      }
+    }
+
+    // Outskirt rubble — scattered ruined walls outside the main grid
+    for (let i = 0; i < 30; i++) {
+      const tx = cl + Phaser.Math.Between(-8, totalW+8);
+      const ty = ct + Phaser.Math.Between(-8, totalH+8);
+      if (tx >= cl-2 && tx <= cl+totalW+2 && ty >= ct-2 && ty <= ct+totalH+2) continue; // skip inside city
+      if (getBiome(tx, ty) !== 'ruins') continue;
+      const sc = Phaser.Math.FloatBetween(0.8, 1.8);
+      if (Math.random() < 0.5) {
+        const p = this.obstacles.create(tx*TILE+11, ty*TILE+18, 'pillar');
+        p.setScale(sc).setDepth(5 + ty*0.01).setImmovable(true);
+        p.body.setSize(10, 20).setOffset(6, 16);
+        p.refreshBody();
+      } else {
+        placeWall(tx, ty);
+      }
+    }
   }
 
   // ── FOG OF WAR ────────────────────────────────────────────────
@@ -3300,9 +3698,13 @@ class GameScene extends Phaser.Scene {
     p.spr.setVelocity(vx, vy);
 
     const moving = Math.abs(vx) > 8 || Math.abs(vy) > 8;
+    const isDiag = Math.abs(vx) > 8 && Math.abs(vy) > 8;
     const id = p.charData.id;
     if (moving) {
-      if (Math.abs(vy) > Math.abs(vx)) {
+      // 8-directional facing from joystick vector
+      if (isDiag) {
+        p.dir = vy > 0 ? 'fside' : 'bside';
+      } else if (Math.abs(vy) > Math.abs(vx)) {
         p.dir = vy > 0 ? 'front' : 'back';
       } else {
         p.dir = 'side';
@@ -3311,15 +3713,16 @@ class GameScene extends Phaser.Scene {
       const step = p.walkTimer < 10 ? '' : '_step';
       const dirSuffix = p.dir === 'side' ? '' : ('_' + p.dir);
       p.spr.setTexture(id + dirSuffix + step);
-      if (p.dir === 'side') p.spr.setFlipX(vx < 0);
-      else p.spr.setFlipX(false);
-      // Store aim angle so attacks fire in movement direction
+      if (p.dir === 'side' || p.dir === 'fside' || p.dir === 'bside') {
+        p.spr.setFlipX(vx < 0);
+      } else {
+        p.spr.setFlipX(false);
+      }
       p.aimAngle = Math.atan2(vy, vx);
     } else {
       p.walkTimer = 0;
       const dirSuffix = p.dir === 'side' ? '' : ('_' + p.dir);
       p.spr.setTexture(id + dirSuffix);
-      // Keep last aimAngle so attacks still fire in last-moved direction
     }
   }
 
@@ -3692,28 +4095,30 @@ class GameScene extends Phaser.Scene {
 
     const moving = vx !== 0 || vy !== 0;
     const id = player.charData.id;
+    const isDiag = vx !== 0 && vy !== 0;
 
     if (moving) {
-      // Determine facing direction
-      if (Math.abs(vy) > Math.abs(vx)) {
+      // 8-directional facing: diagonal uses fside/bside variants
+      if (isDiag) {
+        player.dir = vy > 0 ? 'fside' : 'bside';
+      } else if (Math.abs(vy) > Math.abs(vx)) {
         player.dir = vy > 0 ? 'front' : 'back';
       } else {
         player.dir = 'side';
       }
-      // Walk cycle: toggle frame every ~10 update ticks
       player.walkTimer = (player.walkTimer + 1) % 20;
       const step = player.walkTimer < 10 ? '' : '_step';
-      const dirSuffix = player.dir === 'side' ? '' : ('_' + player.dir);
+      const dirSuffix = (player.dir === 'side') ? '' : ('_' + player.dir);
       player.spr.setTexture(id + dirSuffix + step);
-      // Flip for left movement (side view only)
-      if (player.dir === 'side') {
+      // Flip for leftward movement on all side-facing variants
+      if (player.dir === 'side' || player.dir === 'fside' || player.dir === 'bside') {
         player.spr.setFlipX(vx < 0);
       } else {
         player.spr.setFlipX(false);
       }
     } else {
       player.walkTimer = 0;
-      const dirSuffix = player.dir === 'side' ? '' : ('_' + player.dir);
+      const dirSuffix = (player.dir === 'side') ? '' : ('_' + player.dir);
       player.spr.setTexture(id + dirSuffix);
     }
   }
@@ -3724,16 +4129,19 @@ class GameScene extends Phaser.Scene {
     const worldX = pointer.x / cam.zoom + cam.worldView.x;
     const worldY = pointer.y / cam.zoom + cam.worldView.y;
     const angle = Phaser.Math.Angle.Between(player.spr.x, player.spr.y, worldX, worldY);
-    // Convert angle to facing direction
-    if (angle > -Math.PI/4 && angle <= Math.PI/4) {
-      player.dir = 'side'; player.spr.setFlipX(false);
-    } else if (angle > Math.PI/4 && angle <= 3*Math.PI/4) {
-      player.dir = 'front';
-    } else if (angle > -3*Math.PI/4 && angle <= -Math.PI/4) {
-      player.dir = 'back';
-    } else {
-      player.dir = 'side'; player.spr.setFlipX(true);
-    }
+    // 8-directional facing from mouse angle (8 sectors of 45°)
+    const PI8 = Math.PI / 8;  // 22.5°
+    const a = angle;
+    let flip = false;
+    if (a > -PI8 && a <= PI8)          { player.dir = 'side';  flip = false; }  // E
+    else if (a > PI8 && a <= 3*PI8)    { player.dir = 'fside'; flip = false; }  // SE
+    else if (a > 3*PI8 && a <= 5*PI8)  { player.dir = 'front'; }                // S
+    else if (a > 5*PI8 && a <= 7*PI8)  { player.dir = 'fside'; flip = true;  }  // SW
+    else if (a > -3*PI8 && a <= -PI8)  { player.dir = 'bside'; flip = false; }  // NE
+    else if (a > -5*PI8 && a <= -3*PI8){ player.dir = 'back';  }                // N
+    else if (a > -7*PI8 && a <= -5*PI8){ player.dir = 'bside'; flip = true;  }  // NW
+    else                               { player.dir = 'side';  flip = true;  }  // W
+    player.spr.setFlipX(flip);
     // Store precise aim angle for attacks
     player.aimAngle = angle;
     // Update sprite — preserve walk cycle step frame
@@ -3747,10 +4155,13 @@ class GameScene extends Phaser.Scene {
   getAimAngle(player) {
     // In 1P mode, use precise mouse aim angle
     if (this.solo && player.aimAngle !== undefined) return player.aimAngle;
-    // In 2P mode, use directional facing
-    return player.dir === 'front'  ? Math.PI/2
-         : player.dir === 'back'   ? -Math.PI/2
-         : player.spr.flipX        ? Math.PI : 0;
+    // In 2P mode, derive aim angle from 8-directional facing
+    const flip = player.spr.flipX;
+    if (player.dir === 'front')      return Math.PI/2;
+    if (player.dir === 'back')       return -Math.PI/2;
+    if (player.dir === 'fside')      return flip ? 3*Math.PI/4  : Math.PI/4;
+    if (player.dir === 'bside')      return flip ? -3*Math.PI/4 : -Math.PI/4;
+    return flip ? Math.PI : 0; // side
   }
 
   syncLabels() {
@@ -4333,6 +4744,8 @@ class GameScene extends Phaser.Scene {
     // Position ghost in front of player
     const dirAngle = p.dir === 'front'  ? Math.PI/2
                    : p.dir === 'back'   ? -Math.PI/2
+                   : p.dir === 'fside'  ? (p.spr.flipX ? 3*Math.PI/4 : Math.PI/4)
+                   : p.dir === 'bside'  ? (p.spr.flipX ? -3*Math.PI/4 : -Math.PI/4)
                    : p.spr.flipX        ? Math.PI : 0;
     const gx = Math.round((p.spr.x + Math.cos(dirAngle) * 48) / TILE) * TILE;
     const gy = Math.round((p.spr.y + Math.sin(dirAngle) * 48) / TILE) * TILE;
