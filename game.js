@@ -2427,7 +2427,15 @@ class GameScene extends Phaser.Scene {
     const diffColor = this.hardcore ? '#ff4444' : '#44cc66';
     const diffLabel = this.hardcore ? '\u2620 HARDCORE' : '\u2665 SURVIVAL';
     this._h(this.add.text(W/2, 42, diffLabel, { fontFamily:'monospace', fontSize:'9px', color:diffColor }).setOrigin(0.5,0).setDepth(101));
-    this._h(this.add.text(W-140, H-10, 'TAB = controls', { fontFamily:'monospace', fontSize:'10px', color:'#444455' }).setOrigin(1,1).setDepth(100));
+
+    // Persistent MENU button — bottom-right, works for both keyboard and touch
+    const menuBtn = this._h(this.add.text(W - 14, H - 12, '\u2630  MENU', {
+      fontFamily:'monospace', fontSize:'12px', color:'#557755',
+      backgroundColor:'#00000088', padding:{ x:8, y:4 },
+    }).setOrigin(1, 1).setDepth(104).setInteractive({ useHandCursor: true }));
+    menuBtn.on('pointerover', () => menuBtn.setColor('#aaffaa'));
+    menuBtn.on('pointerout',  () => menuBtn.setColor('#557755'));
+    menuBtn.on('pointerdown', () => { if (!this.isOver) this.toggleControls(); });
 
     // Down status texts
     this.p1DownStatus = this._h(this.add.text(12, 54, '', { fontFamily:'monospace', fontSize:'11px', color:'#ff4444' }).setDepth(103));
@@ -2826,8 +2834,37 @@ class GameScene extends Phaser.Scene {
       });
     }
 
-    push(this.add.text(W/2, H - 26, 'TAB or ESC to close', {
-      fontFamily:'monospace', fontSize:'10px', color:'#556677', stroke:'#000', strokeThickness:2,
+    // Bottom action buttons — Settings and Quit
+    const btnY = H - 64;
+    const btnStyle = (col) => ({
+      fontFamily:'monospace', fontSize:'14px', color: col,
+      backgroundColor:'#00000099', padding:{ x:16, y:8 },
+      stroke:'#000', strokeThickness:2,
+    });
+
+    const settBtn = push(this.add.text(W/2 - 140, btnY, '\u2699  SETTINGS', btnStyle('#88aacc'))
+      .setOrigin(0.5).setDepth(97).setInteractive({ useHandCursor: true }));
+    settBtn.on('pointerover', () => settBtn.setColor('#ccddff'));
+    settBtn.on('pointerout',  () => settBtn.setColor('#88aacc'));
+    settBtn.on('pointerdown', () => {
+      this.ctrlObjs.forEach(o => o.setVisible(false));
+      this.controlsVis = false;
+      this.cameras.main.fadeOut(200, 0, 0, 0);
+      this.time.delayedCall(200, () => this.scene.start('Settings'));
+    });
+
+    const quitBtn = push(this.add.text(W/2 + 140, btnY, '\u2715  QUIT TO MENU', btnStyle('#cc6655'))
+      .setOrigin(0.5).setDepth(97).setInteractive({ useHandCursor: true }));
+    quitBtn.on('pointerover', () => quitBtn.setColor('#ff9988'));
+    quitBtn.on('pointerout',  () => quitBtn.setColor('#cc6655'));
+    quitBtn.on('pointerdown', () => {
+      this.ctrlObjs.forEach(o => o.setVisible(false));
+      this.controlsVis = false;
+      this.triggerGameOver('Run abandoned — better luck next time.');
+    });
+
+    push(this.add.text(W/2, H - 18, 'TAB  or  ESC  to close   \u2022   \u2630 MENU button bottom-right', {
+      fontFamily:'monospace', fontSize:'9px', color:'#334455', stroke:'#000', strokeThickness:2,
     }).setOrigin(0.5).setDepth(96));
   }
 
@@ -4542,14 +4579,27 @@ class GameOverScene extends Phaser.Scene {
       this.add.text(lbX - 200, lbY + 16 + i*18, txt, { fontFamily:'monospace', fontSize:'11px', color:col });
     });
 
-    // ── Controls ──────────────────────────────────────────
-    const prompt = this.add.text(W/2, H - 54, 'ENTER / SPACE  —  play again', {
-      fontFamily:'monospace', fontSize:'18px', color:'#ffffff',
-    }).setOrigin(0.5);
-    this.tweens.add({ targets:prompt, alpha:0.25, duration:700, yoyo:true, repeat:-1 });
-    this.add.text(W/2, H - 26, 'ESC  —  main menu', {
-      fontFamily:'monospace', fontSize:'13px', color:'#444455',
-    }).setOrigin(0.5);
+    // ── Navigation buttons — tappable for touch, keyboard shortcuts too ──
+    const makeBtn = (x, label, sublabel, col, borderCol, action) => {
+      const g = this.add.graphics();
+      g.fillStyle(0x110000, 0.9); g.fillRoundedRect(x - 140, H - 84, 280, 64, 10);
+      g.lineStyle(2, borderCol, 0.9); g.strokeRoundedRect(x - 140, H - 84, 280, 64, 10);
+      const t = this.add.text(x, H - 63, label, {
+        fontFamily:'monospace', fontSize:'20px', color: col, stroke:'#000', strokeThickness:3,
+      }).setOrigin(0.5);
+      this.add.text(x, H - 37, sublabel, {
+        fontFamily:'monospace', fontSize:'10px', color:'#445566',
+      }).setOrigin(0.5);
+      const zone = this.add.zone(x, H - 52, 280, 64).setInteractive({ useHandCursor: true });
+      zone.on('pointerover', () => { t.setColor('#ffffff'); g.clear(); g.fillStyle(borderCol, 0.25); g.fillRoundedRect(x-140, H-84, 280, 64, 10); g.lineStyle(2, borderCol, 1); g.strokeRoundedRect(x-140, H-84, 280, 64, 10); });
+      zone.on('pointerout',  () => { t.setColor(col); g.clear(); g.fillStyle(0x110000, 0.9); g.fillRoundedRect(x-140, H-84, 280, 64, 10); g.lineStyle(2, borderCol, 0.9); g.strokeRoundedRect(x-140, H-84, 280, 64, 10); });
+      zone.on('pointerdown', action);
+      this.tweens.add({ targets: t, alpha: 0.45, duration: 700, yoyo: true, repeat: -1 });
+      return zone;
+    };
+
+    makeBtn(W/2 - 165, '\u25b6  PLAY AGAIN', 'ENTER  /  SPACE', '#aaffaa', 0x44aa44, () => this.restart());
+    makeBtn(W/2 + 165, '\u2302  MAIN MENU',  'ESC', '#aaccff', 0x4466aa, () => this.goMenu());
 
     const K = Phaser.Input.Keyboard.KeyCodes;
     const keys = this.input.keyboard.addKeys({ enter:K.ENTER, space:K.SPACE, esc:K.ESC });
