@@ -394,11 +394,18 @@ function buildTextures(scene) {
   g.fillStyle(0x4ec42a); g.fillCircle(15, 7, 5);
   g.generateTexture('tree', 28, 36);
 
-  // Rock
+  // Rock — polygon-based with lit top face for depth
   g.clear();
-  g.fillStyle(0x888888); g.fillEllipse(11, 9, 18, 14);
-  g.fillStyle(0x6a6a6a); g.fillEllipse(11, 11, 14, 10);
-  g.fillStyle(0xaaaaaa); g.fillEllipse(8, 5, 6, 4);
+  // Main body: dark warm-grey base mass
+  g.fillStyle(0x706860);
+  g.fillPoints([{x:2,y:15},{x:0,y:9},{x:3,y:3},{x:9,y:1},{x:15,y:1},{x:20,y:4},{x:22,y:10},{x:18,y:15}], true);
+  // Top-left highlight face: lighter grey creates lit-top depth illusion
+  g.fillStyle(0xc0b8a8);
+  g.fillPoints([{x:3,y:13},{x:1,y:8},{x:4,y:3},{x:9,y:2},{x:14,y:2},{x:17,y:6},{x:18,y:11},{x:15,y:13}], true);
+  // Cracks: thin dark lines for texture
+  g.lineStyle(1, 0x3e3836);
+  g.beginPath(); g.moveTo(8,7); g.lineTo(11,11); g.lineTo(9,15); g.strokePath();
+  g.beginPath(); g.moveTo(14,4); g.lineTo(16,8); g.strokePath();
   g.generateTexture('rock', 22, 16);
 
   // Barracks
@@ -605,6 +612,74 @@ function buildTextures(scene) {
   g.fillStyle(0xffffff); g.fillCircle(15, 4, 4);
   g.generateTexture('tree_snow', 28, 36);
 
+  // Swamp tree — dark murky green with hanging moss
+  g.clear();
+  g.fillStyle(0x2a1c08); g.fillRect(10, 20, 8, 16);
+  g.fillStyle(0x1e1406); g.fillRect(10, 20, 2, 16);
+  g.fillStyle(0x1a3012); g.fillCircle(14, 14, 12);
+  g.fillStyle(0x223818); g.fillCircle(14, 11, 9);
+  g.fillStyle(0x0e1a0a); g.fillCircle(11, 13, 3);
+  // Hanging moss streaks
+  g.fillStyle(0x1c2e14); g.fillRect(8, 18, 2, 9); g.fillRect(14, 17, 2, 8); g.fillRect(19, 18, 2, 10);
+  g.fillStyle(0x162410); g.fillRect(11, 19, 1, 7); g.fillRect(17, 18, 1, 8);
+  g.generateTexture('tree_swamp', 28, 36);
+
+  // Great Oak — wide round canopy, thick trunk, grassland landmark (40×52)
+  g.clear();
+  g.fillStyle(0x5c3415); g.fillRect(15, 33, 10, 19);
+  g.fillStyle(0x3d2010); g.fillRect(15, 33, 3, 19);
+  g.fillStyle(0x6e4022); g.fillRect(21, 35, 3, 17);
+  // Root buttresses
+  g.fillStyle(0x5c3415); g.fillTriangle(8, 52, 17, 42, 17, 52);
+  g.fillStyle(0x5c3415); g.fillTriangle(32, 52, 23, 42, 23, 52);
+  // Canopy layers — dark to bright (bottom to top)
+  g.fillStyle(0x144010); g.fillEllipse(20, 29, 38, 28);
+  g.fillStyle(0x1e5818); g.fillEllipse(20, 23, 32, 24);
+  g.fillStyle(0x2a6820); g.fillEllipse(20, 16, 26, 20);
+  g.fillStyle(0x387828); g.fillEllipse(18, 12, 16, 12);
+  g.generateTexture('great_oak', 40, 52);
+
+  // Great Pine — tall narrow layered pine, tundra landmark (30×64)
+  g.clear();
+  g.fillStyle(0x5c3317); g.fillRect(13, 48, 4, 16);
+  g.fillStyle(0x3d2010); g.fillRect(13, 48, 1, 16);
+  // 4 tiers: bottom (wide) to top (narrow)
+  g.fillStyle(0x164010); g.fillTriangle(15, 48, 1, 56, 29, 56);
+  g.fillStyle(0x1e5018); g.fillTriangle(15, 45, 3, 54, 27, 54);
+  g.fillStyle(0xe8f2ff); g.fillTriangle(15, 45, 8, 49, 22, 49);
+  g.fillStyle(0x1a4812); g.fillTriangle(15, 36, 4, 47, 26, 47);
+  g.fillStyle(0x225a1a); g.fillTriangle(15, 34, 6, 45, 24, 45);
+  g.fillStyle(0xe8f2ff); g.fillTriangle(15, 34, 9, 38, 21, 38);
+  g.fillStyle(0x185010); g.fillTriangle(15, 24, 6, 36, 24, 36);
+  g.fillStyle(0x206018); g.fillTriangle(15, 22, 7, 34, 23, 34);
+  g.fillStyle(0xe8f2ff); g.fillTriangle(15, 22, 10, 26, 20, 26);
+  g.fillStyle(0x1a5812); g.fillTriangle(15, 12, 8, 25, 22, 25);
+  g.fillStyle(0x246820); g.fillTriangle(15, 10, 9, 23, 21, 23);
+  g.fillStyle(0xeef6ff); g.fillTriangle(15, 4, 11, 13, 19, 13);
+  g.fillStyle(0xffffff); g.fillTriangle(15, 2, 12, 9, 18, 9);
+  g.generateTexture('great_pine', 30, 64);
+
+  // Great Mangrove — wide gnarled roots, swamp landmark (52×50)
+  g.clear();
+  // Spreading root trunks
+  g.fillStyle(0x2e1c08);
+  g.fillTriangle(20, 50, 4, 50, 16, 28);
+  g.fillTriangle(22, 50, 14, 50, 20, 26);
+  g.fillRect(22, 22, 8, 28);
+  g.fillTriangle(30, 50, 36, 50, 32, 26);
+  g.fillTriangle(32, 50, 48, 50, 36, 28);
+  g.fillStyle(0x3d2810); g.fillRect(23, 22, 3, 28);
+  // Wide irregular canopy
+  g.fillStyle(0x182e12); g.fillEllipse(26, 18, 50, 32);
+  g.fillStyle(0x1e3818); g.fillEllipse(24, 13, 44, 24);
+  g.fillStyle(0x142810); g.fillCircle(18, 14, 10); g.fillCircle(34, 12, 8);
+  // Hanging moss
+  g.fillStyle(0x162a10);
+  g.fillRect(8, 28, 2, 14); g.fillRect(16, 24, 2, 11); g.fillRect(30, 24, 2, 9); g.fillRect(40, 26, 2, 13);
+  // Canopy highlight
+  g.fillStyle(0x284a1e); g.fillEllipse(22, 10, 18, 12);
+  g.generateTexture('great_mangrove', 52, 50);
+
   // Mushroom — red/purple cap, replacing bushes in swamp
   g.clear();
   g.fillStyle(0x887766); g.fillRect(6, 10, 4, 6); // stem
@@ -635,12 +710,21 @@ function buildTextures(scene) {
   g.fillStyle(0xccff88, 0.4); g.fillCircle(11, 5, 1);
   g.generateTexture('toxic_pool', 24, 20);
 
-  // Ice rock — bluish-white
+  // Ice rock — polygon-based, blue-grey with icy highlight face
   g.clear();
-  g.fillStyle(0x99bbdd); g.fillEllipse(11, 9, 18, 14);
-  g.fillStyle(0x88aacc); g.fillEllipse(11, 11, 14, 10);
-  g.fillStyle(0xccddee); g.fillEllipse(8, 5, 6, 4);
-  g.fillStyle(0xddeeff); g.fillEllipse(6, 4, 3, 2);
+  // Main body: cool blue-grey
+  g.fillStyle(0x7090a8);
+  g.fillPoints([{x:2,y:15},{x:0,y:9},{x:3,y:3},{x:9,y:1},{x:15,y:1},{x:20,y:4},{x:22,y:10},{x:18,y:15}], true);
+  // Top-left highlight face: pale icy blue-white
+  g.fillStyle(0xbcd8e8);
+  g.fillPoints([{x:3,y:13},{x:1,y:8},{x:4,y:3},{x:9,y:2},{x:14,y:2},{x:17,y:6},{x:18,y:11},{x:15,y:13}], true);
+  // Frost sparkle highlights
+  g.fillStyle(0xeef6ff);
+  g.fillRect(7, 4, 2, 2); g.fillRect(13, 6, 1, 1); g.fillRect(5, 9, 1, 1);
+  // Cracks: dark blue-grey
+  g.lineStyle(1, 0x507080);
+  g.beginPath(); g.moveTo(8,7); g.lineTo(11,11); g.lineTo(9,15); g.strokePath();
+  g.beginPath(); g.moveTo(14,4); g.lineTo(16,8); g.strokePath();
   g.generateTexture('ice_rock', 22, 16);
 
   // Mountain — large terrain feature (96x80) — visible from across the map
@@ -703,6 +787,49 @@ function buildTextures(scene) {
   g.fillStyle(0x2e2e3a); g.fillRect(0, 15, 32, 2); g.fillRect(15, 0, 2, 32);
   g.fillStyle(0x2a2a38); g.fillRect(4, 4, 3, 3); g.fillRect(22, 20, 3, 2);
   g.generateTexture('ruin_floor', 32, 32);
+
+  // Plank wall — weathered wood for farmhouse structures
+  g.clear();
+  g.fillStyle(0x8b5e3c); g.fillRect(0, 0, 32, 32); // base wood
+  g.fillStyle(0x6d4a2e); // grain lines / plank seams
+  g.fillRect(0, 10, 32, 2); g.fillRect(0, 22, 32, 2);
+  g.fillRect(15, 0, 2, 32); // center seam
+  g.fillStyle(0x4a3020); g.fillRect(3, 3, 5, 7); g.fillRect(20, 14, 6, 5); // dark weathering
+  g.fillStyle(0xaa7a55); g.fillRect(2, 2, 3, 3); g.fillRect(18, 13, 3, 2); // light weathering
+  g.fillStyle(0x333333); g.fillRect(5, 1, 2, 2); g.fillRect(23, 12, 2, 2); g.fillRect(5, 24, 2, 2); // nail heads
+  g.generateTexture('plank_wall', 32, 32);
+
+  // Metal wall — rusty corrugated metal for bunker structures
+  g.clear();
+  g.fillStyle(0x6e4438); g.fillRect(0, 0, 32, 32); // rust base
+  // Corrugation ridges
+  for (let ry = 0; ry < 32; ry += 8) {
+    g.fillStyle(0x7e5448); g.fillRect(0, ry,   32, 4);
+    g.fillStyle(0x523028); g.fillRect(0, ry+4, 32, 4);
+  }
+  g.fillStyle(0xb06040); g.fillRect(3, 4, 5, 5); g.fillRect(18, 12, 7, 3); g.fillRect(7, 22, 4, 6); // rust patches
+  g.fillStyle(0x555555); g.fillRect(1, 2, 3, 2); g.fillRect(25, 10, 3, 2); g.fillRect(1, 18, 3, 2); // bolt heads
+  g.generateTexture('metal_wall', 32, 32);
+
+  // Rotted plank — dark waterlogged wood for swamp shack
+  g.clear();
+  g.fillStyle(0x2c1a0a); g.fillRect(0, 0, 32, 32); // dark wet wood
+  g.fillStyle(0x1a0e06); g.fillRect(0, 10, 32, 2); g.fillRect(0, 22, 32, 2); g.fillRect(15, 0, 2, 32);
+  g.fillStyle(0x0a1a0a); g.fillRect(2, 4, 8, 5); g.fillRect(18, 15, 7, 7); // standing water patches
+  g.fillStyle(0x1a2e14); g.fillRect(5, 14, 5, 5); g.fillRect(22, 3, 6, 3); // algae/mold
+  g.fillStyle(0x3a280e); g.fillRect(3, 2, 3, 4); g.fillRect(20, 12, 3, 3); // wet sheen
+  g.generateTexture('rot_plank', 32, 32);
+
+  // Ice floor — pale blue cracked tile for outpost interiors
+  g.clear();
+  g.fillStyle(0xc0d8ee); g.fillRect(0, 0, 32, 32); // icy base
+  g.fillStyle(0x90b0cc); // tile grid and cracks
+  g.fillRect(0, 0, 32, 1); g.fillRect(0, 15, 32, 1); g.fillRect(0, 16, 32, 1); g.fillRect(0, 31, 32, 1);
+  g.fillRect(0, 0, 1, 32); g.fillRect(15, 0, 1, 32); g.fillRect(16, 0, 1, 32); g.fillRect(31, 0, 1, 32);
+  g.fillStyle(0x6888a0); // crack lines
+  g.fillRect(4, 4, 1, 9); g.fillRect(4, 12, 5, 1); g.fillRect(20, 18, 7, 1); g.fillRect(26, 18, 1, 6);
+  g.fillStyle(0xdcf0ff); g.fillRect(2, 2, 5, 5); g.fillRect(18, 18, 6, 6); // frost highlights
+  g.generateTexture('ice_floor', 32, 32);
 
   // Crater (large) — decorative ground depression
   g.clear();
@@ -2113,6 +2240,9 @@ class GameScene extends Phaser.Scene {
     this.hudCam.ignore(this._wo);
     this.hudCam.ignore(this.obstacles.getChildren());
 
+    // Harvest progress graphics — world-space, depth 20
+    this.harvestGfx = this._w(this.add.graphics().setDepth(20));
+
     // Spawn enemies after camera setup
     this.spawnEnemies(worldW, worldH, cx, cy);
     this.placeRaiderCamp(worldW, worldH);
@@ -2263,13 +2393,14 @@ class GameScene extends Phaser.Scene {
       if (biome === 'waste') treeKey = 'tree_dead';
       else if (biome === 'tundra') treeKey = 'tree_snow';
       else if (biome === 'ruins' && Math.random() < 0.5) treeKey = 'tree_dead';
-      else if (biome === 'swamp' && Math.random() < 0.4) treeKey = 'tree_dead';
+      else if (biome === 'swamp') treeKey = Math.random() < 0.55 ? 'tree_swamp' : 'tree';
       const sc = Phaser.Math.FloatBetween(1.6, 2.8);
       const t = this.obstacles.create(tx*TILE+14, ty*TILE+18, treeKey);
       t.setScale(sc).setDepth(5 + ty*0.01).setImmovable(true);
       // Trunk-only hitbox: 8px wide × 12px tall at the base of the sprite (28×36)
       t.body.setSize(8, 12).setOffset(10, 24);
       t.refreshBody();
+      t.isTree = true;
       treesPlaced.push({ tx, ty });
     };
 
@@ -2295,6 +2426,31 @@ class GameScene extends Phaser.Scene {
     for (let i = 0; i < 100; i++) {
       const tx = Phaser.Math.Between(2, CFG.MAP_W-2), ty = Phaser.Math.Between(2, CFG.MAP_H-2);
       placeTree(tx, ty, getBiome(tx, ty));
+    }
+
+    // Great Trees — landmark-scale trees, 2-3 per relevant biome
+    const greatTreeBiomes = [
+      { biome: 'grass', key: 'great_oak',      ox: 20, oy: 14, bw: 10, bh: 12, bx: 15, by: 36 },
+      { biome: 'tundra', key: 'great_pine',    ox: 15, oy: 10, bw: 5,  bh: 14, bx: 12, by: 46 },
+      { biome: 'swamp',  key: 'great_mangrove',ox: 26, oy: 14, bw: 28, bh: 10, bx: 12, by: 38 },
+    ];
+    for (const { biome, key, ox, oy, bw, bh, bx, by } of greatTreeBiomes) {
+      let placed = 0;
+      for (let att = 0; att < 120 && placed < 3; att++) {
+        const tx = Phaser.Math.Between(8, CFG.MAP_W-8);
+        const ty = Phaser.Math.Between(8, CFG.MAP_H-8);
+        if (getBiome(tx, ty) !== biome) continue;
+        if (Math.abs(tx-stx) < SAFE_R+6 && Math.abs(ty-sty) < SAFE_R+6) continue;
+        if (treesPlaced.some(p => Math.abs(p.tx-tx) <= 2 && Math.abs(p.ty-ty) <= 2)) continue;
+        const sc = Phaser.Math.FloatBetween(2.6, 3.4);
+        const t = this.obstacles.create(tx*TILE+ox, ty*TILE+oy, key);
+        t.setScale(sc).setDepth(5 + ty*0.01).setImmovable(true);
+        t.body.setSize(bw, bh).setOffset(bx, by);
+        t.refreshBody();
+        t.isTree = true;
+        treesPlaced.push({ tx, ty });
+        placed++;
+      }
     }
 
     // Rocks — biome-appropriate
@@ -2339,20 +2495,23 @@ class GameScene extends Phaser.Scene {
     this.buildRuinsCity(stx, sty, TILE);
 
     // Decorative craters — visual only, non-blocking
-    for (let i = 0; i < 28; i++) {
+    for (let i = 0; i < 36; i++) {
       const tx = Phaser.Math.Between(3, CFG.MAP_W-4), ty = Phaser.Math.Between(3, CFG.MAP_H-4);
       if (Math.abs(tx-stx) < SAFE_R+4 && Math.abs(ty-sty) < SAFE_R+4) continue;
       const b = getBiome(tx, ty);
       if (b !== 'waste' && b !== 'ruins') continue;
-      const key = Math.random() < 0.45 ? 'crater_large' : 'crater_small';
-      const sc = Phaser.Math.FloatBetween(0.8, 2.2);
-      this._w(this.add.image(tx*TILE, ty*TILE, key).setScale(sc).setDepth(1.5).setAlpha(0.7));
+      // Rare mega crater (1 in 6): very large, landmark-scale impact site
+      const isMega = Math.random() < 0.17;
+      const key = (isMega || Math.random() < 0.45) ? 'crater_large' : 'crater_small';
+      const sc = isMega ? Phaser.Math.FloatBetween(2.8, 4.2) : Phaser.Math.FloatBetween(0.6, 2.4);
+      const alpha = isMega ? 0.85 : 0.7;
+      this._w(this.add.image(tx*TILE, ty*TILE, key).setScale(sc).setDepth(1.5).setAlpha(alpha));
     }
-    // Dense small craters in wasteland
-    for (let i = 0; i < 45; i++) {
+    // Dense small craters in wasteland core + extras
+    for (let i = 0; i < 55; i++) {
       const tx = Phaser.Math.Between(3, CFG.MAP_W-4), ty = Phaser.Math.Between(3, CFG.MAP_H-4);
       if (getBiome(tx, ty) !== 'waste') continue;
-      const sc = Phaser.Math.FloatBetween(0.5, 1.4);
+      const sc = Phaser.Math.FloatBetween(0.4, 1.8);
       this._w(this.add.image(tx*TILE + Phaser.Math.Between(-8, 8), ty*TILE + Phaser.Math.Between(-8, 8), 'crater_small').setScale(sc).setDepth(1.5).setAlpha(0.55));
     }
 
@@ -2412,11 +2571,18 @@ class GameScene extends Phaser.Scene {
       const px = tx*TILE+24, py = ty*TILE+20;
       const ob = this.obstacles.create(px, py, key);
       ob.setScale(sc).setDepth(6 + ty*0.01).setImmovable(true);
-      // Circle hitbox centered on lower triangle mass (eliminates square corners)
-      if (key === 'mountain2') {
-        ob.body.setCircle(28, 28, 52); // mountain2 (112×88): center at (56,80)
-      } else {
-        ob.body.setCircle(24, 24, 52); // mountain (96×80): center at (48,76)
+      // Scale-compensated circle hitbox: world radius stays ~16px regardless of mountain scale.
+      // StaticBody world radius = r * scale, so divide desired world radius by sc.
+      {
+        const R = 16;
+        const r = Math.round(R / sc);
+        if (key === 'mountain2') {
+          // mountain2 (112×88): visual base center at sprite (56, 62)
+          ob.body.setCircle(r, Math.round(56 / sc - r), Math.round(62 / sc - r));
+        } else {
+          // mountain (96×80): visual base center at sprite (48, 62)
+          ob.body.setCircle(r, Math.round(48 / sc - r), Math.round(62 / sc - r));
+        }
       }
       ob.refreshBody();
       mtns.push({ tx, ty });
@@ -2500,6 +2666,9 @@ class GameScene extends Phaser.Scene {
     // ── POINTS OF INTEREST ────────────────────────────────────
     this.pois = [];
     this.buildPOIs(stx, sty, TILE);
+
+    // ── BIOME STRUCTURES ─────────────────────────────────────
+    this.buildBiomeStructures(stx, sty, TILE);
 
     // Night overlay
     this.nightOverlay = this._w(this.add.graphics().setDepth(49));
@@ -2646,16 +2815,42 @@ class GameScene extends Phaser.Scene {
         const bx = cl + col * (blockW + streetW);
         const by = ct + row * (blockH + streetH);
 
-        // Randomize which sides have doorways (street-facing sides always have one)
-        // Doorway = 2-tile gap near the center of each wall
+        // Assign block type: 50% residential, 30% commercial, 20% tower
+        const rnd = Math.random();
+        const blockType = rnd < 0.5 ? 'residential' : rnd < 0.8 ? 'commercial' : 'tower';
+
+        // Towers: small solid building in center of block, no street doorways
+        if (blockType === 'tower') {
+          const tw = 4, th = 4;
+          const tx0 = bx + Math.floor((blockW - tw) / 2);
+          const ty0 = by + Math.floor((blockH - th) / 2);
+          // Solid walls — no doorways
+          for (let i = 0; i < tw; i++) { placeWall(tx0+i, ty0); placeWall(tx0+i, ty0+th-1); }
+          for (let j = 1; j < th-1; j++) { placeWall(tx0, ty0+j); placeWall(tx0+tw-1, ty0+j); }
+          // Extra-depth overlay to suggest height
+          for (let i = 1; i < tw-1; i++) {
+            for (let j = 0; j < th-1; j++) {
+              if (tx0+i < 2 || ty0+j < 2) continue;
+              this._w(this.add.image((tx0+i)*TILE+16, (ty0+j)*TILE+10, 'ruin_block').setDepth(7 + (ty0+j)*0.01).setAlpha(0.6));
+            }
+          }
+          // Central tall pillar
+          const sc = Phaser.Math.FloatBetween(1.5, 2.2);
+          this._w(this.add.image((tx0+tw/2)*TILE, (ty0+th/2)*TILE, 'pillar').setScale(sc).setDepth(6 + (ty0+th/2)*0.01));
+          continue; // skip normal wall drawing for towers
+        }
+
         const doorCenter = { N: Math.floor(blockW/2)-1, S: Math.floor(blockW/2)-1,
                              W: Math.floor(blockH/2)-1, E: Math.floor(blockH/2)-1 };
-        const hasDoorN = row > 0;         // always open toward street above
-        const hasDoorS = row < rows-1;    // always open toward street below
-        const hasDoorW = col > 0;         // always open toward street left
-        const hasDoorE = col < cols-1;    // always open toward street right
+        const hasDoorN = row > 0;
+        const hasDoorS = row < rows-1;
+        const hasDoorW = col > 0;
+        const hasDoorE = col < cols-1;
+        // Commercial blocks have wider doorways (3 tiles) and more decay
+        const doorSize   = blockType === 'commercial' ? 3 : 2;
+        const decayChance = blockType === 'commercial' ? 0.18 : 0.1;
 
-        // Interior floor tiles (decorative)
+        // Interior floor tiles
         for (let wx = bx+1; wx < bx+blockW-1; wx++) {
           for (let wy = by+1; wy < by+blockH-1; wy++) {
             if (wx < 2 || wx > CFG.MAP_W-3 || wy < 2 || wy > CFG.MAP_H-3) continue;
@@ -2663,40 +2858,37 @@ class GameScene extends Phaser.Scene {
           }
         }
 
-        // Scatter interior rubble / decorative pillars
-        const rubbleCount = Phaser.Math.Between(1, 3);
+        // Scatter interior rubble / pillars — more in commercial blocks
+        const rubbleCount = blockType === 'commercial' ? Phaser.Math.Between(3, 6) : Phaser.Math.Between(1, 3);
         for (let r = 0; r < rubbleCount; r++) {
           const rx = bx + 1 + Phaser.Math.Between(0, blockW-3);
           const ry = by + 1 + Phaser.Math.Between(0, blockH-3);
           if (rx < 2 || rx > CFG.MAP_W-3 || ry < 2 || ry > CFG.MAP_H-3) continue;
           const sc = Phaser.Math.FloatBetween(0.5, 1.2);
+          const key = Math.random() < 0.5 ? 'pillar' : 'ruin_block';
           this._w(this.add.image(rx*TILE + Phaser.Math.Between(-6, 6), ry*TILE + Phaser.Math.Between(-6, 6),
-            'pillar').setScale(sc).setDepth(4 + ry*0.01).setAlpha(0.9));
+            key).setScale(sc).setDepth(4 + ry*0.01).setAlpha(0.9));
         }
 
         // North wall
         for (let i = 0; i < blockW; i++) {
-          const isDoor = hasDoorN && (i === doorCenter.N || i === doorCenter.N+1);
-          const isRuined = !isDoor && Math.random() < 0.1;
-          if (!isDoor && !isRuined) placeWall(bx+i, by);
+          const isDoor = hasDoorN && i >= doorCenter.N && i < doorCenter.N + doorSize;
+          if (!isDoor && Math.random() >= decayChance) placeWall(bx+i, by);
         }
         // South wall
         for (let i = 0; i < blockW; i++) {
-          const isDoor = hasDoorS && (i === doorCenter.S || i === doorCenter.S+1);
-          const isRuined = !isDoor && Math.random() < 0.1;
-          if (!isDoor && !isRuined) placeWall(bx+i, by+blockH-1);
+          const isDoor = hasDoorS && i >= doorCenter.S && i < doorCenter.S + doorSize;
+          if (!isDoor && Math.random() >= decayChance) placeWall(bx+i, by+blockH-1);
         }
-        // West wall (skip corners — they're handled by N/S)
+        // West wall
         for (let j = 1; j < blockH-1; j++) {
-          const isDoor = hasDoorW && (j === doorCenter.W || j === doorCenter.W+1);
-          const isRuined = !isDoor && Math.random() < 0.1;
-          if (!isDoor && !isRuined) placeWall(bx, by+j);
+          const isDoor = hasDoorW && j >= doorCenter.W && j < doorCenter.W + doorSize;
+          if (!isDoor && Math.random() >= decayChance) placeWall(bx, by+j);
         }
-        // East wall (skip corners)
+        // East wall
         for (let j = 1; j < blockH-1; j++) {
-          const isDoor = hasDoorE && (j === doorCenter.E || j === doorCenter.E+1);
-          const isRuined = !isDoor && Math.random() < 0.1;
-          if (!isDoor && !isRuined) placeWall(bx+blockW-1, by+j);
+          const isDoor = hasDoorE && j >= doorCenter.E && j < doorCenter.E + doorSize;
+          if (!isDoor && Math.random() >= decayChance) placeWall(bx+blockW-1, by+j);
         }
       }
     }
@@ -2715,6 +2907,92 @@ class GameScene extends Phaser.Scene {
         p.refreshBody();
       } else {
         placeWall(tx, ty);
+      }
+    }
+  }
+
+  // ── BIOME STRUCTURES ──────────────────────────────────────────
+  // Small abandoned structures in each biome — high risk, high reward.
+  // Enemies spawn inside/around each structure (see spawnEnemies).
+  buildBiomeStructures(stx, sty, TILE) {
+    this._structureLocs = [];
+    const { MAP_W, MAP_H, SAFE_R } = CFG;
+    const W = 7, H = 5; // structure footprint in tiles
+
+    const biomeConfig = [
+      { biome: 'grass',  wallKey: 'plank_wall', floorKey: null,        label: 'FARMHOUSE' },
+      { biome: 'tundra', wallKey: 'ruin_block',  floorKey: 'ice_floor', label: 'OUTPOST'   },
+      { biome: 'swamp',  wallKey: 'rot_plank',   floorKey: null,        label: 'SHACK'     },
+      { biome: 'waste',  wallKey: 'metal_wall',  floorKey: null,        label: 'BUNKER'    },
+    ];
+
+    for (const { biome, wallKey, floorKey, label } of biomeConfig) {
+      let placed = 0;
+      for (let att = 0; att < 120 && placed < 2; att++) {
+        const cx = Phaser.Math.Between(12, MAP_W - 12);
+        const cy = Phaser.Math.Between(12, MAP_H - 12);
+        if (getBiome(cx, cy) !== biome) continue;
+        if (Math.abs(cx - stx) < SAFE_R + 12 && Math.abs(cy - sty) < SAFE_R + 12) continue;
+        // Don't overlap existing POI markers (rough check)
+        if (this.pois.some(p => Math.abs(p.tx - cx) < 10 && Math.abs(p.ty - cy) < 10)) continue;
+
+        const x0 = cx - Math.floor(W / 2);
+        const y0 = cy - Math.floor(H / 2);
+
+        // Floor tiles (tundra only — ice_floor)
+        if (floorKey) {
+          for (let dx = 1; dx < W - 1; dx++) {
+            for (let dy = 1; dy < H - 1; dy++) {
+              const tx = x0 + dx, ty = y0 + dy;
+              if (tx < 2 || tx > MAP_W - 3 || ty < 2 || ty > MAP_H - 3) continue;
+              this._w(this.add.tileSprite(tx * TILE, ty * TILE, TILE, TILE, floorKey).setOrigin(0).setDepth(0.65));
+            }
+          }
+        }
+
+        const doorTile = Math.floor(W / 2) - 1; // 2-tile doorway centered on south wall
+
+        // Helper to place one wall tile
+        const placeW = (tx, ty) => {
+          if (tx < 2 || tx > MAP_W - 3 || ty < 2 || ty > MAP_H - 3) return;
+          const w = this.obstacles.create(tx * TILE + 16, ty * TILE + 16, wallKey);
+          w.setDepth(5 + ty * 0.01).setImmovable(true);
+          w.body.setSize(28, 28); w.refreshBody();
+        };
+
+        // North wall (solid)
+        for (let dx = 0; dx < W; dx++) placeW(x0 + dx, y0);
+        // South wall with doorway
+        for (let dx = 0; dx < W; dx++) {
+          if (dx !== doorTile && dx !== doorTile + 1) placeW(x0 + dx, y0 + H - 1);
+        }
+        // West wall
+        for (let dy = 1; dy < H - 1; dy++) placeW(x0, y0 + dy);
+        // East wall
+        for (let dy = 1; dy < H - 1; dy++) placeW(x0 + W - 1, y0 + dy);
+
+        // Interior loot — resource items scattered inside
+        const lootKeys = ['item_wood', 'item_metal', 'item_fiber', 'item_food'];
+        for (let l = 0; l < Phaser.Math.Between(2, 4); l++) {
+          const lx = (x0 + 1 + Phaser.Math.Between(0, W - 3)) * TILE + Phaser.Math.Between(-6, 6);
+          const ly = (y0 + 1 + Phaser.Math.Between(0, H - 3)) * TILE + Phaser.Math.Between(-6, 6);
+          const itemKey = lootKeys[Phaser.Math.Between(0, lootKeys.length - 1)];
+          const item = this.physics.add.image(lx, ly, itemKey).setScale(2).setDepth(6);
+          item.body.allowGravity = false; item.body.setImmovable(true);
+          item.itemType = itemKey.replace('item_', '');
+          this._w(item);
+          this.worldCrates.push(item);
+        }
+
+        // Label above structure
+        const wx = (x0 + W / 2) * TILE, wy = y0 * TILE - 12;
+        this._w(this.add.text(wx, wy, label, {
+          fontFamily: 'monospace', fontSize: '8px', color: '#cc9944', stroke: '#000', strokeThickness: 2,
+        }).setOrigin(0.5).setDepth(7).setAlpha(0.85));
+
+        // Record for enemy spawning
+        this._structureLocs.push({ x: cx * TILE, y: cy * TILE, biome });
+        placed++;
       }
     }
   }
@@ -3555,6 +3833,7 @@ class GameScene extends Phaser.Scene {
     this.updateSleep(delta);
     this.updateDayNight(delta);
     this.updateBuildMode();
+    this.updateHarvest(delta);
     this.updateFog();
     this.updateMinimap();
     this.redrawHUD();
@@ -3830,9 +4109,9 @@ class GameScene extends Phaser.Scene {
       this.physics.add.collider(spr, this.obstacles);
 
       const stats = {
-        brawler: { hp: 90,  speed: 95,  dmg: 14, range: 36, atkInterval: 1400, shootRange: 0 },
-        shooter: { hp: 55,  speed: 80,  dmg: 10, range: 40, atkInterval: 1800, shootRange: 260 },
-        heavy:   { hp: 140, speed: 65,  dmg: 18, range: 42, atkInterval: 1600, shootRange: 180 },
+        brawler: { hp: 130, speed: 110, dmg: 20, range: 36, atkInterval: 1100, shootRange: 0 },
+        shooter: { hp: 80,  speed: 90,  dmg: 16, range: 40, atkInterval: 1200, shootRange: 280 },
+        heavy:   { hp: 200, speed: 75,  dmg: 28, range: 42, atkInterval: 1400, shootRange: 200 },
       }[rtype];
 
       const raider = {
@@ -3849,14 +4128,12 @@ class GameScene extends Phaser.Scene {
   }
 
   updateRaiders(delta) {
-    // Shooters fire projectiles — handled separately from melee in updateEnemies
-    // Here we manage raider-specific ranged behavior
+    // Shooters fire projectiles; brawlers get a charge lunge
     if (!this.raiders || this.isOver) return;
     const players = [this.p1, this.p2].filter(p => p && !p.isDowned && p.hp > 0 && p.spr.visible);
 
     this.raiders.forEach(raider => {
       if (raider.hp <= 0 || !raider.spr.active) return;
-      if (!raider.shootRange) return; // brawlers skip
 
       let nearest = null, nearDist = Infinity;
       players.forEach(p => {
@@ -3865,8 +4142,28 @@ class GameScene extends Phaser.Scene {
       });
       if (!nearest) return;
 
+      // Brawler charge lunge: triple speed for 400ms when closing within 100px
+      if (raider.type === 'brawler') {
+        raider.chargeCooldown = (raider.chargeCooldown || 0) - delta;
+        raider.chargeTimer   = (raider.chargeTimer   || 0) - delta;
+        if (raider.chargeTimer > 0) {
+          // Mid-charge: override movement speed to triple via velocity boost
+          const ang = Phaser.Math.Angle.Between(raider.spr.x, raider.spr.y, nearest.spr.x, nearest.spr.y);
+          raider.spr.setVelocity(Math.cos(ang) * raider.speed * 3, Math.sin(ang) * raider.speed * 3);
+          raider.spr.setTint(0xff4422);
+        } else {
+          if (raider.spr.tintTopLeft === 0xff4422) raider.spr.clearTint();
+          if (nearDist < 100 && nearDist > raider.attackRange && raider.chargeCooldown <= 0) {
+            raider.chargeTimer   = 400;
+            raider.chargeCooldown = 2000;
+          }
+        }
+        return; // brawlers skip ranged logic
+      }
+
+      // Shooters and heavy: ranged fire when in range
+      if (!raider.shootRange) return;
       if (nearDist < raider.shootRange && nearDist > raider.attackRange * 1.5) {
-        // In shoot range but not melee range — fire
         raider.rangedTimer -= delta;
         if (raider.rangedTimer <= 0) {
           raider.rangedTimer = raider.atkInterval;
@@ -3884,6 +4181,10 @@ class GameScene extends Phaser.Scene {
     const speed = 380;
     bullet.setVelocity(Math.cos(ang) * speed, Math.sin(ang) * speed);
     SFX._play(320, 'square', 0.04, 0.15);
+    // Raider bullets blocked by terrain and player-built structures
+    if (this.obstacles) {
+      this.physics.add.collider(bullet, this.obstacles, () => { if (bullet.active) bullet.destroy(); });
+    }
 
     const hitPlayers = [this.p1, this.p2].filter(Boolean);
     hitPlayers.forEach(p => {
@@ -4219,6 +4520,10 @@ class GameScene extends Phaser.Scene {
       if (this.hudCam) this.hudCam.ignore(blt);
       this.physics.velocityFromAngle(Phaser.Math.RadToDeg(angle), 600, blt.body.velocity);
       blt.body.allowGravity = false;
+      // Player bullets blocked by terrain and player-built structures
+      if (this.obstacles) {
+        this.physics.add.collider(blt, this.obstacles, () => { if (blt.active) blt.destroy(); });
+      }
       if (this.enemies) {
         this.enemies.forEach(e => {
           if (e.hp <= 0) return;
@@ -4493,6 +4798,43 @@ class GameScene extends Phaser.Scene {
     this.waveTimer = 0;
     this.WAVE_INTERVAL = 60000; // 60 seconds between waves
     this._spawnGroup(worldW, worldH, cx, cy, { wolf:12, rat:18, bear:6 }, false);
+
+    // Spawn structure guards — 2-4 enemies per biome structure (high danger zone)
+    if (this._structureLocs) {
+      const biomeGuardType = { grass:'wolf', tundra:'wolf', swamp:'rat', waste:'bear' };
+      for (const loc of this._structureLocs) {
+        const type = biomeGuardType[loc.biome] || 'wolf';
+        const t = { wolf:{key:'wolf',hp:70,speed:95,dmg:10,baseScale:2.0,w:20,h:12},
+                    rat: {key:'rat', hp:38,speed:145,dmg:7, baseScale:1.6,w:15,h:9 },
+                    bear:{key:'bear',hp:160,speed:58,dmg:20,baseScale:2.4,w:24,h:18} }[type];
+        const count = Phaser.Math.Between(2, 4);
+        for (let i = 0; i < count; i++) {
+          const ang = (i / count) * Math.PI * 2;
+          const dist = Phaser.Math.Between(30, 90);
+          const ex = loc.x + Math.cos(ang) * dist;
+          const ey = loc.y + Math.sin(ang) * dist;
+          const sizeMult = Phaser.Math.FloatBetween(1.0, 1.5); // bigger = harder
+          const sc = t.baseScale * sizeMult;
+          const spr = this.physics.add.image(
+            Phaser.Math.Clamp(ex, CFG.TILE*4, worldW - CFG.TILE*4),
+            Phaser.Math.Clamp(ey, CFG.TILE*4, worldH - CFG.TILE*4), t.key
+          ).setScale(sc).setDepth(8);
+          spr.setCollideWorldBounds(true);
+          spr.body.setSize(t.w, t.h);
+          if (this.hudCam) this.hudCam.ignore(spr);
+          this.physics.add.collider(spr, this.obstacles);
+          const aggroR = { wolf:220, rat:140, bear:320 }[type] * 1.3; // very aggressive
+          this.enemies.push({
+            spr, type: t.key,
+            hp: Math.floor(t.hp * sizeMult), maxHp: Math.floor(t.hp * sizeMult),
+            speed: t.speed * sizeMult, dmg: Math.max(1, Math.floor(t.dmg * sizeMult)),
+            attackTimer: 0, wanderTimer: 0,
+            aggroRange: aggroR, attackRange: (30 + t.w / 2) * sizeMult,
+            sizeMult, structureGuard: true,
+          });
+        }
+      }
+    }
   }
 
   _spawnGroup(worldW, worldH, cx, cy, counts, fromEdges) {
@@ -4552,6 +4894,84 @@ class GameScene extends Phaser.Scene {
       this._spawnGroup(this.enemyWorldW, this.enemyWorldH, this.enemyCX, this.enemyCY, { wolf:w, rat:r, bear:b }, true);
       this.hint('Wave ' + (this.waveNum+1) + '! Enemies approaching from the wastes!', 3000);
       SFX._play(200, 'sawtooth', 0.3, 0.4, 'drop');
+    }
+  }
+
+  updateHarvest(delta) {
+    if (!this.obstacles || !this.harvestGfx) return;
+    this.harvestGfx.clear();
+
+    const HARVEST_RANGE = 50; // px
+    const HARVEST_TIMES = { architect: 1500, knight: 2500, gunslinger: 4000 };
+    const players = [this.p1, this.p2].filter(p => p && !p.isDowned && !p.isSleeping && p.hp > 0);
+
+    for (const player of players) {
+      const keyHeld = player === this.p1
+        ? this.hotkeys.p1use.isDown
+        : (this.hotkeys.p2use ? this.hotkeys.p2use.isDown : false);
+
+      // Find nearest tree within range
+      let nearestTree = null, nearDist = Infinity;
+      if (keyHeld && this.obstacles) {
+        for (const obj of this.obstacles.getChildren()) {
+          if (!obj.isTree || !obj.active) continue;
+          const d = Phaser.Math.Distance.Between(player.spr.x, player.spr.y, obj.x, obj.y);
+          if (d < HARVEST_RANGE && d < nearDist) { nearDist = d; nearestTree = obj; }
+        }
+      }
+
+      if (keyHeld && nearestTree) {
+        // Don't harvest if barracks/menus open or another menu-blocking state active
+        if (this.barrackOpen || this.isOver) { player.harvestProgress = 0; player.harvestTarget = null; continue; }
+        if (player.harvestTarget !== nearestTree) {
+          player.harvestProgress = 0;
+          player.harvestTarget = nearestTree;
+        }
+        const harvestTime = HARVEST_TIMES[player.charData.id] || 2500;
+        player.harvestProgress = (player.harvestProgress || 0) + delta / harvestTime;
+
+        // Draw progress arc above the tree
+        const tx = nearestTree.x, ty = nearestTree.y - 28;
+        const r = 10;
+        this.harvestGfx.lineStyle(3, 0x88cc44, 0.9);
+        this.harvestGfx.beginPath();
+        this.harvestGfx.arc(tx, ty, r, -Math.PI / 2, -Math.PI / 2 + player.harvestProgress * Math.PI * 2, false);
+        this.harvestGfx.strokePath();
+        // Background ring
+        this.harvestGfx.lineStyle(2, 0x224411, 0.5);
+        this.harvestGfx.strokeCircle(tx, ty, r);
+
+        if (player.harvestProgress >= 1) {
+          // Harvest complete — spawn 2-3 wood items, destroy tree
+          const woodCount = Phaser.Math.Between(2, 3);
+          for (let i = 0; i < woodCount; i++) {
+            const dx = nearestTree.x + Phaser.Math.Between(-12, 12);
+            const item = this.physics.add.image(dx, nearestTree.y, 'item_wood').setScale(2).setDepth(7);
+            item.body.allowGravity = false;
+            item.body.setImmovable(true);
+            if (this.hudCam) this.hudCam.ignore(item);
+            item.itemType = 'wood';
+            const pickupCb = (p) => {
+              if (!item.active) return;
+              p.inv.wood = (p.inv.wood || 0) + 1;
+              this.resourcesGathered++;
+              SFX._play(600, 'triangle', 0.06, 0.2);
+              item.destroy();
+            };
+            this.physics.add.overlap(this.p1.spr, item, () => pickupCb(this.p1));
+            if (this.p2) this.physics.add.overlap(this.p2.spr, item, () => pickupCb(this.p2));
+            this.time.delayedCall(20000, () => { if (item.active) item.destroy(); });
+          }
+          SFX._play(220, 'sawtooth', 0.15, 0.3, 'drop');
+          this.obstacles.remove(nearestTree, true, true);
+          player.harvestProgress = 0;
+          player.harvestTarget = null;
+        }
+      } else {
+        // Key released or no tree in range — reset progress
+        player.harvestProgress = 0;
+        player.harvestTarget = null;
+      }
     }
   }
 
