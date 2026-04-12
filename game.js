@@ -2649,6 +2649,17 @@ class GameScene extends Phaser.Scene {
       }
     }
 
+    // Pre-build LOS blocker set for enemy AI — mountain tile coords → O(1) lookup
+    this._solidTileSet = new Set();
+    for (const m of this.mountainTiles) {
+      // Mark a small neighbourhood so the set works at diagonal query positions
+      for (let dtx = -1; dtx <= 1; dtx++) {
+        for (let dty = -1; dty <= 1; dty++) {
+          this._solidTileSet.add((m.tx + dtx) + ',' + (m.ty + dty));
+        }
+      }
+    }
+
     // Barracks
     const bTX = stx+20, bTY = sty-16;
     this.bPos = { x: bTX*TILE+40, y: bTY*TILE+28 };
@@ -2684,6 +2695,23 @@ class GameScene extends Phaser.Scene {
     // ── POINTS OF INTEREST ────────────────────────────────────
     this.pois = [];
     this.buildPOIs(stx, sty, TILE);
+
+    // Clear trees and rocks that landed on top of supply cache positions.
+    // Mountains are excluded — the fjord algorithm already handles their entrance gaps.
+    // Ruin/structure walls are also excluded (part of intentional layout).
+    if (this._preCacheTiles && this.obstacles) {
+      const CLEAR_R = 80;
+      const ROCK_KEYS = new Set(['rock', 'rock2', 'ice_rock']);
+      this.obstacles.getChildren().slice().forEach(ob => {
+        const k = ob.texture && ob.texture.key;
+        if (k === 'mountain' || k === 'mountain2') return;
+        if (!ob.isTree && !ROCK_KEYS.has(k)) return; // keep structure walls, ruin blocks, etc.
+        for (const pos of this._preCacheTiles) {
+          const dx = ob.x - pos.tx * TILE, dy = ob.y - pos.ty * TILE;
+          if (dx * dx + dy * dy < CLEAR_R * CLEAR_R) { ob.destroy(); break; }
+        }
+      });
+    }
 
     // ── BIOME STRUCTURES ─────────────────────────────────────
     this.buildBiomeStructures(stx, sty, TILE);
@@ -4994,6 +5022,60 @@ class GameScene extends Phaser.Scene {
     }
   }
 
+  // ── Enemy LOS helpers ────────────────────────────────────────
+  // Returns true if the straight line from (x1,y1) to (x2,y2) is NOT blocked
+  // by any mountain tile or player-built wall.  Fast: uses pre-built tile Set.
+  _hasLOS(x1, y1, x2, y2) {
+    if (!this._solidTileSet) return true;
+    const T = CFG.TILE;
+    const dist = Phaser.Math.Distance.Between(x1, y1, x2, y2);
+    if (dist < 24) return true;
+    const steps = Math.ceil(dist / 28); // sample every ~28 px
+    const dx = (x2 - x1) / steps, dy = (y2 - y1) / steps;
+    for (let i = 1; i < steps; i++) {
+      const sx = x1 + dx * i, sy = y1 + dy * i;
+      const tx = Math.round(sx / T), ty = Math.round(sy / T);
+      if (this._solidTileSet.has(tx + ',' + ty)) return false;
+      // Also check player-built walls
+      if (this.builtWalls) {
+        for (const w of this.builtWalls) {
+          if (w.active && Math.abs(sx - w.x) < 20 && Math.abs(sy - w.y) < 20) return false;
+        }
+      }
+    }
+    return true;
+  }
+
+  // Navigate enemy toward (targetX, targetY) at speed spd, steering around mountains
+  // and walls.  Tries the direct heading first, then progressively wider offsets.
+  _steerToward(e, targetX, targetY, spd) {
+    if (!this._solidTileSet) {
+      const ang = Phaser.Math.Angle.Between(e.spr.x, e.spr.y, targetX, targetY);
+      return { x: Math.cos(ang) * spd, y: Math.sin(ang) * spd };
+    }
+    const T = CFG.TILE;
+    const baseAng = Phaser.Math.Angle.Between(e.spr.x, e.spr.y, targetX, targetY);
+    const PROBE = 48;
+    const isHeadingClear = (ang) => {
+      const px = e.spr.x + Math.cos(ang) * PROBE;
+      const py = e.spr.y + Math.sin(ang) * PROBE;
+      const tx = Math.round(px / T), ty = Math.round(py / T);
+      if (this._solidTileSet.has(tx + ',' + ty)) return false;
+      if (this.builtWalls) {
+        for (const w of this.builtWalls) {
+          if (w.active && Math.abs(px - w.x) < 24 && Math.abs(py - w.y) < 24) return false;
+        }
+      }
+      return true;
+    };
+    // Try direct angle, then ±37°, ±75°, ±112° until a clear heading is found
+    for (const off of [0, 0.65, -0.65, 1.3, -1.3, 1.95, -1.95]) {
+      const ang = baseAng + off;
+      if (isHeadingClear(ang)) return { x: Math.cos(ang) * spd, y: Math.sin(ang) * spd };
+    }
+    return { x: 0, y: 0 };
+  }
+
   updateEnemies(delta) {
     if (!this.enemies || this.isOver) return;
     const players = [this.p1, this.p2].filter(p => p && !p.isDowned && p.hp > 0 && p.spr.visible);
@@ -5011,10 +5093,24 @@ class GameScene extends Phaser.Scene {
       const aggroRange = e.aggroRange * nightMult;
 
       if (nearDist < aggroRange) {
-        const ang = Phaser.Math.Angle.Between(e.spr.x, e.spr.y, nearest.spr.x, nearest.spr.y);
         const spd = e.speed * nightMult;
-        e.spr.setVelocity(Math.cos(ang)*spd, Math.sin(ang)*spd);
-        e.spr.setFlipX(nearest.spr.x < e.spr.x);
+
+        // LOS check — can the enemy see the player through mountains/walls?
+        const canSee = this._hasLOS(e.spr.x, e.spr.y, nearest.spr.x, nearest.spr.y);
+        if (canSee) {
+          // Clear sightline — remember where the player was
+          e.lastKnownX = nearest.spr.x;
+          e.lastKnownY = nearest.spr.y;
+        }
+        // Chase toward player if visible, or toward last known position if blocked
+        const chaseX = e.lastKnownX !== undefined ? e.lastKnownX : nearest.spr.x;
+        const chaseY = e.lastKnownY !== undefined ? e.lastKnownY : nearest.spr.y;
+
+        // Steer around obstacles instead of running straight into them
+        const vel = this._steerToward(e, chaseX, chaseY, spd);
+        e.spr.setVelocity(vel.x, vel.y);
+        e.spr.setFlipX(chaseX < e.spr.x);
+
         if (nearDist < e.attackRange) {
           e.attackTimer -= delta;
           if (e.attackTimer <= 0) {
