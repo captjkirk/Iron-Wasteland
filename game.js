@@ -484,6 +484,13 @@ function buildTextures(scene) {
   g.fillStyle(0xddccbb); g.fillRect(2, 5, 2, 3);
   g.generateTexture('item_food', 10, 8);
 
+  // Rare boss drop — glowing crystal shard
+  g.clear();
+  g.fillStyle(0xff6600); g.fillTriangle(5, 0, 0, 10, 10, 10);
+  g.fillStyle(0xffaa44); g.fillTriangle(5, 2, 2, 9, 8, 9);
+  g.fillStyle(0xffdd88); g.fillRect(4, 3, 2, 4);
+  g.generateTexture('item_rare', 10, 10);
+
   // Buildable structures
   // Wall segment
   g.clear();
@@ -630,26 +637,36 @@ function buildTextures(scene) {
   g.fillStyle(0xddeeff); g.fillEllipse(6, 4, 3, 2);
   g.generateTexture('ice_rock', 22, 16);
 
-  // Mountain — large impassable rock formation (48x40)
+  // Mountain — large terrain feature (96x80) — visible from across the map
   g.clear();
-  g.fillStyle(0x555555); g.fillTriangle(24, 0, 0, 38, 48, 38); // main peak
-  g.fillStyle(0x666666); g.fillTriangle(24, 4, 4, 36, 44, 36); // lighter face
-  g.fillStyle(0x777777); g.fillTriangle(24, 8, 10, 34, 38, 34); // highlight
-  g.fillStyle(0xcccccc); g.fillTriangle(24, 0, 18, 12, 30, 12); // snow cap
-  g.fillStyle(0xeeeeee); g.fillTriangle(24, 2, 20, 10, 28, 10); // snow shine
-  g.fillStyle(0x444444); g.fillRect(0, 36, 48, 4); // base shadow
-  g.generateTexture('mountain', 48, 40);
+  g.fillStyle(0x333030); g.fillTriangle(48, 0, 0, 76, 96, 76);   // dark base mass
+  g.fillStyle(0x454040); g.fillTriangle(48, 6, 8, 70, 88, 70);   // mid face
+  g.fillStyle(0x575252); g.fillTriangle(48, 18, 20, 62, 76, 62); // upper face
+  g.fillStyle(0x2e2b2b); g.fillTriangle(48, 0, 0, 76, 32, 44);  // left shadow face
+  g.fillStyle(0x3e3b3b); g.fillTriangle(20, 52, 8, 72, 40, 68); // left rock detail
+  g.fillStyle(0x3e3b3b); g.fillTriangle(72, 46, 58, 70, 88, 70); // right rock detail
+  g.fillStyle(0xcccccc); g.fillTriangle(48, 0, 34, 28, 62, 28); // snow cap
+  g.fillStyle(0xdedede); g.fillTriangle(48, 2, 38, 20, 58, 20); // snow mid
+  g.fillStyle(0xf5f5f5); g.fillTriangle(48, 4, 42, 14, 54, 14); // snow tip
+  g.fillStyle(0x201e1e); g.fillRect(0, 73, 96, 7);               // base shadow
+  g.generateTexture('mountain', 96, 80);
 
-  // Mountain variant 2 — wider, double peak (56x44)
+  // Mountain variant 2 — wide double-peak ridge (112x88)
   g.clear();
-  g.fillStyle(0x4a4a4a); g.fillTriangle(18, 2, 0, 42, 36, 42); // left peak
-  g.fillStyle(0x555555); g.fillTriangle(38, 0, 20, 42, 56, 42); // right peak
-  g.fillStyle(0x666666); g.fillTriangle(18, 6, 6, 38, 30, 38);
-  g.fillStyle(0x666666); g.fillTriangle(38, 4, 24, 38, 52, 38);
-  g.fillStyle(0xbbbbbb); g.fillTriangle(18, 2, 13, 10, 23, 10); // snow left
-  g.fillStyle(0xcccccc); g.fillTriangle(38, 0, 33, 8, 43, 8);   // snow right
-  g.fillStyle(0x3a3a3a); g.fillRect(0, 40, 56, 4); // base shadow
-  g.generateTexture('mountain2', 56, 44);
+  g.fillStyle(0x303030); g.fillTriangle(30, 2, 0, 84, 62, 84);   // left peak
+  g.fillStyle(0x303030); g.fillTriangle(82, 0, 50, 84, 112, 84); // right peak
+  g.fillStyle(0x424040); g.fillTriangle(30, 8, 8, 78, 56, 78);
+  g.fillStyle(0x424040); g.fillTriangle(82, 6, 54, 78, 108, 78);
+  g.fillStyle(0x282828); g.fillTriangle(30, 2, 0, 84, 22, 50);   // left shadow
+  g.fillStyle(0x282828); g.fillTriangle(82, 0, 50, 84, 64, 46);  // right shadow
+  g.fillStyle(0x3a3838); g.fillTriangle(44, 46, 58, 84, 72, 84); // saddle
+  g.fillStyle(0x484646); g.fillTriangle(46, 48, 60, 80, 70, 80);
+  g.fillStyle(0xbbbbbb); g.fillTriangle(30, 2, 20, 24, 40, 24); // left snow
+  g.fillStyle(0xcccccc); g.fillTriangle(30, 4, 23, 18, 37, 18);
+  g.fillStyle(0xbbbbbb); g.fillTriangle(82, 0, 72, 22, 92, 22); // right snow
+  g.fillStyle(0xcccccc); g.fillTriangle(82, 2, 75, 16, 89, 16);
+  g.fillStyle(0x1e1e1e); g.fillRect(0, 81, 112, 7);
+  g.generateTexture('mountain2', 112, 88);
 
   // Supply cache — small chest/crate
   g.clear();
@@ -696,6 +713,106 @@ function buildTextures(scene) {
   g.fillStyle(0x5c3317); g.fillRect(4, 10, 6, 3); g.fillRect(22, 10, 6, 3);
   g.fillRect(4, 19, 6, 3); g.fillRect(22, 19, 6, 3);
   g.generateTexture('campsite', 32, 32);
+
+  // Raider camp — rough tent cluster
+  g.clear();
+  g.fillStyle(0x553311); g.fillTriangle(16, 2, 0, 28, 32, 28); // tent shape
+  g.fillStyle(0x442200); g.fillRect(0, 26, 32, 6);
+  g.fillStyle(0x664422); g.fillTriangle(16, 4, 4, 26, 28, 26);
+  g.fillStyle(0x220000); g.fillRect(14, 18, 4, 10); // door
+  g.fillStyle(0xff4400); g.fillEllipse(8, 30, 6, 4); // small fire
+  g.fillStyle(0xff8800); g.fillEllipse(8, 29, 4, 3);
+  g.generateTexture('raid_camp', 32, 32);
+
+  // Raider: Brawler (melee tank — dark red, stocky)
+  g.clear();
+  g.fillStyle(0x993322); g.fillRect(6, 8, 14, 16); // body
+  g.fillStyle(0x773311); g.fillRect(4, 14, 4, 8);  // left arm
+  g.fillStyle(0x773311); g.fillRect(18, 14, 4, 8); // right arm
+  g.fillStyle(0xcc8855); g.fillEllipse(13, 7, 12, 10); // head
+  g.fillStyle(0x551111); g.fillRect(6, 2, 14, 5);  // helmet
+  g.fillStyle(0x664422); g.fillRect(6, 24, 5, 6); g.fillRect(15, 24, 5, 6); // legs
+  g.generateTexture('raider_brawler', 26, 30);
+
+  // Raider: Shooter (ranged — brown coat, slim)
+  g.clear();
+  g.fillStyle(0x775533); g.fillRect(7, 8, 12, 16);
+  g.fillStyle(0x664422); g.fillRect(5, 14, 4, 7);
+  g.fillStyle(0x664422); g.fillRect(17, 13, 6, 4); // gun arm extended
+  g.fillStyle(0x444433); g.fillRect(21, 14, 6, 2); // gun barrel
+  g.fillStyle(0xcc9966); g.fillEllipse(13, 7, 10, 10); // head
+  g.fillStyle(0x553322); g.fillRect(7, 24, 4, 6); g.fillRect(15, 24, 4, 6);
+  g.generateTexture('raider_shooter', 26, 30);
+
+  // Raider: Heavy (both — dark gray, large)
+  g.clear();
+  g.fillStyle(0x445566); g.fillRect(4, 7, 18, 18); // armored body
+  g.fillStyle(0x334455); g.fillRect(2, 13, 4, 10); g.fillRect(20, 13, 4, 10); // arms
+  g.fillStyle(0x556677); g.fillRect(4, 7, 18, 6);  // chest plate
+  g.fillStyle(0xbbaa88); g.fillEllipse(13, 6, 12, 10); // head
+  g.fillStyle(0x334455); g.fillRect(4, 25, 7, 5); g.fillRect(15, 25, 7, 5);
+  g.generateTexture('raider_heavy', 26, 30);
+
+  // Boss sprites — one per biome boss type
+  // Iron Golem (wasteland) — large, armored
+  g.clear();
+  g.fillStyle(0x778899); g.fillRect(6, 4, 28, 30); // massive body
+  g.fillStyle(0x667788); g.fillRect(2, 10, 6, 18); g.fillRect(32, 10, 6, 18); // arms
+  g.fillStyle(0x556677); g.fillRect(6, 4, 28, 8);  // shoulder plates
+  g.fillStyle(0x99aaaa); g.fillRect(8, 6, 24, 6);  // chest gleam
+  g.fillStyle(0x889999); g.fillRect(10, 34, 8, 8); g.fillRect(22, 34, 8, 8); // legs
+  g.fillStyle(0xbbccdd); g.fillEllipse(20, 4, 18, 14); // head
+  g.fillStyle(0xff3300); g.fillRect(13, 2, 4, 2); g.fillRect(21, 2, 4, 2); // eye glow
+  g.generateTexture('boss_golem', 40, 44);
+
+  // Alpha Wolf (grassland) — sleek, large wolf
+  g.clear();
+  g.fillStyle(0x888855); g.fillEllipse(20, 20, 30, 20); // body
+  g.fillStyle(0x777744); g.fillEllipse(32, 14, 14, 12); // head
+  g.fillStyle(0x999966); g.fillTriangle(36, 8, 32, 16, 40, 14); // ear
+  g.fillStyle(0x888855); g.fillRect(6, 22, 4, 10); g.fillRect(14, 22, 4, 10); // front legs
+  g.fillStyle(0x888855); g.fillRect(24, 22, 4, 10); g.fillRect(32, 22, 4, 10); // back legs
+  g.fillStyle(0x666633); g.fillRect(2, 18, 6, 6); // tail stub
+  g.fillStyle(0xeeeecc); g.fillEllipse(34, 14, 6, 5); // snout
+  g.fillStyle(0xff2200); g.fillRect(34, 16, 4, 2); // fangs hint
+  g.generateTexture('boss_wolf', 40, 36);
+
+  // Spider Queen (ruins) — large spider body
+  g.clear();
+  g.fillStyle(0x442255); g.fillEllipse(20, 22, 24, 18); // abdomen
+  g.fillStyle(0x553366); g.fillEllipse(20, 12, 16, 14); // cephalothorax
+  g.fillStyle(0x332244); // legs — 4 pairs
+  for (let i = 0; i < 4; i++) {
+    g.fillRect(4 - i*1, 10 + i*4, 12, 3);  // left legs
+    g.fillRect(24 + i*1, 10 + i*4, 12, 3); // right legs
+  }
+  g.fillStyle(0xff3333); g.fillRect(16, 8, 3, 3); g.fillRect(21, 8, 3, 3); // eyes
+  g.fillStyle(0x221133); g.fillEllipse(20, 23, 16, 10); // abdomen pattern
+  g.generateTexture('boss_spider', 40, 38);
+
+  // Frost Troll (tundra) — hulking blue-white giant
+  g.clear();
+  g.fillStyle(0x8899bb); g.fillRect(8, 6, 24, 28); // body
+  g.fillStyle(0x7788aa); g.fillRect(4, 10, 6, 20); g.fillRect(30, 10, 6, 20); // long arms
+  g.fillStyle(0xaabbcc); g.fillRect(8, 6, 24, 10); // upper body highlight
+  g.fillStyle(0xbbccdd); g.fillEllipse(20, 5, 20, 16); // large head
+  g.fillStyle(0x334466); g.fillRect(14, 34, 7, 8); g.fillRect(23, 34, 7, 8); // legs
+  g.fillStyle(0x6688aa); g.fillRect(8, 2, 4, 6); g.fillRect(28, 2, 4, 6); // horns
+  g.generateTexture('boss_troll', 40, 44);
+
+  // Bog Hydra (swamp) — multi-headed serpent
+  g.clear();
+  g.fillStyle(0x334422); g.fillEllipse(20, 28, 28, 20); // main body
+  g.fillStyle(0x445533); g.fillEllipse(20, 26, 22, 14); // body highlight
+  // Three necks/heads
+  g.fillStyle(0x334422); g.fillRect(8, 8, 6, 20); // left neck
+  g.fillStyle(0x334422); g.fillRect(18, 4, 6, 22); // center neck
+  g.fillStyle(0x334422); g.fillRect(28, 9, 6, 19); // right neck
+  g.fillStyle(0x446633); g.fillEllipse(11, 6, 10, 8); // left head
+  g.fillStyle(0x446633); g.fillEllipse(21, 3, 10, 8); // center head
+  g.fillStyle(0x446633); g.fillEllipse(31, 7, 10, 8); // right head
+  g.fillStyle(0xff2200); g.fillRect(9,4,2,2); g.fillRect(19,1,2,2); g.fillRect(29,5,2,2); // eyes
+  g.generateTexture('boss_hydra', 40, 40);
 
   // Enemy sprites
   drawWolf(g); drawRat(g); drawBear(g);
@@ -1457,6 +1574,14 @@ class GameScene extends Phaser.Scene {
 
     // Day/night state
     this.dayNum = 1; this.dayTimer = 0; this.DAY_DUR = 150000; this.isNight = false;
+    this.kills = 0;
+    this.resourcesGathered = 0;
+    this.bossSpawned = false;
+    this.bossDefeated = false;
+    this.boss = null;
+    this.raiders = [];
+    this.raidCamp = null;
+    this.raidRespawnDay = null;
 
     // Build system state
     this.buildMode = false;
@@ -1582,6 +1707,7 @@ class GameScene extends Phaser.Scene {
 
     // Spawn enemies after camera setup
     this.spawnEnemies(worldW, worldH, cx, cy);
+    this.placeRaiderCamp(worldW, worldH);
 
     // Opening hints (delayed to appear after the startup controls popup fades)
     const modeNote = this.hardcore ? '\u2620 HARDCORE \u2014 death is permanent!' : '\u2665 SURVIVAL mode';
@@ -1830,8 +1956,9 @@ class GameScene extends Phaser.Scene {
       const px = tx*TILE+24, py = ty*TILE+20;
       const ob = this.obstacles.create(px, py, key);
       ob.setScale(sc).setDepth(6).setImmovable(true);
-      const bw = key === 'mountain2' ? 48 : 40;
-      const bh = key === 'mountain2' ? 36 : 32;
+      // New larger sprites: 96x80 / 112x88 — collision body covers lower 2/3
+      const bw = key === 'mountain2' ? 90 : 76;
+      const bh = key === 'mountain2' ? 52 : 48;
       ob.body.setSize(Math.floor(bw*sc), Math.floor(bh*sc));
       ob.refreshBody();
       mtns.push({ tx, ty });
@@ -1847,13 +1974,13 @@ class GameScene extends Phaser.Scene {
       const ty = Math.round(sty + Math.sin(angle) * (ringR + Math.cos(angle*5)*3));
       if (tx < 2 || tx > CFG.MAP_W-3 || ty < 2 || ty > CFG.MAP_H-3) continue;
       const key = Math.random() < 0.45 ? 'mountain2' : 'mountain';
-      const sc = Phaser.Math.FloatBetween(1.4, 2.2);
+      const sc = Phaser.Math.FloatBetween(2.0, 3.2);
       placeMtn(tx, ty, key, sc);
-      // Double-layer: add a second ring row to make it look like a real ridge
+      // Double-layer: second ring row for a thick visible ridge
       if (Math.random() < 0.6) {
         const tx2 = Math.round(stx + Math.cos(angle) * (ringR + 3 + Math.sin(angle*5)*2));
         const ty2 = Math.round(sty + Math.sin(angle) * (ringR + 3 + Math.cos(angle*3)*2));
-        placeMtn(tx2, ty2, Math.random() < 0.4 ? 'mountain2' : 'mountain', Phaser.Math.FloatBetween(1.2, 1.8));
+        placeMtn(tx2, ty2, Math.random() < 0.4 ? 'mountain2' : 'mountain', Phaser.Math.FloatBetween(1.8, 2.6));
       }
     }
 
@@ -1875,7 +2002,7 @@ class GameScene extends Phaser.Scene {
         const ty = cc.ty + Phaser.Math.Between(-8, 8);
         if (tx < 2 || tx > CFG.MAP_W-3 || ty < 2 || ty > CFG.MAP_H-3) continue;
         const key = Math.random() < 0.4 ? 'mountain2' : 'mountain';
-        const sc = Phaser.Math.FloatBetween(1.2, 2.5);
+        const sc = Phaser.Math.FloatBetween(2.2, 4.0);
         placeMtn(tx, ty, key, sc);
       }
     }
@@ -2236,6 +2363,7 @@ class GameScene extends Phaser.Scene {
         else if (poi.type === 'campfire') col = 0xff8833;   // orange — player-built campfire
         else if (poi.type === 'craftbench') col = 0xddcc44; // yellow — player-built workbench
         else if (poi.type === 'bed') col = 0xaa88ff;        // purple — player-built bed
+        else if (poi.type === 'raidcamp') col = 0xff2222;   // red — raider camp
         // Only show if revealed
         if (this.fogRevealed.has(poi.tx + ',' + poi.ty)) {
           this.minimapDots.fillStyle(col);
@@ -2473,6 +2601,12 @@ class GameScene extends Phaser.Scene {
         timeAlive: this.timeAlive,
         mode: STATE.mode,
         difficulty: STATE.difficulty,
+        kills: this.kills,
+        days: this.dayNum,
+        resources: this.resourcesGathered,
+        bossDefeated: this.bossDefeated,
+        p1Name: this.p1 ? this.p1.charData.player : 'P1',
+        p2Name: this.p2 ? this.p2.charData.player : null,
       });
     });
   }
@@ -2810,6 +2944,8 @@ class GameScene extends Phaser.Scene {
     this.updateEnemies(delta);
     this.updateWaves(delta);
     this.updateEnemyDens(delta);
+    this.updateRaiders(delta);
+    this.updateBoss(delta);
     this.updateSleep(delta);
     this.updateDayNight(delta);
     this.updateBuildMode();
@@ -2838,6 +2974,277 @@ class GameScene extends Phaser.Scene {
     }
     const near = p => p && Phaser.Math.Distance.Between(p.spr.x, p.spr.y, this.radioTower.x, this.radioTower.y) < 80;
     this.radioTower.prompt.setVisible(near(this.p1) || near(this.p2));
+  }
+
+  // ── RAIDER CAMP ───────────────────────────────────────────────
+  placeRaiderCamp(worldW, worldH) {
+    const { TILE } = CFG;
+    // Pick a location in wasteland or ruins biome, away from center
+    let cx, cy, attempts = 0;
+    do {
+      const side = Phaser.Math.Between(0, 3);
+      const edgePad = TILE * 15;
+      if (side === 0) { cx = Phaser.Math.Between(edgePad, worldW * 0.4); cy = Phaser.Math.Between(edgePad, worldH - edgePad); }
+      else if (side === 1) { cx = Phaser.Math.Between(worldW * 0.6, worldW - edgePad); cy = Phaser.Math.Between(edgePad, worldH - edgePad); }
+      else if (side === 2) { cx = Phaser.Math.Between(edgePad, worldW - edgePad); cy = Phaser.Math.Between(edgePad, worldH * 0.4); }
+      else { cx = Phaser.Math.Between(edgePad, worldW - edgePad); cy = Phaser.Math.Between(worldH * 0.6, worldH - edgePad); }
+      attempts++;
+    } while (attempts < 20 && Phaser.Math.Distance.Between(cx, cy, worldW/2, worldH/2) < TILE * 40);
+
+    const campSpr = this.physics.add.image(cx, cy, 'raid_camp').setScale(3).setDepth(6);
+    campSpr.body.setImmovable(true);
+    campSpr.body.allowGravity = false;
+    if (this.hudCam) this.hudCam.ignore(campSpr);
+
+    this.raidCamp = { x: cx, y: cy, spr: campSpr };
+    const tx = Math.floor(cx / TILE), ty = Math.floor(cy / TILE);
+    this.pois.push({ type: 'raidcamp', tx, ty, spr: campSpr });
+
+    this.spawnRaiders(cx, cy);
+  }
+
+  spawnRaiders(cx, cy) {
+    const { TILE } = CFG;
+    const count = Phaser.Math.Between(5, 10);
+    const types = ['brawler', 'shooter', 'brawler', 'shooter', 'heavy', 'brawler', 'shooter', 'heavy', 'brawler', 'shooter'];
+    for (let i = 0; i < count; i++) {
+      const rtype = types[i % types.length];
+      const angle = Math.random() * Math.PI * 2;
+      const dist = Phaser.Math.Between(40, 90);
+      const rx = cx + Math.cos(angle) * dist;
+      const ry = cy + Math.sin(angle) * dist;
+      const texKey = 'raider_' + rtype;
+      const spr = this.physics.add.image(rx, ry, texKey).setScale(2.2).setDepth(9);
+      spr.setCollideWorldBounds(true);
+      spr.body.setSize(18, 22);
+      if (this.hudCam) this.hudCam.ignore(spr);
+      this.physics.add.collider(spr, this.obstacles);
+
+      const stats = {
+        brawler: { hp: 90,  speed: 95,  dmg: 14, range: 36, atkInterval: 1400, shootRange: 0 },
+        shooter: { hp: 55,  speed: 80,  dmg: 10, range: 40, atkInterval: 1800, shootRange: 260 },
+        heavy:   { hp: 140, speed: 65,  dmg: 18, range: 42, atkInterval: 1600, shootRange: 180 },
+      }[rtype];
+
+      const raider = {
+        spr, type: rtype, isRaider: true,
+        hp: stats.hp, maxHp: stats.hp,
+        speed: stats.speed, dmg: stats.dmg,
+        attackRange: stats.range, attackTimer: 0, atkInterval: stats.atkInterval,
+        shootRange: stats.shootRange, rangedTimer: 0,
+        aggroRange: 320, wanderTimer: Phaser.Math.Between(0, 2000), sizeMult: 1,
+      };
+      this.raiders.push(raider);
+      this.enemies.push(raider); // raiders participate in the normal enemy array so updateEnemies handles them
+    }
+  }
+
+  updateRaiders(delta) {
+    // Shooters fire projectiles — handled separately from melee in updateEnemies
+    // Here we manage raider-specific ranged behavior
+    if (!this.raiders || this.isOver) return;
+    const players = [this.p1, this.p2].filter(p => p && !p.isDowned && p.hp > 0 && p.spr.visible);
+
+    this.raiders.forEach(raider => {
+      if (raider.hp <= 0 || !raider.spr.active) return;
+      if (!raider.shootRange) return; // brawlers skip
+
+      let nearest = null, nearDist = Infinity;
+      players.forEach(p => {
+        const d = Phaser.Math.Distance.Between(raider.spr.x, raider.spr.y, p.spr.x, p.spr.y);
+        if (d < nearDist) { nearDist = d; nearest = p; }
+      });
+      if (!nearest) return;
+
+      if (nearDist < raider.shootRange && nearDist > raider.attackRange * 1.5) {
+        // In shoot range but not melee range — fire
+        raider.rangedTimer -= delta;
+        if (raider.rangedTimer <= 0) {
+          raider.rangedTimer = raider.atkInterval;
+          this._fireRaiderShot(raider, nearest);
+        }
+      }
+    });
+  }
+
+  _fireRaiderShot(raider, target) {
+    const ang = Phaser.Math.Angle.Between(raider.spr.x, raider.spr.y, target.spr.x, target.spr.y);
+    const bullet = this.physics.add.image(raider.spr.x, raider.spr.y, 'bullet').setScale(2).setDepth(10);
+    bullet.body.allowGravity = false;
+    if (this.hudCam) this.hudCam.ignore(bullet);
+    const speed = 380;
+    bullet.setVelocity(Math.cos(ang) * speed, Math.sin(ang) * speed);
+    SFX._play(320, 'square', 0.04, 0.15);
+
+    const hitPlayers = [this.p1, this.p2].filter(Boolean);
+    hitPlayers.forEach(p => {
+      this.physics.add.overlap(p.spr, bullet, () => {
+        if (!bullet.active) return;
+        bullet.destroy();
+        p.hp = Math.max(0, p.hp - raider.dmg * 0.7);
+        SFX.playerHurt();
+        p.spr.setTint(0xff0000);
+        this.time.delayedCall(150, () => { if (p.spr.active) p.spr.clearTint(); });
+        this.checkDeaths();
+      });
+    });
+    // Auto-destroy after 2s
+    this.time.delayedCall(2000, () => { if (bullet.active) bullet.destroy(); });
+  }
+
+  // ── BOSS SYSTEM ───────────────────────────────────────────────
+  spawnBoss() {
+    if (this.bossSpawned) return;
+    this.bossSpawned = true;
+
+    const worldW = CFG.MAP_W * CFG.TILE, worldH = CFG.MAP_H * CFG.TILE;
+    const { TILE } = CFG;
+
+    // Pick boss type based on biome spread — random for now
+    const bossTypes = [
+      { key: 'boss_golem',  name: 'Iron Golem',   biome: 'waste',  hp: 600, speed: 55,  dmg: 22 },
+      { key: 'boss_wolf',   name: 'Alpha Wolf',    biome: 'grass',  hp: 420, speed: 130, dmg: 16 },
+      { key: 'boss_spider', name: 'Spider Queen',  biome: 'ruins',  hp: 480, speed: 85,  dmg: 18 },
+      { key: 'boss_troll',  name: 'Frost Troll',   biome: 'tundra', hp: 700, speed: 45,  dmg: 28 },
+      { key: 'boss_hydra',  name: 'Bog Hydra',     biome: 'swamp',  hp: 540, speed: 65,  dmg: 20 },
+    ];
+    const bt = bossTypes[Phaser.Math.Between(0, bossTypes.length - 1)];
+
+    // Spawn at a random map edge
+    let bx, by;
+    const side = Phaser.Math.Between(0, 3);
+    if (side === 0)      { bx = Phaser.Math.Between(TILE*4, worldW-TILE*4); by = TILE*4; }
+    else if (side === 1) { bx = Phaser.Math.Between(TILE*4, worldW-TILE*4); by = worldH-TILE*4; }
+    else if (side === 2) { bx = TILE*4; by = Phaser.Math.Between(TILE*4, worldH-TILE*4); }
+    else                 { bx = worldW-TILE*4; by = Phaser.Math.Between(TILE*4, worldH-TILE*4); }
+
+    const spr = this.physics.add.image(bx, by, bt.key).setScale(4).setDepth(12);
+    spr.setCollideWorldBounds(true);
+    spr.body.setSize(28, 28);
+    if (this.hudCam) this.hudCam.ignore(spr);
+    this.physics.add.collider(spr, this.obstacles);
+
+    // HP bar (world-space, follows boss)
+    const hpBg  = this.add.graphics().setDepth(13);
+    const hpBar = this.add.graphics().setDepth(14);
+    if (this.hudCam) { this.hudCam.ignore(hpBg); this.hudCam.ignore(hpBar); }
+
+    this.boss = {
+      spr, hp: bt.hp, maxHp: bt.hp,
+      speed: bt.speed, dmg: bt.dmg, name: bt.name,
+      isBoss: true, type: bt.key,
+      attackTimer: 0, atkInterval: 2200,
+      aggroRange: 99999, attackRange: 70, wanderTimer: 0, sizeMult: 1,
+      hpBg, hpBar,
+    };
+    // Add boss to main enemy array so melee + bullets can hit it
+    this.enemies.push(this.boss);
+
+    // Announce arrival
+    this.hint('\u2620 ' + bt.name.toUpperCase() + ' APPROACHES! \u2620', 6000);
+    SFX._play(80,  'sawtooth', 0.6, 0.7, 'drop');
+    SFX._play(60,  'sawtooth', 0.4, 0.6, 'drop');
+
+    // Camera shake
+    this.cameras.main.shake(800, 0.012);
+
+    // Spawn entourage — 4-8 regular enemies nearby
+    const entourageCount = Phaser.Math.Between(4, 8);
+    for (let i = 0; i < entourageCount; i++) {
+      const ang = (i / entourageCount) * Math.PI * 2;
+      const ex = bx + Math.cos(ang) * 100;
+      const ey = by + Math.sin(ang) * 100;
+      const typeKey = (bt.biome === 'tundra') ? 'wolf' : (bt.biome === 'swamp') ? 'rat' : 'wolf';
+      const t = typeKey === 'wolf'
+        ? { key:'wolf', hp:60, speed:100, dmg:9, baseScale:1.8, w:20, h:12 }
+        : { key:'rat',  hp:30, speed:140, dmg:6, baseScale:1.4, w:15, h:9  };
+      const sizeMult = Phaser.Math.FloatBetween(0.9, 1.3);
+      const sc = t.baseScale * sizeMult;
+      const eSpr = this.physics.add.image(
+        Phaser.Math.Clamp(ex, TILE*4, worldW-TILE*4),
+        Phaser.Math.Clamp(ey, TILE*4, worldH-TILE*4), t.key
+      ).setScale(sc).setDepth(9);
+      eSpr.setCollideWorldBounds(true);
+      eSpr.body.setSize(t.w, t.h);
+      if (this.hudCam) this.hudCam.ignore(eSpr);
+      this.physics.add.collider(eSpr, this.obstacles);
+      const baseAggro = { wolf: 190, rat: 110 }[t.key] || 160;
+      this.enemies.push({
+        spr: eSpr, hp: Math.floor(t.hp * sizeMult), maxHp: Math.floor(t.hp * sizeMult),
+        speed: t.speed * sizeMult, dmg: Math.max(1, Math.floor(t.dmg * sizeMult)),
+        type: t.key, attackTimer: 0,
+        wanderTimer: Phaser.Math.Between(0, 1000),
+        aggroRange: baseAggro * 1.4, attackRange: (30 + t.w/2) * sizeMult,
+        sizeMult,
+      });
+    }
+  }
+
+  updateBoss(delta) {
+    if (!this.boss || this.isOver) return;
+    const b = this.boss;
+    if (b.hp <= 0 || !b.spr.active) {
+      // Clean up HP bar
+      if (b.hpBg && b.hpBg.active) b.hpBg.destroy();
+      if (b.hpBar && b.hpBar.active) b.hpBar.destroy();
+      this.boss = null;
+      return;
+    }
+
+    // Update world-space HP bar above boss
+    const bx = b.spr.x, by = b.spr.y;
+    const barW = 80, barH = 8;
+    b.hpBg.clear();
+    b.hpBg.fillStyle(0x220000, 0.85);
+    b.hpBg.fillRect(bx - barW/2 - 1, by - 90, barW + 2, barH + 2);
+    b.hpBar.clear();
+    const pct = Math.max(0, b.hp / b.maxHp);
+    const col = pct > 0.5 ? 0xff3300 : pct > 0.25 ? 0xff8800 : 0xff0000;
+    b.hpBar.fillStyle(col, 1);
+    b.hpBar.fillRect(bx - barW/2, by - 89, barW * pct, barH);
+    // Boss name label above bar
+    b.hpBg.fillStyle(0x440000, 0.7);
+    b.hpBg.fillRect(bx - barW/2 - 1, by - 103, barW + 2, 14);
+    b.hpBar.fillStyle(0xffaaaa, 1);
+    // (we'll draw text via label instead of graphics)
+    if (!b.nameLabel) {
+      b.nameLabel = this.add.text(0, 0, '\u2620 ' + b.name.toUpperCase(), {
+        fontFamily:'monospace', fontSize:'9px', color:'#ffaaaa',
+      }).setDepth(15).setOrigin(0.5, 0);
+      if (this.hudCam) this.hudCam.ignore(b.nameLabel);
+    }
+    b.nameLabel.setPosition(bx, by - 103);
+
+    // Boss chases nearest player — relentless, no wander
+    const players = [this.p1, this.p2].filter(p => p && !p.isDowned && p.hp > 0);
+    if (players.length === 0) { b.spr.setVelocity(0, 0); return; }
+
+    let nearest = players[0], nearDist = Phaser.Math.Distance.Between(b.spr.x, b.spr.y, players[0].spr.x, players[0].spr.y);
+    players.forEach(p => {
+      const d = Phaser.Math.Distance.Between(b.spr.x, b.spr.y, p.spr.x, p.spr.y);
+      if (d < nearDist) { nearDist = d; nearest = p; }
+    });
+
+    const ang = Phaser.Math.Angle.Between(b.spr.x, b.spr.y, nearest.spr.x, nearest.spr.y);
+    b.spr.setVelocity(Math.cos(ang) * b.speed, Math.sin(ang) * b.speed);
+    b.spr.setFlipX(nearest.spr.x < b.spr.x);
+
+    // Attack when in range
+    if (nearDist < 70) {
+      b.attackTimer -= delta;
+      if (b.attackTimer <= 0) {
+        b.attackTimer = b.atkInterval;
+        nearest.hp = Math.max(0, nearest.hp - b.dmg);
+        SFX.playerHurt();
+        nearest.spr.setTint(0xff0000);
+        this.cameras.main.shake(300, 0.008);
+        this.time.delayedCall(200, () => { if (nearest.spr.active) nearest.spr.clearTint(); });
+        this.checkDeaths();
+      }
+    }
+
+    // Boss can be damaged by player attacks — handled in doAttack via enemies array
+    // Add boss to enemies array for bullet hit detection (done in spawnBoss)
   }
 
   updateEnemyDens(delta) {
@@ -3169,6 +3576,7 @@ class GameScene extends Phaser.Scene {
 
   killEnemy(e) {
     e.hp = 0;
+    this.kills++;
     SFX.enemyDie();
     e.spr.setTint(0xff2200);
     const ex = e.spr.x, ey = e.spr.y;
@@ -3176,25 +3584,58 @@ class GameScene extends Phaser.Scene {
       if (e.spr.active) e.spr.destroy();
       if (e.lbl && e.lbl.active) e.lbl.destroy();
     });
-    // Drop resources
+    // Raider kill — check if camp cleared
+    if (e.isRaider) {
+      this.raiders = this.raiders.filter(r => r !== e);
+      if (this.raiders.length === 0 && this.raidCamp) {
+        this.hint('Raider camp cleared! They\'ll return in 10 days…', 4000);
+        this.raidRespawnDay = this.dayNum + 10;
+        if (this.raidCamp.spr && this.raidCamp.spr.active) this.raidCamp.spr.setTint(0x555555);
+      }
+    }
+    // Boss kill
+    if (e.isBoss) {
+      if (e.hpBg && e.hpBg.active) e.hpBg.destroy();
+      if (e.hpBar && e.hpBar.active) e.hpBar.destroy();
+      if (e.nameLabel && e.nameLabel.active) e.nameLabel.destroy();
+      this.boss = null;
+      this.bossDefeated = true;
+      this.hint('BOSS DEFEATED! A rare material was left behind…', 5000);
+      SFX._play(880, 'triangle', 0.3, 0.6, 'rise');
+      SFX._play(1100, 'triangle', 0.25, 0.5, 'rise');
+      this.cameras.main.shake(600, 0.018);
+      this.dropResource(ex, ey, 'rare');
+    }
     this.dropResource(ex, ey, e.type);
   }
 
   dropResource(x, y, enemyType) {
     const drops = [];
-    // All enemies drop food sometimes
-    if (Math.random() < 0.4) drops.push('item_food');
-    // Type-specific drops
-    if (enemyType === 'wolf') {
-      if (Math.random() < 0.5) drops.push('item_fiber');
-      if (Math.random() < 0.3) drops.push('item_metal');
-    } else if (enemyType === 'rat') {
-      if (Math.random() < 0.6) drops.push('item_fiber');
-      if (Math.random() < 0.25) drops.push('item_ammo');
-    } else if (enemyType === 'bear') {
+    // Rare boss drop — guaranteed crystal shard
+    if (enemyType === 'rare') {
+      drops.push('item_rare');
       drops.push('item_metal');
-      if (Math.random() < 0.5) drops.push('item_wood');
-      if (Math.random() < 0.4) drops.push('item_fiber');
+      drops.push('item_ammo');
+    } else {
+      // All enemies drop food sometimes
+      if (Math.random() < 0.4) drops.push('item_food');
+      // Type-specific drops
+      if (enemyType === 'wolf') {
+        if (Math.random() < 0.5) drops.push('item_fiber');
+        if (Math.random() < 0.3) drops.push('item_metal');
+      } else if (enemyType === 'rat') {
+        if (Math.random() < 0.6) drops.push('item_fiber');
+        if (Math.random() < 0.25) drops.push('item_ammo');
+      } else if (enemyType === 'bear') {
+        drops.push('item_metal');
+        if (Math.random() < 0.5) drops.push('item_wood');
+        if (Math.random() < 0.4) drops.push('item_fiber');
+      } else if (enemyType === 'brawler' || enemyType === 'shooter' || enemyType === 'heavy') {
+        // Raiders drop ammo and supplies
+        if (Math.random() < 0.6) drops.push('item_ammo');
+        if (Math.random() < 0.4) drops.push('item_metal');
+        if (Math.random() < 0.3) drops.push('item_food');
+      }
     }
     drops.forEach((key, i) => {
       const dx = x + (i-drops.length/2) * 14;
@@ -3215,6 +3656,7 @@ class GameScene extends Phaser.Scene {
           player.hp = Math.min(player.maxHp, player.hp + 15);
         } else {
           player.inv[item.itemType] = (player.inv[item.itemType] || 0) + 1;
+          this.resourcesGathered++;
         }
         SFX._play(600, 'triangle', 0.06, 0.2);
         item.destroy();
@@ -3302,6 +3744,7 @@ class GameScene extends Phaser.Scene {
 
     this.enemies.forEach(e => {
       if (e.hp <= 0 || !e.spr.active) return;
+      if (e.isBoss) return; // boss movement/attack handled by updateBoss
       let nearest = null, nearDist = Infinity;
       players.forEach(p => {
         const d = Phaser.Math.Distance.Between(e.spr.x, e.spr.y, p.spr.x, p.spr.y);
@@ -3371,6 +3814,23 @@ class GameScene extends Phaser.Scene {
       this.dayNum = newDay;
       Music.switchToDay();
       this.hint('Dawn of Day ' + this.dayNum + ' \u2014 enemies grow stronger!', 3000);
+      // Raider respawn check
+      if (this.raidRespawnDay !== null && this.dayNum >= this.raidRespawnDay) {
+        this.raidRespawnDay = null;
+        this.time.delayedCall(3000, () => {
+          if (!this.isOver) {
+            this.hint('\u26a0 Raiders have returned to their camp!', 5000);
+            SFX._play(180, 'sawtooth', 0.4, 0.5, 'drop');
+            if (this.raidCamp) this.spawnRaiders(this.raidCamp.x, this.raidCamp.y);
+          }
+        });
+      }
+      // Boss daily check: after day 5, 25% chance each dawn
+      if (!this.bossSpawned && this.dayNum > 5 && Math.random() < 0.25) {
+        this.time.delayedCall(5000, () => {
+          if (!this.isOver && !this.bossSpawned) this.spawnBoss();
+        });
+      }
     }
 
     if (this.dayText) this.dayText.setText('DAY ' + this.dayNum);
@@ -3415,6 +3875,7 @@ class GameScene extends Phaser.Scene {
           player.hp = Math.min(player.maxHp, player.hp + 20);
         } else {
           player.inv[crate.itemType] = (player.inv[crate.itemType] || 0) + 2;
+          this.resourcesGathered += 2;
         }
         SFX._play(600, 'triangle', 0.06, 0.2);
         crate.destroy();
@@ -3618,54 +4079,107 @@ class GameOverScene extends Phaser.Scene {
   constructor() { super('GameOver'); }
 
   init(data) {
-    this.reason    = data.reason    || 'You have fallen.';
-    this.timeAlive = data.timeAlive || 0;
-    this.mode      = data.mode      || 1;
-    this.difficulty= data.difficulty|| 'survival';
+    this.reason        = data.reason        || 'You have fallen.';
+    this.timeAlive     = data.timeAlive     || 0;
+    this.mode          = data.mode          || 1;
+    this.difficulty    = data.difficulty    || 'survival';
+    this.kills         = data.kills         || 0;
+    this.days          = data.days          || 1;
+    this.resources     = data.resources     || 0;
+    this.bossDefeated  = data.bossDefeated  || false;
+    this.p1Name        = data.p1Name        || 'P1';
+    this.p2Name        = data.p2Name        || null;
+  }
+
+  _calcScore() {
+    let s = 0;
+    s += this.days * 100;
+    s += this.kills * 25;
+    s += this.resources * 5;
+    s += Math.floor(this.timeAlive) * 2;
+    if (this.bossDefeated) s += 500;
+    if (this.difficulty === 'hardcore') s = Math.floor(s * 1.5);
+    return s;
   }
 
   create() {
     const { W, H } = CFG;
-    this.cameras.main.fadeIn(500, 0, 0, 0);
+    this.cameras.main.fadeIn(600, 0, 0, 0);
+    const score = this._calcScore();
 
+    // Background
     const bg = this.add.graphics();
     bg.fillGradientStyle(0x1a0000, 0x1a0000, 0x000000, 0x000000, 1);
     bg.fillRect(0, 0, W, H);
 
-    // Skull or title
-    this.add.text(W/2, H*0.22, 'GAME OVER', {
-      fontFamily:'monospace', fontSize:'72px', color:'#cc2222',
+    this.add.text(W/2, 46, 'GAME OVER', {
+      fontFamily:'monospace', fontSize:'64px', color:'#cc2222',
       stroke:'#440000', strokeThickness:8,
-      shadow:{offsetX:6, offsetY:6, color:'#000', blur:10, fill:true},
     }).setOrigin(0.5);
 
-    this.add.text(W/2, H*0.40, this.reason, {
-      fontFamily:'monospace', fontSize:'22px', color:'#cc8855',
-      stroke:'#000', strokeThickness:3,
+    this.add.text(W/2, 116, this.reason, {
+      fontFamily:'monospace', fontSize:'18px', color:'#cc8855', stroke:'#000', strokeThickness:3,
     }).setOrigin(0.5);
 
-    // Stats
-    const mins = Math.floor(this.timeAlive / 60);
-    const secs = Math.floor(this.timeAlive % 60);
+    // ── Score breakdown panel ──────────────────────────────
+    const panelX = W/2 - 220, panelY = 148, panelW = 440, panelH = 210;
+    const panel = this.add.graphics();
+    panel.fillStyle(0x110000, 0.85); panel.fillRoundedRect(panelX, panelY, panelW, panelH, 10);
+    panel.lineStyle(1, 0x553333, 0.8); panel.strokeRoundedRect(panelX, panelY, panelW, panelH, 10);
+
+    const mins = Math.floor(this.timeAlive / 60), secs = Math.floor(this.timeAlive % 60);
     const timeStr = mins > 0 ? mins + 'm ' + secs + 's' : secs + 's';
-    const modeTxt = (this.mode===1?'1 Player':'2 Players') + '  ·  ' + (this.difficulty==='hardcore'?'HARDCORE':'SURVIVAL');
+    const names = this.p2Name ? this.p1Name + ' & ' + this.p2Name : this.p1Name;
+    const modeLabel = (this.mode===1?'1P':'2P') + ' ' + (this.difficulty==='hardcore'?'HARDCORE':'SURVIVAL');
 
-    this.add.text(W/2, H*0.52, 'Time survived:  ' + timeStr, {
-      fontFamily:'monospace', fontSize:'20px', color:'#888888',
+    const rows = [
+      ['Survivors',       names,                          '#aabbcc'],
+      ['Mode',            modeLabel,                      '#8899aa'],
+      ['Days survived',   'Day ' + this.days,             '#ffee44'],
+      ['Time alive',      timeStr,                        '#cccccc'],
+      ['Enemies killed',  this.kills + ' kills',          '#ff8844'],
+      ['Resources found', this.resources + ' items',      '#88cc66'],
+      ['Boss defeated',   this.bossDefeated ? 'YES +500':'No',  this.bossDefeated?'#ffdd44':'#556666'],
+    ];
+    rows.forEach(([label, val, col], i) => {
+      const y = panelY + 18 + i * 26;
+      this.add.text(panelX + 18, y, label, { fontFamily:'monospace', fontSize:'13px', color:'#556677' }).setOrigin(0,0);
+      this.add.text(panelX + panelW - 18, y, val, { fontFamily:'monospace', fontSize:'13px', color: col }).setOrigin(1,0);
+    });
+
+    // Total score
+    this.add.text(W/2, panelY + panelH + 18, 'SCORE   ' + score.toLocaleString(), {
+      fontFamily:'monospace', fontSize:'32px', color:'#ffdd44',
+      stroke:'#000', strokeThickness:4,
     }).setOrigin(0.5);
 
-    this.add.text(W/2, H*0.60, modeTxt, {
-      fontFamily:'monospace', fontSize:'16px', color:'#555566',
-    }).setOrigin(0.5);
+    // ── Local leaderboard ──────────────────────────────────
+    const lb = this._loadLeaderboard();
+    const isHighScore = lb.length < 5 || score > lb[lb.length-1].score;
 
-    // Prompt
-    const prompt = this.add.text(W/2, H*0.76, 'PRESS ENTER or SPACE to try again', {
-      fontFamily:'monospace', fontSize:'20px', color:'#ffffff',
-    }).setOrigin(0.5);
-    this.tweens.add({ targets:prompt, alpha:0.2, duration:600, yoyo:true, repeat:-1 });
+    if (isHighScore) {
+      this._saveScore(lb, score);
+      this.add.text(W/2, panelY + panelH + 62, '★  NEW HIGH SCORE  ★', {
+        fontFamily:'monospace', fontSize:'16px', color:'#ffcc22',
+      }).setOrigin(0.5);
+    }
 
-    this.add.text(W/2, H*0.86, 'ESC — back to mode select', {
-      fontFamily:'monospace', fontSize:'14px', color:'#444455',
+    // Top 5 board
+    const lbX = W/2 + 10, lbY = panelY + panelH + 86;
+    this.add.text(lbX - 200, lbY - 2, 'TOP SCORES', { fontFamily:'monospace', fontSize:'11px', color:'#445566' });
+    this._loadLeaderboard().slice(0,5).forEach((entry, i) => {
+      const col = i === 0 ? '#ffdd44' : '#778899';
+      const txt = (i+1) + '.  ' + entry.name.padEnd(14) + entry.score.toLocaleString() + '  Day ' + entry.days;
+      this.add.text(lbX - 200, lbY + 16 + i*18, txt, { fontFamily:'monospace', fontSize:'11px', color:col });
+    });
+
+    // ── Controls ──────────────────────────────────────────
+    const prompt = this.add.text(W/2, H - 54, 'ENTER / SPACE  —  play again', {
+      fontFamily:'monospace', fontSize:'18px', color:'#ffffff',
+    }).setOrigin(0.5);
+    this.tweens.add({ targets:prompt, alpha:0.25, duration:700, yoyo:true, repeat:-1 });
+    this.add.text(W/2, H - 26, 'ESC  —  main menu', {
+      fontFamily:'monospace', fontSize:'13px', color:'#444455',
     }).setOrigin(0.5);
 
     const K = Phaser.Input.Keyboard.KeyCodes;
@@ -3673,6 +4187,20 @@ class GameOverScene extends Phaser.Scene {
     keys.enter.on('down', () => this.restart());
     keys.space.on('down', () => this.restart());
     keys.esc.on('down',   () => this.goMenu());
+  }
+
+  _loadLeaderboard() {
+    try {
+      return JSON.parse(localStorage.getItem('iw_scores') || '[]');
+    } catch(e) { return []; }
+  }
+
+  _saveScore(lb, score) {
+    const names = this.p2Name ? this.p1Name + '/' + this.p2Name : this.p1Name;
+    lb.push({ name: names, score, days: this.days, time: Math.floor(this.timeAlive) });
+    lb.sort((a,b) => b.score - a.score);
+    lb.splice(10); // keep top 10
+    try { localStorage.setItem('iw_scores', JSON.stringify(lb)); } catch(e) {}
   }
 
   restart() {
