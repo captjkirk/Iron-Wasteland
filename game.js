@@ -3892,6 +3892,7 @@ class GameScene extends Phaser.Scene {
   }
 
   revivePlayer(player) {
+    if (!player || !player.isDowned) return; // guard: timer may have expired same frame
     player.isDowned = false;
     player.hp = Math.floor(player.maxHp * 0.3);
     player.downTimer = 0;
@@ -3925,7 +3926,7 @@ class GameScene extends Phaser.Scene {
         resources: this.resourcesGathered,
         bossDefeated: this.bossDefeated,
         p1Name: this.p1 ? this.p1.charData.player : 'P1',
-        p2Name: this.p2 ? this.p2.charData.player : null,
+        p2Name: (this.p2 && !this.p2.isPermanentlyDead) ? this.p2.charData.player : null,
       });
     });
   }
@@ -4406,6 +4407,7 @@ class GameScene extends Phaser.Scene {
     this.updateBuildMode();
     this.updateCraftMenu(delta);
     this.updateHarvest(delta);
+    this.updateSpikeTraps();
     this.updateFog();
     this.updateMinimap();
     this.redrawHUD();
@@ -5103,7 +5105,7 @@ class GameScene extends Phaser.Scene {
         this.enemies.forEach(e => {
           if (e.hp <= 0) return;
           this.physics.add.overlap(blt, e.spr, () => {
-            if (!blt.active) return;
+            if (!blt.active || e.hp <= 0) return; // e.hp guard: second in-flight bullet can't double-kill
             blt.destroy();
             e.hp -= 35;
             SFX.hit();
@@ -5272,8 +5274,11 @@ class GameScene extends Phaser.Scene {
   }
 
   killEnemy(e) {
+    if (e.hp <= 0) return; // already being killed — prevent double-kill & double-count
     e.hp = 0;
     this.kills++;
+    // Remove from update loop immediately so dead entries don't accumulate
+    this.enemies = this.enemies.filter(e2 => e2 !== e);
     SFX.enemyDie();
     e.spr.setTint(0xff2200);
     const ex = e.spr.x, ey = e.spr.y;
@@ -5304,6 +5309,27 @@ class GameScene extends Phaser.Scene {
       this.dropResource(ex, ey, 'rare');
     }
     this.dropResource(ex, ey, e.type);
+  }
+
+  // Per-frame proximity check for spike traps.  Replaces physics.add.overlap because
+  // add.image() has no physics body, and it also covers enemies that spawn after placement.
+  updateSpikeTraps() {
+    if (!this.spikeTraps || !this.spikeTraps.length || !this.enemies) return;
+    for (let si = this.spikeTraps.length - 1; si >= 0; si--) {
+      const st = this.spikeTraps[si];
+      if (!st.active) { this.spikeTraps.splice(si, 1); continue; }
+      for (const e of this.enemies) {
+        if (e.hp <= 0 || !e.spr.active) continue;
+        if (Phaser.Math.Distance.Between(e.spr.x, e.spr.y, st.x, st.y) < 26) {
+          e.hp = Math.max(0, e.hp - 35);
+          SFX.hit();
+          if (e.hp <= 0) this.killEnemy(e);
+          st.destroy();
+          this.spikeTraps.splice(si, 1);
+          break; // trap gone — move to next trap
+        }
+      }
+    }
   }
 
   dropResource(x, y, enemyType) {
@@ -6043,17 +6069,9 @@ class GameScene extends Phaser.Scene {
       const st = this.add.image(x, y, 'spike_trap').setScale(1.5).setDepth(4);
       if (this.hudCam) this.hudCam.ignore(st);
       this._w(st);
-      st.active = true;
+      // NOTE: st is a non-physics image — detection handled by updateSpikeTraps() each frame
+      // so it works for enemies that spawn after placement too.
       this.spikeTraps.push(st);
-      // Overlap with enemies
-      this.enemies.forEach(e => {
-        this.physics.add.overlap(e.spr, st, () => {
-          if (!st.active) return;
-          e.hp = Math.max(0, e.hp - 35);
-          st.destroy(); st.active = false;
-          this.spikeTraps = this.spikeTraps.filter(s => s !== st);
-        });
-      });
       SFX._play(300, 'triangle', 0.08, 0.15);
       this.hint('Spike trap placed!', 1200);
       this.exitBuildMode(); return;
@@ -6081,6 +6099,7 @@ class GameScene extends Phaser.Scene {
     gate.setAlpha(0.3);
     gate.body.enable = false;
     this.time.delayedCall(2000, () => {
+      if (!gate.active) return; // gate may have been destroyed by enemies
       gate.gateOpen = false;
       gate.setAlpha(1);
       gate.body.enable = true;
@@ -6229,8 +6248,8 @@ class GameScene extends Phaser.Scene {
     if (rec.needsBench && !this.craftBenchPlaced) {
       this.hint('Need a Craftbench first!', 2000); return;
     }
-    // Afford check
-    const cost = this.getBuildCost(rec.key);
+    // Afford check — use rec.cost so display and deduction always agree
+    const cost = rec.cost;
     for (const [res, amt] of Object.entries(cost)) {
       if ((team[res] || 0) < amt) {
         this.hint('Need ' + amt + ' ' + res + '! (have ' + (team[res]||0) + ')', 2000); return;
