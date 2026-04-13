@@ -2542,7 +2542,7 @@ class GameScene extends Phaser.Scene {
 
     this.hotkeys.p1use.on('down', () => { if (!this.barrackOpen && !this.isOver) this.tryInteract(this.p1); });
     if (this.p2) this.hotkeys.p2use.on('down', () => { if (!this.barrackOpen && !this.isOver) this.tryInteract(this.p2); });
-    this.hotkeys.tab.on('down', () => this.toggleControls());
+    this.hotkeys.tab.on('down', () => { if (!this.barrackOpen && !this.craftMenuOpen && !this.isOver) this.toggleControls(); });
     this.hotkeys.esc.on('down', () => { this.closeBarrack(); if (this.controlsVis) this.toggleControls(); });
 
     // Barracks navigation keys
@@ -3601,7 +3601,7 @@ class GameScene extends Phaser.Scene {
 
     // ── MINIMAP ─────────────────────────────────────────────────
     const mmW = 120, mmH = 120;
-    const mmX = W - mmW - 10, mmY = 80; // top-right so it doesn't overlap P2 inventory
+    const mmX = W - mmW - 10, mmY = 96; // top-right so it doesn't overlap P2 inventory
     // Background
     const mmBg = this._h(this.add.graphics().setDepth(110));
     mmBg.fillStyle(0x000000, 0.7); mmBg.fillRoundedRect(mmX - 2, mmY - 2, mmW + 4, mmH + 4, 4);
@@ -3772,10 +3772,14 @@ class GameScene extends Phaser.Scene {
       return;
     }
 
-    // 2P Survival: if partner is already permanently dead, no one to revive — game over
+    // 2P Survival: if partner is already dead or also downed, no one to revive — game over
     const partner = player === this.p1 ? this.p2 : this.p1;
     if (partner && partner.isPermanentlyDead) {
       this.triggerGameOver('Both survivors have fallen.');
+      return;
+    }
+    if (partner && partner.isDowned) {
+      this.triggerGameOver('Both survivors are down!');
       return;
     }
 
@@ -3822,6 +3826,17 @@ class GameScene extends Phaser.Scene {
         if (p.hpBar) p.hpBar.clear();
         if (p.lbl) p.lbl.setVisible(false);
         statusText.setText('');
+        // Hide HUD elements specific to this player so nothing lingers
+        const key = p === this.p1 ? 'p1' : 'p2';
+        if (key === 'p1') {
+          if (this.p1Badge) this.p1Badge.setVisible(false);
+          if (this.p1InvText) this.p1InvText.setVisible(false);
+        } else {
+          if (this.p2Badge) this.p2Badge.setVisible(false);
+          if (this.p2InvText) this.p2InvText.setVisible(false);
+        }
+        if (this.ammoIcons[key]) this.ammoIcons[key].forEach(ic => ic.setVisible(false));
+        if (this.ammoReserveText && this.ammoReserveText[key]) this.ammoReserveText[key].setVisible(false);
         this.checkBothDead();
       }
     };
@@ -3942,7 +3957,7 @@ class GameScene extends Phaser.Scene {
     const p2Ch = this.p2 ? this.p2.charData : (this.solo ? null : CHARS.find(c => c.id === STATE.p2CharId));
 
     // Dimming backdrop (only visible when controls open)
-    push(this.add.graphics().setDepth(94)).fillStyle(0x000000, 0.55).fillRect(0, 0, W, H);
+    push(this.add.graphics().setDepth(94)).fillStyle(0x000000, 0.75).fillRect(0, 0, W, H);
 
     // P1 controls — left side (margin from edge to avoid browser chrome clipping)
     const p1Lines = getControls(1, p1Ch.id, this.solo);
@@ -4234,6 +4249,8 @@ class GameScene extends Phaser.Scene {
       this.tweens.killTweensOf(this._activeHint);
       this._activeHint.destroy();
     }
+    // Cancel orphaned delayedCall from the previous hint (killTweensOf won't reach it)
+    if (this._hintTimer) { this._hintTimer.remove(false); this._hintTimer = null; }
     const h = this.add.text(CFG.W/2, 112, text, {
       fontFamily:'monospace', fontSize:'14px', color:'#ffffff',
       stroke:'#000', strokeThickness:3, backgroundColor:'#00000099', padding:{x:12,y:6},
@@ -4241,8 +4258,14 @@ class GameScene extends Phaser.Scene {
     this.cameras.main.ignore(h);
     this._activeHint = h;
     this.tweens.add({ targets:h, alpha:1, duration:280,
-      onComplete:()=>this.time.delayedCall(duration,()=>
-        this.tweens.add({targets:h,alpha:0,duration:450,onComplete:()=>{ if(h===this._activeHint) this._activeHint=null; h.destroy(); }}))
+      onComplete:() => {
+        this._hintTimer = this.time.delayedCall(duration, () => {
+          this._hintTimer = null;
+          this.tweens.add({ targets:h, alpha:0, duration:450,
+            onComplete:() => { if (h === this._activeHint) this._activeHint = null; h.destroy(); }
+          });
+        });
+      }
     });
   }
 
@@ -4944,7 +4967,7 @@ class GameScene extends Phaser.Scene {
         const type = types[Phaser.Math.Between(0, types.length-1)];
         const typeDef = { wolf:{hp:60,speed:90,dmg:8,baseScale:1.8,w:20,h:12}, rat:{hp:30,speed:130,dmg:5,baseScale:1.4,w:15,h:9} };
         const t = typeDef[type];
-        const sizeMult = Phaser.Math.FloatBetween(0.85, 1.3);
+        const sizeMult = Phaser.Math.FloatBetween(1.0, 1.3);
         const sc = t.baseScale * sizeMult;
         const ex = den.x + Phaser.Math.Between(-60, 60);
         const ey = den.y + Phaser.Math.Between(-60, 60);
@@ -5121,29 +5144,89 @@ class GameScene extends Phaser.Scene {
       SFX.sword();
       player.atkCooldown = 500;
       this.meleeSwing(player, 55, 0xdddddd, 0.18, 0);
+      if (player._knightUpgraded) this._fireShieldThrow(player);
     } else {
+      // Architect
       SFX.wrench();
       player.atkCooldown = 450;
       this.meleeSwing(player, 45, 0xcc8833, 0.2, 350);
+      if (player._architectUpgraded) this._fireNailGun(player);
     }
+  }
+
+  _fireShieldThrow(player) {
+    const angle = this.getAimAngle(player);
+    const blt = this.physics.add.image(player.spr.x, player.spr.y, 'bullet')
+      .setDepth(15).setScale(3.5).setTint(0x5599ff);
+    blt.setRotation(angle);
+    if (this.hudCam) this.hudCam.ignore(blt);
+    this.physics.velocityFromAngle(Phaser.Math.RadToDeg(angle), 280, blt.body.velocity);
+    blt.body.allowGravity = false;
+    if (this.obstacles) {
+      this.physics.add.collider(blt, this.obstacles, () => { if (blt.active) blt.destroy(); });
+    }
+    if (this.enemies) {
+      this.enemies.forEach(e => {
+        if (e.hp <= 0) return;
+        this.physics.add.overlap(blt, e.spr, () => {
+          if (!blt.active || e.hp <= 0) return;
+          blt.destroy();
+          e.hp -= 28;
+          SFX.hit();
+          e.spr.setTint(0x5599ff);
+          this.time.delayedCall(120, () => { if (e.spr.active) e.spr.clearTint(); });
+          if (e.hp <= 0) this.killEnemy(e);
+        });
+      });
+    }
+    this.time.delayedCall(700, () => { if (blt.active) blt.destroy(); });
+  }
+
+  _fireNailGun(player) {
+    const angle = this.getAimAngle(player);
+    const blt = this.physics.add.image(player.spr.x, player.spr.y, 'bullet')
+      .setDepth(15).setScale(1.0).setTint(0xff8833);
+    blt.setRotation(angle);
+    if (this.hudCam) this.hudCam.ignore(blt);
+    this.physics.velocityFromAngle(Phaser.Math.RadToDeg(angle), 540, blt.body.velocity);
+    blt.body.allowGravity = false;
+    if (this.obstacles) {
+      this.physics.add.collider(blt, this.obstacles, () => { if (blt.active) blt.destroy(); });
+    }
+    if (this.enemies) {
+      this.enemies.forEach(e => {
+        if (e.hp <= 0) return;
+        this.physics.add.overlap(blt, e.spr, () => {
+          if (!blt.active || e.hp <= 0) return;
+          blt.destroy();
+          e.hp -= 14;
+          SFX.hit();
+          e.spr.setTint(0xff8833);
+          this.time.delayedCall(80, () => { if (e.spr.active) e.spr.clearTint(); });
+          if (e.hp <= 0) this.killEnemy(e);
+        });
+      });
+    }
+    this.time.delayedCall(900, () => { if (blt.active) blt.destroy(); });
   }
 
   doAlt(player) {
     const id = player.charData.id;
     if (id === 'gunslinger') {
-      if (player.ammo < 8 && !player.reloading && player.reserveAmmo > 0) {
+      const clipSize = player._gunslingerClip || 8;
+      if (player.ammo < clipSize && !player.reloading && player.reserveAmmo > 0) {
         player.reloading = true;
         SFX.reload();
         this.hint('Reloading\u2026 (' + player.reserveAmmo + ' in reserve)', 1500);
         this.time.delayedCall(1500, () => {
-          const needed = 8 - player.ammo;
+          const needed = clipSize - player.ammo;
           const fill = Math.min(needed, player.reserveAmmo);
           player.ammo += fill;
           player.reserveAmmo -= fill;
           player.reloading = false;
           this.redrawHUD(); SFX.reload();
         });
-      } else if (player.reserveAmmo <= 0 && player.ammo < 8) {
+      } else if (player.reserveAmmo <= 0 && player.ammo < clipSize) {
         this.hint('No ammo left! Find more drops.', 2000);
       }
     } else if (id === 'knight') {
@@ -5462,8 +5545,8 @@ class GameScene extends Phaser.Scene {
             ey = Phaser.Math.Between(TILE*3, worldH-TILE*3);
           } while (Phaser.Math.Distance.Between(ex, ey, cx, cy) < SAFE_R*TILE*2.5);
         }
-        // Size variance: 0.85x to 1.5x — floor raised so enemies are never too small to see
-        const sizeMult = Phaser.Math.FloatBetween(0.85, 1.5);
+        // Size variance: 1.0x to 1.5x — floor raised so enemies are never too small to see
+        const sizeMult = Phaser.Math.FloatBetween(1.0, 1.5);
         const sc = t.baseScale * sizeMult;
         const hp = Math.floor(t.hp * sizeMult);
         const dmg = Math.max(1, Math.floor(t.dmg * sizeMult));
@@ -5739,7 +5822,7 @@ class GameScene extends Phaser.Scene {
               e.wallAttackTimer = (e.wallAttackTimer || 0) - delta;
               if (e.wallAttackTimer <= 0) {
                 this.damageStructure(blockingWall, e.dmg * 0.7);
-                e.wallAttackTimer = 1400;
+                e.wallAttackTimer = this.isNight ? 900 : 1400;
               }
               e.spr.setVelocity(0, 0);
               e.spr.setFlipX(blockingWall.x < e.spr.x);
@@ -6293,8 +6376,11 @@ class GameScene extends Phaser.Scene {
     } else if (rec.type === 'upgrade') {
       const target = [this.p1, this.p2].filter(Boolean).find(p => p.charData.id === rec.charId);
       if (!target) { this.hint('That character isn\'t in the game!', 2000); return; }
-      if (target._upgraded) { this.hint('Already upgraded!', 1500); return; }
-      target._upgraded = true;
+      // Per-character upgrade flags so each character tracks its own upgrade independently
+      const upgradeFlag = '_' + rec.charId + 'Upgraded';
+      if (target[upgradeFlag]) { this.hint('Already upgraded!', 1500); return; }
+      target[upgradeFlag] = true;
+      if (rec.charId === 'gunslinger') target._gunslingerClip = 12;
       target.spr.setTint(0xffaa22);
       this.time.delayedCall(400, () => { if(target.spr.active) target.spr.clearTint(); });
       this.hint(rec.label + ' unlocked for ' + target.charData.player + '!', 3000);
