@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html>
+<html lang="en">
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
@@ -10,12 +10,13 @@
   <style>
     *, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
 
-    /* position:fixed ensures the element truly fills the screen in iOS PWA
-       standalone mode regardless of viewport quirks or safe-area offsets */
-    html, body {
+    html { width: 100%; height: 100%; overflow: hidden; }
+
+    body {
+      /* position:fixed + inset:0 truly fills the iOS PWA screen regardless
+         of safe-area offsets, viewport-height bugs, or the Home Bar */
       position: fixed;
-      top: 0; left: 0;
-      width: 100%; height: 100%;
+      inset: 0;
       overflow: hidden;
       background: #0a0a0a;
       touch-action: none;
@@ -24,25 +25,27 @@
       -webkit-tap-highlight-color: transparent;
     }
 
-    /* Phaser mounts the canvas here.  Flex centers it; Phaser handles scaling. */
+    /* Phaser mounts its canvas here.  CSS flex centers it; Phaser scales it.
+       Using inset:0 (rather than width/height 100%) guarantees the element
+       occupies the exact viewport rectangle that position:fixed defines. */
     #game-container {
       position: fixed;
-      top: 0; left: 0;
-      width: 100%; height: 100%;
+      inset: 0;
       display: flex;
       align-items: center;
       justify-content: center;
-      overflow: hidden;
+      background: #0a0a0a;
     }
 
     canvas {
       display: block;
+      /* Let Phaser control the canvas pixel size; only constrain within
+         the viewport so a miscalculation never causes overflow. */
+      max-width: 100%;
+      max-height: 100%;
       image-rendering: pixelated;
       image-rendering: crisp-edges;
       touch-action: none;
-      /* never exceed the viewport — Phaser already sizes it correctly */
-      max-width: 100%;
-      max-height: 100%;
     }
   </style>
 </head>

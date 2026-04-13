@@ -2083,6 +2083,11 @@ class GameScene extends Phaser.Scene {
   constructor() { super('Game'); }
 
   create() {
+    // Reset world-ready flag immediately — Phaser reuses the same class instance
+    // on scene restart, so the flag from the previous run would otherwise keep
+    // update() running against stale state before the deferred init fires.
+    this._worldReady = false;
+
     const worldW = CFG.MAP_W * CFG.TILE, worldH = CFG.MAP_H * CFG.TILE;
     const cx = worldW/2, cy = worldH/2;
 
