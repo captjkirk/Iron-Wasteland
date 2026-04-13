@@ -460,23 +460,22 @@ function buildTextures(scene) {
   g.fillCircle(40, 30, 3);
   g.generateTexture('barracks', 80, 56);
 
-  // Characters — all directions & walk frames (2× canvas for crisp hi-res sprites)
-  const sg = makeScaleProxy(g, 2);
-  drawKnight(sg);       drawKnightStep(sg);
-  drawKnightFront(sg);  drawKnightFrontStep(sg);
-  drawKnightBack(sg);   drawKnightBackStep(sg);
-  drawKnightFSide(sg);  drawKnightFSideStep(sg);
-  drawKnightBSide(sg);  drawKnightBSideStep(sg);
-  drawGunslinger(sg);       drawGunslingerStep(sg);
-  drawGunslingerFront(sg);  drawGunslingerFrontStep(sg);
-  drawGunslingerBack(sg);   drawGunslingerBackStep(sg);
-  drawGunslingerFSide(sg);  drawGunslingerFSideStep(sg);
-  drawGunslingerBSide(sg);  drawGunslingerBSideStep(sg);
-  drawArchitect(sg);       drawArchitectStep(sg);
-  drawArchitectFront(sg);  drawArchitectFrontStep(sg);
-  drawArchitectBack(sg);   drawArchitectBackStep(sg);
-  drawArchitectFSide(sg);  drawArchitectFSideStep(sg);
-  drawArchitectBSide(sg);  drawArchitectBSideStep(sg);
+  // Characters — all directions & walk frames (drawn at native 44×60 for full pixel precision)
+  drawKnight(g);       drawKnightStep(g);
+  drawKnightFront(g);  drawKnightFrontStep(g);
+  drawKnightBack(g);   drawKnightBackStep(g);
+  drawKnightFSide(g);  drawKnightFSideStep(g);
+  drawKnightBSide(g);  drawKnightBSideStep(g);
+  drawGunslinger(g);       drawGunslingerStep(g);
+  drawGunslingerFront(g);  drawGunslingerFrontStep(g);
+  drawGunslingerBack(g);   drawGunslingerBackStep(g);
+  drawGunslingerFSide(g);  drawGunslingerFSideStep(g);
+  drawGunslingerBSide(g);  drawGunslingerBSideStep(g);
+  drawArchitect(g);       drawArchitectStep(g);
+  drawArchitectFront(g);  drawArchitectFrontStep(g);
+  drawArchitectBack(g);   drawArchitectBackStep(g);
+  drawArchitectFSide(g);  drawArchitectFSideStep(g);
+  drawArchitectBSide(g);  drawArchitectBSideStep(g);
   // Enemy raider directional sprites
   drawRaiderDirectionals(g);
 
@@ -1039,73 +1038,120 @@ function buildTextures(scene) {
 
 function drawKnight(g) {
   g.clear();
-  g.fillStyle(0x1a2d3d); g.fillRect(3, 26, 7, 4); g.fillRect(12, 26, 7, 4);
-  g.fillStyle(0x2d4a63); g.fillRect(3, 17, 7, 10); g.fillRect(12, 17, 7, 10);
-  g.fillStyle(0x111111); g.fillRect(2, 16, 18, 2);
-  g.fillStyle(0x4a6d8c); g.fillRect(2, 8, 18, 9);
-  g.fillStyle(0x3a5a7a); g.fillRect(8, 9, 6, 7);
-  g.fillStyle(0x5588aa); g.fillRect(8, 9, 6, 2);
-  g.fillStyle(0x4a6d8c); g.fillRect(0, 8, 3, 9);
-  g.fillStyle(0x2244aa); g.fillRect(-1, 8, 4, 10);
-  g.fillStyle(0x4466cc); g.fillRect(0, 9, 2, 8);
-  g.fillStyle(0xccaa00); g.fillCircle(1, 13, 1);
-  g.fillStyle(0x4a6d8c); g.fillRect(19, 8, 3, 9);
-  g.fillStyle(0xbbbbbb); g.fillRect(21, 4, 2, 18);
-  g.fillStyle(0xdddddd); g.fillRect(22, 4, 1, 16);
-  g.fillStyle(0xcc9900); g.fillRect(18, 7, 6, 2);
-  g.fillStyle(0x8b6914); g.fillRect(21, 19, 2, 4);
-  g.fillStyle(0xffcc99); g.fillRect(8, 5, 6, 4);
-  g.fillStyle(0x4a6d8c); g.fillRect(4, 0, 14, 8);
-  g.fillStyle(0x2d4a63); g.fillRect(4, 3, 14, 4);
-  g.fillStyle(0x080808); g.fillRect(5, 4, 12, 2);
-  g.fillStyle(0x6688bb); g.fillRect(4, 0, 14, 2);
-  g.fillStyle(0x3a5a7a); g.fillRect(4, 0, 2, 8); g.fillRect(16, 0, 2, 8);
-  g.generateTexture('knight', 22, 30);
+  // boots
+  g.fillStyle(0x1a2d3d); g.fillRect(5,52,11,8); g.fillRect(18,52,11,8);
+  g.fillStyle(0x2d4a63); g.fillRect(18,52,4,6);
+  // greaves
+  g.fillStyle(0x2d4a63); g.fillRect(5,34,11,20); g.fillRect(18,34,11,20);
+  g.fillStyle(0x3a5a7a); g.fillRect(19,34,4,18);
+  g.fillStyle(0x1a2d3d); g.fillRect(5,46,11,2); g.fillRect(18,46,11,2);
+  // belt/tassets
+  g.fillStyle(0x111111); g.fillRect(2,30,28,6);
+  g.fillStyle(0x2d4a63); g.fillRect(4,31,10,4); g.fillRect(16,31,10,4);
+  // torso/breastplate
+  g.fillStyle(0x4a6d8c); g.fillRect(2,12,28,20);
+  g.fillStyle(0x3a5a7a); g.fillRect(6,14,18,16);
+  g.fillStyle(0x5588aa); g.fillRect(6,14,18,4);
+  // shield (left arm)
+  g.fillStyle(0x2244aa); g.fillRect(0,12,6,24);
+  g.fillStyle(0x4466cc); g.fillRect(1,13,3,20);
+  g.fillStyle(0xccaa00); g.fillCircle(2,23,3);
+  g.fillStyle(0xeecc22); g.fillCircle(2,23,1);
+  // sword arm (right)
+  g.fillStyle(0x4a6d8c); g.fillRect(28,12,8,22);
+  g.fillStyle(0x3a5a7a); g.fillRect(28,12,4,20);
+  // sword
+  g.fillStyle(0xcc9900); g.fillRect(34,10,9,5);
+  g.fillStyle(0x8b6914); g.fillRect(36,15,5,6);
+  g.fillStyle(0xbbbbbb); g.fillRect(40,2,3,44);
+  g.fillStyle(0xdddddd); g.fillRect(42,2,1,42);
+  // gorget/neck
+  g.fillStyle(0x4a6d8c); g.fillRect(14,10,16,4);
+  // helmet
+  g.fillStyle(0x4a6d8c); g.fillRect(8,0,24,13);
+  g.fillStyle(0x2d4a63); g.fillRect(8,4,24,8);
+  g.fillStyle(0x080808); g.fillRect(10,5,20,5);
+  g.fillStyle(0xffcc99); g.fillRect(12,6,16,3);
+  g.fillStyle(0x3a5a7a); g.fillRect(8,0,4,13); g.fillRect(28,0,4,13);
+  g.fillStyle(0x6688bb); g.fillRect(8,0,24,3);
+  g.generateTexture('knight', 44, 60);
 }
 
 function drawGunslinger(g) {
   g.clear();
-  g.fillStyle(0x3d2010); g.fillRect(3, 24, 7, 6); g.fillRect(12, 24, 7, 6);
-  g.fillStyle(0x3a5a7a); g.fillRect(3, 16, 7, 9); g.fillRect(12, 16, 7, 9);
-  g.fillStyle(0x3d2010); g.fillRect(14, 19, 5, 5);
-  g.fillStyle(0x222222); g.fillRect(15, 21, 3, 3);
-  g.fillStyle(0xcc8833); g.fillRect(2, 8, 18, 9);
-  g.fillStyle(0xffeedd); g.fillRect(9, 8, 4, 8);
-  g.fillStyle(0x9a6622); g.fillRect(2, 8, 3, 9); g.fillRect(17, 8, 3, 9);
-  g.fillStyle(0xcc8833); g.fillRect(0, 8, 3, 9); g.fillRect(19, 8, 3, 9);
-  g.fillStyle(0x333333); g.fillRect(19, 11, 8, 3);
-  g.fillStyle(0x555555); g.fillRect(20, 9, 5, 5);
-  g.fillStyle(0x3d2010); g.fillRect(21, 13, 3, 4);
-  g.fillStyle(0xffcc99); g.fillRect(8, 4, 6, 6);
-  g.fillStyle(0x7a4a1a); g.fillRect(3, 2, 16, 3);
-  g.fillStyle(0x553311); g.fillRect(6, 0, 10, 4);
-  g.fillStyle(0x7a5533); g.fillRect(6, 0, 10, 1);
-  g.generateTexture('gunslinger', 22, 30);
+  // boots
+  g.fillStyle(0x3d2010); g.fillRect(5,52,11,8); g.fillRect(18,52,11,8);
+  g.fillStyle(0x5c3318); g.fillRect(18,52,4,6);
+  // pants
+  g.fillStyle(0x3a5a7a); g.fillRect(5,34,11,18); g.fillRect(18,34,11,18);
+  g.fillStyle(0x4a6a8a); g.fillRect(19,34,4,16);
+  // holster
+  g.fillStyle(0x3d2010); g.fillRect(18,42,10,8);
+  g.fillStyle(0x222222); g.fillRect(20,44,6,6);
+  // belt
+  g.fillStyle(0x9a6622); g.fillRect(2,30,28,6);
+  g.fillStyle(0xccaa44); g.fillRect(16,31,6,4);
+  // coat body
+  g.fillStyle(0xcc8833); g.fillRect(2,12,28,20);
+  g.fillStyle(0xffeedd); g.fillRect(8,13,12,17);
+  g.fillStyle(0x9a6622); g.fillRect(2,12,4,20); g.fillRect(26,12,4,20);
+  // gun arm (right)
+  g.fillStyle(0xcc8833); g.fillRect(28,12,8,22);
+  g.fillStyle(0x9a6622); g.fillRect(28,12,4,20);
+  g.fillStyle(0x333333); g.fillRect(34,11,10,4);
+  g.fillStyle(0x555555); g.fillRect(35,9,7,6);
+  g.fillStyle(0x222222); g.fillRect(36,15,6,4);
+  // left arm
+  g.fillStyle(0xcc8833); g.fillRect(0,12,4,22);
+  // neck
+  g.fillStyle(0xffcc99); g.fillRect(14,10,14,4);
+  // face
+  g.fillStyle(0xffcc99); g.fillRect(10,4,18,8);
+  // hat brim
+  g.fillStyle(0x7a4a1a); g.fillRect(2,3,34,3);
+  // hat crown
+  g.fillStyle(0x553311); g.fillRect(8,0,20,6);
+  g.fillStyle(0x7a5533); g.fillRect(8,0,20,1);
+  g.fillStyle(0x7a4a1a); g.fillRect(8,4,20,1);
+  g.generateTexture('gunslinger', 44, 60);
 }
 
 function drawArchitect(g) {
   g.clear();
-  g.fillStyle(0x222222); g.fillRect(3, 24, 7, 6); g.fillRect(12, 24, 7, 6);
-  g.fillStyle(0x334477); g.fillRect(3, 16, 7, 9); g.fillRect(12, 16, 7, 9);
-  g.fillStyle(0x445588); g.fillRect(3, 16, 7, 2); g.fillRect(12, 16, 7, 2);
-  g.fillStyle(0x8b6914); g.fillRect(2, 15, 18, 3);
-  g.fillStyle(0xaaaaaa); g.fillRect(5, 14, 2, 5);
-  g.fillStyle(0xcc8833); g.fillRect(9, 14, 2, 5);
-  g.fillStyle(0x44aaff); g.fillRect(14, 14, 2, 5);
-  g.fillStyle(0x3a9a55); g.fillRect(2, 8, 18, 8);
-  g.fillStyle(0xffcc00); g.fillRect(2, 8, 2, 8); g.fillRect(18, 8, 2, 8);
-  g.fillStyle(0x1a5533); g.fillRect(9, 8, 4, 8);
-  g.fillStyle(0x3a9a55); g.fillRect(0, 8, 3, 8); g.fillRect(19, 8, 3, 8);
-  g.fillStyle(0x999999); g.fillRect(21, 3, 3, 16);
-  g.fillStyle(0x777777); g.fillRect(19, 2, 7, 4);
-  g.fillStyle(0xbbbbbb); g.fillRect(20, 2, 2, 2);
-  g.fillStyle(0x3a9a55); g.fillRect(21, 5, 3, 4);
-  g.fillStyle(0xffcc99); g.fillRect(8, 4, 6, 6);
-  g.fillStyle(0x222222); g.fillRect(3, 3, 16, 2);
-  g.fillStyle(0xddcc22); g.fillRect(5, 0, 12, 5);
-  g.fillStyle(0xeeee44); g.fillRect(5, 0, 12, 1);
-  g.fillStyle(0x666600); g.fillRect(5, 4, 12, 1);
-  g.generateTexture('architect', 22, 30);
+  // boots
+  g.fillStyle(0x222222); g.fillRect(5,52,11,8); g.fillRect(18,52,11,8);
+  g.fillStyle(0x444444); g.fillRect(18,52,4,6);
+  // pants
+  g.fillStyle(0x334477); g.fillRect(5,34,11,18); g.fillRect(18,34,11,18);
+  g.fillStyle(0x445588); g.fillRect(19,34,4,16);
+  // tool belt
+  g.fillStyle(0x8b6914); g.fillRect(2,30,28,6);
+  g.fillStyle(0xaaaaaa); g.fillRect(4,29,3,5);
+  g.fillStyle(0xcc8833); g.fillRect(8,29,3,5);
+  g.fillStyle(0x44aaff); g.fillRect(12,29,3,5);
+  // vest body
+  g.fillStyle(0x3a9a55); g.fillRect(2,12,28,20);
+  g.fillStyle(0x1a5533); g.fillRect(10,14,12,16);
+  g.fillStyle(0xffcc00); g.fillRect(2,12,4,4); g.fillRect(26,12,4,4);
+  // left arm
+  g.fillStyle(0x3a9a55); g.fillRect(0,12,4,22);
+  // right arm + wrench
+  g.fillStyle(0x3a9a55); g.fillRect(28,12,8,22);
+  g.fillStyle(0x777777); g.fillRect(33,5,6,4);
+  g.fillStyle(0x999999); g.fillRect(34,9,4,16);
+  g.fillStyle(0xbbbbbb); g.fillRect(34,9,2,14);
+  g.fillStyle(0x555555); g.fillRect(33,4,6,2);
+  g.fillStyle(0x555555); g.fillRect(33,8,2,2); g.fillRect(37,8,2,2);
+  // neck
+  g.fillStyle(0xffcc99); g.fillRect(14,10,14,4);
+  // face
+  g.fillStyle(0xffcc99); g.fillRect(10,4,18,8);
+  // hard hat
+  g.fillStyle(0x222222); g.fillRect(6,3,26,3);
+  g.fillStyle(0xddcc22); g.fillRect(6,0,26,6);
+  g.fillStyle(0xeeee44); g.fillRect(6,0,26,2);
+  g.fillStyle(0x666600); g.fillRect(6,4,26,2);
+  g.generateTexture('architect', 44, 60);
 }
 
 // ── DIRECTIONAL / WALK-CYCLE SPRITES ─────────────────────────
@@ -1113,517 +1159,783 @@ function drawArchitect(g) {
 // ── KNIGHT variants ──────────────────────────────────────────
 function drawKnightStep(g) {
   g.clear();
-  // left leg raised, right leg back
-  g.fillStyle(0x1a2d3d); g.fillRect(3, 24, 7, 5); g.fillRect(12, 27, 7, 3);
-  g.fillStyle(0x2d4a63); g.fillRect(3, 15, 7, 10); g.fillRect(12, 19, 7, 9);
-  g.fillStyle(0x111111); g.fillRect(2, 16, 18, 2);
-  g.fillStyle(0x4a6d8c); g.fillRect(2, 8, 18, 9);
-  g.fillStyle(0x3a5a7a); g.fillRect(8, 9, 6, 7);
-  g.fillStyle(0x5588aa); g.fillRect(8, 9, 6, 2);
-  g.fillStyle(0x4a6d8c); g.fillRect(0, 8, 3, 9);
-  g.fillStyle(0x2244aa); g.fillRect(-1, 8, 4, 10);
-  g.fillStyle(0x4466cc); g.fillRect(0, 9, 2, 8);
-  g.fillStyle(0xccaa00); g.fillCircle(1, 13, 1);
-  g.fillStyle(0x4a6d8c); g.fillRect(19, 8, 3, 9);
-  g.fillStyle(0xbbbbbb); g.fillRect(21, 4, 2, 18);
-  g.fillStyle(0xdddddd); g.fillRect(22, 4, 1, 16);
-  g.fillStyle(0xcc9900); g.fillRect(18, 7, 6, 2);
-  g.fillStyle(0xffcc99); g.fillRect(8, 5, 6, 4);
-  g.fillStyle(0x4a6d8c); g.fillRect(4, 0, 14, 8);
-  g.fillStyle(0x2d4a63); g.fillRect(4, 3, 14, 4);
-  g.fillStyle(0x080808); g.fillRect(5, 4, 12, 2);
-  g.fillStyle(0x6688bb); g.fillRect(4, 0, 14, 2);
-  g.fillStyle(0x3a5a7a); g.fillRect(4, 0, 2, 8); g.fillRect(16, 0, 2, 8);
-  g.generateTexture('knight_step', 22, 30);
+  // boots - left raised, right planted
+  g.fillStyle(0x1a2d3d); g.fillRect(5,49,11,10); g.fillRect(18,52,11,8);
+  g.fillStyle(0x2d4a63); g.fillRect(18,52,4,6);
+  // greaves
+  g.fillStyle(0x2d4a63); g.fillRect(5,32,11,18); g.fillRect(18,34,11,20);
+  g.fillStyle(0x3a5a7a); g.fillRect(19,34,4,18);
+  g.fillStyle(0x1a2d3d); g.fillRect(5,44,11,2); g.fillRect(18,46,11,2);
+  // belt/tassets
+  g.fillStyle(0x111111); g.fillRect(2,30,28,6);
+  g.fillStyle(0x2d4a63); g.fillRect(4,31,10,4); g.fillRect(16,31,10,4);
+  // torso
+  g.fillStyle(0x4a6d8c); g.fillRect(2,12,28,20);
+  g.fillStyle(0x3a5a7a); g.fillRect(6,14,18,16);
+  g.fillStyle(0x5588aa); g.fillRect(6,14,18,4);
+  // shield (raised slightly in stride)
+  g.fillStyle(0x2244aa); g.fillRect(0,10,6,26);
+  g.fillStyle(0x4466cc); g.fillRect(1,11,3,22);
+  g.fillStyle(0xccaa00); g.fillCircle(2,22,3);
+  g.fillStyle(0xeecc22); g.fillCircle(2,22,1);
+  // sword arm (forward)
+  g.fillStyle(0x4a6d8c); g.fillRect(28,10,8,24);
+  g.fillStyle(0x3a5a7a); g.fillRect(28,10,4,22);
+  g.fillStyle(0xcc9900); g.fillRect(34,8,9,5);
+  g.fillStyle(0x8b6914); g.fillRect(36,13,5,6);
+  g.fillStyle(0xbbbbbb); g.fillRect(40,0,3,44);
+  g.fillStyle(0xdddddd); g.fillRect(42,0,1,42);
+  // gorget/neck
+  g.fillStyle(0x4a6d8c); g.fillRect(14,10,16,4);
+  // helmet
+  g.fillStyle(0x4a6d8c); g.fillRect(8,0,24,13);
+  g.fillStyle(0x2d4a63); g.fillRect(8,4,24,8);
+  g.fillStyle(0x080808); g.fillRect(10,5,20,5);
+  g.fillStyle(0xffcc99); g.fillRect(12,6,16,3);
+  g.fillStyle(0x3a5a7a); g.fillRect(8,0,4,13); g.fillRect(28,0,4,13);
+  g.fillStyle(0x6688bb); g.fillRect(8,0,24,3);
+  g.generateTexture('knight_step', 44, 60);
 }
 
 function drawKnightFront(g) {
   g.clear();
-  g.fillStyle(0x1a2d3d); g.fillRect(4, 26, 6, 4); g.fillRect(12, 26, 6, 4);
-  g.fillStyle(0x2d4a63); g.fillRect(4, 17, 6, 10); g.fillRect(12, 17, 6, 10);
-  g.fillStyle(0x111111); g.fillRect(2, 16, 18, 2);
-  g.fillStyle(0x4a6d8c); g.fillRect(2, 8, 18, 9);
-  g.fillStyle(0x3a5a7a); g.fillRect(6, 9, 10, 7);
-  g.fillStyle(0x5588aa); g.fillRect(6, 9, 10, 2);
-  g.fillStyle(0xccaa00); g.fillCircle(11, 13, 1);
-  g.fillStyle(0x2244aa); g.fillRect(0, 8, 3, 10);
-  g.fillStyle(0x4466cc); g.fillRect(1, 9, 1, 8);
-  g.fillStyle(0x4a6d8c); g.fillRect(19, 8, 3, 9);
-  g.fillStyle(0xbbbbbb); g.fillRect(21, 4, 2, 14);
-  g.fillStyle(0xcc9900); g.fillRect(18, 7, 6, 2);
-  g.fillStyle(0xffcc99); g.fillRect(8, 5, 6, 4);
-  g.fillStyle(0x4a6d8c); g.fillRect(4, 0, 14, 8);
-  g.fillStyle(0x2d4a63); g.fillRect(4, 2, 14, 5);
-  g.fillStyle(0x080808); g.fillRect(5, 3, 12, 2);
-  g.fillStyle(0x6688bb); g.fillRect(4, 0, 14, 2);
-  g.fillStyle(0x3a5a7a); g.fillRect(4, 0, 2, 8); g.fillRect(16, 0, 2, 8);
-  g.generateTexture('knight_front', 22, 30);
+  // boots
+  g.fillStyle(0x1a2d3d); g.fillRect(7,52,12,8); g.fillRect(23,52,12,8);
+  // greaves
+  g.fillStyle(0x2d4a63); g.fillRect(7,34,12,20); g.fillRect(23,34,12,20);
+  g.fillStyle(0x3a5a7a); g.fillRect(9,34,4,18); g.fillRect(25,34,4,18);
+  g.fillStyle(0x1a2d3d); g.fillRect(7,46,12,2); g.fillRect(23,46,12,2);
+  // belt
+  g.fillStyle(0x111111); g.fillRect(4,30,36,6);
+  g.fillStyle(0x2d4a63); g.fillRect(6,31,10,4); g.fillRect(20,31,10,4);
+  g.fillStyle(0xccaa00); g.fillRect(19,30,5,4);
+  // torso/breastplate
+  g.fillStyle(0x4a6d8c); g.fillRect(4,12,36,20);
+  g.fillStyle(0x3a5a7a); g.fillRect(10,14,24,16);
+  g.fillStyle(0x5588aa); g.fillRect(10,14,24,4);
+  g.fillStyle(0xccaa00); g.fillCircle(22,22,3);
+  // left arm/shield
+  g.fillStyle(0x4a6d8c); g.fillRect(0,12,6,22);
+  g.fillStyle(0x2244aa); g.fillRect(0,12,4,24);
+  g.fillStyle(0x4466cc); g.fillRect(1,13,2,20);
+  g.fillStyle(0xccaa00); g.fillCircle(1,23,2);
+  // right arm/sword
+  g.fillStyle(0x4a6d8c); g.fillRect(36,12,8,22);
+  g.fillStyle(0xcc9900); g.fillRect(36,10,10,5);
+  g.fillStyle(0xbbbbbb); g.fillRect(40,0,4,44);
+  g.fillStyle(0xdddddd); g.fillRect(42,0,1,42);
+  // neck
+  g.fillStyle(0xffcc99); g.fillRect(17,10,10,4);
+  // helmet
+  g.fillStyle(0x4a6d8c); g.fillRect(10,0,24,13);
+  g.fillStyle(0x2d4a63); g.fillRect(10,4,24,8);
+  g.fillStyle(0x080808); g.fillRect(12,5,20,5);
+  g.fillStyle(0xffcc99); g.fillRect(14,6,16,3);
+  g.fillStyle(0x3a5a7a); g.fillRect(10,0,4,13); g.fillRect(30,0,4,13);
+  g.fillStyle(0x6688bb); g.fillRect(10,0,24,3);
+  g.generateTexture('knight_front', 44, 60);
 }
 
 function drawKnightFrontStep(g) {
   g.clear();
-  g.fillStyle(0x1a2d3d); g.fillRect(4, 24, 6, 5); g.fillRect(12, 27, 6, 3);
-  g.fillStyle(0x2d4a63); g.fillRect(4, 15, 6, 10); g.fillRect(12, 19, 6, 9);
-  g.fillStyle(0x111111); g.fillRect(2, 16, 18, 2);
-  g.fillStyle(0x4a6d8c); g.fillRect(2, 8, 18, 9);
-  g.fillStyle(0x3a5a7a); g.fillRect(6, 9, 10, 7);
-  g.fillStyle(0x5588aa); g.fillRect(6, 9, 10, 2);
-  g.fillStyle(0xccaa00); g.fillCircle(11, 13, 1);
-  g.fillStyle(0x2244aa); g.fillRect(0, 8, 3, 10);
-  g.fillStyle(0x4466cc); g.fillRect(1, 9, 1, 8);
-  g.fillStyle(0x4a6d8c); g.fillRect(19, 8, 3, 9);
-  g.fillStyle(0xbbbbbb); g.fillRect(21, 4, 2, 14);
-  g.fillStyle(0xcc9900); g.fillRect(18, 7, 6, 2);
-  g.fillStyle(0xffcc99); g.fillRect(8, 5, 6, 4);
-  g.fillStyle(0x4a6d8c); g.fillRect(4, 0, 14, 8);
-  g.fillStyle(0x2d4a63); g.fillRect(4, 2, 14, 5);
-  g.fillStyle(0x080808); g.fillRect(5, 3, 12, 2);
-  g.fillStyle(0x6688bb); g.fillRect(4, 0, 14, 2);
-  g.fillStyle(0x3a5a7a); g.fillRect(4, 0, 2, 8); g.fillRect(16, 0, 2, 8);
-  g.generateTexture('knight_front_step', 22, 30);
+  // boots - left raised, right planted
+  g.fillStyle(0x1a2d3d); g.fillRect(7,49,12,10); g.fillRect(23,52,12,8);
+  // greaves
+  g.fillStyle(0x2d4a63); g.fillRect(7,32,12,18); g.fillRect(23,34,12,20);
+  g.fillStyle(0x3a5a7a); g.fillRect(9,32,4,16); g.fillRect(25,34,4,18);
+  g.fillStyle(0x1a2d3d); g.fillRect(7,44,12,2); g.fillRect(23,46,12,2);
+  // belt
+  g.fillStyle(0x111111); g.fillRect(4,30,36,6);
+  g.fillStyle(0x2d4a63); g.fillRect(6,31,10,4); g.fillRect(20,31,10,4);
+  g.fillStyle(0xccaa00); g.fillRect(19,30,5,4);
+  // torso
+  g.fillStyle(0x4a6d8c); g.fillRect(4,12,36,20);
+  g.fillStyle(0x3a5a7a); g.fillRect(10,14,24,16);
+  g.fillStyle(0x5588aa); g.fillRect(10,14,24,4);
+  g.fillStyle(0xccaa00); g.fillCircle(22,22,3);
+  // left arm/shield (back in stride)
+  g.fillStyle(0x4a6d8c); g.fillRect(0,12,6,22);
+  g.fillStyle(0x2244aa); g.fillRect(0,14,4,22);
+  g.fillStyle(0x4466cc); g.fillRect(1,15,2,18);
+  g.fillStyle(0xccaa00); g.fillCircle(1,24,2);
+  // right arm/sword (forward)
+  g.fillStyle(0x4a6d8c); g.fillRect(36,12,8,22);
+  g.fillStyle(0xcc9900); g.fillRect(36,8,10,5);
+  g.fillStyle(0xbbbbbb); g.fillRect(40,0,4,44);
+  g.fillStyle(0xdddddd); g.fillRect(42,0,1,42);
+  // neck
+  g.fillStyle(0xffcc99); g.fillRect(17,10,10,4);
+  // helmet
+  g.fillStyle(0x4a6d8c); g.fillRect(10,0,24,13);
+  g.fillStyle(0x2d4a63); g.fillRect(10,4,24,8);
+  g.fillStyle(0x080808); g.fillRect(12,5,20,5);
+  g.fillStyle(0xffcc99); g.fillRect(14,6,16,3);
+  g.fillStyle(0x3a5a7a); g.fillRect(10,0,4,13); g.fillRect(30,0,4,13);
+  g.fillStyle(0x6688bb); g.fillRect(10,0,24,3);
+  g.generateTexture('knight_front_step', 44, 60);
 }
 
 function drawKnightBack(g) {
   g.clear();
-  g.fillStyle(0x1a2d3d); g.fillRect(4, 26, 6, 4); g.fillRect(12, 26, 6, 4);
-  g.fillStyle(0x2d4a63); g.fillRect(4, 17, 6, 10); g.fillRect(12, 17, 6, 10);
-  g.fillStyle(0x111111); g.fillRect(2, 16, 18, 2);
-  g.fillStyle(0x4a6d8c); g.fillRect(2, 8, 18, 9);
-  g.fillStyle(0x2d4a63); g.fillRect(6, 9, 10, 7);
-  g.fillStyle(0x1a2d3d); g.fillRect(10, 9, 2, 7);
-  g.fillStyle(0x4a6d8c); g.fillRect(0, 8, 3, 9); g.fillRect(19, 8, 3, 9);
-  g.fillStyle(0xbbbbbb); g.fillRect(21, 4, 2, 14);
-  g.fillStyle(0xcc9900); g.fillRect(18, 7, 6, 2);
-  g.fillStyle(0x4a6d8c); g.fillRect(4, 0, 14, 8);
-  g.fillStyle(0x2d4a63); g.fillRect(4, 1, 14, 6);
-  g.fillStyle(0x1a2d3d); g.fillRect(10, 0, 2, 8);
-  g.fillStyle(0x6688bb); g.fillRect(4, 0, 14, 2);
-  g.fillStyle(0x3a5a7a); g.fillRect(4, 0, 2, 8); g.fillRect(16, 0, 2, 8);
-  g.generateTexture('knight_back', 22, 30);
+  // boots
+  g.fillStyle(0x1a2d3d); g.fillRect(7,52,12,8); g.fillRect(23,52,12,8);
+  // greaves
+  g.fillStyle(0x2d4a63); g.fillRect(7,34,12,20); g.fillRect(23,34,12,20);
+  g.fillStyle(0x1a2d3d); g.fillRect(7,46,12,2); g.fillRect(23,46,12,2);
+  // belt
+  g.fillStyle(0x111111); g.fillRect(4,30,36,6);
+  // back plate torso
+  g.fillStyle(0x4a6d8c); g.fillRect(4,12,36,20);
+  g.fillStyle(0x2d4a63); g.fillRect(10,14,24,16);
+  g.fillStyle(0x1a2d3d); g.fillRect(20,14,4,16);
+  // arms (both pauldrons visible)
+  g.fillStyle(0x4a6d8c); g.fillRect(0,12,6,22); g.fillRect(36,12,8,22);
+  // shield strap on left back
+  g.fillStyle(0x2244aa); g.fillRect(0,14,4,22);
+  g.fillStyle(0xccaa00); g.fillRect(1,20,2,4);
+  // sword from behind
+  g.fillStyle(0xcc9900); g.fillRect(36,10,10,5);
+  g.fillStyle(0xbbbbbb); g.fillRect(40,0,4,44);
+  g.fillStyle(0xdddddd); g.fillRect(42,0,1,42);
+  // neck (back)
+  g.fillStyle(0xffcc99); g.fillRect(17,10,10,4);
+  // helmet back
+  g.fillStyle(0x4a6d8c); g.fillRect(10,0,24,13);
+  g.fillStyle(0x2d4a63); g.fillRect(10,2,24,10);
+  g.fillStyle(0x1a2d3d); g.fillRect(20,0,4,12);
+  g.fillStyle(0x3a5a7a); g.fillRect(10,0,4,13); g.fillRect(30,0,4,13);
+  g.fillStyle(0x6688bb); g.fillRect(10,0,24,3);
+  g.generateTexture('knight_back', 44, 60);
 }
 
 function drawKnightBackStep(g) {
   g.clear();
-  g.fillStyle(0x1a2d3d); g.fillRect(4, 24, 6, 5); g.fillRect(12, 27, 6, 3);
-  g.fillStyle(0x2d4a63); g.fillRect(4, 15, 6, 10); g.fillRect(12, 19, 6, 9);
-  g.fillStyle(0x111111); g.fillRect(2, 16, 18, 2);
-  g.fillStyle(0x4a6d8c); g.fillRect(2, 8, 18, 9);
-  g.fillStyle(0x2d4a63); g.fillRect(6, 9, 10, 7);
-  g.fillStyle(0x1a2d3d); g.fillRect(10, 9, 2, 7);
-  g.fillStyle(0x4a6d8c); g.fillRect(0, 8, 3, 9); g.fillRect(19, 8, 3, 9);
-  g.fillStyle(0xbbbbbb); g.fillRect(21, 4, 2, 14);
-  g.fillStyle(0xcc9900); g.fillRect(18, 7, 6, 2);
-  g.fillStyle(0x4a6d8c); g.fillRect(4, 0, 14, 8);
-  g.fillStyle(0x2d4a63); g.fillRect(4, 1, 14, 6);
-  g.fillStyle(0x1a2d3d); g.fillRect(10, 0, 2, 8);
-  g.fillStyle(0x6688bb); g.fillRect(4, 0, 14, 2);
-  g.fillStyle(0x3a5a7a); g.fillRect(4, 0, 2, 8); g.fillRect(16, 0, 2, 8);
-  g.generateTexture('knight_back_step', 22, 30);
+  // boots - left raised, right planted
+  g.fillStyle(0x1a2d3d); g.fillRect(7,49,12,10); g.fillRect(23,52,12,8);
+  // greaves
+  g.fillStyle(0x2d4a63); g.fillRect(7,32,12,18); g.fillRect(23,34,12,20);
+  g.fillStyle(0x1a2d3d); g.fillRect(7,44,12,2); g.fillRect(23,46,12,2);
+  // belt
+  g.fillStyle(0x111111); g.fillRect(4,30,36,6);
+  // torso back
+  g.fillStyle(0x4a6d8c); g.fillRect(4,12,36,20);
+  g.fillStyle(0x2d4a63); g.fillRect(10,14,24,16);
+  g.fillStyle(0x1a2d3d); g.fillRect(20,14,4,16);
+  // arms
+  g.fillStyle(0x4a6d8c); g.fillRect(0,14,6,20); g.fillRect(36,12,8,22);
+  g.fillStyle(0x2244aa); g.fillRect(0,12,4,24);
+  g.fillStyle(0xccaa00); g.fillRect(1,18,2,4);
+  g.fillStyle(0xcc9900); g.fillRect(36,8,10,5);
+  g.fillStyle(0xbbbbbb); g.fillRect(40,0,4,44);
+  g.fillStyle(0xdddddd); g.fillRect(42,0,1,42);
+  // neck
+  g.fillStyle(0xffcc99); g.fillRect(17,10,10,4);
+  // helmet back
+  g.fillStyle(0x4a6d8c); g.fillRect(10,0,24,13);
+  g.fillStyle(0x2d4a63); g.fillRect(10,2,24,10);
+  g.fillStyle(0x1a2d3d); g.fillRect(20,0,4,12);
+  g.fillStyle(0x3a5a7a); g.fillRect(10,0,4,13); g.fillRect(30,0,4,13);
+  g.fillStyle(0x6688bb); g.fillRect(10,0,24,3);
+  g.generateTexture('knight_back_step', 44, 60);
 }
 
 // ── GUNSLINGER variants ───────────────────────────────────────
 function drawGunslingerStep(g) {
   g.clear();
-  g.fillStyle(0x3d2010); g.fillRect(3, 23, 7, 6); g.fillRect(12, 26, 7, 4);
-  g.fillStyle(0x3a5a7a); g.fillRect(3, 15, 7, 9); g.fillRect(12, 18, 7, 9);
-  g.fillStyle(0x3d2010); g.fillRect(14, 19, 5, 5);
-  g.fillStyle(0x222222); g.fillRect(15, 21, 3, 3);
-  g.fillStyle(0xcc8833); g.fillRect(2, 8, 18, 9);
-  g.fillStyle(0xffeedd); g.fillRect(9, 8, 4, 8);
-  g.fillStyle(0x9a6622); g.fillRect(2, 8, 3, 9); g.fillRect(17, 8, 3, 9);
-  g.fillStyle(0xcc8833); g.fillRect(0, 8, 3, 9); g.fillRect(19, 8, 3, 9);
-  g.fillStyle(0x333333); g.fillRect(19, 11, 8, 3);
-  g.fillStyle(0x555555); g.fillRect(20, 9, 5, 5);
-  g.fillStyle(0x3d2010); g.fillRect(21, 13, 3, 4);
-  g.fillStyle(0xffcc99); g.fillRect(8, 4, 6, 6);
-  g.fillStyle(0x7a4a1a); g.fillRect(3, 2, 16, 3);
-  g.fillStyle(0x553311); g.fillRect(6, 0, 10, 4);
-  g.fillStyle(0x7a5533); g.fillRect(6, 0, 10, 1);
-  g.generateTexture('gunslinger_step', 22, 30);
+  g.fillStyle(0x3d2010); g.fillRect(5,49,11,10); g.fillRect(18,52,11,8);
+  g.fillStyle(0x5c3318); g.fillRect(18,52,4,6);
+  g.fillStyle(0x3a5a7a); g.fillRect(5,32,11,18); g.fillRect(18,34,11,18);
+  g.fillStyle(0x4a6a8a); g.fillRect(19,34,4,16);
+  g.fillStyle(0x3d2010); g.fillRect(18,42,10,8);
+  g.fillStyle(0x222222); g.fillRect(20,44,6,6);
+  g.fillStyle(0x9a6622); g.fillRect(2,30,28,6);
+  g.fillStyle(0xccaa44); g.fillRect(16,31,6,4);
+  g.fillStyle(0xcc8833); g.fillRect(2,12,28,20);
+  g.fillStyle(0xffeedd); g.fillRect(8,13,12,17);
+  g.fillStyle(0x9a6622); g.fillRect(2,12,4,20); g.fillRect(26,12,4,20);
+  g.fillStyle(0xcc8833); g.fillRect(28,10,8,24);
+  g.fillStyle(0x9a6622); g.fillRect(28,10,4,22);
+  g.fillStyle(0x333333); g.fillRect(34,9,10,4);
+  g.fillStyle(0x555555); g.fillRect(35,7,7,6);
+  g.fillStyle(0x222222); g.fillRect(36,13,6,4);
+  g.fillStyle(0xcc8833); g.fillRect(0,14,4,20);
+  g.fillStyle(0xffcc99); g.fillRect(14,10,14,4);
+  g.fillStyle(0xffcc99); g.fillRect(10,4,18,8);
+  g.fillStyle(0x7a4a1a); g.fillRect(2,3,34,3);
+  g.fillStyle(0x553311); g.fillRect(8,0,20,6);
+  g.fillStyle(0x7a5533); g.fillRect(8,0,20,1);
+  g.fillStyle(0x7a4a1a); g.fillRect(8,4,20,1);
+  g.generateTexture('gunslinger_step', 44, 60);
 }
 
 function drawGunslingerFront(g) {
   g.clear();
-  g.fillStyle(0x3d2010); g.fillRect(4, 24, 6, 6); g.fillRect(12, 24, 6, 6);
-  g.fillStyle(0x3a5a7a); g.fillRect(4, 16, 6, 9); g.fillRect(12, 16, 6, 9);
-  g.fillStyle(0x3d2010); g.fillRect(14, 18, 4, 5);
-  g.fillStyle(0x222222); g.fillRect(15, 20, 3, 3);
-  g.fillStyle(0xcc8833); g.fillRect(2, 8, 18, 9);
-  g.fillStyle(0xffeedd); g.fillRect(8, 8, 6, 8);
-  g.fillStyle(0x9a6622); g.fillRect(2, 15, 18, 2);
-  g.fillStyle(0xcc8833); g.fillRect(0, 8, 3, 9); g.fillRect(19, 8, 3, 9);
-  g.fillStyle(0x333333); g.fillRect(19, 11, 4, 3);
-  g.fillStyle(0x555555); g.fillRect(20, 9, 3, 5);
-  g.fillStyle(0xffcc99); g.fillRect(8, 4, 6, 6);
-  g.fillStyle(0x7a4a1a); g.fillRect(3, 2, 16, 3);
-  g.fillStyle(0x553311); g.fillRect(5, 0, 12, 4);
-  g.fillStyle(0x7a5533); g.fillRect(5, 0, 12, 1);
-  g.generateTexture('gunslinger_front', 22, 30);
+  g.fillStyle(0x3d2010); g.fillRect(7,52,12,8); g.fillRect(23,52,12,8);
+  g.fillStyle(0x3a5a7a); g.fillRect(7,34,12,18); g.fillRect(23,34,12,18);
+  g.fillStyle(0x4a6a8a); g.fillRect(9,34,4,16); g.fillRect(25,34,4,16);
+  g.fillStyle(0x3d2010); g.fillRect(27,40,10,10);
+  g.fillStyle(0x222222); g.fillRect(29,42,7,7);
+  g.fillStyle(0x9a6622); g.fillRect(4,30,36,6);
+  g.fillStyle(0xccaa44); g.fillRect(19,31,6,4);
+  g.fillStyle(0xcc8833); g.fillRect(4,12,36,20);
+  g.fillStyle(0xffeedd); g.fillRect(14,13,16,17);
+  g.fillStyle(0x9a6622); g.fillRect(4,12,6,20); g.fillRect(34,12,6,20);
+  g.fillStyle(0xcc8833); g.fillRect(0,12,6,22); g.fillRect(36,12,8,22);
+  g.fillStyle(0x333333); g.fillRect(36,15,10,4);
+  g.fillStyle(0x555555); g.fillRect(38,12,8,6);
+  g.fillStyle(0x222222); g.fillRect(40,19,6,4);
+  g.fillStyle(0xffcc99); g.fillRect(17,10,10,4);
+  g.fillStyle(0xffcc99); g.fillRect(12,4,20,8);
+  g.fillStyle(0x7a4a1a); g.fillRect(4,3,36,3);
+  g.fillStyle(0x553311); g.fillRect(10,0,24,6);
+  g.fillStyle(0x7a5533); g.fillRect(10,0,24,1);
+  g.fillStyle(0x7a4a1a); g.fillRect(10,4,24,1);
+  g.generateTexture('gunslinger_front', 44, 60);
 }
 
 function drawGunslingerFrontStep(g) {
   g.clear();
-  g.fillStyle(0x3d2010); g.fillRect(4, 23, 6, 6); g.fillRect(12, 26, 6, 4);
-  g.fillStyle(0x3a5a7a); g.fillRect(4, 15, 6, 9); g.fillRect(12, 18, 6, 9);
-  g.fillStyle(0x3d2010); g.fillRect(14, 18, 4, 5);
-  g.fillStyle(0x222222); g.fillRect(15, 20, 3, 3);
-  g.fillStyle(0xcc8833); g.fillRect(2, 8, 18, 9);
-  g.fillStyle(0xffeedd); g.fillRect(8, 8, 6, 8);
-  g.fillStyle(0x9a6622); g.fillRect(2, 15, 18, 2);
-  g.fillStyle(0xcc8833); g.fillRect(0, 8, 3, 9); g.fillRect(19, 8, 3, 9);
-  g.fillStyle(0x333333); g.fillRect(19, 11, 4, 3);
-  g.fillStyle(0x555555); g.fillRect(20, 9, 3, 5);
-  g.fillStyle(0xffcc99); g.fillRect(8, 4, 6, 6);
-  g.fillStyle(0x7a4a1a); g.fillRect(3, 2, 16, 3);
-  g.fillStyle(0x553311); g.fillRect(5, 0, 12, 4);
-  g.fillStyle(0x7a5533); g.fillRect(5, 0, 12, 1);
-  g.generateTexture('gunslinger_front_step', 22, 30);
+  g.fillStyle(0x3d2010); g.fillRect(7,49,12,10); g.fillRect(23,52,12,8);
+  g.fillStyle(0x3a5a7a); g.fillRect(7,32,12,18); g.fillRect(23,34,12,18);
+  g.fillStyle(0x4a6a8a); g.fillRect(9,32,4,16); g.fillRect(25,34,4,16);
+  g.fillStyle(0x3d2010); g.fillRect(27,40,10,10);
+  g.fillStyle(0x222222); g.fillRect(29,42,7,7);
+  g.fillStyle(0x9a6622); g.fillRect(4,30,36,6);
+  g.fillStyle(0xccaa44); g.fillRect(19,31,6,4);
+  g.fillStyle(0xcc8833); g.fillRect(4,12,36,20);
+  g.fillStyle(0xffeedd); g.fillRect(14,13,16,17);
+  g.fillStyle(0x9a6622); g.fillRect(4,12,6,20); g.fillRect(34,12,6,20);
+  g.fillStyle(0xcc8833); g.fillRect(0,14,6,20); g.fillRect(36,12,8,22);
+  g.fillStyle(0x333333); g.fillRect(36,13,10,4);
+  g.fillStyle(0x555555); g.fillRect(38,10,8,6);
+  g.fillStyle(0x222222); g.fillRect(40,17,6,4);
+  g.fillStyle(0xffcc99); g.fillRect(17,10,10,4);
+  g.fillStyle(0xffcc99); g.fillRect(12,4,20,8);
+  g.fillStyle(0x7a4a1a); g.fillRect(4,3,36,3);
+  g.fillStyle(0x553311); g.fillRect(10,0,24,6);
+  g.fillStyle(0x7a5533); g.fillRect(10,0,24,1);
+  g.fillStyle(0x7a4a1a); g.fillRect(10,4,24,1);
+  g.generateTexture('gunslinger_front_step', 44, 60);
 }
 
 function drawGunslingerBack(g) {
   g.clear();
-  g.fillStyle(0x3d2010); g.fillRect(4, 24, 6, 6); g.fillRect(12, 24, 6, 6);
-  g.fillStyle(0x3a5a7a); g.fillRect(4, 16, 6, 9); g.fillRect(12, 16, 6, 9);
-  g.fillStyle(0xcc8833); g.fillRect(2, 8, 18, 9);
-  g.fillStyle(0x9a5511); g.fillRect(6, 8, 10, 9);
-  g.fillStyle(0xaa6622); g.fillRect(2, 12, 18, 2);
-  g.fillStyle(0xcc8833); g.fillRect(0, 8, 3, 9); g.fillRect(19, 8, 3, 9);
-  g.fillStyle(0xffcc99); g.fillRect(8, 4, 6, 5);
-  g.fillStyle(0x7a4a1a); g.fillRect(3, 2, 16, 3);
-  g.fillStyle(0x553311); g.fillRect(5, 0, 12, 4);
-  g.fillStyle(0x3d2010); g.fillRect(7, 0, 8, 3);
-  g.generateTexture('gunslinger_back', 22, 30);
+  g.fillStyle(0x3d2010); g.fillRect(7,52,12,8); g.fillRect(23,52,12,8);
+  g.fillStyle(0x3a5a7a); g.fillRect(7,34,12,18); g.fillRect(23,34,12,18);
+  g.fillStyle(0x9a6622); g.fillRect(4,30,36,6);
+  // coat back
+  g.fillStyle(0xcc8833); g.fillRect(4,12,36,20);
+  g.fillStyle(0xaa7030); g.fillRect(10,13,24,17);
+  g.fillStyle(0x8a4a18); g.fillRect(18,13,8,17);
+  g.fillStyle(0xcc8833); g.fillRect(0,12,6,22); g.fillRect(36,12,8,22);
+  g.fillStyle(0x333333); g.fillRect(36,16,10,4);
+  g.fillStyle(0x555555); g.fillRect(38,14,8,5);
+  g.fillStyle(0xffcc99); g.fillRect(17,10,10,4);
+  g.fillStyle(0x7a4a1a); g.fillRect(4,3,36,3);
+  g.fillStyle(0x553311); g.fillRect(10,0,24,6);
+  g.fillStyle(0x3d2010); g.fillRect(14,1,16,4);
+  g.fillStyle(0x7a4a1a); g.fillRect(10,4,24,1);
+  g.generateTexture('gunslinger_back', 44, 60);
 }
 
 function drawGunslingerBackStep(g) {
   g.clear();
-  g.fillStyle(0x3d2010); g.fillRect(4, 23, 6, 6); g.fillRect(12, 26, 6, 4);
-  g.fillStyle(0x3a5a7a); g.fillRect(4, 15, 6, 9); g.fillRect(12, 18, 6, 9);
-  g.fillStyle(0xcc8833); g.fillRect(2, 8, 18, 9);
-  g.fillStyle(0x9a5511); g.fillRect(6, 8, 10, 9);
-  g.fillStyle(0xaa6622); g.fillRect(2, 12, 18, 2);
-  g.fillStyle(0xcc8833); g.fillRect(0, 8, 3, 9); g.fillRect(19, 8, 3, 9);
-  g.fillStyle(0xffcc99); g.fillRect(8, 4, 6, 5);
-  g.fillStyle(0x7a4a1a); g.fillRect(3, 2, 16, 3);
-  g.fillStyle(0x553311); g.fillRect(5, 0, 12, 4);
-  g.fillStyle(0x3d2010); g.fillRect(7, 0, 8, 3);
-  g.generateTexture('gunslinger_back_step', 22, 30);
+  g.fillStyle(0x3d2010); g.fillRect(7,49,12,10); g.fillRect(23,52,12,8);
+  g.fillStyle(0x3a5a7a); g.fillRect(7,32,12,18); g.fillRect(23,34,12,18);
+  g.fillStyle(0x9a6622); g.fillRect(4,30,36,6);
+  g.fillStyle(0xcc8833); g.fillRect(4,12,36,20);
+  g.fillStyle(0xaa7030); g.fillRect(10,13,24,17);
+  g.fillStyle(0x8a4a18); g.fillRect(18,13,8,17);
+  g.fillStyle(0xcc8833); g.fillRect(0,14,6,20); g.fillRect(36,12,8,22);
+  g.fillStyle(0x333333); g.fillRect(36,14,10,4);
+  g.fillStyle(0x555555); g.fillRect(38,12,8,5);
+  g.fillStyle(0xffcc99); g.fillRect(17,10,10,4);
+  g.fillStyle(0x7a4a1a); g.fillRect(4,3,36,3);
+  g.fillStyle(0x553311); g.fillRect(10,0,24,6);
+  g.fillStyle(0x3d2010); g.fillRect(14,1,16,4);
+  g.fillStyle(0x7a4a1a); g.fillRect(10,4,24,1);
+  g.generateTexture('gunslinger_back_step', 44, 60);
 }
 
 // ── ARCHITECT variants ────────────────────────────────────────
 function drawArchitectStep(g) {
   g.clear();
-  g.fillStyle(0x222222); g.fillRect(3, 23, 7, 6); g.fillRect(12, 26, 7, 4);
-  g.fillStyle(0x334477); g.fillRect(3, 15, 7, 9); g.fillRect(12, 18, 7, 9);
-  g.fillStyle(0x445588); g.fillRect(3, 15, 7, 2); g.fillRect(12, 18, 7, 2);
-  g.fillStyle(0x8b6914); g.fillRect(2, 15, 18, 3);
-  g.fillStyle(0xaaaaaa); g.fillRect(5, 14, 2, 5);
-  g.fillStyle(0xcc8833); g.fillRect(9, 14, 2, 5);
-  g.fillStyle(0x44aaff); g.fillRect(14, 14, 2, 5);
-  g.fillStyle(0x3a9a55); g.fillRect(2, 8, 18, 8);
-  g.fillStyle(0xffcc00); g.fillRect(2, 8, 2, 8); g.fillRect(18, 8, 2, 8);
-  g.fillStyle(0x1a5533); g.fillRect(9, 8, 4, 8);
-  g.fillStyle(0x3a9a55); g.fillRect(0, 8, 3, 8); g.fillRect(19, 8, 3, 8);
-  g.fillStyle(0x999999); g.fillRect(21, 3, 3, 16);
-  g.fillStyle(0x777777); g.fillRect(19, 2, 7, 4);
-  g.fillStyle(0xbbbbbb); g.fillRect(20, 2, 2, 2);
-  g.fillStyle(0xffcc99); g.fillRect(8, 4, 6, 6);
-  g.fillStyle(0x222222); g.fillRect(3, 3, 16, 2);
-  g.fillStyle(0xddcc22); g.fillRect(5, 0, 12, 5);
-  g.fillStyle(0xeeee44); g.fillRect(5, 0, 12, 1);
-  g.fillStyle(0x666600); g.fillRect(5, 4, 12, 1);
-  g.generateTexture('architect_step', 22, 30);
+  g.fillStyle(0x222222); g.fillRect(5,49,11,10); g.fillRect(18,52,11,8);
+  g.fillStyle(0x444444); g.fillRect(18,52,4,6);
+  g.fillStyle(0x334477); g.fillRect(5,32,11,18); g.fillRect(18,34,11,18);
+  g.fillStyle(0x445588); g.fillRect(19,34,4,16);
+  g.fillStyle(0x8b6914); g.fillRect(2,30,28,6);
+  g.fillStyle(0xaaaaaa); g.fillRect(4,29,3,5);
+  g.fillStyle(0xcc8833); g.fillRect(8,29,3,5);
+  g.fillStyle(0x44aaff); g.fillRect(12,29,3,5);
+  g.fillStyle(0x3a9a55); g.fillRect(2,12,28,20);
+  g.fillStyle(0x1a5533); g.fillRect(10,14,12,16);
+  g.fillStyle(0xffcc00); g.fillRect(2,12,4,4); g.fillRect(26,12,4,4);
+  g.fillStyle(0x3a9a55); g.fillRect(0,14,4,20);
+  g.fillStyle(0x3a9a55); g.fillRect(28,10,8,24);
+  g.fillStyle(0x777777); g.fillRect(33,3,6,4);
+  g.fillStyle(0x999999); g.fillRect(34,7,4,16);
+  g.fillStyle(0xbbbbbb); g.fillRect(34,7,2,14);
+  g.fillStyle(0x555555); g.fillRect(33,2,6,2);
+  g.fillStyle(0x555555); g.fillRect(33,6,2,2); g.fillRect(37,6,2,2);
+  g.fillStyle(0xffcc99); g.fillRect(14,10,14,4);
+  g.fillStyle(0xffcc99); g.fillRect(10,4,18,8);
+  g.fillStyle(0x222222); g.fillRect(6,3,26,3);
+  g.fillStyle(0xddcc22); g.fillRect(6,0,26,6);
+  g.fillStyle(0xeeee44); g.fillRect(6,0,26,2);
+  g.fillStyle(0x666600); g.fillRect(6,4,26,2);
+  g.generateTexture('architect_step', 44, 60);
 }
 
 function drawArchitectFront(g) {
   g.clear();
-  g.fillStyle(0x222222); g.fillRect(4, 24, 6, 6); g.fillRect(12, 24, 6, 6);
-  g.fillStyle(0x334477); g.fillRect(4, 16, 6, 9); g.fillRect(12, 16, 6, 9);
-  g.fillStyle(0x445588); g.fillRect(4, 16, 6, 2); g.fillRect(12, 16, 6, 2);
-  g.fillStyle(0x8b6914); g.fillRect(2, 15, 18, 3);
-  g.fillStyle(0xaaaaaa); g.fillRect(4, 14, 2, 5);
-  g.fillStyle(0xcc8833); g.fillRect(9, 14, 2, 5);
-  g.fillStyle(0x44aaff); g.fillRect(14, 14, 2, 5);
-  g.fillStyle(0x3a9a55); g.fillRect(2, 8, 18, 8);
-  g.fillStyle(0xffcc00); g.fillRect(2, 8, 2, 8); g.fillRect(18, 8, 2, 8);
-  g.fillStyle(0x1a5533); g.fillRect(8, 8, 6, 8);
-  g.fillStyle(0xffcc00); g.fillRect(3, 11, 5, 1); g.fillRect(14, 11, 5, 1);
-  g.fillStyle(0x3a9a55); g.fillRect(0, 8, 3, 8); g.fillRect(19, 8, 3, 8);
-  g.fillStyle(0x999999); g.fillRect(21, 8, 3, 8);
-  g.fillStyle(0x777777); g.fillRect(20, 7, 5, 3);
-  g.fillStyle(0xffcc99); g.fillRect(8, 4, 6, 6);
-  g.fillStyle(0x222222); g.fillRect(3, 3, 16, 2);
-  g.fillStyle(0xddcc22); g.fillRect(5, 0, 12, 5);
-  g.fillStyle(0xeeee44); g.fillRect(5, 0, 12, 1);
-  g.fillStyle(0x666600); g.fillRect(3, 4, 16, 1);
-  g.generateTexture('architect_front', 22, 30);
+  g.fillStyle(0x222222); g.fillRect(7,52,12,8); g.fillRect(23,52,12,8);
+  g.fillStyle(0x334477); g.fillRect(7,34,12,18); g.fillRect(23,34,12,18);
+  g.fillStyle(0x445588); g.fillRect(9,34,4,16); g.fillRect(25,34,4,16);
+  g.fillStyle(0x8b6914); g.fillRect(4,30,36,6);
+  g.fillStyle(0xaaaaaa); g.fillRect(8,29,3,5);
+  g.fillStyle(0xcc8833); g.fillRect(14,29,3,5);
+  g.fillStyle(0x44aaff); g.fillRect(20,29,3,5);
+  // vest front
+  g.fillStyle(0x3a9a55); g.fillRect(4,12,36,20);
+  g.fillStyle(0x1a5533); g.fillRect(16,13,12,17);
+  g.fillStyle(0xffcc00); g.fillRect(3,11,8,4); g.fillRect(33,11,8,4);
+  g.fillStyle(0xffcc00); g.fillRect(5,19,5,2); g.fillRect(34,19,5,2);
+  // arms
+  g.fillStyle(0x3a9a55); g.fillRect(0,12,6,22); g.fillRect(36,12,8,22);
+  // wrench on right arm
+  g.fillStyle(0x777777); g.fillRect(36,8,7,5);
+  g.fillStyle(0x999999); g.fillRect(38,13,4,14);
+  g.fillStyle(0xbbbbbb); g.fillRect(38,13,2,12);
+  g.fillStyle(0x555555); g.fillRect(36,7,7,2);
+  g.fillStyle(0xffcc99); g.fillRect(17,10,10,4);
+  g.fillStyle(0xffcc99); g.fillRect(12,4,20,8);
+  g.fillStyle(0x222222); g.fillRect(8,3,28,3);
+  g.fillStyle(0xddcc22); g.fillRect(8,0,28,6);
+  g.fillStyle(0xeeee44); g.fillRect(8,0,28,2);
+  g.fillStyle(0x666600); g.fillRect(8,4,28,2);
+  g.generateTexture('architect_front', 44, 60);
 }
 
 function drawArchitectFrontStep(g) {
   g.clear();
-  g.fillStyle(0x222222); g.fillRect(4, 23, 6, 6); g.fillRect(12, 26, 6, 4);
-  g.fillStyle(0x334477); g.fillRect(4, 15, 6, 9); g.fillRect(12, 18, 6, 9);
-  g.fillStyle(0x445588); g.fillRect(4, 15, 6, 2); g.fillRect(12, 18, 6, 2);
-  g.fillStyle(0x8b6914); g.fillRect(2, 15, 18, 3);
-  g.fillStyle(0xaaaaaa); g.fillRect(4, 14, 2, 5);
-  g.fillStyle(0xcc8833); g.fillRect(9, 14, 2, 5);
-  g.fillStyle(0x44aaff); g.fillRect(14, 14, 2, 5);
-  g.fillStyle(0x3a9a55); g.fillRect(2, 8, 18, 8);
-  g.fillStyle(0xffcc00); g.fillRect(2, 8, 2, 8); g.fillRect(18, 8, 2, 8);
-  g.fillStyle(0x1a5533); g.fillRect(8, 8, 6, 8);
-  g.fillStyle(0xffcc00); g.fillRect(3, 11, 5, 1); g.fillRect(14, 11, 5, 1);
-  g.fillStyle(0x3a9a55); g.fillRect(0, 8, 3, 8); g.fillRect(19, 8, 3, 8);
-  g.fillStyle(0x999999); g.fillRect(21, 8, 3, 8);
-  g.fillStyle(0x777777); g.fillRect(20, 7, 5, 3);
-  g.fillStyle(0xffcc99); g.fillRect(8, 4, 6, 6);
-  g.fillStyle(0x222222); g.fillRect(3, 3, 16, 2);
-  g.fillStyle(0xddcc22); g.fillRect(5, 0, 12, 5);
-  g.fillStyle(0xeeee44); g.fillRect(5, 0, 12, 1);
-  g.fillStyle(0x666600); g.fillRect(3, 4, 16, 1);
-  g.generateTexture('architect_front_step', 22, 30);
+  g.fillStyle(0x222222); g.fillRect(7,49,12,10); g.fillRect(23,52,12,8);
+  g.fillStyle(0x334477); g.fillRect(7,32,12,18); g.fillRect(23,34,12,18);
+  g.fillStyle(0x445588); g.fillRect(9,32,4,16); g.fillRect(25,34,4,16);
+  g.fillStyle(0x8b6914); g.fillRect(4,30,36,6);
+  g.fillStyle(0xaaaaaa); g.fillRect(8,29,3,5);
+  g.fillStyle(0xcc8833); g.fillRect(14,29,3,5);
+  g.fillStyle(0x44aaff); g.fillRect(20,29,3,5);
+  g.fillStyle(0x3a9a55); g.fillRect(4,12,36,20);
+  g.fillStyle(0x1a5533); g.fillRect(16,13,12,17);
+  g.fillStyle(0xffcc00); g.fillRect(3,11,8,4); g.fillRect(33,11,8,4);
+  g.fillStyle(0xffcc00); g.fillRect(5,19,5,2); g.fillRect(34,19,5,2);
+  g.fillStyle(0x3a9a55); g.fillRect(0,14,6,20); g.fillRect(36,12,8,22);
+  g.fillStyle(0x777777); g.fillRect(36,6,7,5);
+  g.fillStyle(0x999999); g.fillRect(38,11,4,14);
+  g.fillStyle(0xbbbbbb); g.fillRect(38,11,2,12);
+  g.fillStyle(0x555555); g.fillRect(36,5,7,2);
+  g.fillStyle(0xffcc99); g.fillRect(17,10,10,4);
+  g.fillStyle(0xffcc99); g.fillRect(12,4,20,8);
+  g.fillStyle(0x222222); g.fillRect(8,3,28,3);
+  g.fillStyle(0xddcc22); g.fillRect(8,0,28,6);
+  g.fillStyle(0xeeee44); g.fillRect(8,0,28,2);
+  g.fillStyle(0x666600); g.fillRect(8,4,28,2);
+  g.generateTexture('architect_front_step', 44, 60);
 }
 
 function drawArchitectBack(g) {
   g.clear();
-  g.fillStyle(0x222222); g.fillRect(4, 24, 6, 6); g.fillRect(12, 24, 6, 6);
-  g.fillStyle(0x334477); g.fillRect(4, 16, 6, 9); g.fillRect(12, 16, 6, 9);
-  g.fillStyle(0x8b6914); g.fillRect(2, 15, 18, 3);
-  g.fillStyle(0x3a9a55); g.fillRect(2, 8, 18, 8);
-  g.fillStyle(0xffcc00); g.fillRect(2, 8, 2, 8); g.fillRect(18, 8, 2, 8);
-  g.fillStyle(0x2a7a45); g.fillRect(8, 8, 6, 8);
-  g.fillStyle(0xffcc00); g.fillRect(3, 11, 16, 1);
-  g.fillStyle(0x3a9a55); g.fillRect(0, 8, 3, 8); g.fillRect(19, 8, 3, 8);
-  g.fillStyle(0x999999); g.fillRect(21, 5, 3, 12);
-  g.fillStyle(0x777777); g.fillRect(20, 4, 5, 3);
-  g.fillStyle(0xffcc99); g.fillRect(8, 4, 6, 5);
-  g.fillStyle(0x222222); g.fillRect(3, 3, 16, 2);
-  g.fillStyle(0xddcc22); g.fillRect(5, 0, 12, 5);
-  g.fillStyle(0xaa9900); g.fillRect(6, 1, 10, 3);
-  g.fillStyle(0x666600); g.fillRect(5, 4, 12, 1);
-  g.generateTexture('architect_back', 22, 30);
+  g.fillStyle(0x222222); g.fillRect(7,52,12,8); g.fillRect(23,52,12,8);
+  g.fillStyle(0x334477); g.fillRect(7,34,12,18); g.fillRect(23,34,12,18);
+  g.fillStyle(0x8b6914); g.fillRect(4,30,36,6);
+  // vest back
+  g.fillStyle(0x3a9a55); g.fillRect(4,12,36,20);
+  g.fillStyle(0x1a5533); g.fillRect(10,13,24,17);
+  g.fillStyle(0xffcc00); g.fillRect(4,11,8,4); g.fillRect(32,11,8,4);
+  g.fillStyle(0xffcc00); g.fillRect(6,19,5,2); g.fillRect(33,19,5,2);
+  g.fillStyle(0x3a9a55); g.fillRect(0,12,6,22); g.fillRect(36,12,8,22);
+  // wrench visible from behind
+  g.fillStyle(0x999999); g.fillRect(38,10,4,14);
+  g.fillStyle(0x777777); g.fillRect(36,8,7,4);
+  g.fillStyle(0xffcc99); g.fillRect(17,10,10,4);
+  g.fillStyle(0x222222); g.fillRect(8,3,28,3);
+  g.fillStyle(0xddcc22); g.fillRect(8,0,28,6);
+  g.fillStyle(0xaa9900); g.fillRect(10,1,24,4);
+  g.fillStyle(0x666600); g.fillRect(8,4,28,2);
+  g.generateTexture('architect_back', 44, 60);
 }
 
 function drawArchitectBackStep(g) {
   g.clear();
-  g.fillStyle(0x222222); g.fillRect(4, 23, 6, 6); g.fillRect(12, 26, 6, 4);
-  g.fillStyle(0x334477); g.fillRect(4, 15, 6, 9); g.fillRect(12, 18, 6, 9);
-  g.fillStyle(0x8b6914); g.fillRect(2, 15, 18, 3);
-  g.fillStyle(0x3a9a55); g.fillRect(2, 8, 18, 8);
-  g.fillStyle(0xffcc00); g.fillRect(2, 8, 2, 8); g.fillRect(18, 8, 2, 8);
-  g.fillStyle(0x2a7a45); g.fillRect(8, 8, 6, 8);
-  g.fillStyle(0xffcc00); g.fillRect(3, 11, 16, 1);
-  g.fillStyle(0x3a9a55); g.fillRect(0, 8, 3, 8); g.fillRect(19, 8, 3, 8);
-  g.fillStyle(0x999999); g.fillRect(21, 5, 3, 12);
-  g.fillStyle(0x777777); g.fillRect(20, 4, 5, 3);
-  g.fillStyle(0xffcc99); g.fillRect(8, 4, 6, 5);
-  g.fillStyle(0x222222); g.fillRect(3, 3, 16, 2);
-  g.fillStyle(0xddcc22); g.fillRect(5, 0, 12, 5);
-  g.fillStyle(0xaa9900); g.fillRect(6, 1, 10, 3);
-  g.fillStyle(0x666600); g.fillRect(5, 4, 12, 1);
-  g.generateTexture('architect_back_step', 22, 30);
+  g.fillStyle(0x222222); g.fillRect(7,49,12,10); g.fillRect(23,52,12,8);
+  g.fillStyle(0x334477); g.fillRect(7,32,12,18); g.fillRect(23,34,12,18);
+  g.fillStyle(0x8b6914); g.fillRect(4,30,36,6);
+  g.fillStyle(0x3a9a55); g.fillRect(4,12,36,20);
+  g.fillStyle(0x1a5533); g.fillRect(10,13,24,17);
+  g.fillStyle(0xffcc00); g.fillRect(4,11,8,4); g.fillRect(32,11,8,4);
+  g.fillStyle(0xffcc00); g.fillRect(6,19,5,2); g.fillRect(33,19,5,2);
+  g.fillStyle(0x3a9a55); g.fillRect(0,14,6,20); g.fillRect(36,12,8,22);
+  g.fillStyle(0x999999); g.fillRect(38,8,4,14);
+  g.fillStyle(0x777777); g.fillRect(36,6,7,4);
+  g.fillStyle(0xffcc99); g.fillRect(17,10,10,4);
+  g.fillStyle(0x222222); g.fillRect(8,3,28,3);
+  g.fillStyle(0xddcc22); g.fillRect(8,0,28,6);
+  g.fillStyle(0xaa9900); g.fillRect(10,1,24,4);
+  g.fillStyle(0x666600); g.fillRect(8,4,28,2);
+  g.generateTexture('architect_back_step', 44, 60);
 }
 
 // ── 8-DIRECTIONAL DIAGONAL SPRITES ───────────────────────────
-// fside = front-diagonal (moving toward-camera + sideways)
-// bside = back-diagonal  (moving away-from-camera + sideways)
+// fside = front-diagonal (3/4 view toward camera, moving sideways)
+// bside = back-diagonal  (3/4 view away from camera, moving sideways)
 
 function drawKnightFSide(g) {
   g.clear();
-  g.fillStyle(0x1a2d3d); g.fillRect(4, 26, 6, 4); g.fillRect(13, 26, 5, 4);
-  g.fillStyle(0x2d4a63); g.fillRect(4, 17, 6, 10); g.fillRect(13, 17, 5, 10);
-  g.fillStyle(0x111111); g.fillRect(2, 16, 17, 2);
-  g.fillStyle(0x4a6d8c); g.fillRect(2, 8, 17, 9);
-  g.fillStyle(0x3a5a7a); g.fillRect(6, 9, 9, 7); g.fillStyle(0x5588aa); g.fillRect(6, 9, 9, 2);
-  g.fillStyle(0xccaa00); g.fillCircle(10, 13, 1);
-  g.fillStyle(0x2244aa); g.fillRect(0, 8, 3, 10); g.fillStyle(0x4466cc); g.fillRect(1, 9, 2, 8);
-  g.fillStyle(0x4a6d8c); g.fillRect(19, 8, 3, 9);
-  g.fillStyle(0xbbbbbb); g.fillRect(21, 4, 2, 16); g.fillStyle(0xcc9900); g.fillRect(18, 7, 5, 2);
-  g.fillStyle(0xffcc99); g.fillRect(7, 5, 7, 4);
-  g.fillStyle(0x4a6d8c); g.fillRect(4, 0, 14, 8);
-  g.fillStyle(0x2d4a63); g.fillRect(4, 2, 14, 5); g.fillStyle(0x080808); g.fillRect(5, 3, 11, 2);
-  g.fillStyle(0x6688bb); g.fillRect(4, 0, 14, 2);
-  g.fillStyle(0x3a5a7a); g.fillRect(4, 0, 2, 8); g.fillRect(16, 0, 2, 8);
-  g.generateTexture('knight_fside', 22, 30);
+  // legs - near (right) lower, far (left) slightly higher = depth/stride
+  g.fillStyle(0x1a2d3d); g.fillRect(9,50,10,10); g.fillRect(22,52,12,8);
+  g.fillStyle(0x2d4a63); g.fillRect(9,34,10,16); g.fillRect(22,34,12,20);
+  g.fillStyle(0x3a5a7a); g.fillRect(24,34,4,18);
+  g.fillStyle(0x1a2d3d); g.fillRect(9,45,10,2); g.fillRect(22,46,12,2);
+  // belt
+  g.fillStyle(0x111111); g.fillRect(6,30,30,6);
+  g.fillStyle(0x2d4a63); g.fillRect(8,31,8,4); g.fillRect(20,31,10,4);
+  // torso - near/right side lighter, far/left darker = 3/4 angle
+  g.fillStyle(0x4a6d8c); g.fillRect(6,12,30,20);
+  g.fillStyle(0x2d4a63); g.fillRect(6,14,8,16);
+  g.fillStyle(0x3a5a7a); g.fillRect(14,14,20,16);
+  g.fillStyle(0x5588aa); g.fillRect(18,14,16,4);
+  // far arm/shield (compressed)
+  g.fillStyle(0x2244aa); g.fillRect(2,12,6,24);
+  g.fillStyle(0x4466cc); g.fillRect(3,13,3,20);
+  g.fillStyle(0xccaa00); g.fillCircle(4,23,2);
+  // near arm + sword (prominent)
+  g.fillStyle(0x4a6d8c); g.fillRect(34,12,8,22);
+  g.fillStyle(0x3a5a7a); g.fillRect(34,12,4,20);
+  g.fillStyle(0xcc9900); g.fillRect(38,10,8,5);
+  g.fillStyle(0x8b6914); g.fillRect(40,15,4,6);
+  g.fillStyle(0xbbbbbb); g.fillRect(41,2,3,44);
+  g.fillStyle(0xdddddd); g.fillRect(43,2,1,42);
+  // gorget
+  g.fillStyle(0x4a6d8c); g.fillRect(16,10,14,4);
+  // helmet - face turned toward near side
+  g.fillStyle(0x4a6d8c); g.fillRect(9,0,24,13);
+  g.fillStyle(0x2d4a63); g.fillRect(9,4,24,8);
+  g.fillStyle(0x080808); g.fillRect(11,5,20,5);
+  g.fillStyle(0xffcc99); g.fillRect(16,6,16,3);
+  g.fillStyle(0x3a5a7a); g.fillRect(9,0,4,13); g.fillRect(29,0,4,13);
+  g.fillStyle(0x6688bb); g.fillRect(9,0,24,3);
+  g.generateTexture('knight_fside', 44, 60);
 }
 function drawKnightFSideStep(g) {
   g.clear();
-  g.fillStyle(0x1a2d3d); g.fillRect(4, 24, 6, 5); g.fillRect(13, 27, 5, 3);
-  g.fillStyle(0x2d4a63); g.fillRect(4, 15, 6, 10); g.fillRect(13, 19, 5, 9);
-  g.fillStyle(0x111111); g.fillRect(2, 16, 17, 2);
-  g.fillStyle(0x4a6d8c); g.fillRect(2, 8, 17, 9);
-  g.fillStyle(0x3a5a7a); g.fillRect(6, 9, 9, 7); g.fillStyle(0x5588aa); g.fillRect(6, 9, 9, 2);
-  g.fillStyle(0xccaa00); g.fillCircle(10, 13, 1);
-  g.fillStyle(0x2244aa); g.fillRect(0, 8, 3, 10); g.fillStyle(0x4466cc); g.fillRect(1, 9, 2, 8);
-  g.fillStyle(0x4a6d8c); g.fillRect(19, 8, 3, 9);
-  g.fillStyle(0xbbbbbb); g.fillRect(21, 4, 2, 16); g.fillStyle(0xcc9900); g.fillRect(18, 7, 5, 2);
-  g.fillStyle(0xffcc99); g.fillRect(7, 5, 7, 4);
-  g.fillStyle(0x4a6d8c); g.fillRect(4, 0, 14, 8);
-  g.fillStyle(0x2d4a63); g.fillRect(4, 2, 14, 5); g.fillStyle(0x080808); g.fillRect(5, 3, 11, 2);
-  g.fillStyle(0x6688bb); g.fillRect(4, 0, 14, 2);
-  g.fillStyle(0x3a5a7a); g.fillRect(4, 0, 2, 8); g.fillRect(16, 0, 2, 8);
-  g.generateTexture('knight_fside_step', 22, 30);
+  // legs - near planted, far raised (striding)
+  g.fillStyle(0x1a2d3d); g.fillRect(9,47,10,12); g.fillRect(22,52,12,8);
+  g.fillStyle(0x2d4a63); g.fillRect(9,32,10,16); g.fillRect(22,34,12,20);
+  g.fillStyle(0x3a5a7a); g.fillRect(24,34,4,18);
+  g.fillStyle(0x1a2d3d); g.fillRect(9,43,10,2); g.fillRect(22,46,12,2);
+  g.fillStyle(0x111111); g.fillRect(6,30,30,6);
+  g.fillStyle(0x2d4a63); g.fillRect(8,31,8,4); g.fillRect(20,31,10,4);
+  // torso
+  g.fillStyle(0x4a6d8c); g.fillRect(6,12,30,20);
+  g.fillStyle(0x2d4a63); g.fillRect(6,14,8,16);
+  g.fillStyle(0x3a5a7a); g.fillRect(14,14,20,16);
+  g.fillStyle(0x5588aa); g.fillRect(18,14,16,4);
+  // far arm/shield (back)
+  g.fillStyle(0x2244aa); g.fillRect(2,14,6,22);
+  g.fillStyle(0x4466cc); g.fillRect(3,15,3,18);
+  g.fillStyle(0xccaa00); g.fillCircle(4,24,2);
+  // near arm + sword (forward)
+  g.fillStyle(0x4a6d8c); g.fillRect(34,10,8,24);
+  g.fillStyle(0x3a5a7a); g.fillRect(34,10,4,22);
+  g.fillStyle(0xcc9900); g.fillRect(38,8,8,5);
+  g.fillStyle(0x8b6914); g.fillRect(40,13,4,6);
+  g.fillStyle(0xbbbbbb); g.fillRect(41,0,3,44);
+  g.fillStyle(0xdddddd); g.fillRect(43,0,1,42);
+  g.fillStyle(0x4a6d8c); g.fillRect(16,10,14,4);
+  g.fillStyle(0x4a6d8c); g.fillRect(9,0,24,13);
+  g.fillStyle(0x2d4a63); g.fillRect(9,4,24,8);
+  g.fillStyle(0x080808); g.fillRect(11,5,20,5);
+  g.fillStyle(0xffcc99); g.fillRect(16,6,16,3);
+  g.fillStyle(0x3a5a7a); g.fillRect(9,0,4,13); g.fillRect(29,0,4,13);
+  g.fillStyle(0x6688bb); g.fillRect(9,0,24,3);
+  g.generateTexture('knight_fside_step', 44, 60);
 }
 function drawKnightBSide(g) {
   g.clear();
-  g.fillStyle(0x1a2d3d); g.fillRect(4, 26, 6, 4); g.fillRect(12, 26, 6, 4);
-  g.fillStyle(0x2d4a63); g.fillRect(4, 17, 6, 10); g.fillRect(12, 17, 6, 10);
-  g.fillStyle(0x111111); g.fillRect(2, 16, 18, 2);
-  g.fillStyle(0x4a6d8c); g.fillRect(2, 8, 18, 9);
-  g.fillStyle(0x2d4a63); g.fillRect(5, 9, 11, 7); g.fillStyle(0x1a2d3d); g.fillRect(9, 9, 3, 7);
-  g.fillStyle(0x4a6d8c); g.fillRect(0, 8, 3, 9); g.fillRect(19, 8, 3, 9);
-  g.fillStyle(0xbbbbbb); g.fillRect(21, 4, 2, 14); g.fillStyle(0xcc9900); g.fillRect(18, 7, 6, 2);
-  g.fillStyle(0xffcc99); g.fillRect(8, 4, 7, 5);
-  g.fillStyle(0x4a6d8c); g.fillRect(4, 0, 14, 8);
-  g.fillStyle(0x2d4a63); g.fillRect(4, 1, 14, 6); g.fillStyle(0x1a2d3d); g.fillRect(9, 0, 3, 8);
-  g.fillStyle(0x6688bb); g.fillRect(4, 0, 14, 2);
-  g.fillStyle(0x3a5a7a); g.fillRect(4, 0, 2, 8); g.fillRect(16, 0, 2, 8);
-  g.generateTexture('knight_bside', 22, 30);
+  // legs - same stride offset
+  g.fillStyle(0x1a2d3d); g.fillRect(9,50,10,10); g.fillRect(22,52,12,8);
+  g.fillStyle(0x2d4a63); g.fillRect(9,34,10,16); g.fillRect(22,34,12,20);
+  g.fillStyle(0x3a5a7a); g.fillRect(24,34,4,18);
+  g.fillStyle(0x1a2d3d); g.fillRect(9,44,10,2); g.fillRect(22,46,12,2);
+  g.fillStyle(0x111111); g.fillRect(6,30,30,6);
+  // torso back - darker, back plate prominent
+  g.fillStyle(0x4a6d8c); g.fillRect(6,12,30,20);
+  g.fillStyle(0x2d4a63); g.fillRect(10,14,22,16);
+  g.fillStyle(0x1a2d3d); g.fillRect(18,14,6,16);
+  // far arm (left, back shoulder visible)
+  g.fillStyle(0x4a6d8c); g.fillRect(2,12,8,22);
+  g.fillStyle(0x2d4a63); g.fillRect(2,14,6,18);
+  g.fillStyle(0x2244aa); g.fillRect(2,14,4,22);
+  g.fillStyle(0xccaa00); g.fillRect(3,20,2,4);
+  // near arm + sword from behind
+  g.fillStyle(0x4a6d8c); g.fillRect(34,12,8,22);
+  g.fillStyle(0xcc9900); g.fillRect(38,10,8,5);
+  g.fillStyle(0xbbbbbb); g.fillRect(41,2,3,44);
+  g.fillStyle(0xdddddd); g.fillRect(43,2,1,42);
+  // neck (tiny skin patch, back view)
+  g.fillStyle(0xffcc99); g.fillRect(17,10,8,4);
+  // helmet back
+  g.fillStyle(0x4a6d8c); g.fillRect(9,0,24,13);
+  g.fillStyle(0x2d4a63); g.fillRect(9,2,24,10);
+  g.fillStyle(0x1a2d3d); g.fillRect(19,0,6,12);
+  g.fillStyle(0x3a5a7a); g.fillRect(9,0,4,13); g.fillRect(29,0,4,13);
+  g.fillStyle(0x6688bb); g.fillRect(9,0,24,3);
+  g.generateTexture('knight_bside', 44, 60);
 }
 function drawKnightBSideStep(g) {
   g.clear();
-  g.fillStyle(0x1a2d3d); g.fillRect(4, 24, 6, 5); g.fillRect(12, 27, 6, 3);
-  g.fillStyle(0x2d4a63); g.fillRect(4, 15, 6, 10); g.fillRect(12, 19, 6, 9);
-  g.fillStyle(0x111111); g.fillRect(2, 16, 18, 2);
-  g.fillStyle(0x4a6d8c); g.fillRect(2, 8, 18, 9);
-  g.fillStyle(0x2d4a63); g.fillRect(5, 9, 11, 7); g.fillStyle(0x1a2d3d); g.fillRect(9, 9, 3, 7);
-  g.fillStyle(0x4a6d8c); g.fillRect(0, 8, 3, 9); g.fillRect(19, 8, 3, 9);
-  g.fillStyle(0xbbbbbb); g.fillRect(21, 4, 2, 14); g.fillStyle(0xcc9900); g.fillRect(18, 7, 6, 2);
-  g.fillStyle(0xffcc99); g.fillRect(8, 4, 7, 5);
-  g.fillStyle(0x4a6d8c); g.fillRect(4, 0, 14, 8);
-  g.fillStyle(0x2d4a63); g.fillRect(4, 1, 14, 6); g.fillStyle(0x1a2d3d); g.fillRect(9, 0, 3, 8);
-  g.fillStyle(0x6688bb); g.fillRect(4, 0, 14, 2);
-  g.fillStyle(0x3a5a7a); g.fillRect(4, 0, 2, 8); g.fillRect(16, 0, 2, 8);
-  g.generateTexture('knight_bside_step', 22, 30);
+  g.fillStyle(0x1a2d3d); g.fillRect(9,47,10,12); g.fillRect(22,52,12,8);
+  g.fillStyle(0x2d4a63); g.fillRect(9,32,10,16); g.fillRect(22,34,12,20);
+  g.fillStyle(0x3a5a7a); g.fillRect(24,34,4,18);
+  g.fillStyle(0x1a2d3d); g.fillRect(9,43,10,2); g.fillRect(22,46,12,2);
+  g.fillStyle(0x111111); g.fillRect(6,30,30,6);
+  g.fillStyle(0x4a6d8c); g.fillRect(6,12,30,20);
+  g.fillStyle(0x2d4a63); g.fillRect(10,14,22,16);
+  g.fillStyle(0x1a2d3d); g.fillRect(18,14,6,16);
+  g.fillStyle(0x4a6d8c); g.fillRect(2,12,8,22);
+  g.fillStyle(0x2244aa); g.fillRect(2,12,4,24);
+  g.fillStyle(0xccaa00); g.fillRect(3,18,2,4);
+  g.fillStyle(0x4a6d8c); g.fillRect(34,10,8,24);
+  g.fillStyle(0xcc9900); g.fillRect(38,8,8,5);
+  g.fillStyle(0xbbbbbb); g.fillRect(41,0,3,44);
+  g.fillStyle(0xdddddd); g.fillRect(43,0,1,42);
+  g.fillStyle(0xffcc99); g.fillRect(17,10,8,4);
+  g.fillStyle(0x4a6d8c); g.fillRect(9,0,24,13);
+  g.fillStyle(0x2d4a63); g.fillRect(9,2,24,10);
+  g.fillStyle(0x1a2d3d); g.fillRect(19,0,6,12);
+  g.fillStyle(0x3a5a7a); g.fillRect(9,0,4,13); g.fillRect(29,0,4,13);
+  g.fillStyle(0x6688bb); g.fillRect(9,0,24,3);
+  g.generateTexture('knight_bside_step', 44, 60);
 }
 
 function drawGunslingerFSide(g) {
   g.clear();
-  g.fillStyle(0x3d2010); g.fillRect(4, 24, 6, 6); g.fillRect(13, 25, 5, 5);
-  g.fillStyle(0x3a5a7a); g.fillRect(4, 16, 6, 9); g.fillRect(13, 17, 5, 9);
-  g.fillStyle(0x3d2010); g.fillRect(14, 19, 4, 4); g.fillStyle(0x222222); g.fillRect(15, 21, 3, 3);
-  g.fillStyle(0xcc8833); g.fillRect(2, 8, 17, 9);
-  g.fillStyle(0xffeedd); g.fillRect(7, 8, 7, 8);
-  g.fillStyle(0x9a6622); g.fillRect(2, 15, 17, 2);
-  g.fillStyle(0xcc8833); g.fillRect(0, 8, 3, 9); g.fillRect(19, 8, 3, 9);
-  g.fillStyle(0x333333); g.fillRect(19, 11, 4, 3); g.fillStyle(0x555555); g.fillRect(20, 9, 3, 5);
-  g.fillStyle(0xffcc99); g.fillRect(7, 4, 7, 6);
-  g.fillStyle(0x7a4a1a); g.fillRect(3, 2, 15, 3);
-  g.fillStyle(0x553311); g.fillRect(5, 0, 12, 4); g.fillStyle(0x7a5533); g.fillRect(5, 0, 12, 1);
-  g.generateTexture('gunslinger_fside', 22, 30);
+  // legs - near lower, far higher (3/4 stride)
+  g.fillStyle(0x3d2010); g.fillRect(9,50,10,10); g.fillRect(22,52,12,8);
+  g.fillStyle(0x3a5a7a); g.fillRect(9,34,10,16); g.fillRect(22,34,12,18);
+  g.fillStyle(0x4a6a8a); g.fillRect(24,34,4,16);
+  // holster on near side
+  g.fillStyle(0x3d2010); g.fillRect(24,40,8,8);
+  g.fillStyle(0x222222); g.fillRect(26,42,5,5);
+  // belt
+  g.fillStyle(0x9a6622); g.fillRect(6,30,30,6);
+  g.fillStyle(0xccaa44); g.fillRect(20,31,6,4);
+  // coat - near/right side vest visible, far/left coat trim
+  g.fillStyle(0xcc8833); g.fillRect(6,12,30,20);
+  g.fillStyle(0x9a6622); g.fillRect(6,12,4,20);
+  g.fillStyle(0xffeedd); g.fillRect(14,13,16,17);
+  // far arm (compressed)
+  g.fillStyle(0xcc8833); g.fillRect(2,12,6,22);
+  g.fillStyle(0x9a6622); g.fillRect(2,14,4,18);
+  // near arm + gun (prominent)
+  g.fillStyle(0xcc8833); g.fillRect(34,12,8,22);
+  g.fillStyle(0x333333); g.fillRect(38,11,8,4);
+  g.fillStyle(0x555555); g.fillRect(39,9,7,6);
+  g.fillStyle(0x222222); g.fillRect(40,15,6,3);
+  // neck + face (shifted right)
+  g.fillStyle(0xffcc99); g.fillRect(16,10,14,4);
+  g.fillStyle(0xffcc99); g.fillRect(14,4,20,8);
+  // hat brim slightly angled
+  g.fillStyle(0x7a4a1a); g.fillRect(4,3,34,3);
+  g.fillStyle(0x553311); g.fillRect(10,0,22,6);
+  g.fillStyle(0x7a5533); g.fillRect(10,0,22,1);
+  g.fillStyle(0x7a4a1a); g.fillRect(10,4,22,1);
+  g.generateTexture('gunslinger_fside', 44, 60);
 }
 function drawGunslingerFSideStep(g) {
   g.clear();
-  g.fillStyle(0x3d2010); g.fillRect(4, 23, 6, 6); g.fillRect(13, 26, 5, 4);
-  g.fillStyle(0x3a5a7a); g.fillRect(4, 15, 6, 9); g.fillRect(13, 18, 5, 9);
-  g.fillStyle(0x3d2010); g.fillRect(14, 19, 4, 4); g.fillStyle(0x222222); g.fillRect(15, 21, 3, 3);
-  g.fillStyle(0xcc8833); g.fillRect(2, 8, 17, 9);
-  g.fillStyle(0xffeedd); g.fillRect(7, 8, 7, 8);
-  g.fillStyle(0x9a6622); g.fillRect(2, 15, 17, 2);
-  g.fillStyle(0xcc8833); g.fillRect(0, 8, 3, 9); g.fillRect(19, 8, 3, 9);
-  g.fillStyle(0x333333); g.fillRect(19, 11, 4, 3); g.fillStyle(0x555555); g.fillRect(20, 9, 3, 5);
-  g.fillStyle(0xffcc99); g.fillRect(7, 4, 7, 6);
-  g.fillStyle(0x7a4a1a); g.fillRect(3, 2, 15, 3);
-  g.fillStyle(0x553311); g.fillRect(5, 0, 12, 4); g.fillStyle(0x7a5533); g.fillRect(5, 0, 12, 1);
-  g.generateTexture('gunslinger_fside_step', 22, 30);
+  g.fillStyle(0x3d2010); g.fillRect(9,47,10,12); g.fillRect(22,52,12,8);
+  g.fillStyle(0x3a5a7a); g.fillRect(9,32,10,16); g.fillRect(22,34,12,18);
+  g.fillStyle(0x4a6a8a); g.fillRect(24,34,4,16);
+  g.fillStyle(0x3d2010); g.fillRect(24,40,8,8);
+  g.fillStyle(0x222222); g.fillRect(26,42,5,5);
+  g.fillStyle(0x9a6622); g.fillRect(6,30,30,6);
+  g.fillStyle(0xccaa44); g.fillRect(20,31,6,4);
+  g.fillStyle(0xcc8833); g.fillRect(6,12,30,20);
+  g.fillStyle(0x9a6622); g.fillRect(6,12,4,20);
+  g.fillStyle(0xffeedd); g.fillRect(14,13,16,17);
+  g.fillStyle(0xcc8833); g.fillRect(2,14,6,20);
+  g.fillStyle(0x9a6622); g.fillRect(2,16,4,16);
+  g.fillStyle(0xcc8833); g.fillRect(34,10,8,24);
+  g.fillStyle(0x333333); g.fillRect(38,9,8,4);
+  g.fillStyle(0x555555); g.fillRect(39,7,7,6);
+  g.fillStyle(0x222222); g.fillRect(40,13,6,3);
+  g.fillStyle(0xffcc99); g.fillRect(16,10,14,4);
+  g.fillStyle(0xffcc99); g.fillRect(14,4,20,8);
+  g.fillStyle(0x7a4a1a); g.fillRect(4,3,34,3);
+  g.fillStyle(0x553311); g.fillRect(10,0,22,6);
+  g.fillStyle(0x7a5533); g.fillRect(10,0,22,1);
+  g.fillStyle(0x7a4a1a); g.fillRect(10,4,22,1);
+  g.generateTexture('gunslinger_fside_step', 44, 60);
 }
 function drawGunslingerBSide(g) {
   g.clear();
-  g.fillStyle(0x3d2010); g.fillRect(4, 24, 6, 6); g.fillRect(12, 24, 6, 6);
-  g.fillStyle(0x3a5a7a); g.fillRect(4, 16, 6, 9); g.fillRect(12, 16, 6, 9);
-  g.fillStyle(0xcc8833); g.fillRect(2, 8, 18, 9);
-  g.fillStyle(0x9a5511); g.fillRect(5, 8, 12, 9);
-  g.fillStyle(0xaa6622); g.fillRect(2, 12, 18, 2);
-  g.fillStyle(0xcc8833); g.fillRect(0, 8, 3, 9); g.fillRect(19, 8, 3, 9);
-  g.fillStyle(0x333333); g.fillRect(19, 11, 6, 3); g.fillStyle(0x555555); g.fillRect(20, 9, 5, 5);
-  g.fillStyle(0xffcc99); g.fillRect(7, 4, 7, 5);
-  g.fillStyle(0x7a4a1a); g.fillRect(3, 2, 16, 3);
-  g.fillStyle(0x553311); g.fillRect(5, 0, 12, 4); g.fillStyle(0x3d2010); g.fillRect(7, 0, 8, 3);
-  g.generateTexture('gunslinger_bside', 22, 30);
+  g.fillStyle(0x3d2010); g.fillRect(9,50,10,10); g.fillRect(22,52,12,8);
+  g.fillStyle(0x3a5a7a); g.fillRect(9,34,10,16); g.fillRect(22,34,12,18);
+  g.fillStyle(0x9a6622); g.fillRect(6,30,30,6);
+  // coat back - angled
+  g.fillStyle(0xcc8833); g.fillRect(6,12,30,20);
+  g.fillStyle(0xaa7030); g.fillRect(10,13,22,17);
+  g.fillStyle(0x8a4a18); g.fillRect(18,13,6,17);
+  // far arm (compressed, back shoulder)
+  g.fillStyle(0xcc8833); g.fillRect(2,12,8,22);
+  g.fillStyle(0x9a6622); g.fillRect(2,14,6,18);
+  // near arm + gun from behind
+  g.fillStyle(0xcc8833); g.fillRect(34,12,8,22);
+  g.fillStyle(0x333333); g.fillRect(38,13,8,4);
+  g.fillStyle(0x555555); g.fillRect(39,11,7,5);
+  // neck back
+  g.fillStyle(0xffcc99); g.fillRect(17,10,8,4);
+  // hat back
+  g.fillStyle(0x7a4a1a); g.fillRect(4,3,34,3);
+  g.fillStyle(0x553311); g.fillRect(10,0,22,6);
+  g.fillStyle(0x3d2010); g.fillRect(14,1,14,4);
+  g.fillStyle(0x7a4a1a); g.fillRect(10,4,22,1);
+  g.generateTexture('gunslinger_bside', 44, 60);
 }
 function drawGunslingerBSideStep(g) {
   g.clear();
-  g.fillStyle(0x3d2010); g.fillRect(4, 23, 6, 6); g.fillRect(12, 26, 6, 4);
-  g.fillStyle(0x3a5a7a); g.fillRect(4, 15, 6, 9); g.fillRect(12, 18, 6, 9);
-  g.fillStyle(0xcc8833); g.fillRect(2, 8, 18, 9);
-  g.fillStyle(0x9a5511); g.fillRect(5, 8, 12, 9);
-  g.fillStyle(0xaa6622); g.fillRect(2, 12, 18, 2);
-  g.fillStyle(0xcc8833); g.fillRect(0, 8, 3, 9); g.fillRect(19, 8, 3, 9);
-  g.fillStyle(0x333333); g.fillRect(19, 11, 6, 3); g.fillStyle(0x555555); g.fillRect(20, 9, 5, 5);
-  g.fillStyle(0xffcc99); g.fillRect(7, 4, 7, 5);
-  g.fillStyle(0x7a4a1a); g.fillRect(3, 2, 16, 3);
-  g.fillStyle(0x553311); g.fillRect(5, 0, 12, 4); g.fillStyle(0x3d2010); g.fillRect(7, 0, 8, 3);
-  g.generateTexture('gunslinger_bside_step', 22, 30);
+  g.fillStyle(0x3d2010); g.fillRect(9,47,10,12); g.fillRect(22,52,12,8);
+  g.fillStyle(0x3a5a7a); g.fillRect(9,32,10,16); g.fillRect(22,34,12,18);
+  g.fillStyle(0x9a6622); g.fillRect(6,30,30,6);
+  g.fillStyle(0xcc8833); g.fillRect(6,12,30,20);
+  g.fillStyle(0xaa7030); g.fillRect(10,13,22,17);
+  g.fillStyle(0x8a4a18); g.fillRect(18,13,6,17);
+  g.fillStyle(0xcc8833); g.fillRect(2,14,8,20);
+  g.fillStyle(0x9a6622); g.fillRect(2,16,6,16);
+  g.fillStyle(0xcc8833); g.fillRect(34,10,8,24);
+  g.fillStyle(0x333333); g.fillRect(38,11,8,4);
+  g.fillStyle(0x555555); g.fillRect(39,9,7,5);
+  g.fillStyle(0xffcc99); g.fillRect(17,10,8,4);
+  g.fillStyle(0x7a4a1a); g.fillRect(4,3,34,3);
+  g.fillStyle(0x553311); g.fillRect(10,0,22,6);
+  g.fillStyle(0x3d2010); g.fillRect(14,1,14,4);
+  g.fillStyle(0x7a4a1a); g.fillRect(10,4,22,1);
+  g.generateTexture('gunslinger_bside_step', 44, 60);
 }
 
 function drawArchitectFSide(g) {
   g.clear();
-  g.fillStyle(0x222222); g.fillRect(4, 24, 6, 6); g.fillRect(13, 25, 5, 5);
-  g.fillStyle(0x334477); g.fillRect(4, 16, 6, 9); g.fillRect(13, 17, 5, 9);
-  g.fillStyle(0x445588); g.fillRect(4, 16, 6, 2); g.fillRect(13, 17, 5, 2);
-  g.fillStyle(0x8b6914); g.fillRect(2, 15, 17, 3);
-  g.fillStyle(0xaaaaaa); g.fillRect(3, 14, 2, 5); g.fillStyle(0xcc8833); g.fillRect(8, 14, 2, 5);
-  g.fillStyle(0x3a9a55); g.fillRect(2, 8, 17, 8);
-  g.fillStyle(0xffcc00); g.fillRect(2, 8, 2, 8); g.fillRect(17, 8, 2, 8);
-  g.fillStyle(0x1a5533); g.fillRect(7, 8, 8, 8);
-  g.fillStyle(0x3a9a55); g.fillRect(0, 8, 3, 8); g.fillRect(19, 8, 3, 8);
-  g.fillStyle(0x999999); g.fillRect(20, 6, 3, 9); g.fillStyle(0x777777); g.fillRect(19, 5, 5, 3);
-  g.fillStyle(0xffcc99); g.fillRect(7, 4, 7, 6);
-  g.fillStyle(0x222222); g.fillRect(3, 3, 15, 2);
-  g.fillStyle(0xddcc22); g.fillRect(5, 0, 12, 5); g.fillStyle(0xeeee44); g.fillRect(5, 0, 12, 1);
-  g.fillStyle(0x666600); g.fillRect(5, 4, 12, 1);
-  g.generateTexture('architect_fside', 22, 30);
+  // legs - near lower, far higher
+  g.fillStyle(0x222222); g.fillRect(9,50,10,10); g.fillRect(22,52,12,8);
+  g.fillStyle(0x334477); g.fillRect(9,34,10,16); g.fillRect(22,34,12,18);
+  g.fillStyle(0x445588); g.fillRect(24,34,4,16);
+  // tool belt
+  g.fillStyle(0x8b6914); g.fillRect(6,30,30,6);
+  g.fillStyle(0xaaaaaa); g.fillRect(8,29,3,5);
+  g.fillStyle(0xcc8833); g.fillRect(14,29,3,5);
+  // vest - near side brighter
+  g.fillStyle(0x3a9a55); g.fillRect(6,12,30,20);
+  g.fillStyle(0x1a5533); g.fillRect(8,14,10,16);
+  g.fillStyle(0x4dbb66); g.fillRect(18,14,16,16);
+  g.fillStyle(0xffcc00); g.fillRect(6,11,6,4); g.fillRect(30,11,6,4);
+  g.fillStyle(0xffcc00); g.fillRect(22,19,5,2);
+  // far arm (compressed)
+  g.fillStyle(0x3a9a55); g.fillRect(2,12,6,22);
+  g.fillStyle(0x1a5533); g.fillRect(2,14,4,18);
+  // near arm + wrench (prominent)
+  g.fillStyle(0x3a9a55); g.fillRect(34,12,8,22);
+  g.fillStyle(0x777777); g.fillRect(38,5,6,5);
+  g.fillStyle(0x999999); g.fillRect(39,10,4,16);
+  g.fillStyle(0xbbbbbb); g.fillRect(39,10,2,14);
+  g.fillStyle(0x555555); g.fillRect(38,4,6,2);
+  // neck + face shifted right
+  g.fillStyle(0xffcc99); g.fillRect(16,10,14,4);
+  g.fillStyle(0xffcc99); g.fillRect(14,4,20,8);
+  // hard hat
+  g.fillStyle(0x222222); g.fillRect(7,3,26,3);
+  g.fillStyle(0xddcc22); g.fillRect(7,0,26,6);
+  g.fillStyle(0xeeee44); g.fillRect(7,0,26,2);
+  g.fillStyle(0x666600); g.fillRect(7,4,26,2);
+  g.generateTexture('architect_fside', 44, 60);
 }
 function drawArchitectFSideStep(g) {
   g.clear();
-  g.fillStyle(0x222222); g.fillRect(4, 23, 6, 6); g.fillRect(13, 26, 5, 4);
-  g.fillStyle(0x334477); g.fillRect(4, 15, 6, 9); g.fillRect(13, 18, 5, 9);
-  g.fillStyle(0x445588); g.fillRect(4, 15, 6, 2); g.fillRect(13, 18, 5, 2);
-  g.fillStyle(0x8b6914); g.fillRect(2, 15, 17, 3);
-  g.fillStyle(0xaaaaaa); g.fillRect(3, 14, 2, 5); g.fillStyle(0xcc8833); g.fillRect(8, 14, 2, 5);
-  g.fillStyle(0x3a9a55); g.fillRect(2, 8, 17, 8);
-  g.fillStyle(0xffcc00); g.fillRect(2, 8, 2, 8); g.fillRect(17, 8, 2, 8);
-  g.fillStyle(0x1a5533); g.fillRect(7, 8, 8, 8);
-  g.fillStyle(0x3a9a55); g.fillRect(0, 8, 3, 8); g.fillRect(19, 8, 3, 8);
-  g.fillStyle(0x999999); g.fillRect(20, 6, 3, 9); g.fillStyle(0x777777); g.fillRect(19, 5, 5, 3);
-  g.fillStyle(0xffcc99); g.fillRect(7, 4, 7, 6);
-  g.fillStyle(0x222222); g.fillRect(3, 3, 15, 2);
-  g.fillStyle(0xddcc22); g.fillRect(5, 0, 12, 5); g.fillStyle(0xeeee44); g.fillRect(5, 0, 12, 1);
-  g.fillStyle(0x666600); g.fillRect(5, 4, 12, 1);
-  g.generateTexture('architect_fside_step', 22, 30);
+  g.fillStyle(0x222222); g.fillRect(9,47,10,12); g.fillRect(22,52,12,8);
+  g.fillStyle(0x334477); g.fillRect(9,32,10,16); g.fillRect(22,34,12,18);
+  g.fillStyle(0x445588); g.fillRect(24,34,4,16);
+  g.fillStyle(0x8b6914); g.fillRect(6,30,30,6);
+  g.fillStyle(0xaaaaaa); g.fillRect(8,29,3,5);
+  g.fillStyle(0xcc8833); g.fillRect(14,29,3,5);
+  g.fillStyle(0x3a9a55); g.fillRect(6,12,30,20);
+  g.fillStyle(0x1a5533); g.fillRect(8,14,10,16);
+  g.fillStyle(0x4dbb66); g.fillRect(18,14,16,16);
+  g.fillStyle(0xffcc00); g.fillRect(6,11,6,4); g.fillRect(30,11,6,4);
+  g.fillStyle(0xffcc00); g.fillRect(22,19,5,2);
+  g.fillStyle(0x3a9a55); g.fillRect(2,14,6,20);
+  g.fillStyle(0x1a5533); g.fillRect(2,16,4,16);
+  g.fillStyle(0x3a9a55); g.fillRect(34,10,8,24);
+  g.fillStyle(0x777777); g.fillRect(38,3,6,5);
+  g.fillStyle(0x999999); g.fillRect(39,8,4,16);
+  g.fillStyle(0xbbbbbb); g.fillRect(39,8,2,14);
+  g.fillStyle(0x555555); g.fillRect(38,2,6,2);
+  g.fillStyle(0xffcc99); g.fillRect(16,10,14,4);
+  g.fillStyle(0xffcc99); g.fillRect(14,4,20,8);
+  g.fillStyle(0x222222); g.fillRect(7,3,26,3);
+  g.fillStyle(0xddcc22); g.fillRect(7,0,26,6);
+  g.fillStyle(0xeeee44); g.fillRect(7,0,26,2);
+  g.fillStyle(0x666600); g.fillRect(7,4,26,2);
+  g.generateTexture('architect_fside_step', 44, 60);
 }
 function drawArchitectBSide(g) {
   g.clear();
-  g.fillStyle(0x222222); g.fillRect(4, 24, 6, 6); g.fillRect(12, 24, 6, 6);
-  g.fillStyle(0x334477); g.fillRect(4, 16, 6, 9); g.fillRect(12, 16, 6, 9);
-  g.fillStyle(0x8b6914); g.fillRect(2, 15, 18, 3);
-  g.fillStyle(0x3a9a55); g.fillRect(2, 8, 18, 8);
-  g.fillStyle(0xffcc00); g.fillRect(2, 8, 2, 8); g.fillRect(18, 8, 2, 8);
-  g.fillStyle(0x2a7a45); g.fillRect(7, 8, 8, 8);
-  g.fillStyle(0xffcc00); g.fillRect(3, 11, 14, 1);
-  g.fillStyle(0x3a9a55); g.fillRect(0, 8, 3, 8); g.fillRect(19, 8, 3, 8);
-  g.fillStyle(0x999999); g.fillRect(20, 4, 3, 13); g.fillStyle(0x777777); g.fillRect(19, 3, 5, 3);
-  g.fillStyle(0xffcc99); g.fillRect(7, 4, 7, 5);
-  g.fillStyle(0x222222); g.fillRect(3, 3, 16, 2);
-  g.fillStyle(0xddcc22); g.fillRect(5, 0, 12, 5); g.fillStyle(0xaa9900); g.fillRect(6, 1, 10, 3);
-  g.fillStyle(0x666600); g.fillRect(5, 4, 12, 1);
-  g.generateTexture('architect_bside', 22, 30);
+  g.fillStyle(0x222222); g.fillRect(9,50,10,10); g.fillRect(22,52,12,8);
+  g.fillStyle(0x334477); g.fillRect(9,34,10,16); g.fillRect(22,34,12,18);
+  g.fillStyle(0x8b6914); g.fillRect(6,30,30,6);
+  // vest back - angled, back panel visible
+  g.fillStyle(0x3a9a55); g.fillRect(6,12,30,20);
+  g.fillStyle(0x1a5533); g.fillRect(10,14,22,16);
+  g.fillStyle(0x2a7a45); g.fillRect(18,14,6,16);
+  g.fillStyle(0xffcc00); g.fillRect(6,11,6,4); g.fillRect(30,11,6,4);
+  g.fillStyle(0xffcc00); g.fillRect(8,20,5,2); g.fillRect(23,20,5,2);
+  // far arm (compressed)
+  g.fillStyle(0x3a9a55); g.fillRect(2,12,8,22);
+  g.fillStyle(0x1a5533); g.fillRect(2,14,6,18);
+  // near arm (prominent shoulder) + wrench from behind
+  g.fillStyle(0x3a9a55); g.fillRect(34,12,8,22);
+  g.fillStyle(0x999999); g.fillRect(39,6,4,16);
+  g.fillStyle(0x777777); g.fillRect(37,5,7,4);
+  // neck back
+  g.fillStyle(0xffcc99); g.fillRect(17,10,8,4);
+  // hard hat back
+  g.fillStyle(0x222222); g.fillRect(7,3,26,3);
+  g.fillStyle(0xddcc22); g.fillRect(7,0,26,6);
+  g.fillStyle(0xaa9900); g.fillRect(9,1,22,4);
+  g.fillStyle(0x666600); g.fillRect(7,4,26,2);
+  g.generateTexture('architect_bside', 44, 60);
 }
 function drawArchitectBSideStep(g) {
   g.clear();
-  g.fillStyle(0x222222); g.fillRect(4, 23, 6, 6); g.fillRect(12, 26, 6, 4);
-  g.fillStyle(0x334477); g.fillRect(4, 15, 6, 9); g.fillRect(12, 18, 6, 9);
-  g.fillStyle(0x8b6914); g.fillRect(2, 15, 18, 3);
-  g.fillStyle(0x3a9a55); g.fillRect(2, 8, 18, 8);
-  g.fillStyle(0xffcc00); g.fillRect(2, 8, 2, 8); g.fillRect(18, 8, 2, 8);
-  g.fillStyle(0x2a7a45); g.fillRect(7, 8, 8, 8);
-  g.fillStyle(0xffcc00); g.fillRect(3, 11, 14, 1);
-  g.fillStyle(0x3a9a55); g.fillRect(0, 8, 3, 8); g.fillRect(19, 8, 3, 8);
-  g.fillStyle(0x999999); g.fillRect(20, 4, 3, 13); g.fillStyle(0x777777); g.fillRect(19, 3, 5, 3);
-  g.fillStyle(0xffcc99); g.fillRect(7, 4, 7, 5);
-  g.fillStyle(0x222222); g.fillRect(3, 3, 16, 2);
-  g.fillStyle(0xddcc22); g.fillRect(5, 0, 12, 5); g.fillStyle(0xaa9900); g.fillRect(6, 1, 10, 3);
-  g.fillStyle(0x666600); g.fillRect(5, 4, 12, 1);
-  g.generateTexture('architect_bside_step', 22, 30);
+  g.fillStyle(0x222222); g.fillRect(9,47,10,12); g.fillRect(22,52,12,8);
+  g.fillStyle(0x334477); g.fillRect(9,32,10,16); g.fillRect(22,34,12,18);
+  g.fillStyle(0x8b6914); g.fillRect(6,30,30,6);
+  g.fillStyle(0x3a9a55); g.fillRect(6,12,30,20);
+  g.fillStyle(0x1a5533); g.fillRect(10,14,22,16);
+  g.fillStyle(0x2a7a45); g.fillRect(18,14,6,16);
+  g.fillStyle(0xffcc00); g.fillRect(6,11,6,4); g.fillRect(30,11,6,4);
+  g.fillStyle(0xffcc00); g.fillRect(8,20,5,2); g.fillRect(23,20,5,2);
+  g.fillStyle(0x3a9a55); g.fillRect(2,14,8,20);
+  g.fillStyle(0x1a5533); g.fillRect(2,16,6,16);
+  g.fillStyle(0x3a9a55); g.fillRect(34,10,8,24);
+  g.fillStyle(0x999999); g.fillRect(39,4,4,16);
+  g.fillStyle(0x777777); g.fillRect(37,3,7,4);
+  g.fillStyle(0xffcc99); g.fillRect(17,10,8,4);
+  g.fillStyle(0x222222); g.fillRect(7,3,26,3);
+  g.fillStyle(0xddcc22); g.fillRect(7,0,26,6);
+  g.fillStyle(0xaa9900); g.fillRect(9,1,22,4);
+  g.fillStyle(0x666600); g.fillRect(7,4,26,2);
+  g.generateTexture('architect_bside_step', 44, 60);
 }
 
 // ── ENEMY RAIDER DIRECTIONAL SPRITES ─────────────────────────
@@ -5370,12 +5682,21 @@ class GameScene extends Phaser.Scene {
     // Remove from update loop immediately so dead entries don't accumulate
     this.enemies = this.enemies.filter(e2 => e2 !== e);
     SFX.enemyDie();
+    // Stop movement immediately — prevent corpse from drifting
+    if (e.spr.body) { e.spr.body.setVelocity(0, 0); e.spr.body.enable = false; }
+    if (e.lbl && e.lbl.scene) e.lbl.setVisible(false);
+    // Red flash then 500ms fade to nothing
     e.spr.setTint(0xff2200);
     const ex = e.spr.x, ey = e.spr.y;
-    this.time.delayedCall(200, () => {
-      // Use .scene check: null means already destroyed via another path, avoids stale .active flag
-      if (e.spr && e.spr.scene) e.spr.destroy();
-      if (e.lbl && e.lbl.scene) e.lbl.destroy();
+    this.tweens.add({
+      targets: e.spr,
+      alpha: 0,
+      duration: 500,
+      ease: 'Linear',
+      onComplete: () => {
+        if (e.spr && e.spr.scene) e.spr.destroy();
+        if (e.lbl && e.lbl.scene) e.lbl.destroy();
+      }
     });
     // Raider kill — check if camp cleared
     if (e.isRaider) {
