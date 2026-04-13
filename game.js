@@ -344,6 +344,27 @@ function getControls(playerNum, charId, isSolo) {
   return map[charId] || [move];
 }
 
+// ── SCALE PROXY ───────────────────────────────────────────────
+// Wraps a Phaser Graphics object so all coordinates are multiplied by s.
+// Used to generate high-res character sprites without rewriting every draw fn.
+function makeScaleProxy(g, s) {
+  return {
+    clear:            ()                   => g.clear(),
+    fillStyle:        (c, a)               => g.fillStyle(c, a),
+    lineStyle:        (w, c, a)            => g.lineStyle(w * s, c, a),
+    fillRect:         (x,y,w,h)            => g.fillRect(x*s,y*s,w*s,h*s),
+    fillRoundedRect:  (x,y,w,h,r)         => g.fillRoundedRect(x*s,y*s,w*s,h*s,r*s),
+    fillCircle:       (x,y,r)             => g.fillCircle(x*s,y*s,r*s),
+    fillEllipse:      (x,y,w,h,sm)        => g.fillEllipse(x*s,y*s,w*s,h*s,sm),
+    fillTriangle:     (x1,y1,x2,y2,x3,y3)=> g.fillTriangle(x1*s,y1*s,x2*s,y2*s,x3*s,y3*s),
+    fillPoints:       (pts,cl)             => g.fillPoints(pts.map(p=>({x:p.x*s,y:p.y*s})),cl),
+    strokeRect:       (x,y,w,h)           => g.strokeRect(x*s,y*s,w*s,h*s),
+    strokeCircle:     (x,y,r)             => g.strokeCircle(x*s,y*s,r*s),
+    lineBetween:      (x1,y1,x2,y2)       => g.lineBetween(x1*s,y1*s,x2*s,y2*s),
+    generateTexture:  (key,w,h)           => g.generateTexture(key,w*s,h*s),
+  };
+}
+
 // ── TEXTURE GENERATION ────────────────────────────────────────
 function buildTextures(scene) {
   const g = scene.make.graphics({ x: 0, y: 0, add: false });
@@ -432,22 +453,25 @@ function buildTextures(scene) {
   g.fillCircle(40, 30, 3);
   g.generateTexture('barracks', 80, 56);
 
-  // Characters — all directions & walk frames
-  drawKnight(g);       drawKnightStep(g);
-  drawKnightFront(g);  drawKnightFrontStep(g);
-  drawKnightBack(g);   drawKnightBackStep(g);
-  drawKnightFSide(g);  drawKnightFSideStep(g);
-  drawKnightBSide(g);  drawKnightBSideStep(g);
-  drawGunslinger(g);       drawGunslingerStep(g);
-  drawGunslingerFront(g);  drawGunslingerFrontStep(g);
-  drawGunslingerBack(g);   drawGunslingerBackStep(g);
-  drawGunslingerFSide(g);  drawGunslingerFSideStep(g);
-  drawGunslingerBSide(g);  drawGunslingerBSideStep(g);
-  drawArchitect(g);       drawArchitectStep(g);
-  drawArchitectFront(g);  drawArchitectFrontStep(g);
-  drawArchitectBack(g);   drawArchitectBackStep(g);
-  drawArchitectFSide(g);  drawArchitectFSideStep(g);
-  drawArchitectBSide(g);  drawArchitectBSideStep(g);
+  // Characters — all directions & walk frames (2× canvas for crisp hi-res sprites)
+  const sg = makeScaleProxy(g, 2);
+  drawKnight(sg);       drawKnightStep(sg);
+  drawKnightFront(sg);  drawKnightFrontStep(sg);
+  drawKnightBack(sg);   drawKnightBackStep(sg);
+  drawKnightFSide(sg);  drawKnightFSideStep(sg);
+  drawKnightBSide(sg);  drawKnightBSideStep(sg);
+  drawGunslinger(sg);       drawGunslingerStep(sg);
+  drawGunslingerFront(sg);  drawGunslingerFrontStep(sg);
+  drawGunslingerBack(sg);   drawGunslingerBackStep(sg);
+  drawGunslingerFSide(sg);  drawGunslingerFSideStep(sg);
+  drawGunslingerBSide(sg);  drawGunslingerBSideStep(sg);
+  drawArchitect(sg);       drawArchitectStep(sg);
+  drawArchitectFront(sg);  drawArchitectFrontStep(sg);
+  drawArchitectBack(sg);   drawArchitectBackStep(sg);
+  drawArchitectFSide(sg);  drawArchitectFSideStep(sg);
+  drawArchitectBSide(sg);  drawArchitectBSideStep(sg);
+  // Enemy raider directional sprites
+  drawRaiderDirectionals(g);
 
   // Bullet
   g.clear();
@@ -545,6 +569,23 @@ function buildTextures(scene) {
   g.fillStyle(0xccccee); g.fillRect(7, 5, 12, 7);         // pillow shadow
   g.fillStyle(0x5a3010); g.fillRect(0, 10, 40, 2);        // headboard/footboard divider
   g.generateTexture('bed', 40, 28);
+
+  // Spike trap — wooden board with metal spikes
+  g.clear();
+  g.fillStyle(0x6a4a2a); g.fillRect(2, 2, 28, 28);
+  g.fillStyle(0x4a3018); g.fillRect(2, 2, 28, 4); g.fillRect(2, 26, 28, 4);
+  g.fillStyle(0xaaaaaa); // spikes
+  for (let si = 0; si < 4; si++) {
+    const sx = 5 + si * 7;
+    g.fillTriangle(sx, 22, sx+3, 22, sx+1, 8);
+    g.fillTriangle(sx+1, 22, sx+4, 22, sx+2, 9);
+  }
+  g.fillStyle(0x888888);
+  for (let si = 0; si < 4; si++) {
+    const sx = 5 + si * 7;
+    g.fillRect(sx, 20, 3, 3);
+  }
+  g.generateTexture('spike_trap', 32, 32);
 
   // Build ghost (translucent wall preview)
   g.clear();
@@ -1578,6 +1619,252 @@ function drawArchitectBSideStep(g) {
   g.generateTexture('architect_bside_step', 22, 30);
 }
 
+// ── ENEMY RAIDER DIRECTIONAL SPRITES ─────────────────────────
+// All 9 directional walk-frame variants for each of the 3 raider types.
+// Called once from buildTextures(); generates 27 textures on the same 26×30 canvas.
+function drawRaiderDirectionals(g) {
+
+  // ── BRAWLER variants (dark red, stocky melee tank) ───────────
+  g.clear();
+  g.fillStyle(0x993322); g.fillRect(6, 8, 14, 16);
+  g.fillStyle(0x773311); g.fillRect(4, 14, 4, 8); g.fillRect(18, 14, 4, 8);
+  g.fillStyle(0xcc8855); g.fillEllipse(13, 7, 12, 10);
+  g.fillStyle(0x551111); g.fillRect(6, 2, 14, 5);
+  g.fillStyle(0x664422); g.fillRect(5, 23, 5, 7); g.fillRect(16, 25, 5, 5);
+  g.generateTexture('raider_brawler_step', 26, 30);
+
+  g.clear();
+  g.fillStyle(0x993322); g.fillRect(5, 8, 16, 16);
+  g.fillStyle(0x773311); g.fillRect(2, 13, 4, 9); g.fillRect(20, 13, 4, 9);
+  g.fillStyle(0x884433); g.fillRect(8, 14, 10, 6);
+  g.fillStyle(0xcc8855); g.fillEllipse(13, 7, 12, 10);
+  g.fillStyle(0xaa6644); g.fillRect(10, 5, 3, 3); g.fillRect(13, 4, 3, 3);
+  g.fillStyle(0x551111); g.fillRect(5, 2, 16, 5);
+  g.fillStyle(0x664422); g.fillRect(7, 24, 5, 6); g.fillRect(14, 24, 5, 6);
+  g.generateTexture('raider_brawler_front', 26, 30);
+
+  g.clear();
+  g.fillStyle(0x993322); g.fillRect(5, 8, 16, 16);
+  g.fillStyle(0x773311); g.fillRect(2, 13, 4, 9); g.fillRect(20, 13, 4, 9);
+  g.fillStyle(0x884433); g.fillRect(8, 14, 10, 6);
+  g.fillStyle(0xcc8855); g.fillEllipse(13, 7, 12, 10);
+  g.fillStyle(0xaa6644); g.fillRect(10, 5, 3, 3); g.fillRect(13, 4, 3, 3);
+  g.fillStyle(0x551111); g.fillRect(5, 2, 16, 5);
+  g.fillStyle(0x664422); g.fillRect(6, 23, 5, 6); g.fillRect(15, 25, 5, 5);
+  g.generateTexture('raider_brawler_front_step', 26, 30);
+
+  g.clear();
+  g.fillStyle(0x882211); g.fillRect(5, 8, 16, 16);
+  g.fillStyle(0x663300); g.fillRect(2, 13, 4, 9); g.fillRect(20, 13, 4, 9);
+  g.fillStyle(0x773322); g.fillRect(8, 10, 10, 10);
+  g.fillStyle(0x551111); g.fillRect(5, 8, 16, 4);
+  g.fillStyle(0x664411); g.fillEllipse(13, 5, 12, 8);
+  g.fillStyle(0x664422); g.fillRect(7, 24, 5, 6); g.fillRect(14, 24, 5, 6);
+  g.generateTexture('raider_brawler_back', 26, 30);
+
+  g.clear();
+  g.fillStyle(0x882211); g.fillRect(5, 8, 16, 16);
+  g.fillStyle(0x663300); g.fillRect(2, 13, 4, 9); g.fillRect(20, 13, 4, 9);
+  g.fillStyle(0x773322); g.fillRect(8, 10, 10, 10);
+  g.fillStyle(0x551111); g.fillRect(5, 8, 16, 4);
+  g.fillStyle(0x664411); g.fillEllipse(13, 5, 12, 8);
+  g.fillStyle(0x664422); g.fillRect(6, 23, 5, 6); g.fillRect(15, 25, 5, 5);
+  g.generateTexture('raider_brawler_back_step', 26, 30);
+
+  g.clear();
+  g.fillStyle(0x993322); g.fillRect(5, 8, 15, 16);
+  g.fillStyle(0x773311); g.fillRect(3, 14, 3, 8); g.fillRect(19, 13, 4, 9);
+  g.fillStyle(0x884433); g.fillRect(7, 13, 8, 6);
+  g.fillStyle(0xcc8855); g.fillEllipse(12, 7, 11, 10);
+  g.fillStyle(0x551111); g.fillRect(5, 2, 14, 5);
+  g.fillStyle(0x664422); g.fillRect(6, 24, 5, 6); g.fillRect(14, 24, 5, 6);
+  g.generateTexture('raider_brawler_fside', 26, 30);
+
+  g.clear();
+  g.fillStyle(0x993322); g.fillRect(5, 8, 15, 16);
+  g.fillStyle(0x773311); g.fillRect(3, 14, 3, 8); g.fillRect(19, 13, 4, 9);
+  g.fillStyle(0x884433); g.fillRect(7, 13, 8, 6);
+  g.fillStyle(0xcc8855); g.fillEllipse(12, 7, 11, 10);
+  g.fillStyle(0x551111); g.fillRect(5, 2, 14, 5);
+  g.fillStyle(0x664422); g.fillRect(5, 23, 5, 6); g.fillRect(15, 25, 5, 5);
+  g.generateTexture('raider_brawler_fside_step', 26, 30);
+
+  g.clear();
+  g.fillStyle(0x882211); g.fillRect(5, 8, 15, 16);
+  g.fillStyle(0x663300); g.fillRect(3, 13, 3, 9); g.fillRect(19, 13, 4, 9);
+  g.fillStyle(0x773322); g.fillRect(7, 10, 8, 10);
+  g.fillStyle(0x664411); g.fillEllipse(12, 5, 11, 8);
+  g.fillStyle(0x664422); g.fillRect(6, 24, 5, 6); g.fillRect(14, 24, 5, 6);
+  g.generateTexture('raider_brawler_bside', 26, 30);
+
+  g.clear();
+  g.fillStyle(0x882211); g.fillRect(5, 8, 15, 16);
+  g.fillStyle(0x663300); g.fillRect(3, 13, 3, 9); g.fillRect(19, 13, 4, 9);
+  g.fillStyle(0x773322); g.fillRect(7, 10, 8, 10);
+  g.fillStyle(0x664411); g.fillEllipse(12, 5, 11, 8);
+  g.fillStyle(0x664422); g.fillRect(5, 23, 5, 6); g.fillRect(15, 25, 5, 5);
+  g.generateTexture('raider_brawler_bside_step', 26, 30);
+
+  // ── SHOOTER variants (brown coat, slim, gun arm) ─────────────
+  g.clear();
+  g.fillStyle(0x775533); g.fillRect(7, 8, 12, 16);
+  g.fillStyle(0x664422); g.fillRect(5, 14, 4, 7);
+  g.fillStyle(0x664422); g.fillRect(17, 13, 6, 4); g.fillStyle(0x444433); g.fillRect(21, 14, 6, 2);
+  g.fillStyle(0xcc9966); g.fillEllipse(13, 7, 10, 10);
+  g.fillStyle(0x553322); g.fillRect(6, 23, 4, 6); g.fillRect(15, 25, 4, 5);
+  g.generateTexture('raider_shooter_step', 26, 30);
+
+  g.clear();
+  g.fillStyle(0x775533); g.fillRect(6, 8, 14, 16);
+  g.fillStyle(0x664422); g.fillRect(3, 13, 4, 8); g.fillRect(19, 13, 4, 8);
+  g.fillStyle(0x444433); g.fillRect(20, 14, 6, 2);
+  g.fillStyle(0x555544); g.fillRect(20, 15, 3, 4);
+  g.fillStyle(0xcc9966); g.fillEllipse(13, 7, 10, 10);
+  g.fillStyle(0xaa7744); g.fillRect(10, 5, 2, 3); g.fillRect(13, 4, 3, 3);
+  g.fillStyle(0x553322); g.fillRect(7, 24, 4, 6); g.fillRect(15, 24, 4, 6);
+  g.generateTexture('raider_shooter_front', 26, 30);
+
+  g.clear();
+  g.fillStyle(0x775533); g.fillRect(6, 8, 14, 16);
+  g.fillStyle(0x664422); g.fillRect(3, 13, 4, 8); g.fillRect(19, 13, 4, 8);
+  g.fillStyle(0x444433); g.fillRect(20, 14, 6, 2);
+  g.fillStyle(0x555544); g.fillRect(20, 15, 3, 4);
+  g.fillStyle(0xcc9966); g.fillEllipse(13, 7, 10, 10);
+  g.fillStyle(0xaa7744); g.fillRect(10, 5, 2, 3); g.fillRect(13, 4, 3, 3);
+  g.fillStyle(0x553322); g.fillRect(6, 23, 4, 6); g.fillRect(15, 25, 4, 5);
+  g.generateTexture('raider_shooter_front_step', 26, 30);
+
+  g.clear();
+  g.fillStyle(0x664422); g.fillRect(6, 8, 14, 16);
+  g.fillStyle(0x553311); g.fillRect(3, 13, 4, 8); g.fillRect(19, 13, 6, 4);
+  g.fillStyle(0x444433); g.fillRect(23, 14, 4, 2);
+  g.fillStyle(0xaa7744); g.fillEllipse(13, 5, 10, 8);
+  g.fillStyle(0x553322); g.fillRect(7, 24, 4, 6); g.fillRect(15, 24, 4, 6);
+  g.generateTexture('raider_shooter_back', 26, 30);
+
+  g.clear();
+  g.fillStyle(0x664422); g.fillRect(6, 8, 14, 16);
+  g.fillStyle(0x553311); g.fillRect(3, 13, 4, 8); g.fillRect(19, 13, 6, 4);
+  g.fillStyle(0x444433); g.fillRect(23, 14, 4, 2);
+  g.fillStyle(0xaa7744); g.fillEllipse(13, 5, 10, 8);
+  g.fillStyle(0x553322); g.fillRect(6, 23, 4, 6); g.fillRect(15, 25, 4, 5);
+  g.generateTexture('raider_shooter_back_step', 26, 30);
+
+  g.clear();
+  g.fillStyle(0x775533); g.fillRect(6, 8, 13, 16);
+  g.fillStyle(0x664422); g.fillRect(4, 14, 3, 7);
+  g.fillStyle(0x664422); g.fillRect(17, 13, 6, 4); g.fillStyle(0x444433); g.fillRect(21, 14, 5, 2);
+  g.fillStyle(0xcc9966); g.fillEllipse(12, 7, 10, 10);
+  g.fillStyle(0x553322); g.fillRect(6, 24, 4, 6); g.fillRect(14, 24, 4, 6);
+  g.generateTexture('raider_shooter_fside', 26, 30);
+
+  g.clear();
+  g.fillStyle(0x775533); g.fillRect(6, 8, 13, 16);
+  g.fillStyle(0x664422); g.fillRect(4, 14, 3, 7);
+  g.fillStyle(0x664422); g.fillRect(17, 13, 6, 4); g.fillStyle(0x444433); g.fillRect(21, 14, 5, 2);
+  g.fillStyle(0xcc9966); g.fillEllipse(12, 7, 10, 10);
+  g.fillStyle(0x553322); g.fillRect(5, 23, 4, 6); g.fillRect(15, 25, 4, 5);
+  g.generateTexture('raider_shooter_fside_step', 26, 30);
+
+  g.clear();
+  g.fillStyle(0x664422); g.fillRect(6, 8, 13, 16);
+  g.fillStyle(0x553311); g.fillRect(4, 13, 3, 8); g.fillRect(18, 13, 5, 4);
+  g.fillStyle(0x444433); g.fillRect(21, 14, 4, 2);
+  g.fillStyle(0xaa7744); g.fillEllipse(12, 5, 10, 8);
+  g.fillStyle(0x553322); g.fillRect(6, 24, 4, 6); g.fillRect(14, 24, 4, 6);
+  g.generateTexture('raider_shooter_bside', 26, 30);
+
+  g.clear();
+  g.fillStyle(0x664422); g.fillRect(6, 8, 13, 16);
+  g.fillStyle(0x553311); g.fillRect(4, 13, 3, 8); g.fillRect(18, 13, 5, 4);
+  g.fillStyle(0x444433); g.fillRect(21, 14, 4, 2);
+  g.fillStyle(0xaa7744); g.fillEllipse(12, 5, 10, 8);
+  g.fillStyle(0x553322); g.fillRect(5, 23, 4, 6); g.fillRect(15, 25, 4, 5);
+  g.generateTexture('raider_shooter_bside_step', 26, 30);
+
+  // ── HEAVY variants (dark gray, large armored tank) ───────────
+  g.clear();
+  g.fillStyle(0x445566); g.fillRect(4, 7, 18, 18);
+  g.fillStyle(0x334455); g.fillRect(2, 13, 4, 10); g.fillRect(20, 13, 4, 10);
+  g.fillStyle(0x556677); g.fillRect(4, 7, 18, 6);
+  g.fillStyle(0xbbaa88); g.fillEllipse(13, 6, 12, 10);
+  g.fillStyle(0x334455); g.fillRect(3, 24, 7, 6); g.fillRect(16, 26, 7, 4);
+  g.generateTexture('raider_heavy_step', 26, 30);
+
+  g.clear();
+  g.fillStyle(0x445566); g.fillRect(3, 7, 20, 18);
+  g.fillStyle(0x334455); g.fillRect(1, 12, 4, 11); g.fillRect(21, 12, 4, 11);
+  g.fillStyle(0x556677); g.fillRect(3, 7, 20, 7);
+  g.fillStyle(0x667788); g.fillRect(7, 10, 12, 6);
+  g.fillStyle(0xbbaa88); g.fillEllipse(13, 6, 14, 10);
+  g.fillStyle(0x998877); g.fillRect(10, 4, 3, 3); g.fillRect(13, 3, 3, 3);
+  g.fillStyle(0x334455); g.fillRect(5, 25, 7, 5); g.fillRect(14, 25, 7, 5);
+  g.generateTexture('raider_heavy_front', 26, 30);
+
+  g.clear();
+  g.fillStyle(0x445566); g.fillRect(3, 7, 20, 18);
+  g.fillStyle(0x334455); g.fillRect(1, 12, 4, 11); g.fillRect(21, 12, 4, 11);
+  g.fillStyle(0x556677); g.fillRect(3, 7, 20, 7);
+  g.fillStyle(0x667788); g.fillRect(7, 10, 12, 6);
+  g.fillStyle(0xbbaa88); g.fillEllipse(13, 6, 14, 10);
+  g.fillStyle(0x334455); g.fillRect(4, 24, 7, 5); g.fillRect(15, 26, 7, 4);
+  g.generateTexture('raider_heavy_front_step', 26, 30);
+
+  g.clear();
+  g.fillStyle(0x3a4a55); g.fillRect(3, 7, 20, 18);
+  g.fillStyle(0x293545); g.fillRect(1, 12, 4, 11); g.fillRect(21, 12, 4, 11);
+  g.fillStyle(0x4a5a66); g.fillRect(3, 7, 20, 7);
+  g.fillStyle(0x445566); g.fillRect(7, 10, 12, 10);
+  g.fillStyle(0xaa9977); g.fillEllipse(13, 5, 14, 8);
+  g.fillStyle(0x334455); g.fillRect(5, 25, 7, 5); g.fillRect(14, 25, 7, 5);
+  g.generateTexture('raider_heavy_back', 26, 30);
+
+  g.clear();
+  g.fillStyle(0x3a4a55); g.fillRect(3, 7, 20, 18);
+  g.fillStyle(0x293545); g.fillRect(1, 12, 4, 11); g.fillRect(21, 12, 4, 11);
+  g.fillStyle(0x4a5a66); g.fillRect(3, 7, 20, 7);
+  g.fillStyle(0x445566); g.fillRect(7, 10, 12, 10);
+  g.fillStyle(0xaa9977); g.fillEllipse(13, 5, 14, 8);
+  g.fillStyle(0x334455); g.fillRect(4, 24, 7, 5); g.fillRect(15, 26, 7, 4);
+  g.generateTexture('raider_heavy_back_step', 26, 30);
+
+  g.clear();
+  g.fillStyle(0x445566); g.fillRect(4, 7, 18, 18);
+  g.fillStyle(0x334455); g.fillRect(2, 12, 3, 11); g.fillRect(21, 12, 4, 11);
+  g.fillStyle(0x556677); g.fillRect(4, 7, 18, 7);
+  g.fillStyle(0x667788); g.fillRect(6, 10, 10, 5);
+  g.fillStyle(0xbbaa88); g.fillEllipse(12, 6, 13, 10);
+  g.fillStyle(0x334455); g.fillRect(5, 25, 7, 5); g.fillRect(14, 25, 7, 5);
+  g.generateTexture('raider_heavy_fside', 26, 30);
+
+  g.clear();
+  g.fillStyle(0x445566); g.fillRect(4, 7, 18, 18);
+  g.fillStyle(0x334455); g.fillRect(2, 12, 3, 11); g.fillRect(21, 12, 4, 11);
+  g.fillStyle(0x556677); g.fillRect(4, 7, 18, 7);
+  g.fillStyle(0x667788); g.fillRect(6, 10, 10, 5);
+  g.fillStyle(0xbbaa88); g.fillEllipse(12, 6, 13, 10);
+  g.fillStyle(0x334455); g.fillRect(4, 24, 7, 5); g.fillRect(15, 26, 7, 4);
+  g.generateTexture('raider_heavy_fside_step', 26, 30);
+
+  g.clear();
+  g.fillStyle(0x3a4a55); g.fillRect(4, 7, 18, 18);
+  g.fillStyle(0x293545); g.fillRect(2, 12, 3, 11); g.fillRect(21, 12, 4, 11);
+  g.fillStyle(0x4a5a66); g.fillRect(4, 7, 18, 7);
+  g.fillStyle(0x445566); g.fillRect(6, 10, 10, 10);
+  g.fillStyle(0xaa9977); g.fillEllipse(12, 5, 13, 8);
+  g.fillStyle(0x334455); g.fillRect(5, 25, 7, 5); g.fillRect(14, 25, 7, 5);
+  g.generateTexture('raider_heavy_bside', 26, 30);
+
+  g.clear();
+  g.fillStyle(0x3a4a55); g.fillRect(4, 7, 18, 18);
+  g.fillStyle(0x293545); g.fillRect(2, 12, 3, 11); g.fillRect(21, 12, 4, 11);
+  g.fillStyle(0x4a5a66); g.fillRect(4, 7, 18, 7);
+  g.fillStyle(0x445566); g.fillRect(6, 10, 10, 10);
+  g.fillStyle(0xaa9977); g.fillEllipse(12, 5, 13, 8);
+  g.fillStyle(0x334455); g.fillRect(4, 24, 7, 5); g.fillRect(15, 26, 7, 4);
+  g.generateTexture('raider_heavy_bside_step', 26, 30);
+}
+
 // ── SETTINGS HELPERS ─────────────────────────────────────────
 function loadSettings() {
   try { return JSON.parse(localStorage.getItem('iw_settings') || '{}'); } catch(e) { return {}; }
@@ -2129,6 +2416,13 @@ class GameScene extends Phaser.Scene {
     this.craftBenchPlaced = false;
     this.beds = [];
     this.sleepSpeedMult = 1;   // 8x when all players are sleeping through night
+    this.spikeTraps = [];      // D7 spike traps
+
+    // D1 — Craft menu state
+    this.craftMenuOpen = false;
+    this.craftMenuOwner = null;
+    this.craftMenuSel = 0;
+    this.craftMenuGfx = null;
 
     // Show loading indicator on the black screen — iOS PWA needs at least one yielded
     // frame before heavy synchronous work, otherwise WKWebView may not render at all.
@@ -2207,13 +2501,25 @@ class GameScene extends Phaser.Scene {
       p1atk: K.F, p1alt: K.G, p1build: K.Q,
       p2atk: K.FORWARD_SLASH, p2alt: K.PERIOD, p2build: K.ZERO,
     });
-    this.atkKeys.p1atk.on('down', () => { if (!this.barrackOpen && !this.isOver && !this.p1.isDowned && !this.p1.isSleeping) { if (this.buildMode && this.buildOwner===this.p1) this.placeBuild(); else this.doAttack(this.p1); }});
+    this.atkKeys.p1atk.on('down', () => {
+      if (!this.barrackOpen && !this.isOver && !this.p1.isDowned && !this.p1.isSleeping) {
+        if (this.craftMenuOpen && this.craftMenuOwner === this.p1) { this.craftSelected(); return; }
+        if (this.buildMode && this.buildOwner === this.p1) this.placeBuild();
+        else this.doAttack(this.p1);
+      }
+    });
     this.atkKeys.p1alt.on('down', () => { if (!this.barrackOpen && !this.isOver && !this.p1.isDowned && !this.p1.isSleeping) this.doAlt(this.p1); });
-    this.atkKeys.p1build.on('down', () => { if (!this.barrackOpen && !this.isOver && !this.p1.isDowned && !this.p1.isSleeping) this.toggleBuildMode(this.p1); });
+    this.atkKeys.p1build.on('down', () => { if (!this.barrackOpen && !this.isOver && !this.p1.isDowned && !this.p1.isSleeping) this.openCraftMenu(this.p1); });
     if (this.p2) {
-      this.atkKeys.p2atk.on('down', () => { if (!this.barrackOpen && !this.isOver && !this.p2.isDowned && !this.p2.isSleeping) { if (this.buildMode && this.buildOwner===this.p2) this.placeBuild(); else this.doAttack(this.p2); }});
+      this.atkKeys.p2atk.on('down', () => {
+        if (!this.barrackOpen && !this.isOver && !this.p2.isDowned && !this.p2.isSleeping) {
+          if (this.craftMenuOpen && this.craftMenuOwner === this.p2) { this.craftSelected(); return; }
+          if (this.buildMode && this.buildOwner === this.p2) this.placeBuild();
+          else this.doAttack(this.p2);
+        }
+      });
       this.atkKeys.p2alt.on('down', () => { if (!this.barrackOpen && !this.isOver && !this.p2.isDowned && !this.p2.isSleeping) this.doAlt(this.p2); });
-      this.atkKeys.p2build.on('down', () => { if (!this.barrackOpen && !this.isOver && !this.p2.isDowned && !this.p2.isSleeping) this.toggleBuildMode(this.p2); });
+      this.atkKeys.p2build.on('down', () => { if (!this.barrackOpen && !this.isOver && !this.p2.isDowned && !this.p2.isSleeping) this.openCraftMenu(this.p2); });
     }
 
     // Mouse controls for 1P keyboard mode (touch mode uses button overlay instead)
@@ -2461,8 +2767,6 @@ class GameScene extends Phaser.Scene {
       if (tx < 2 || tx > CFG.MAP_W-2 || ty < 2 || ty > CFG.MAP_H-2) return;
       if (Math.abs(tx-stx) < SAFE_R+3 && Math.abs(ty-sty) < SAFE_R+3) return;
       if (treesPlaced.some(p => Math.abs(p.tx-tx) <= 1 && Math.abs(p.ty-ty) <= 1)) return;
-      // Don't plant trees within 4 tiles of any pre-computed POI
-      if (this._preCacheTiles && this._preCacheTiles.some(p => Math.abs(p.tx-tx) <= 4 && Math.abs(p.ty-ty) <= 4)) return;
       let treeKey = 'tree';
       if (biome === 'waste') treeKey = 'tree_dead';
       else if (biome === 'tundra') treeKey = 'tree_snow';
@@ -2531,7 +2835,6 @@ class GameScene extends Phaser.Scene {
     for (let i = 0; i < CFG.ROCKS; i++) {
       const tx = Phaser.Math.Between(1, CFG.MAP_W-2), ty = Phaser.Math.Between(1, CFG.MAP_H-2);
       if (Math.abs(tx-stx)<SAFE_R && Math.abs(ty-sty)<SAFE_R) continue;
-      if (this._preCacheTiles && this._preCacheTiles.some(p => Math.abs(p.tx-tx) <= 4 && Math.abs(p.ty-ty) <= 4)) continue;
       const biome = getBiome(tx, ty);
       const rockKey = biome === 'tundra' ? 'ice_rock' : 'rock';
       const sc = Phaser.Math.FloatBetween(0.4, 3.5);
@@ -2546,7 +2849,6 @@ class GameScene extends Phaser.Scene {
     for (let i = 0; i < 60; i++) {
       const tx = Phaser.Math.Between(1, CFG.MAP_W-2), ty = Phaser.Math.Between(1, CFG.MAP_H-2);
       if (getBiome(tx, ty) !== 'waste') continue;
-      if (this._preCacheTiles && this._preCacheTiles.some(p => Math.abs(p.tx-tx) <= 4 && Math.abs(p.ty-ty) <= 4)) continue;
       const sc = Phaser.Math.FloatBetween(0.3, 2.0);
       const r = this.obstacles.create(tx*TILE+11, ty*TILE+8, 'rock');
       r.setScale(sc).setDepth(5 + ty*0.01).setImmovable(true);
@@ -3152,11 +3454,11 @@ class GameScene extends Phaser.Scene {
 
   // ── PLAYER ──────────────────────────────────────────────────
   spawnPlayer(x, y, charData, pNum) {
-    const spr = this._w(this.physics.add.sprite(x, y, charData.id).setScale(2.5).setDepth(10));
+    const spr = this._w(this.physics.add.sprite(x, y, charData.id).setScale(1.5).setDepth(10));
     spr.setCollideWorldBounds(true);
-    spr.body.setSize(12, 16).setOffset(5, 12);
+    spr.body.setSize(20, 24).setOffset(12, 30);
 
-    const lbl = this._w(this.add.text(x, y-34, charData.player, {
+    const lbl = this._w(this.add.text(x, y-50, charData.player, {
       fontFamily:'monospace', fontSize:'11px',
       color: pNum===1 ? '#6699ff' : '#ff9944', stroke:'#000', strokeThickness:2,
     }).setOrigin(0.5).setDepth(11));
@@ -3938,6 +4240,7 @@ class GameScene extends Phaser.Scene {
     this.updateSleep(delta);
     this.updateDayNight(delta);
     this.updateBuildMode();
+    this.updateCraftMenu(delta);
     this.updateHarvest(delta);
     this.updateFog();
     this.updateMinimap();
@@ -4067,7 +4370,7 @@ class GameScene extends Phaser.Scene {
     } else if (name === 'interact') {
       if (!this.barrackOpen) this.tryInteract(this.p1);
     } else if (name === 'build') {
-      if (!this.p1.isDowned && !this.p1.isSleeping) this.toggleBuildMode(this.p1);
+      if (!this.p1.isDowned && !this.p1.isSleeping) this.openCraftMenu(this.p1);
     } else if (name === 'menu') {
       this.toggleControls();
     }
@@ -4207,12 +4510,14 @@ class GameScene extends Phaser.Scene {
       const rx = cx + Math.cos(angle) * dist;
       const ry = cy + Math.sin(angle) * dist;
       const texKey = 'raider_' + rtype;
-      const spr = this.physics.add.image(rx, ry, texKey).setScale(2.2).setDepth(9);
+      const spr = this.physics.add.image(rx, ry, texKey).setScale(2.5).setDepth(9);
       spr.setCollideWorldBounds(true);
-      spr.body.setSize(18, 22);
+      spr.body.setSize(16, 20);
       if (this.hudCam) this.hudCam.ignore(spr);
       this.physics.add.collider(spr, this.obstacles);
 
+      // D6 — difficulty scaling (ramps from day 3 onward, caps at 2.5×)
+      const diffScale = Math.min(2.5, 1 + Math.max(0, ((this.dayNum || 1) - 3) * 0.08));
       const stats = {
         brawler: { hp: 130, speed: 110, dmg: 20, range: 36, atkInterval: 1100, shootRange: 0 },
         shooter: { hp: 80,  speed: 90,  dmg: 16, range: 40, atkInterval: 1200, shootRange: 280 },
@@ -4221,8 +4526,9 @@ class GameScene extends Phaser.Scene {
 
       const raider = {
         spr, type: rtype, isRaider: true,
-        hp: stats.hp, maxHp: stats.hp,
-        speed: stats.speed, dmg: stats.dmg,
+        hp: Math.floor(stats.hp * diffScale), maxHp: Math.floor(stats.hp * diffScale),
+        speed: stats.speed * Math.min(1.6, diffScale),
+        dmg: Math.floor(stats.dmg * diffScale),
         attackRange: stats.range, attackTimer: 0, atkInterval: stats.atkInterval,
         shootRange: stats.shootRange, rangedTimer: 0,
         aggroRange: 320, wanderTimer: Phaser.Math.Between(0, 2000), sizeMult: 1,
@@ -5098,6 +5404,25 @@ class GameScene extends Phaser.Scene {
     } else {
       wall.clearTint();
     }
+    // D4 — draw HP bar above the wall
+    if (wall.active && wall.hp > 0) {
+      if (!wall._hpBar) {
+        const bg = this.add.graphics().setDepth(12);
+        const bar = this.add.graphics().setDepth(13);
+        if (this.hudCam) { this.hudCam.ignore(bg); this.hudCam.ignore(bar); }
+        this._w(bg); this._w(bar);
+        wall._hpBg = bg; wall._hpBar = bar;
+      }
+      const bw = 28, bh = 4;
+      wall._hpBg.clear(); wall._hpBg.fillStyle(0x220000, 0.8); wall._hpBg.fillRect(wall.x - bw/2, wall.y - 22, bw, bh);
+      wall._hpBar.clear(); wall._hpBar.fillStyle(pct > 0.5 ? 0x44ee22 : pct > 0.25 ? 0xffaa00 : 0xff2200, 1);
+      wall._hpBar.fillRect(wall.x - bw/2, wall.y - 22, Math.round(bw * pct), bh);
+    }
+    // D5 — night hint when wall is first attacked at night
+    if (this.isNight && !this._nightWallHinted) {
+      this._nightWallHinted = true;
+      this.hint('\u26a0 Enemies are attacking your base!', 4000);
+    }
   }
 
   // Find the nearest player-built wall that sits between (ex,ey) and (px,py)
@@ -5239,7 +5564,7 @@ class GameScene extends Phaser.Scene {
           // Steer around obstacles instead of running straight into them
           const vel = this._steerToward(e, chaseX, chaseY, spd);
           e.spr.setVelocity(vel.x, vel.y);
-          e.spr.setFlipX(chaseX < e.spr.x);
+          // directional flip is handled below in the walk-cycle block
         }
 
         if (nearDist < e.attackRange) {
@@ -5263,6 +5588,29 @@ class GameScene extends Phaser.Scene {
           e.spr.setVelocity(Math.cos(ang)*spd, Math.sin(ang)*spd);
           e.wanderTimer = Phaser.Math.Between(1500, 3500);
         }
+      }
+
+      // ── Walk cycle + 8-direction sprites (raiders only) ──────
+      e._walkTimer = ((e._walkTimer || 0) + delta) % 600;
+      const _step = e._walkTimer < 300 ? '' : '_step';
+      const _vx = e.spr.body.velocity.x, _vy = e.spr.body.velocity.y;
+      const _moving = Math.abs(_vx) > 5 || Math.abs(_vy) > 5;
+      if (_moving) {
+        const _diagX = Math.abs(_vx) > 20, _diagY = Math.abs(_vy) > 20;
+        if (_diagX && _diagY) e._dir = _vy > 0 ? 'fside' : 'bside';
+        else if (Math.abs(_vy) > Math.abs(_vx)) e._dir = _vy > 0 ? 'front' : 'back';
+        else e._dir = 'side';
+      }
+      const _dir = e._dir || 'side';
+      const _flip = _vx < 0 || (_vx === 0 && e.spr.flipX);
+      if (_dir === 'side' || _dir === 'fside' || _dir === 'bside') {
+        e.spr.setFlipX(_vx < 0);
+      } else {
+        e.spr.setFlipX(false);
+      }
+      if (e.isRaider) {
+        const _dirSuffix = _dir === 'side' ? '' : '_' + _dir;
+        e.spr.setTexture('raider_' + e.type + _dirSuffix + (_moving ? _step : ''));
       }
     });
   }
@@ -5295,6 +5643,7 @@ class GameScene extends Phaser.Scene {
     const newDay = Math.floor(this.dayTimer / this.DAY_DUR) + 1;
     if (newDay !== this.dayNum) {
       this.dayNum = newDay;
+      this._nightWallHinted = false; // D5 — reset so next night gives warning again
       Music.switchToDay();
       this.hint('Dawn of Day ' + this.dayNum + ' \u2014 enemies grow stronger!', 3000);
       // Raider respawn check
@@ -5525,6 +5874,39 @@ class GameScene extends Phaser.Scene {
       this._bedPrompts.push({ bed: { x, y }, prompt: bedPrompt });
     }
 
+    // D7 — Spike trap placement (no physics body; triggers on enemy overlap)
+    if (this.buildType === 'spike_trap') {
+      const st = this.add.image(x, y, 'spike_trap').setScale(1.5).setDepth(4);
+      if (this.hudCam) this.hudCam.ignore(st);
+      this._w(st);
+      st.active = true;
+      this.spikeTraps.push(st);
+      // Overlap with enemies
+      this.enemies.forEach(e => {
+        this.physics.add.overlap(e.spr, st, () => {
+          if (!st.active) return;
+          e.hp = Math.max(0, e.hp - 35);
+          st.destroy(); st.active = false;
+          this.spikeTraps = this.spikeTraps.filter(s => s !== st);
+        });
+      });
+      SFX._play(300, 'triangle', 0.08, 0.15);
+      this.hint('Spike trap placed!', 1200);
+      this.exitBuildMode(); return;
+    }
+
+    // Reinforced wall (300 HP variant)
+    if (this.buildType === 'reinforced_wall') {
+      const w = this.obstacles.create(x, y, 'wall').setDepth(5).setImmovable(true).setTint(0xaaaaff);
+      w.setAngle(this.buildRotation * 90); w.refreshBody();
+      w.hp = 300; w.maxHp = 300;
+      this.builtWalls.push(w);
+      if (this.hudCam) this.hudCam.ignore(w);
+      SFX._play(400, 'triangle', 0.08, 0.2);
+      this.hint('Reinforced Wall placed!', 1500);
+      this.exitBuildMode(); return;
+    }
+
     SFX._play(400, 'triangle', 0.08, 0.2);
     this.hint(this.buildType.charAt(0).toUpperCase() + this.buildType.slice(1) + ' placed!', 1500);
   }
@@ -5543,13 +5925,197 @@ class GameScene extends Phaser.Scene {
 
   getBuildCost(type) {
     const costs = {
-      wall:       { wood: 3 },
-      gate:       { wood: 4, metal: 2 },
-      campfire:   { wood: 5 },
-      craftbench: { wood: 5, metal: 3 },
-      bed:        { wood: 8, fiber: 6, metal: 2 },  // requires craftbench — deliberately costly
+      wall:              { wood: 3 },
+      gate:              { wood: 4, metal: 2 },
+      campfire:          { wood: 5 },
+      craftbench:        { wood: 5, metal: 3 },
+      bed:               { wood: 8, fiber: 6, metal: 2 },
+      reinforced_wall:   { wood: 4, metal: 3 },
+      spike_trap:        { wood: 2, metal: 1 },
+      med_kit:           { fiber: 3, food: 2 },
+      knight_upgrade:    { metal: 3, fiber: 2 },
+      architect_upgrade: { metal: 3, wood: 2 },
+      gunslinger_upgrade:{ metal: 2, fiber: 1 },
     };
     return costs[type] || {};
+  }
+
+  // ── CRAFT MENU ─────────────────────────────────────────────────
+  static get RECIPES() {
+    return [
+      { label: 'Wall',               key: 'wall',              cost: {wood:3},                  needsBench: false, type: 'build' },
+      { label: 'Gate',               key: 'gate',              cost: {wood:4, metal:2},         needsBench: false, type: 'build' },
+      { label: 'Campfire',           key: 'campfire',          cost: {wood:5},                  needsBench: false, type: 'build' },
+      { label: 'Spike Trap',         key: 'spike_trap',        cost: {wood:2, metal:1},         needsBench: false, type: 'build' },
+      { label: 'Craftbench',         key: 'craftbench',        cost: {wood:5, metal:3},         needsBench: false, type: 'build' },
+      { label: 'Bed',                key: 'bed',               cost: {wood:8, fiber:6, metal:2},needsBench: true,  type: 'build' },
+      { label: 'Reinforced Wall',    key: 'reinforced_wall',   cost: {wood:4, metal:3},         needsBench: true,  type: 'build' },
+      { label: 'Med Kit (+40 HP)',   key: 'med_kit',           cost: {fiber:3, food:2},         needsBench: true,  type: 'instant' },
+      { label: 'Knight Upgrade',     key: 'knight_upgrade',    cost: {metal:3, fiber:2},        needsBench: true,  type: 'upgrade', charId: 'knight' },
+      { label: 'Architect Upgrade',  key: 'architect_upgrade', cost: {metal:3, wood:2},         needsBench: true,  type: 'upgrade', charId: 'architect' },
+      { label: 'Gunslinger Upgrade', key: 'gunslinger_upgrade',cost: {metal:2, fiber:1},        needsBench: true,  type: 'upgrade', charId: 'gunslinger' },
+    ];
+  }
+
+  openCraftMenu(player) {
+    if (this.craftMenuOpen) { this.closeCraftMenu(); return; }
+    this.craftMenuOpen = true;
+    this.craftMenuOwner = player;
+    this.craftMenuSel = 0;
+    // Nav keys (reuse attack confirm, movement for up/down)
+    this._craftNavUp   = this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.W);
+    this._craftNavUp2  = this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.UP);
+    this._craftNavDn   = this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.S);
+    this._craftNavDn2  = this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.DOWN);
+    this._craftClose   = this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.Q);
+    this._craftClose2  = this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.ZERO);
+  }
+
+  closeCraftMenu() {
+    this.craftMenuOpen = false;
+    this.craftMenuOwner = null;
+    if (this.craftMenuGfx) { this.craftMenuGfx.destroy(); this.craftMenuGfx = null; }
+    this._craftMenuText && this._craftMenuText.forEach(t => t.destroy());
+    this._craftMenuText = [];
+  }
+
+  updateCraftMenu(delta) {
+    if (!this.craftMenuOpen) return;
+    const RECIPES = GameScene.RECIPES;
+
+    // Navigate up / down
+    if (Phaser.Input.Keyboard.JustDown(this._craftNavUp) || Phaser.Input.Keyboard.JustDown(this._craftNavUp2)) {
+      this.craftMenuSel = (this.craftMenuSel - 1 + RECIPES.length) % RECIPES.length;
+    }
+    if (Phaser.Input.Keyboard.JustDown(this._craftNavDn) || Phaser.Input.Keyboard.JustDown(this._craftNavDn2)) {
+      this.craftMenuSel = (this.craftMenuSel + 1) % RECIPES.length;
+    }
+    // Close on Q/0
+    if (Phaser.Input.Keyboard.JustDown(this._craftClose) || Phaser.Input.Keyboard.JustDown(this._craftClose2)) {
+      this.closeCraftMenu(); return;
+    }
+
+    this.renderCraftMenu();
+  }
+
+  renderCraftMenu() {
+    const RECIPES = GameScene.RECIPES;
+    const { W, H } = CFG;
+    const team = this.getTeamInv();
+    const PW = 440, PH = 330, PX = (W - PW) / 2, PY = H - PH - 20;
+
+    // Recreate graphics each frame (simple approach)
+    if (this.craftMenuGfx) this.craftMenuGfx.destroy();
+    this.craftMenuGfx = this.add.graphics().setScrollFactor(0).setDepth(96);
+    if (this.hudCam) this.hudCam.ignore(this.craftMenuGfx);
+
+    const g = this.craftMenuGfx;
+    // Panel background
+    g.fillStyle(0x0a1208, 0.92); g.fillRoundedRect(PX, PY, PW, PH, 8);
+    g.lineStyle(2, 0x445533, 1); g.strokeRoundedRect(PX, PY, PW, PH, 8);
+
+    // Destroy old text
+    this._craftMenuText && this._craftMenuText.forEach(t => t.destroy());
+    this._craftMenuText = [];
+
+    const addTxt = (x, y, str, style) => {
+      const t = this.add.text(x, y, str, Object.assign({ fontFamily:'monospace', fontSize:'11px' }, style))
+        .setScrollFactor(0).setDepth(97);
+      if (this.hudCam) this.hudCam.ignore(t);
+      this._craftMenuText.push(t);
+      return t;
+    };
+
+    addTxt(PX + PW/2, PY + 14, '[ CRAFTING ]', { fontSize:'14px', color:'#aacc88', stroke:'#000', strokeThickness:2 }).setOrigin(0.5);
+    addTxt(PX + PW/2, PY + PH - 14, 'W/S or ↑↓ navigate  |  Attack = craft  |  Q/0 = close', { fontSize:'9px', color:'#556644' }).setOrigin(0.5);
+
+    RECIPES.forEach((rec, idx) => {
+      const rowY = PY + 34 + idx * 25;
+      const isSelected = idx === this.craftMenuSel;
+
+      // Selection highlight
+      if (isSelected) {
+        g.fillStyle(0x224411, 0.9); g.fillRect(PX + 6, rowY - 2, PW - 12, 22);
+        g.lineStyle(1, 0x44aa22, 0.8); g.strokeRect(PX + 6, rowY - 2, PW - 12, 22);
+      }
+
+      // Bench requirement
+      const locked = rec.needsBench && !this.craftBenchPlaced;
+      // Can afford?
+      const canAfford = !locked && Object.entries(rec.cost).every(([r,a]) => (team[r]||0) >= a);
+
+      const nameColor = locked ? '#555544' : isSelected ? '#ffffff' : '#aabbaa';
+      const costColor = canAfford ? '#66ee44' : '#ee4422';
+
+      const costStr = Object.entries(rec.cost).map(([r,a]) => a+' '+r).join(', ');
+      const suffix  = locked ? ' [bench reqd]' : '';
+      addTxt(PX + 18, rowY + 2, rec.label + suffix, { color: nameColor });
+      addTxt(PX + PW - 18, rowY + 2, costStr, { color: costColor }).setOrigin(1, 0);
+    });
+  }
+
+  craftSelected() {
+    if (!this.craftMenuOpen) return;
+    const RECIPES = GameScene.RECIPES;
+    const rec = RECIPES[this.craftMenuSel];
+    const player = this.craftMenuOwner;
+    const team = this.getTeamInv();
+
+    // Bench requirement
+    if (rec.needsBench && !this.craftBenchPlaced) {
+      this.hint('Need a Craftbench first!', 2000); return;
+    }
+    // Afford check
+    const cost = this.getBuildCost(rec.key);
+    for (const [res, amt] of Object.entries(cost)) {
+      if ((team[res] || 0) < amt) {
+        this.hint('Need ' + amt + ' ' + res + '! (have ' + (team[res]||0) + ')', 2000); return;
+      }
+    }
+
+    this.closeCraftMenu();
+
+    if (rec.type === 'build') {
+      // Enter ghost build mode; resources are deducted in placeBuild() as normal
+      this.buildMode = true;
+      this.buildOwner = player;
+      this.buildType = rec.key;
+      this.buildRotation = 0;
+      if (this.buildGhost) this.buildGhost.destroy();
+      this.buildGhost = this.add.image(player.spr.x + 40, player.spr.y, 'build_ghost').setDepth(50).setAlpha(0.6);
+      if (this.hudCam) this.hudCam.ignore(this.buildGhost);
+      this.buildRotKey1 = this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.R);
+      this.buildRotKey2 = this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.ONE);
+      const costStr = Object.entries(cost).map(([k,v])=>v+' '+k).join(', ');
+      this.hint('BUILD ' + rec.label.toUpperCase() + ': R/1=rotate | Attack=place | Cost: ' + costStr, 3000);
+      return; // resources deducted at placement
+    }
+
+    // Deduct resources for instant/upgrade items
+    for (const [res, amt] of Object.entries(cost)) {
+      let left = amt;
+      for (const p of [player, this.p1, this.p2].filter(Boolean)) {
+        const take = Math.min(left, p.inv[res] || 0);
+        p.inv[res] = (p.inv[res] || 0) - take; left -= take;
+        if (left <= 0) break;
+      }
+    }
+
+    if (rec.type === 'instant' && rec.key === 'med_kit') {
+      // D8 — Med Kit: restore 40 HP to the crafting player, green flash
+      player.hp = Math.min(player.maxHp, player.hp + 40);
+      player.spr.setTint(0x44ff44);
+      this.time.delayedCall(300, () => { if(player.spr.active) player.spr.clearTint(); });
+      this.hint(player.charData.player + ' used Med Kit: +40 HP!', 2000);
+    } else if (rec.type === 'upgrade') {
+      const target = [this.p1, this.p2].filter(Boolean).find(p => p.charData.id === rec.charId);
+      if (!target) { this.hint('That character isn\'t in the game!', 2000); return; }
+      if (target._upgraded) { this.hint('Already upgraded!', 1500); return; }
+      target._upgraded = true;
+      target.spr.setTint(0xffaa22);
+      this.time.delayedCall(400, () => { if(target.spr.active) target.spr.clearTint(); });
+      this.hint(rec.label + ' unlocked for ' + target.charData.player + '!', 3000);
+    }
   }
 
   getTeamInv() {
