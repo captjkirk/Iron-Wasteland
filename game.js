@@ -5,14 +5,21 @@
 'use strict';
 
 // ── CONSTANTS ─────────────────────────────────────────────────
+// Detect mobile/phone: touch device with a small screen.
+// We halve the canvas resolution on phones so that sprites and HUD
+// appear at their designed sizes rather than being CSS-shrunk to ~50%.
+const _isMobile = typeof navigator !== 'undefined' &&
+  (navigator.maxTouchPoints > 0 || 'ontouchstart' in window) &&
+  typeof window !== 'undefined' && Math.min(window.innerWidth, window.innerHeight) < 600;
+
 const CFG = {
-  W: 1280, H: 720,
+  W: _isMobile ? 640 : 1280, H: _isMobile ? 360 : 720,
   TILE: 32,
   MAP_W: 220, MAP_H: 220,
   SAFE_R: 10,
   CAM_ZOOM_MAX: 1.0,
-  CAM_ZOOM_MIN: 0.25,
-  CAM_PAD: 230,
+  CAM_ZOOM_MIN: _isMobile ? 0.15 : 0.25, // mobile: show more world at min zoom
+  CAM_PAD: _isMobile ? 115 : 230,        // mobile: tighter 2-player framing
   TREES: 420,
   ROCKS: 180,
   DOWN_TIME: 20,     // seconds before a downed player dies permanently
@@ -5366,8 +5373,9 @@ class GameScene extends Phaser.Scene {
     e.spr.setTint(0xff2200);
     const ex = e.spr.x, ey = e.spr.y;
     this.time.delayedCall(200, () => {
-      if (e.spr.active) e.spr.destroy();
-      if (e.lbl && e.lbl.active) e.lbl.destroy();
+      // Use .scene check: null means already destroyed via another path, avoids stale .active flag
+      if (e.spr && e.spr.scene) e.spr.destroy();
+      if (e.lbl && e.lbl.scene) e.lbl.destroy();
     });
     // Raider kill — check if camp cleared
     if (e.isRaider) {
@@ -5590,8 +5598,10 @@ class GameScene extends Phaser.Scene {
     const players = [this.p1, this.p2].filter(p => p && !p.isDowned && !p.isSleeping && p.hp > 0);
 
     for (const player of players) {
+      // On mobile the keyboard key is never held; use the touch USE button's tracked down state instead
+      const touchHeld = this._touchActive && this._tcBtns && this._tcBtns.interact.down;
       const keyHeld = player === this.p1
-        ? this.hotkeys.p1use.isDown
+        ? (this.hotkeys.p1use.isDown || touchHeld)
         : (this.hotkeys.p2use ? this.hotkeys.p2use.isDown : false);
 
       // Find nearest tree within range
@@ -5614,16 +5624,24 @@ class GameScene extends Phaser.Scene {
         const harvestTime = HARVEST_TIMES[player.charData.id] || 2500;
         player.harvestProgress = (player.harvestProgress || 0) + delta / harvestTime;
 
-        // Draw progress arc above the tree
-        const tx = nearestTree.x, ty = nearestTree.y - 28;
-        const r = 10;
-        this.harvestGfx.lineStyle(3, 0x88cc44, 0.9);
-        this.harvestGfx.beginPath();
-        this.harvestGfx.arc(tx, ty, r, -Math.PI / 2, -Math.PI / 2 + player.harvestProgress * Math.PI * 2, false);
-        this.harvestGfx.strokePath();
-        // Background ring
-        this.harvestGfx.lineStyle(2, 0x224411, 0.5);
+        // Draw harvest progress as a donut chart above the tree
+        const tx = nearestTree.x, ty = nearestTree.y - 36;
+        const r = 18;
+        // Dark backdrop circle for contrast on any biome
+        this.harvestGfx.fillStyle(0x000000, 0.65);
+        this.harvestGfx.fillCircle(tx, ty, r + 5);
+        // Background ring (empty track)
+        this.harvestGfx.lineStyle(7, 0x334422, 0.9);
         this.harvestGfx.strokeCircle(tx, ty, r);
+        // Progress arc — bright chartreuse, thick, drawn clockwise from top
+        const endAngle = -Math.PI / 2 + player.harvestProgress * Math.PI * 2;
+        this.harvestGfx.lineStyle(7, 0xaaff33, 1.0);
+        this.harvestGfx.beginPath();
+        this.harvestGfx.arc(tx, ty, r, -Math.PI / 2, endAngle, false);
+        this.harvestGfx.strokePath();
+        // Axe icon: small white dot in center confirms action is active
+        this.harvestGfx.fillStyle(0xffffff, 0.85);
+        this.harvestGfx.fillCircle(tx, ty, 4);
 
         if (player.harvestProgress >= 1) {
           // Harvest complete — spawn 2-3 wood items, destroy tree
