@@ -2162,8 +2162,34 @@ class SettingsScene extends Phaser.Scene {
       fontFamily:'monospace', fontSize:'10px', color:'#334433',
     }).setOrigin(0.5);
 
+    // ── Tutorial toggle ──────────────────────────────────────
+    this.add.text(W/2, 606, 'TUTORIAL TIPS', {
+      fontFamily:'monospace', fontSize:'11px', color:'#445544', letterSpacing: 3,
+    }).setOrigin(0.5);
+
+    const tutEnabled = loadSettings().tutorial !== false; // default ON
+    this._tutSel = tutEnabled;
+    const tutOpts = [
+      { key: true,  label: 'ON',  sub: 'Tips appear at top of screen during first game' },
+      { key: false, label: 'OFF', sub: 'No tutorial tips — for experienced players' },
+    ];
+    this._tutBoxes = tutOpts.map((o, i) => {
+      const x = W/2 + (i === 0 ? -140 : 140), y = 648;
+      const box = this.add.graphics();
+      const lbl = this.add.text(x, y, o.label, {
+        fontFamily:'monospace', fontSize:'18px', color:'#ffffff', stroke:'#000', strokeThickness:2,
+      }).setOrigin(0.5);
+      this.add.text(x, y + 22, o.sub, {
+        fontFamily:'monospace', fontSize:'9px', color:'#557755', wordWrap:{width:220},
+      }).setOrigin(0.5, 0);
+      const zone = this.add.zone(x, y + 10, 230, 62).setInteractive({ useHandCursor: true });
+      zone.on('pointerover', () => this.setTutorial(o.key));
+      zone.on('pointerdown', () => { this.setTutorial(o.key); saveSettings({ tutorial: o.key }); });
+      return { box, lbl, x, y, key: o.key };
+    });
+
     // ── Back button ──────────────────────────────────────────
-    const backBtn = this.add.text(W/2, H - 44, '[ BACK TO MAIN MENU ]', {
+    const backBtn = this.add.text(W/2, H - 22, '[ BACK TO MAIN MENU ]', {
       fontFamily:'monospace', fontSize:'18px', color:'#aaffaa',
     }).setOrigin(0.5).setInteractive({ useHandCursor: true });
     backBtn.on('pointerover', () => backBtn.setColor('#ffffff'));
@@ -2181,6 +2207,7 @@ class SettingsScene extends Phaser.Scene {
     });
 
     this.setInput(curMode);
+    this.setTutorial(tutEnabled);
   }
 
   drawSettingsBox(g, x, y, selected) {
@@ -2197,6 +2224,16 @@ class SettingsScene extends Phaser.Scene {
       this.drawSettingsBox(b.box, b.x, b.y, b.key === key);
       b.lbl.setColor(b.key === key ? '#aaffaa' : '#888899');
     });
+  }
+
+  setTutorial(key) {
+    this._tutSel = key;
+    if (this._tutBoxes) {
+      this._tutBoxes.forEach(b => {
+        this.drawSettingsBox(b.box, b.x, b.y, b.key === key);
+        b.lbl.setColor(b.key === key ? '#aaffaa' : '#888899');
+      });
+    }
   }
 }
 
@@ -2233,6 +2270,22 @@ class CharSelectScene extends Phaser.Scene {
       fontFamily:'monospace', fontSize:'14px', color:'#aaaaaa',
     }).setOrigin(0.5);
 
+    // Tutorial toggle checkbox — bottom-center, unobtrusive
+    const _tutOn = loadSettings().tutorial !== false;
+    this._charSelTutOn = _tutOn;
+    this._tutCheckTxt = this.add.text(W/2, H - 64, '', {
+      fontFamily:'monospace', fontSize:'11px', color:'#557755',
+      stroke:'#000', strokeThickness:1,
+    }).setOrigin(0.5).setInteractive({ useHandCursor: true });
+    this._tutCheckTxt.on('pointerover', () => this._tutCheckTxt.setStyle({ color:'#88cc88' }));
+    this._tutCheckTxt.on('pointerout',  () => this._tutCheckTxt.setStyle({ color:'#557755' }));
+    this._tutCheckTxt.on('pointerdown', () => {
+      this._charSelTutOn = !this._charSelTutOn;
+      saveSettings({ tutorial: this._charSelTutOn });
+      this._updateTutCheck();
+    });
+    this._updateTutCheck();
+
     const K = Phaser.Input.Keyboard.KeyCodes;
     this.keys = this.input.keyboard.addKeys({
       p1L:K.A, p1R:K.D, p1OK:K.F,
@@ -2247,13 +2300,18 @@ class CharSelectScene extends Phaser.Scene {
     this.refresh();
   }
 
+  _updateTutCheck() {
+    const on = this._charSelTutOn;
+    this._tutCheckTxt.setText((on ? '[\u2714] ' : '[\u00a0\u00a0] ') + 'Show tutorial tips on first game');
+  }
+
   buildCard(ch, cx, cy, cW, cH) {
     const half = cW/2, hH = cH/2;
     const bg = this.add.graphics();
     bg.fillStyle(0x12121e, 0.95);
     bg.fillRoundedRect(cx-half, cy-hH, cW, cH, 8);
 
-    const sprite = this.add.image(cx, cy-hH+60, ch.id).setScale(4.0);
+    const sprite = this.add.image(cx, cy-hH+60, ch.id).setScale(2.0);
     const nameT = this.add.text(cx, cy-hH+130, ch.player, {
       fontFamily:'monospace', fontSize:'21px',
       color:'#'+ch.color.toString(16).padStart(6,'0'), stroke:'#000', strokeThickness:2,
@@ -2575,6 +2633,9 @@ class GameScene extends Phaser.Scene {
     const modeNote = this.hardcore ? '\u2620 HARDCORE \u2014 death is permanent!' : '\u2665 SURVIVAL mode';
     this.time.delayedCall(10000, () => this.hint(modeNote + ' Explore the biomes! Watch your minimap.', 5000));
     this.time.delayedCall(16500, () => this.hint('TAB for controls  |  Beware toxic swamps and frozen tundra!', 3500));
+
+    // Tutorial sequence — starts after startup controls dismiss (~9 s)
+    this.time.delayedCall(9200, () => this.startTutorial());
 
       this._worldReady = true;
       this.showStartupControls();
@@ -3975,7 +4036,7 @@ class GameScene extends Phaser.Scene {
     this.bCards = CHARS.map((ch, i) => {
       const x = W/2 + (i-1)*250, y = H/2-10;
       const box    = push(this.add.graphics().setDepth(211));
-      const spr    = push(this.add.image(x, y-52, ch.id).setScale(5).setDepth(212));
+      const spr    = push(this.add.image(x, y-52, ch.id).setScale(2.5).setDepth(212));
       const nameT  = push(t(x, y+16, ch.player, { fontFamily:'monospace', fontSize:'18px', color:'#'+ch.color.toString(16).padStart(6,'0') }).setOrigin(0.5));
       const titT   = push(t(x, y+40, ch.title,  { fontFamily:'monospace', fontSize:'12px', color:'#777788' }).setOrigin(0.5));
       const stateT = push(t(x, y+62, '',         { fontFamily:'monospace', fontSize:'12px', color:'#ff4444' }).setOrigin(0.5));
@@ -4182,6 +4243,109 @@ class GameScene extends Phaser.Scene {
       onComplete:()=>this.time.delayedCall(duration,()=>
         this.tweens.add({targets:h,alpha:0,duration:450,onComplete:()=>{ if(h===this._activeHint) this._activeHint=null; h.destroy(); }}))
     });
+  }
+
+  // ── TUTORIAL ─────────────────────────────────────────────────
+  // A sequence of non-blocking tip banners at the top of the screen.
+  // Each auto-advances after 5 s; clicking the banner or pressing TAB skips to next;
+  // the SKIP button dismisses all. Disabled if settings.tutorial === false.
+  startTutorial() {
+    if (loadSettings().tutorial === false) return;
+
+    const STEPS = [
+      { title: 'MOVE',          text: 'P1: WASD to move.  P2: Arrow keys.  Explore each biome — grassland, wasteland, swamp, tundra, ruins.' },
+      { title: 'ATTACK',        text: 'P1: F to attack.  P2: / (slash).  In 1-player mode, aim with the mouse and left-click to shoot.' },
+      { title: 'GATHER',        text: 'Hold E (P1) or Enter (P2) near a tree to harvest wood.  Open crates for metal, fiber, ammo, and food.' },
+      { title: 'CRAFT & BUILD', text: 'Press Q (P1) or 0 (P2) to open the Crafting Menu.  Build walls, campfires, spike traps, and more.' },
+      { title: 'SURVIVE NIGHT', text: 'Enemies are stronger after dark.  Build a Bed (needs Craftbench) and sleep to fast-forward the night.' },
+      { title: 'SUPPLY CACHES', text: 'Each biome hides a Supply Cache — rare loot but guarded by enemies.  Check your minimap!' },
+      { title: 'MINIMAP',       text: 'Top-right minimap shows biome edges, enemies (red dots), and points of interest.  Stay aware!' },
+    ];
+
+    this._tutActive = true;
+    this._tutStep = 0;
+    this._tutObjs = [];
+    this._tutTimer = null;
+    this._showTutStep(STEPS);
+  }
+
+  _showTutStep(STEPS) {
+    if (!this._tutActive || this._tutStep >= STEPS.length) { this._endTutorial(); return; }
+    const step = STEPS[this._tutStep];
+    const { W } = CFG;
+    const PW = 680, PH = 72, PX = (W - PW) / 2, PY = 6;
+
+    this._clearTutObjs();
+
+    const push = o => { this._tutObjs.push(o); this._h(o); return o; };
+
+    // Translucent panel background
+    const bg = push(this.add.graphics().setDepth(170).setAlpha(0));
+    bg.fillStyle(0x050d05, 0.82);
+    bg.fillRoundedRect(PX, PY, PW, PH, 7);
+    bg.lineStyle(1, 0x3a6630, 0.65);
+    bg.strokeRoundedRect(PX, PY, PW, PH, 7);
+
+    // Step counter
+    push(this.add.text(PX + 14, PY + 7, 'TUTORIAL  ' + (this._tutStep + 1) + ' / ' + STEPS.length, {
+      fontFamily:'monospace', fontSize:'9px', color:'#5a7a4a', stroke:'#000', strokeThickness:1,
+    }).setDepth(171).setAlpha(0));
+
+    // Title
+    push(this.add.text(PX + 14, PY + 20, step.title, {
+      fontFamily:'monospace', fontSize:'13px', color:'#aadd88',
+      stroke:'#000', strokeThickness:2,
+    }).setDepth(171).setAlpha(0));
+
+    // Body text
+    push(this.add.text(PX + 14, PY + 40, step.text, {
+      fontFamily:'monospace', fontSize:'11px', color:'#ccdfc8',
+      stroke:'#000', strokeThickness:2,
+    }).setDepth(171).setAlpha(0));
+
+    // Progress dots (bottom-right area of panel)
+    for (let i = 0; i < STEPS.length; i++) {
+      const dx = PX + PW - 14 - (STEPS.length - 1 - i) * 11;
+      const dotG = push(this.add.graphics().setDepth(171).setAlpha(0));
+      dotG.fillStyle(i === this._tutStep ? 0x88cc66 : 0x3a5a2a, i === this._tutStep ? 1 : 0.7);
+      dotG.fillCircle(dx, PY + PH - 11, i === this._tutStep ? 4 : 2.5);
+    }
+
+    // SKIP button
+    const skipBtn = push(this.add.text(PX + PW - 10, PY + 7, '[ SKIP ALL ]', {
+      fontFamily:'monospace', fontSize:'9px', color:'#667755', stroke:'#000', strokeThickness:1,
+    }).setOrigin(1, 0).setDepth(172).setAlpha(0).setInteractive({ useHandCursor: true }));
+    skipBtn.on('pointerover', () => skipBtn.setStyle({ color:'#aaddaa' }));
+    skipBtn.on('pointerout',  () => skipBtn.setStyle({ color:'#667755' }));
+    skipBtn.on('pointerdown', (ptr) => { ptr.event.stopPropagation(); this._endTutorial(); });
+
+    // Tap-banner-to-advance (click anywhere on the panel area)
+    const hitZone = push(this.add.zone(PX, PY, PW, PH).setOrigin(0).setDepth(173).setInteractive({ useHandCursor: true }));
+    hitZone.on('pointerdown', () => { this._tutStep++; this._showTutStep(STEPS); });
+
+    // Fade in all objects
+    const fadeTargets = this._tutObjs.filter(o => o.setAlpha && o !== hitZone);
+    this.tweens.add({ targets: fadeTargets, alpha: 1, duration: 300 });
+
+    // Auto-advance after 5 seconds
+    this._tutTimer = this.time.delayedCall(5000, () => { this._tutStep++; this._showTutStep(STEPS); });
+  }
+
+  _clearTutObjs() {
+    if (this._tutTimer) { this._tutTimer.remove(); this._tutTimer = null; }
+    if (this._tutObjs && this._tutObjs.length) {
+      const tgts = this._tutObjs.filter(o => o.active);
+      if (tgts.length) {
+        this.tweens.add({ targets: tgts, alpha: 0, duration: 250,
+          onComplete: () => tgts.forEach(o => { if (o.active) o.destroy(); }) });
+      }
+      this._tutObjs = [];
+    }
+  }
+
+  _endTutorial() {
+    this._tutActive = false;
+    this._clearTutObjs();
   }
 
   // ── UPDATE ────────────────────────────────────────────────────
