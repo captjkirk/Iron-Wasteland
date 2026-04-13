@@ -6322,7 +6322,13 @@ class GameOverScene extends Phaser.Scene {
   create() {
     const { W, H } = CFG;
     this.cameras.main.fadeIn(600, 0, 0, 0);
-    const score = this._calcScore();
+    this._score      = this._calcScore();
+    this._nameSaved  = false;
+    this._htmlInp    = null;
+    this._defaultName = this.p2Name ? this.p1Name + ' & ' + this.p2Name : this.p1Name;
+
+    // Clean up HTML input if scene is stopped by any means (back button, etc.)
+    this.events.on('shutdown', () => this._cleanupInput());
 
     // Background
     const bg = this.add.graphics();
@@ -6346,17 +6352,16 @@ class GameOverScene extends Phaser.Scene {
 
     const mins = Math.floor(this.timeAlive / 60), secs = Math.floor(this.timeAlive % 60);
     const timeStr = mins > 0 ? mins + 'm ' + secs + 's' : secs + 's';
-    const names = this.p2Name ? this.p1Name + ' & ' + this.p2Name : this.p1Name;
     const modeLabel = (this.mode===1?'1P':'2P') + ' ' + (this.difficulty==='hardcore'?'HARDCORE':'SURVIVAL');
 
     const rows = [
-      ['Survivors',       names,                          '#aabbcc'],
-      ['Mode',            modeLabel,                      '#8899aa'],
-      ['Days survived',   'Day ' + this.days,             '#ffee44'],
-      ['Time alive',      timeStr,                        '#cccccc'],
-      ['Enemies killed',  this.kills + ' kills',          '#ff8844'],
-      ['Resources found', this.resources + ' items',      '#88cc66'],
-      ['Boss defeated',   this.bossDefeated ? 'YES +500':'No',  this.bossDefeated?'#ffdd44':'#556666'],
+      ['Survivors',       this._defaultName,                        '#aabbcc'],
+      ['Mode',            modeLabel,                                '#8899aa'],
+      ['Days survived',   'Day ' + this.days,                       '#ffee44'],
+      ['Time alive',      timeStr,                                  '#cccccc'],
+      ['Enemies killed',  this.kills + ' kills',                    '#ff8844'],
+      ['Resources found', this.resources + ' items',                '#88cc66'],
+      ['Boss defeated',   this.bossDefeated ? 'YES +500' : 'No',   this.bossDefeated ? '#ffdd44' : '#556666'],
     ];
     rows.forEach(([label, val, col], i) => {
       const y = panelY + 18 + i * 26;
@@ -6365,32 +6370,45 @@ class GameOverScene extends Phaser.Scene {
     });
 
     // Total score
-    this.add.text(W/2, panelY + panelH + 18, 'SCORE   ' + score.toLocaleString(), {
+    this.add.text(W/2, panelY + panelH + 18, 'SCORE   ' + this._score.toLocaleString(), {
       fontFamily:'monospace', fontSize:'32px', color:'#ffdd44',
       stroke:'#000', strokeThickness:4,
     }).setOrigin(0.5);
 
-    // ── Local leaderboard ──────────────────────────────────
-    const lb = this._loadLeaderboard();
-    const isHighScore = lb.length < 5 || score > lb[lb.length-1].score;
+    // ── Name entry section ─────────────────────────────────
+    //   Layout (H=720): score total ~376, label ~414, input ~436, save btn ~472,
+    //   leaderboard reveals from ~492, nav buttons at 636 (H-84).
+    const nameAreaY = panelY + panelH + 56;  // 414
+    this.add.text(W/2, nameAreaY, 'ENTER YOUR NAME', {
+      fontFamily:'monospace', fontSize:'11px', color:'#778899',
+    }).setOrigin(0.5);
 
-    if (isHighScore) {
-      this._saveScore(lb, score);
-      this.add.text(W/2, panelY + panelH + 62, '★  NEW HIGH SCORE  ★', {
-        fontFamily:'monospace', fontSize:'16px', color:'#ffcc22',
-      }).setOrigin(0.5);
-    }
+    // HTML <input> overlaid on the Phaser canvas at game-space position
+    this._htmlInp = this._createNameInput(this._defaultName, nameAreaY + 22);
 
-    // Top 5 board
-    const lbX = W/2 + 10, lbY = panelY + panelH + 86;
-    this.add.text(lbX - 200, lbY - 2, 'TOP SCORES', { fontFamily:'monospace', fontSize:'11px', color:'#445566' });
-    this._loadLeaderboard().slice(0,5).forEach((entry, i) => {
-      const col = i === 0 ? '#ffdd44' : '#778899';
-      const txt = (i+1) + '.  ' + entry.name.padEnd(14) + entry.score.toLocaleString() + '  Day ' + entry.days;
-      this.add.text(lbX - 200, lbY + 16 + i*18, txt, { fontFamily:'monospace', fontSize:'11px', color:col });
-    });
+    // SAVE button
+    const saveY = nameAreaY + 58;   // 472
+    this._saveBg  = this.add.graphics();
+    this._saveTxt = this.add.text(W/2, saveY + 1, 'SAVE SCORE  \u21b5', {
+      fontFamily:'monospace', fontSize:'13px', color:'#aaffaa', stroke:'#000', strokeThickness:2,
+    }).setOrigin(0.5);
+    const _drawSave = (hl) => {
+      this._saveBg.clear();
+      this._saveBg.fillStyle(hl ? 0x113311 : 0x001a00, 0.9);
+      this._saveBg.fillRoundedRect(W/2 - 90, saveY - 14, 180, 30, 8);
+      this._saveBg.lineStyle(2, hl ? 0x66cc66 : 0x44aa44, 0.9);
+      this._saveBg.strokeRoundedRect(W/2 - 90, saveY - 14, 180, 30, 8);
+    };
+    _drawSave(false);
+    this._saveZone = this.add.zone(W/2, saveY, 180, 30).setInteractive({ useHandCursor: true });
+    this._saveZone.on('pointerover',  () => { _drawSave(true);  this._saveTxt.setColor('#ffffff'); });
+    this._saveZone.on('pointerout',   () => { _drawSave(false); this._saveTxt.setColor('#aaffaa'); });
+    this._saveZone.on('pointerdown',  () => this._onNameSubmit());
 
-    // ── Navigation buttons — tappable for touch, keyboard shortcuts too ──
+    // Y anchor for leaderboard — revealed by _onNameSubmit after save btn hides
+    this._postSaveY = saveY + 20;   // 492
+
+    // ── Navigation buttons — always visible ──────────────
     const makeBtn = (x, label, sublabel, col, borderCol, action) => {
       const g = this.add.graphics();
       g.fillStyle(0x110000, 0.9); g.fillRoundedRect(x - 140, H - 84, 280, 64, 10);
@@ -6413,32 +6431,144 @@ class GameOverScene extends Phaser.Scene {
     makeBtn(W/2 + 165, '\u2302  MAIN MENU',  'ESC', '#aaccff', 0x4466aa, () => this.goMenu());
 
     const K = Phaser.Input.Keyboard.KeyCodes;
-    const keys = this.input.keyboard.addKeys({ enter:K.ENTER, space:K.SPACE, esc:K.ESC });
-    keys.enter.on('down', () => this.restart());
-    keys.space.on('down', () => this.restart());
-    keys.esc.on('down',   () => this.goMenu());
+    this._keys = this.input.keyboard.addKeys({ enter:K.ENTER, space:K.SPACE, esc:K.ESC });
+    this._keys.enter.on('down', () => {
+      // Ignore if the HTML input currently has focus (its own keydown handler handles it)
+      if (this._htmlInp && document.activeElement === this._htmlInp) return;
+      if (!this._nameSaved) this._onNameSubmit();
+      else this.restart();
+    });
+    this._keys.space.on('down', () => { if (this._nameSaved) this.restart(); });
+    this._keys.esc.on('down',   () => this.goMenu());
+  }
+
+  // Create an HTML <input> element positioned over the Phaser canvas at game-space y.
+  _createNameInput(defaultName, gameY) {
+    const canvas = this.game.canvas;
+    const rect   = canvas.getBoundingClientRect();
+    const sx = rect.width  / CFG.W;
+    const sy = rect.height / CFG.H;
+
+    const inp = document.createElement('input');
+    inp.type      = 'text';
+    inp.value     = defaultName;
+    inp.maxLength = 28;
+    inp.style.cssText = [
+      'position:fixed',
+      `left:${Math.round(rect.left + (CFG.W / 2 - 130) * sx)}px`,
+      `top:${Math.round(rect.top  + gameY * sy)}px`,
+      `width:${Math.round(260 * sx)}px`,
+      `height:${Math.round(30 * sy)}px`,
+      'background:#1a0808',
+      'border:2px solid #885533',
+      'color:#ffcc88',
+      'font-family:monospace',
+      `font-size:${Math.round(14 * Math.min(sx, sy))}px`,
+      'text-align:center',
+      'padding:2px 8px',
+      'box-sizing:border-box',
+      'z-index:9999',
+      'outline:none',
+      'border-radius:4px',
+    ].join(';');
+
+    // Enter in the HTML input saves the score; stopPropagation prevents Phaser
+    // from also seeing the keydown and immediately triggering restart().
+    inp.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') { e.preventDefault(); e.stopPropagation(); this._onNameSubmit(); }
+    });
+
+    document.body.appendChild(inp);
+    // Brief delay so Phaser's own focus-management doesn't steal it
+    this.time.delayedCall(120, () => { if (inp.parentNode) { inp.focus(); inp.select(); } });
+    return inp;
+  }
+
+  // Called when SAVE is clicked / Enter pressed in input / player navigates away.
+  _onNameSubmit() {
+    if (this._nameSaved) return;
+    this._nameSaved = true;
+
+    const name = (this._htmlInp ? this._htmlInp.value.trim() : '') || this._defaultName || 'Player';
+    this._cleanupInput();
+
+    // Swap save button text to a quick confirmation, then reveal leaderboard
+    if (this._saveTxt) this._saveTxt.setText('\u2713  ' + name).setColor('#66ee66');
+    if (this._saveZone) this._saveZone.disableInteractive();
+
+    // Persist to localStorage
+    const lb = this._loadLeaderboard();
+    const isHighScore = lb.length < 5 || this._score > (lb[lb.length - 1]?.score ?? -1);
+    lb.push({ name, score: this._score, days: this.days, time: Math.floor(this.timeAlive) });
+    lb.sort((a, b) => b.score - a.score);
+    lb.splice(10);
+    try { localStorage.setItem('iw_scores', JSON.stringify(lb)); } catch(e) {}
+
+    // After short delay, hide save button and show leaderboard
+    this.time.delayedCall(700, () => {
+      if (this._saveBg)  this._saveBg.setVisible(false);
+      if (this._saveTxt) this._saveTxt.setVisible(false);
+      this._showLeaderboard(isHighScore);
+    });
+  }
+
+  // Render TOP SCORES after save.  Fits between postSaveY (492) and buttons (636).
+  _showLeaderboard(isHighScore) {
+    const { W } = CFG;
+    let y = this._postSaveY;
+
+    if (isHighScore) {
+      this.add.text(W/2, y, '\u2605  NEW HIGH SCORE  \u2605', {
+        fontFamily:'monospace', fontSize:'14px', color:'#ffcc22',
+      }).setOrigin(0.5);
+      y += 22;
+    }
+
+    this.add.text(W/2 - 200, y, 'TOP SCORES', {
+      fontFamily:'monospace', fontSize:'10px', color:'#445566',
+    });
+    y += 16;
+    this._loadLeaderboard().slice(0, 5).forEach((entry, i) => {
+      const col = i === 0 ? '#ffdd44' : '#778899';
+      const txt = (i + 1) + '.  ' + entry.name.padEnd(14) + entry.score.toLocaleString() + '  Day ' + entry.days;
+      this.add.text(W/2 - 200, y + i * 14, txt, { fontFamily:'monospace', fontSize:'10px', color: col });
+    });
+  }
+
+  _cleanupInput() {
+    if (this._htmlInp) {
+      try { document.body.removeChild(this._htmlInp); } catch(e) {}
+      this._htmlInp = null;
+    }
+  }
+
+  // Save silently (no leaderboard reveal) — used when player navigates away before saving.
+  _ensureSaved() {
+    if (!this._nameSaved) {
+      this._nameSaved = true;
+      const name = (this._htmlInp ? this._htmlInp.value.trim() : '') || this._defaultName || 'Player';
+      const lb = this._loadLeaderboard();
+      lb.push({ name, score: this._score, days: this.days, time: Math.floor(this.timeAlive) });
+      lb.sort((a, b) => b.score - a.score);
+      lb.splice(10);
+      try { localStorage.setItem('iw_scores', JSON.stringify(lb)); } catch(e) {}
+    }
   }
 
   _loadLeaderboard() {
-    try {
-      return JSON.parse(localStorage.getItem('iw_scores') || '[]');
-    } catch(e) { return []; }
-  }
-
-  _saveScore(lb, score) {
-    const names = this.p2Name ? this.p1Name + '/' + this.p2Name : this.p1Name;
-    lb.push({ name: names, score, days: this.days, time: Math.floor(this.timeAlive) });
-    lb.sort((a,b) => b.score - a.score);
-    lb.splice(10); // keep top 10
-    try { localStorage.setItem('iw_scores', JSON.stringify(lb)); } catch(e) {}
+    try { return JSON.parse(localStorage.getItem('iw_scores') || '[]'); } catch(e) { return []; }
   }
 
   restart() {
+    this._ensureSaved();
+    this._cleanupInput();
     this.cameras.main.fadeOut(300, 0, 0, 0);
     this.time.delayedCall(300, () => this.scene.start('CharSelect'));
   }
 
   goMenu() {
+    this._ensureSaved();
+    this._cleanupInput();
     this.cameras.main.fadeOut(300, 0, 0, 0);
     this.time.delayedCall(300, () => this.scene.start('ModeSelect'));
   }
