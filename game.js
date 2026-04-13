@@ -2395,6 +2395,63 @@ class GameScene extends Phaser.Scene {
       this._w(this.add.image(tx*TILE, ty*TILE, variant).setOrigin(0).setDepth(1).setAlpha(0.65));
     }
 
+    // ── PRE-COMPUTE ALL POI POSITIONS ────────────────────────────────────────
+    // Must happen BEFORE trees, rocks, and mountains so that:
+    //  • placeTree / rock loops can skip tiles near any POI
+    //  • placeMtn's fjord algorithm leaves entrance gaps toward ALL POIs
+    // _preCacheTiles is the unified list read by placeMtn and the clearance pass.
+    {
+      const _prePickBiome = (biome, minDist, existing) => {
+        for (let att = 0; att < 120; att++) {
+          const tx = Phaser.Math.Between(12, CFG.MAP_W - 12);
+          const ty = Phaser.Math.Between(12, CFG.MAP_H - 12);
+          if (Math.abs(tx - stx) < minDist && Math.abs(ty - sty) < minDist) continue;
+          if (getBiome(tx, ty) !== biome) continue;
+          if (existing.some(p => Math.abs(p.tx - tx) < 10 && Math.abs(p.ty - ty) < 10)) continue;
+          return { tx, ty, gapAngle: Math.atan2(sty - ty, stx - tx) };
+        }
+        return null;
+      };
+
+      this._preCacheTiles = []; // unified fjord-protection + clearance list
+
+      // Supply caches (one per outer biome)
+      this._preCacheTiles_caches = [];
+      for (const biome of ['waste', 'swamp', 'tundra', 'ruins']) {
+        const pt = _prePickBiome(biome, SAFE_R + 10, this._preCacheTiles);
+        if (pt) { this._preCacheTiles_caches.push(pt); this._preCacheTiles.push(pt); }
+      }
+
+      // Enemy dens (one per outer biome)
+      this._preDenTiles = [];
+      for (const biome of ['waste', 'swamp', 'tundra']) {
+        const pt = _prePickBiome(biome, SAFE_R + 10, this._preCacheTiles);
+        if (pt) { this._preDenTiles.push(pt); this._preCacheTiles.push(pt); }
+      }
+
+      // Radio tower (ruins biome)
+      const _towerPt = _prePickBiome('ruins', SAFE_R + 10, this._preCacheTiles);
+      this._preTowerTile = _towerPt || null;
+      if (_towerPt) this._preCacheTiles.push(_towerPt);
+
+      // Campsites (grass + waste)
+      this._preCampsiteTiles = [];
+      for (const biome of ['grass', 'waste']) {
+        const pt = _prePickBiome(biome, SAFE_R + 8, this._preCacheTiles);
+        if (pt) { this._preCampsiteTiles.push(pt); this._preCacheTiles.push(pt); }
+      }
+
+      // Biome structures (up to 2 per biome)
+      this._preStructureTiles = {};
+      for (const biome of ['grass', 'tundra', 'swamp', 'waste']) {
+        this._preStructureTiles[biome] = [];
+        for (let i = 0; i < 2; i++) {
+          const pt = _prePickBiome(biome, SAFE_R + 12, this._preCacheTiles);
+          if (pt) { this._preStructureTiles[biome].push(pt); this._preCacheTiles.push(pt); }
+        }
+      }
+    }
+
     this.obstacles = this.physics.add.staticGroup();
     this.toxicPools = []; // for swamp damage
 
@@ -2404,6 +2461,8 @@ class GameScene extends Phaser.Scene {
       if (tx < 2 || tx > CFG.MAP_W-2 || ty < 2 || ty > CFG.MAP_H-2) return;
       if (Math.abs(tx-stx) < SAFE_R+3 && Math.abs(ty-sty) < SAFE_R+3) return;
       if (treesPlaced.some(p => Math.abs(p.tx-tx) <= 1 && Math.abs(p.ty-ty) <= 1)) return;
+      // Don't plant trees within 4 tiles of any pre-computed POI
+      if (this._preCacheTiles && this._preCacheTiles.some(p => Math.abs(p.tx-tx) <= 4 && Math.abs(p.ty-ty) <= 4)) return;
       let treeKey = 'tree';
       if (biome === 'waste') treeKey = 'tree_dead';
       else if (biome === 'tundra') treeKey = 'tree_snow';
@@ -2472,6 +2531,7 @@ class GameScene extends Phaser.Scene {
     for (let i = 0; i < CFG.ROCKS; i++) {
       const tx = Phaser.Math.Between(1, CFG.MAP_W-2), ty = Phaser.Math.Between(1, CFG.MAP_H-2);
       if (Math.abs(tx-stx)<SAFE_R && Math.abs(ty-sty)<SAFE_R) continue;
+      if (this._preCacheTiles && this._preCacheTiles.some(p => Math.abs(p.tx-tx) <= 4 && Math.abs(p.ty-ty) <= 4)) continue;
       const biome = getBiome(tx, ty);
       const rockKey = biome === 'tundra' ? 'ice_rock' : 'rock';
       const sc = Phaser.Math.FloatBetween(0.4, 3.5);
@@ -2486,6 +2546,7 @@ class GameScene extends Phaser.Scene {
     for (let i = 0; i < 60; i++) {
       const tx = Phaser.Math.Between(1, CFG.MAP_W-2), ty = Phaser.Math.Between(1, CFG.MAP_H-2);
       if (getBiome(tx, ty) !== 'waste') continue;
+      if (this._preCacheTiles && this._preCacheTiles.some(p => Math.abs(p.tx-tx) <= 4 && Math.abs(p.ty-ty) <= 4)) continue;
       const sc = Phaser.Math.FloatBetween(0.3, 2.0);
       const r = this.obstacles.create(tx*TILE+11, ty*TILE+8, 'rock');
       r.setScale(sc).setDepth(5 + ty*0.01).setImmovable(true);
@@ -2543,22 +2604,7 @@ class GameScene extends Phaser.Scene {
       this.toxicPools.push(pool);
     }
 
-    // Pre-compute supply cache positions — must happen BEFORE mountain placement
-    // so that placeMtn can leave fjord-style entrance gaps around each cache
-    this._preCacheTiles = [];
-    for (const biome of ['waste', 'swamp', 'tundra', 'ruins']) {
-      for (let att = 0; att < 80; att++) {
-        const tx = Phaser.Math.Between(12, CFG.MAP_W - 12);
-        const ty = Phaser.Math.Between(12, CFG.MAP_H - 12);
-        if (Math.abs(tx - stx) < SAFE_R + 10 && Math.abs(ty - sty) < SAFE_R + 10) continue;
-        if (getBiome(tx, ty) === biome) {
-          // Entrance gap faces toward map center (players approach from there)
-          const gapAngle = Math.atan2(sty - ty, stx - tx);
-          this._preCacheTiles.push({ tx, ty, gapAngle });
-          break;
-        }
-      }
-    }
+    // _preCacheTiles already populated above (all POI positions, before tree/rock placement)
 
     // Mountain ranges — impassable ridgelines with walkable gaps
     this.mountainTiles = [];
@@ -2701,9 +2747,12 @@ class GameScene extends Phaser.Scene {
     this.pois = [];
     this.buildPOIs(stx, sty, TILE);
 
-    // Clear trees and rocks that landed on top of supply cache positions.
-    // Mountains are excluded — the fjord algorithm already handles their entrance gaps.
-    // Ruin/structure walls are also excluded (part of intentional layout).
+    // ── BIOME STRUCTURES ─────────────────────────────────────
+    this.buildBiomeStructures(stx, sty, TILE);
+
+    // Clear trees and rocks near ALL pre-computed POI positions.
+    // Runs after buildBiomeStructures so structure wall tiles are never destroyed.
+    // Mountains excluded — fjord algorithm already handles their entrance gaps.
     if (this._preCacheTiles && this.obstacles) {
       const CLEAR_R = 80;
       const ROCK_KEYS = new Set(['rock', 'rock2', 'ice_rock']);
@@ -2717,9 +2766,6 @@ class GameScene extends Phaser.Scene {
         }
       });
     }
-
-    // ── BIOME STRUCTURES ─────────────────────────────────────
-    this.buildBiomeStructures(stx, sty, TILE);
 
     // Night overlay
     this.nightOverlay = this._w(this.add.graphics().setDepth(49));
@@ -2747,9 +2793,9 @@ class GameScene extends Phaser.Scene {
       return { tx: Phaser.Math.Between(20, MAP_W - 20), ty: Phaser.Math.Between(20, MAP_H - 20) };
     };
 
-    // Supply Caches — use pre-computed positions (set before mountains to guarantee fjord approach)
-    const cachePositions = (this._preCacheTiles && this._preCacheTiles.length)
-      ? this._preCacheTiles
+    // Supply Caches — use pre-computed positions (fjord + tree-clear guaranteed)
+    const cachePositions = (this._preCacheTiles_caches && this._preCacheTiles_caches.length)
+      ? this._preCacheTiles_caches
       : ['waste', 'swamp', 'tundra', 'ruins'].map(b => findInBiome(b, 50));
     for (let i = 0; i < cachePositions.length; i++) {
       const pos = cachePositions[i];
@@ -2772,11 +2818,12 @@ class GameScene extends Phaser.Scene {
       this.pois.push({ type:'cache', tx:pos.tx, ty:pos.ty, spr });
     }
 
-    // Enemy Dens (3 across map)
+    // Enemy Dens — use pre-computed positions (fjord-protected + tree-clear)
     this.enemyDens = [];
-    for (let i = 0; i < 3; i++) {
-      const biomes = ['waste', 'swamp', 'tundra'];
-      const pos = findInBiome(biomes[i % biomes.length], 50);
+    const denPositions = (this._preDenTiles && this._preDenTiles.length)
+      ? this._preDenTiles
+      : ['waste', 'swamp', 'tundra'].map(b => findInBiome(b, 50));
+    for (const pos of denPositions) {
       const px = pos.tx * TILE, py = pos.ty * TILE;
       const spr = this._w(this.add.image(px, py, 'enemy_den').setScale(2).setDepth(5));
       const lbl = this._w(this.add.text(px, py - 24, 'ENEMY DEN', {
@@ -2786,9 +2833,9 @@ class GameScene extends Phaser.Scene {
       this.pois.push({ type:'den', tx:pos.tx, ty:pos.ty, spr });
     }
 
-    // Old Radio Tower (1, in ruins biome)
+    // Radio Tower (1, in ruins biome) — use pre-computed position
     {
-      const pos = findInBiome('ruins', 80);
+      const pos = this._preTowerTile || findInBiome('ruins', 80);
       const px = pos.tx * TILE, py = pos.ty * TILE;
       const spr = this._w(this.add.image(px, py, 'radio_tower').setScale(2).setDepth(6));
       const lbl = this._w(this.add.text(px, py - 52, 'RADIO TOWER', {
@@ -2802,11 +2849,12 @@ class GameScene extends Phaser.Scene {
       this.pois.push({ type:'tower', tx:pos.tx, ty:pos.ty, spr });
     }
 
-    // Campsites (2 across map)
+    // Campsites — use pre-computed positions (fjord-protected + tree-clear)
     this.campsites = [];
-    for (let i = 0; i < 2; i++) {
-      const biomes = ['grass', 'waste'];
-      const pos = findInBiome(biomes[i], 50);
+    const campsitePositions = (this._preCampsiteTiles && this._preCampsiteTiles.length)
+      ? this._preCampsiteTiles
+      : ['grass', 'waste'].map(b => findInBiome(b, 50));
+    for (const pos of campsitePositions) {
       const px = pos.tx * TILE, py = pos.ty * TILE;
       const spr = this._w(this.add.image(px, py, 'campsite').setScale(2).setDepth(5));
       const lbl = this._w(this.add.text(px, py - 28, 'CAMPSITE', {
@@ -2978,15 +3026,21 @@ class GameScene extends Phaser.Scene {
     ];
 
     for (const { biome, wallKey, floorKey, label } of biomeConfig) {
-      let placed = 0;
-      for (let att = 0; att < 120 && placed < 2; att++) {
-        const cx = Phaser.Math.Between(12, MAP_W - 12);
-        const cy = Phaser.Math.Between(12, MAP_H - 12);
-        if (getBiome(cx, cy) !== biome) continue;
-        if (Math.abs(cx - stx) < SAFE_R + 12 && Math.abs(cy - sty) < SAFE_R + 12) continue;
-        // Don't overlap existing POI markers (rough check)
-        if (this.pois.some(p => Math.abs(p.tx - cx) < 10 && Math.abs(p.ty - cy) < 10)) continue;
-
+      // Use pre-computed positions (fjord-protected + tree-clear guaranteed).
+      // Fall back to random if pre-computation returned nothing for this biome.
+      const _prePos = (this._preStructureTiles && this._preStructureTiles[biome]) || [];
+      const _positions = _prePos.length ? _prePos : (() => {
+        const fb = [];
+        for (let att = 0; att < 120 && fb.length < 2; att++) {
+          const tx = Phaser.Math.Between(12, MAP_W - 12), ty = Phaser.Math.Between(12, MAP_H - 12);
+          if (getBiome(tx, ty) !== biome) continue;
+          if (Math.abs(tx - stx) < SAFE_R + 12 && Math.abs(ty - sty) < SAFE_R + 12) continue;
+          fb.push({ tx, ty });
+        }
+        return fb;
+      })();
+      for (const pos of _positions) {
+        const cx = pos.tx, cy = pos.ty;
         const x0 = cx - Math.floor(W / 2);
         const y0 = cy - Math.floor(H / 2);
 
@@ -3043,7 +3097,6 @@ class GameScene extends Phaser.Scene {
 
         // Record for enemy spawning
         this._structureLocs.push({ x: cx * TILE, y: cy * TILE, biome });
-        placed++;
       }
     }
   }
