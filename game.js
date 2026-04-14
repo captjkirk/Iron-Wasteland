@@ -4244,6 +4244,11 @@ class GameScene extends Phaser.Scene {
   triggerGameOver(reason) {
     if (this.isOver) return;
     this.isOver = true;
+    // Close controls overlay if it was open when game ended
+    if (this.controlsVis && this.ctrlObjs) {
+      this.ctrlObjs.forEach(o => o.setVisible(false));
+      this.controlsVis = false;
+    }
 
     this.p1.spr.setVelocity(0, 0);
     if (this.p2) this.p2.spr.setVelocity(0, 0);
