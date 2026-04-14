@@ -6,7 +6,7 @@
 
 // ── VERSION ───────────────────────────────────────────────────
 // Update this each commit so the title screen reflects the build date.
-const VERSION = 'Apr 14, 2026  06:23 PM EST';
+const VERSION = 'Apr 14, 2026  06:33 PM EST';
 
 // ── CONSTANTS ─────────────────────────────────────────────────
 // Detect mobile/phone: touch device with a small screen.
@@ -5332,11 +5332,13 @@ class GameScene extends Phaser.Scene {
         spr.body.setSize(t.w, t.h);
         if (this.hudCam) this.hudCam.ignore(spr);
         this.physics.add.collider(spr, this.obstacles);
-        const hp = Math.floor(t.hp * sizeMult);
-        const dmg = Math.max(1, Math.floor(t.dmg * sizeMult));
-        const spd = t.speed * (sizeMult < 0.85 ? 1.3 : sizeMult > 1.2 ? 0.8 : 1);
+        const D = this._diffMult();
+        const hp  = Math.floor(t.hp  * sizeMult * D);
+        const dmg = Math.max(1, Math.floor(t.dmg * sizeMult * D));
+        const spd = t.speed * D * (sizeMult < 0.85 ? 1.3 : sizeMult > 1.2 ? 0.8 : 1);
+        const atkInterval = Math.max(500, Math.round(({ wolf:1600, rat:1200, bear:2400 }[type] || 1400) / D));
         const denBaseAggro = { wolf: 190, rat: 110, bear: 290 }[type] || 160;
-        const e = { spr, hp, maxHp:hp, speed:spd, dmg, type, attackTimer:0, wanderTimer:0, aggroRange:denBaseAggro, attackRange:30*sizeMult, sizeMult };
+        const e = { spr, hp, maxHp:hp, speed:spd, dmg, atkInterval, type, attackTimer:0, wanderTimer:0, aggroRange:denBaseAggro, attackRange:30*sizeMult, sizeMult };
         this.enemies.push(e);
       }
     });
@@ -5903,8 +5905,18 @@ class GameScene extends Phaser.Scene {
     }
   }
 
+  // Day-based difficulty multiplier.
+  // Day 1 = 1.0× (base tuned values). Grows 10% per day, caps at 3.0× on day 21+.
+  // Applies to enemy HP, damage, speed, and attack rate at spawn time.
+  _diffMult() {
+    return Math.min(3.0, 1 + (this.dayNum - 1) * 0.1);
+  }
+
   _spawnGroup(worldW, worldH, cx, cy, counts, fromEdges) {
     const { TILE, SAFE_R } = CFG;
+    const D = this._diffMult();
+    // Base attack intervals (ms) — divided by D so enemies attack faster on later days
+    const baseAtkInterval = { wolf: 1600, rat: 1200, bear: 2400 };
     const types = [
       { key:'wolf', hp:60,  speed:75,  dmg:6,  baseScale:1.8, w:20, h:12 },
       { key:'rat',  hp:30,  speed:105, dmg:4,  baseScale:1.4, w:15, h:9  },
@@ -5930,9 +5942,10 @@ class GameScene extends Phaser.Scene {
         // Size variance: 1.0x to 1.5x — floor raised so enemies are never too small to see
         const sizeMult = Phaser.Math.FloatBetween(1.0, 1.5);
         const sc = t.baseScale * sizeMult;
-        const hp = Math.floor(t.hp * sizeMult);
-        const dmg = Math.max(1, Math.floor(t.dmg * sizeMult));
-        const spd = t.speed * (sizeMult < 0.85 ? 1.3 : sizeMult > 1.2 ? 0.8 : 1);
+        const hp  = Math.floor(t.hp    * sizeMult * D);
+        const dmg = Math.max(1, Math.floor(t.dmg  * sizeMult * D));
+        const spd = t.speed * D * (sizeMult < 0.85 ? 1.3 : sizeMult > 1.2 ? 0.8 : 1);
+        const atkInterval = Math.max(500, Math.round(baseAtkInterval[t.key] / D));
         const spr = this.physics.add.image(ex, ey, t.key).setScale(sc).setDepth(8);
         spr.setCollideWorldBounds(true);
         spr.body.setSize(t.w, t.h);
@@ -5942,7 +5955,7 @@ class GameScene extends Phaser.Scene {
         const baseAggro = { wolf: 190, rat: 110, bear: 290 }[t.key] || 160;
         const aggroR = baseAggro * (sizeMult > 1.2 ? 1.2 : 1);
         const atkR = (30 + t.w/2) * sizeMult;
-        const e = { spr, hp, maxHp:hp, speed:spd, dmg, type:t.key, attackTimer:0, wanderTimer:Phaser.Math.Between(0,2000), aggroRange:aggroR, attackRange:atkR, sizeMult };
+        const e = { spr, hp, maxHp:hp, speed:spd, dmg, atkInterval, type:t.key, attackTimer:0, wanderTimer:Phaser.Math.Between(0,2000), aggroRange:aggroR, attackRange:atkR, sizeMult };
         this.enemies.push(e);
       }
     });
@@ -5958,7 +5971,7 @@ class GameScene extends Phaser.Scene {
       const r = Math.min(8 + this.waveNum * 3, 30);
       const b = Math.min(1 + this.waveNum, 8);
       this._spawnGroup(this.enemyWorldW, this.enemyWorldH, this.enemyCX, this.enemyCY, { wolf:w, rat:r, bear:b }, true);
-      this._log('Wave ' + (this.waveNum+1) + ' spawned  wolves=' + w + ' rats=' + r + ' bears=' + b);
+      this._log('Wave ' + (this.waveNum+1) + ' day=' + this.dayNum + ' diff=' + this._diffMult().toFixed(1) + 'x  w=' + w + ' r=' + r + ' b=' + b);
       this.hint('Wave ' + (this.waveNum+1) + '! Enemies approaching from the wastes!', 3000);
       SFX._play(200, 'sawtooth', 0.3, 0.4, 'drop');
     }
@@ -6245,7 +6258,7 @@ class GameScene extends Phaser.Scene {
             if (nearest.isSleeping) { this.wakePlayer(nearest); this.hint(nearest.charData.player + ' woke up!', 1500); }
             nearest.spr.setTint(0xff0000);
             this.time.delayedCall(150, () => { if(nearest.spr.active) nearest.spr.clearTint(); });
-            e.attackTimer = e.type==='bear' ? 2400 : e.type==='wolf' ? 1600 : 1200;
+            e.attackTimer = e.atkInterval || (e.type==='bear' ? 2400 : e.type==='wolf' ? 1600 : 1200);
             this.checkDeaths();
           }
         }
