@@ -2569,31 +2569,36 @@ class CharSelectScene extends Phaser.Scene {
 
     this.add.graphics().fillStyle(0x0a0a14).fillRect(0, 0, W, H);
 
+    // Scale the entire card layout proportionally so it fits any canvas size
+    // (desktop 1280×720 → S=1.0; mobile 640×360 → S=0.5)
+    const S = this._S = Math.min(W / 1280, H / 720);
     const modeLabel = STATE.difficulty === 'hardcore' ? '  ☠ HARDCORE' : '  ♥ SURVIVAL';
     this.add.text(W/2, 34, 'SELECT YOUR SURVIVOR' + (this.solo ? '' : 'S') + modeLabel, {
-      fontFamily:'monospace', fontSize:'24px', color: STATE.difficulty === 'hardcore' ? '#ff6644' : '#cc8833',
+      fontFamily:'monospace', fontSize: Math.max(14, Math.round(24*S)) + 'px',
+      color: STATE.difficulty === 'hardcore' ? '#ff6644' : '#cc8833',
       stroke:'#000', strokeThickness:3,
     }).setOrigin(0.5);
 
     const hint = this.solo ? 'Click a character  —  or  A/D to pick, F to confirm'
                            : 'Click to pick   |   P1: A/D + F   |   P2: Arrows + /';
     this.add.text(W/2, 66, hint, {
-      fontFamily:'monospace', fontSize:'13px', color:'#555566',
+      fontFamily:'monospace', fontSize: Math.max(9, Math.round(13*S)) + 'px', color:'#555566',
     }).setOrigin(0.5);
 
-    const cardW = 252, cardH = 370;
-    const startX = W/2 - (CHARS.length-1) * ((cardW+18)/2);
-    this.cards = CHARS.map((ch, i) => this.buildCard(ch, startX + i*(cardW+18), H/2+28, cardW, cardH));
+    const cardW = Math.round(252 * S), cardH = Math.round(370 * S);
+    const gap = Math.round(18 * S);
+    const startX = W/2 - (CHARS.length-1) * ((cardW+gap)/2);
+    this.cards = CHARS.map((ch, i) => this.buildCard(ch, startX + i*(cardW+gap), H/2+Math.round(28*S), cardW, cardH, S));
 
     this.statusText = this.add.text(W/2, H-36, '', {
-      fontFamily:'monospace', fontSize:'14px', color:'#aaaaaa',
+      fontFamily:'monospace', fontSize: Math.max(10, Math.round(14*S)) + 'px', color:'#aaaaaa',
     }).setOrigin(0.5);
 
     // Tutorial toggle checkbox — bottom-center, unobtrusive
     const _tutOn = loadSettings().tutorial !== false;
     this._charSelTutOn = _tutOn;
     this._tutCheckTxt = this.add.text(W/2, H - 64, '', {
-      fontFamily:'monospace', fontSize:'11px', color:'#557755',
+      fontFamily:'monospace', fontSize: Math.max(9, Math.round(11*S)) + 'px', color:'#557755',
       stroke:'#000', strokeThickness:1,
     }).setOrigin(0.5).setInteractive({ useHandCursor: true });
     this._tutCheckTxt.on('pointerover', () => this._tutCheckTxt.setStyle({ color:'#88cc88' }));
@@ -2624,51 +2629,53 @@ class CharSelectScene extends Phaser.Scene {
     this._tutCheckTxt.setText((on ? '[\u2714] ' : '[\u00a0\u00a0] ') + 'Show tutorial tips on first game');
   }
 
-  buildCard(ch, cx, cy, cW, cH) {
+  buildCard(ch, cx, cy, cW, cH, S=1) {
     const half = cW/2, hH = cH/2;
+    const sc = n => Math.round(n * S);
+    const fs = n => Math.max(8, Math.round(n * S)) + 'px';
     const bg = this.add.graphics();
     bg.fillStyle(0x12121e, 0.95);
     bg.fillRoundedRect(cx-half, cy-hH, cW, cH, 8);
 
-    const sprite = this.add.image(cx, cy-hH+60, ch.id).setScale(2.0);
-    const nameT = this.add.text(cx, cy-hH+130, ch.player, {
-      fontFamily:'monospace', fontSize:'21px',
+    const sprite = this.add.image(cx, cy-hH+sc(60), ch.id).setScale(2.0*S);
+    const nameT = this.add.text(cx, cy-hH+sc(130), ch.player, {
+      fontFamily:'monospace', fontSize:fs(21),
       color:'#'+ch.color.toString(16).padStart(6,'0'), stroke:'#000', strokeThickness:2,
     }).setOrigin(0.5);
-    this.add.text(cx, cy-hH+155, ch.title, {
-      fontFamily:'monospace', fontSize:'13px', color:'#777788',
+    this.add.text(cx, cy-hH+sc(155), ch.title, {
+      fontFamily:'monospace', fontSize:fs(13), color:'#777788',
     }).setOrigin(0.5);
 
     const statNames = ['HP','SPD','ATK','BLD'];
     ch.stats.forEach((val, si) => {
-      const sy = cy-hH+184+si*22;
-      this.add.text(cx-half+12, sy, statNames[si], { fontFamily:'monospace', fontSize:'11px', color:'#777788' });
+      const sy = cy-hH+sc(184+si*22);
+      this.add.text(cx-half+sc(12), sy, statNames[si], { fontFamily:'monospace', fontSize:fs(11), color:'#777788' });
       for (let b=0; b<5; b++) {
         const bar = this.add.graphics();
         bar.fillStyle(b<val ? ch.color : 0x222233);
-        bar.fillRect(cx-half+44+b*19, sy+1, 15, 11);
+        bar.fillRect(cx-half+sc(44)+b*sc(19), sy+1, sc(15), sc(11));
       }
     });
     ch.desc.forEach((line, li) => {
-      this.add.text(cx, cy+hH-82+li*22, line, {
-        fontFamily:'monospace', fontSize:'11px', color:'#888899',
+      this.add.text(cx, cy+hH-sc(82)+li*sc(22), line, {
+        fontFamily:'monospace', fontSize:fs(11), color:'#888899',
         wordWrap:{width:cW-16},
       }).setOrigin(0.5);
     });
 
     const p1b = this.add.graphics();
-    p1b.lineStyle(3, 0x4488ff);
+    p1b.lineStyle(Math.max(2, sc(3)), 0x4488ff);
     p1b.strokeRoundedRect(cx-half-4, cy-hH-4, cW+8, cH+8, 10);
 
     const p2b = this.add.graphics();
-    p2b.lineStyle(3, 0xff8844);
+    p2b.lineStyle(Math.max(2, sc(3)), 0xff8844);
     p2b.strokeRoundedRect(cx-half-8, cy-hH-8, cW+16, cH+16, 12);
 
-    const p1badge = this.add.text(cx, cy+hH-26, '✓ PLAYER 1', {
-      fontFamily:'monospace', fontSize:'13px', color:'#4488ff', stroke:'#000', strokeThickness:2,
+    const p1badge = this.add.text(cx, cy+hH-sc(26), '✓ PLAYER 1', {
+      fontFamily:'monospace', fontSize:fs(13), color:'#4488ff', stroke:'#000', strokeThickness:2,
     }).setOrigin(0.5);
-    const p2badge = this.add.text(cx, cy+hH-8, '✓ PLAYER 2', {
-      fontFamily:'monospace', fontSize:'13px', color:'#ff8844', stroke:'#000', strokeThickness:2,
+    const p2badge = this.add.text(cx, cy+hH-sc(8), '✓ PLAYER 2', {
+      fontFamily:'monospace', fontSize:fs(13), color:'#ff8844', stroke:'#000', strokeThickness:2,
     }).setOrigin(0.5);
 
     // Clickable hit zone over the whole card
@@ -2736,7 +2743,7 @@ class CharSelectScene extends Phaser.Scene {
       const p2s = this.p1Done && !this.p2Done && i===this.p2Idx, p2l = this.p2Done && i===this.p2Idx;
       c.p1b.setVisible(p1s||p1l); c.p2b.setVisible(p2s||p2l);
       c.p1badge.setVisible(p1l);  c.p2badge.setVisible(p2l);
-      c.sprite.setScale(p1s||p1l||p2s||p2l ? 4.5 : 4.0);
+      c.sprite.setScale((p1s||p1l||p2s||p2l ? 4.5 : 4.0) * this._S);
     });
     if (!this.p1Done) this.statusText.setText('Player 1 — A/D to choose, F to confirm');
   }
