@@ -4,6 +4,10 @@
 // ============================================================
 'use strict';
 
+// ── VERSION ───────────────────────────────────────────────────
+// Update this each commit so the title screen reflects the build date.
+const VERSION = 'Apr 14, 2026  10:12 PM';
+
 // ── CONSTANTS ─────────────────────────────────────────────────
 // Detect mobile/phone: touch device with a small screen.
 // We halve the canvas resolution on phones so that sprites and HUD
@@ -2303,6 +2307,10 @@ class ModeSelectScene extends Phaser.Scene {
     this.add.text(W/2, H*0.93, 'Built for Hudson, Zachary & Jared', {
       fontFamily:'monospace', fontSize:'12px', color:'#334433',
     }).setOrigin(0.5);
+
+    this.add.text(W - 8, H - 8, 'Last updated ' + VERSION, {
+      fontFamily:'monospace', fontSize:'10px', color:'#2a3a2a',
+    }).setOrigin(1, 1);
 
     // Settings button — bottom left
     const settingsTxt = this.add.text(16, H - 16, '\u2699 Settings', {
