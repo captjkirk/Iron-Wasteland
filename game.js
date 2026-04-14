@@ -6,7 +6,7 @@
 
 // ── VERSION ───────────────────────────────────────────────────
 // Update this each commit so the title screen reflects the build date.
-const VERSION = 'Apr 14, 2026  10:17 PM';
+const VERSION = 'Apr 14, 2026  06:19 PM EST';
 
 // ── CONSTANTS ─────────────────────────────────────────────────
 // Detect mobile/phone: touch device with a small screen.
@@ -2879,6 +2879,12 @@ class GameScene extends Phaser.Scene {
     this.hotkeys.tab.on('down', () => { if (!this.barrackOpen && !this.craftMenuOpen && !this.isOver) this.toggleControls(); });
     this.hotkeys.esc.on('down', () => { this.closeBarrack(); if (this.controlsVis) this.toggleControls(); });
 
+    // Backtick/grave (`) toggles the debug event log
+    this.input.keyboard.addKey(192).on('down', () => {
+      this._dbgVisible = !this._dbgVisible;
+      if (this._dbgTxt) this._dbgTxt.setVisible(this._dbgVisible);
+    });
+
     // Barracks navigation keys
     this.bKeys = this.input.keyboard.addKeys({ L:K.A, R:K.D, La:K.LEFT, Ra:K.RIGHT, ok1:K.F, ok2:K.FORWARD_SLASH });
     this.bKeys.L.on('down',  () => { if (this.barrackOpen) this.barrackNav(-1); });
@@ -3949,6 +3955,16 @@ class GameScene extends Phaser.Scene {
 
     // Pre-render biome colors on minimap (static, done once)
     this._renderMinimapBase();
+
+    // ── DEBUG LOG (toggle with backtick `) ──────────────────────
+    this._dbgEntries = [];
+    this._dbgVisible = false;
+    this._dbgTxt = this._h(this.add.text(8, 28, '', {
+      fontFamily: 'monospace', fontSize: '10px', color: '#00ff88',
+      stroke: '#000', strokeThickness: 1,
+      backgroundColor: '#00000099',
+      padding: { x: 6, y: 4 },
+    }).setDepth(500).setVisible(false));
   }
 
   _renderMinimapBase() {
@@ -5284,6 +5300,7 @@ class GameScene extends Phaser.Scene {
       if (b.attackTimer <= 0) {
         b.attackTimer = b.atkInterval;
         nearest.hp = Math.max(0, nearest.hp - b.dmg);
+        this._log(nearest.charData.player + ' hit for ' + b.dmg + '  hp=' + nearest.hp + '/' + nearest.maxHp);
         SFX.playerHurt();
         nearest.spr.setTint(0xff0000);
         this.cameras.main.shake(300, 0.008);
@@ -5304,7 +5321,7 @@ class GameScene extends Phaser.Scene {
         den.respawnTimer = 0;
         const types = ['wolf','rat','rat'];
         const type = types[Phaser.Math.Between(0, types.length-1)];
-        const typeDef = { wolf:{hp:60,speed:90,dmg:8,baseScale:1.8,w:20,h:12}, rat:{hp:30,speed:130,dmg:5,baseScale:1.4,w:15,h:9} };
+        const typeDef = { wolf:{hp:60,speed:75,dmg:6,baseScale:1.8,w:20,h:12}, rat:{hp:30,speed:105,dmg:4,baseScale:1.4,w:15,h:9} };
         const t = typeDef[type];
         const sizeMult = Phaser.Math.FloatBetween(1.0, 1.3);
         const sc = t.baseScale * sizeMult;
@@ -5465,11 +5482,12 @@ class GameScene extends Phaser.Scene {
       }
       if (this.enemies) {
         this.enemies.forEach(e => {
-          if (e.hp <= 0) return;
+          if (e.dying) return;
           this.physics.add.overlap(blt, e.spr, () => {
-            if (!blt.active || e.hp <= 0) return; // e.hp guard: second in-flight bullet can't double-kill
+            if (!blt.active || e.dying) return; // dying guard: second in-flight bullet can't double-kill
             blt.destroy();
             e.hp -= 35;
+            this._log(e.type + ' shot  hp=' + e.hp + '/' + e.maxHp);
             SFX.hit();
             e.spr.setTint(0xff6644);
             this.time.delayedCall(100, () => { if (e.spr.active) e.spr.clearTint(); });
@@ -5506,11 +5524,12 @@ class GameScene extends Phaser.Scene {
     }
     if (this.enemies) {
       this.enemies.forEach(e => {
-        if (e.hp <= 0) return;
+        if (e.dying) return;
         this.physics.add.overlap(blt, e.spr, () => {
-          if (!blt.active || e.hp <= 0) return;
+          if (!blt.active || e.dying) return;
           blt.destroy();
           e.hp -= 28;
+          this._log(e.type + ' nail-gunned  hp=' + e.hp + '/' + e.maxHp);
           SFX.hit();
           e.spr.setTint(0x5599ff);
           this.time.delayedCall(120, () => { if (e.spr.active) e.spr.clearTint(); });
@@ -5534,11 +5553,12 @@ class GameScene extends Phaser.Scene {
     }
     if (this.enemies) {
       this.enemies.forEach(e => {
-        if (e.hp <= 0) return;
+        if (e.dying) return;
         this.physics.add.overlap(blt, e.spr, () => {
-          if (!blt.active || e.hp <= 0) return;
+          if (!blt.active || e.dying) return;
           blt.destroy();
           e.hp -= 14;
+          this._log(e.type + ' nailed  hp=' + e.hp + '/' + e.maxHp);
           SFX.hit();
           e.spr.setTint(0xff8833);
           this.time.delayedCall(80, () => { if (e.spr.active) e.spr.clearTint(); });
@@ -5627,7 +5647,7 @@ class GameScene extends Phaser.Scene {
         if (!this.enemies) return;
         let nearest = null, nearDist = Infinity;
         this.enemies.forEach(e => {
-          if (e.hp <= 0 || !e.spr.active) return;
+          if (e.dying || !e.spr.active) return;
           const d = Phaser.Math.Distance.Between(x, y, e.spr.x, e.spr.y);
           if (d < 200 && d < nearDist) { nearDist = d; nearest = e; }
         });
@@ -5671,7 +5691,7 @@ class GameScene extends Phaser.Scene {
     fx.strokePath();
     if (this.enemies) {
       this.enemies.forEach(e => {
-        if (e.hp <= 0) return;
+        if (e.dying) return;
         const d = Phaser.Math.Distance.Between(player.spr.x, player.spr.y, e.spr.x, e.spr.y);
         if (d < range + 20) {
           // Check enemy is roughly in facing direction
@@ -5679,6 +5699,7 @@ class GameScene extends Phaser.Scene {
           const diff = Phaser.Math.Angle.Wrap(angToE - dirAngle);
           if (Math.abs(diff) > Math.PI * 0.65) return;
           e.hp -= player.charData.id==='knight' ? 45 : 30;
+          this._log(e.type + ' melee-hit  hp=' + e.hp + '/' + e.maxHp);
           SFX.hit();
           e.spr.setTint(0xff6644);
           this.time.delayedCall(120, () => { if(e.spr.active) e.spr.clearTint(); });
@@ -5695,10 +5716,22 @@ class GameScene extends Phaser.Scene {
     this.tweens.add({ targets:fx, alpha:0, duration:dur*1000, onComplete:()=>fx.destroy() });
   }
 
+  // Push a timestamped entry to the in-game debug log (` key to show/hide).
+  _log(msg) {
+    if (!this._dbgEntries) return;
+    const d = new Date();
+    const ts = d.getMinutes().toString().padStart(2,'0') + ':' + d.getSeconds().toString().padStart(2,'0');
+    this._dbgEntries.push('[' + ts + '] ' + msg);
+    if (this._dbgEntries.length > 18) this._dbgEntries.shift();
+    if (this._dbgTxt) this._dbgTxt.setText(this._dbgEntries.join('\n'));
+  }
+
   killEnemy(e) {
-    if (e.hp <= 0) return; // already being killed — prevent double-kill & double-count
+    if (e.dying) return; // already being killed — prevent double-kill & double-count
+    e.dying = true;
     e.hp = 0;
     this.kills++;
+    this._log('Enemy killed  type=' + e.type + '  kills=' + this.kills);
     // Remove from update loop immediately so dead entries don't accumulate
     this.enemies = this.enemies.filter(e2 => e2 !== e);
     SFX.enemyDie();
@@ -5751,7 +5784,7 @@ class GameScene extends Phaser.Scene {
       const st = this.spikeTraps[si];
       if (!st.active) { this.spikeTraps.splice(si, 1); continue; }
       for (const e of this.enemies) {
-        if (e.hp <= 0 || !e.spr.active) continue;
+        if (e.dying || !e.spr.active) continue;
         if (Phaser.Math.Distance.Between(e.spr.x, e.spr.y, st.x, st.y) < 26) {
           e.hp = Math.max(0, e.hp - 35);
           SFX.hit();
@@ -5829,8 +5862,8 @@ class GameScene extends Phaser.Scene {
     this.enemies = [];
     this.waveNum = 0;
     this.waveTimer = 0;
-    this.WAVE_INTERVAL = 60000; // 60 seconds between waves
-    this._spawnGroup(worldW, worldH, cx, cy, { wolf:12, rat:18, bear:6 }, false);
+    this.WAVE_INTERVAL = 90000; // 90 seconds between waves
+    this._spawnGroup(worldW, worldH, cx, cy, { wolf:8, rat:10, bear:3 }, false);
 
     // Spawn structure guards — 2-4 enemies per biome structure (high danger zone)
     if (this._structureLocs) {
@@ -5873,9 +5906,9 @@ class GameScene extends Phaser.Scene {
   _spawnGroup(worldW, worldH, cx, cy, counts, fromEdges) {
     const { TILE, SAFE_R } = CFG;
     const types = [
-      { key:'wolf', hp:60,  speed:90,  dmg:8,  baseScale:1.8, w:20, h:12 },
-      { key:'rat',  hp:30,  speed:130, dmg:5,  baseScale:1.4, w:15, h:9  },
-      { key:'bear', hp:140, speed:55,  dmg:18, baseScale:2.2, w:24, h:18 },
+      { key:'wolf', hp:60,  speed:75,  dmg:6,  baseScale:1.8, w:20, h:12 },
+      { key:'rat',  hp:30,  speed:105, dmg:4,  baseScale:1.4, w:15, h:9  },
+      { key:'bear', hp:140, speed:50,  dmg:16, baseScale:2.2, w:24, h:18 },
     ];
     types.forEach(t => {
       const n = counts[t.key] || 0;
@@ -5925,6 +5958,7 @@ class GameScene extends Phaser.Scene {
       const r = Math.min(8 + this.waveNum * 3, 30);
       const b = Math.min(1 + this.waveNum, 8);
       this._spawnGroup(this.enemyWorldW, this.enemyWorldH, this.enemyCX, this.enemyCY, { wolf:w, rat:r, bear:b }, true);
+      this._log('Wave ' + (this.waveNum+1) + ' spawned  wolves=' + w + ' rats=' + r + ' bears=' + b);
       this.hint('Wave ' + (this.waveNum+1) + '! Enemies approaching from the wastes!', 3000);
       SFX._play(200, 'sawtooth', 0.3, 0.4, 'drop');
     }
@@ -6027,8 +6061,11 @@ class GameScene extends Phaser.Scene {
     const pct = wall.hp / (wall.maxHp || 200);
     if (wall.hp <= 0) {
       this.builtWalls = this.builtWalls.filter(w => w !== wall);
+      if (wall._hpBg && wall._hpBg.active) wall._hpBg.destroy();
+      if (wall._hpBar && wall._hpBar.active) wall._hpBar.destroy();
       this.tweens.add({ targets: wall, alpha: 0, duration: 200, onComplete: () => { if (wall.active) wall.destroy(); } });
       this.hint('Structure destroyed!', 1500);
+      this._log('Wall destroyed');
     } else if (pct < 0.25) {
       wall.setTint(0xff2200); // nearly gone — red
     } else if (pct < 0.5) {
@@ -6133,7 +6170,7 @@ class GameScene extends Phaser.Scene {
     const players = [this.p1, this.p2].filter(p => p && !p.isDowned && p.hp > 0 && p.spr.visible);
 
     this.enemies.forEach(e => {
-      if (e.hp <= 0 || !e.spr.active) return;
+      if (e.dying || !e.spr.active) return;
       if (e.isBoss) return; // boss movement/attack handled by updateBoss
       let nearest = null, nearDist = Infinity;
       players.forEach(p => {
@@ -6208,7 +6245,7 @@ class GameScene extends Phaser.Scene {
             if (nearest.isSleeping) { this.wakePlayer(nearest); this.hint(nearest.charData.player + ' woke up!', 1500); }
             nearest.spr.setTint(0xff0000);
             this.time.delayedCall(150, () => { if(nearest.spr.active) nearest.spr.clearTint(); });
-            e.attackTimer = e.type==='bear' ? 2200 : e.type==='wolf' ? 1400 : 900;
+            e.attackTimer = e.type==='bear' ? 2400 : e.type==='wolf' ? 1600 : 1200;
             this.checkDeaths();
           }
         }
