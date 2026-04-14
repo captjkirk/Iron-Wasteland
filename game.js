@@ -6,7 +6,7 @@
 
 // ── VERSION ───────────────────────────────────────────────────
 // Update this each commit so the title screen reflects the build date.
-const VERSION = 'Apr 14, 2026  06:19 PM EST';
+const VERSION = 'Apr 14, 2026  06:23 PM EST';
 
 // ── CONSTANTS ─────────────────────────────────────────────────
 // Detect mobile/phone: touch device with a small screen.
