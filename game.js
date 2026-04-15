@@ -7272,21 +7272,39 @@ class GameScene extends Phaser.Scene {
   // Tundra ponds become ice tiles (passable, slippery); others have deep impassable center.
   _buildPonds(stx, sty) {
     const { TILE, SAFE_R } = CFG;
+    // Grass ponds near spawn use a tighter exclusion so they appear in the starting area.
+    // Other biomes keep the larger exclusion to avoid cluttering the immediate spawn zone.
     const specs = [
       ...Array.from({length: 35}, () => 'swamp'),   // 35 swamp ponds
       ...Array.from({length: 25}, () => 'tundra'),  // 25 tundra ice ponds
       ...Array.from({length: 20}, () => 'fungal'),  // 20 fungal ponds
-      ...Array.from({length: 22}, () => 'grass'),   // 22 grassland ponds (players find these early)
+      ...Array.from({length: 16}, () => 'grass'),   // 16 distant grassland ponds
+      // 8 grass ponds guaranteed close to spawn (12–22 tiles out)
+      ...Array.from({length: 8},  () => 'grass_near'),
     ];
     for (const biome of specs) {
       const isIce = biome === 'tundra';
+      const realBiome = biome === 'grass_near' ? 'grass' : biome;
       // Pick center tile in correct biome
       let cx = -1, cy = -1;
-      for (let attempt = 0; attempt < 40; attempt++) {
-        const tx = Phaser.Math.Between(8, CFG.MAP_W - 8);
-        const ty = Phaser.Math.Between(8, CFG.MAP_H - 8);
-        if (getBiome(tx, ty) !== biome) continue;
-        if (Math.abs(tx - stx) < SAFE_R + 10 && Math.abs(ty - sty) < SAFE_R + 10) continue;
+      for (let attempt = 0; attempt < 60; attempt++) {
+        let tx, ty;
+        if (biome === 'grass_near') {
+          // Place in a ring 12–22 tiles from spawn
+          const angle = Math.random() * Math.PI * 2;
+          const dist  = 12 + Math.random() * 10;
+          tx = Math.round(stx + Math.cos(angle) * dist);
+          ty = Math.round(sty + Math.sin(angle) * dist);
+          tx = Phaser.Math.Clamp(tx, 8, CFG.MAP_W - 8);
+          ty = Phaser.Math.Clamp(ty, 8, CFG.MAP_H - 8);
+        } else {
+          tx = Phaser.Math.Between(8, CFG.MAP_W - 8);
+          ty = Phaser.Math.Between(8, CFG.MAP_H - 8);
+        }
+        if (getBiome(tx, ty) !== realBiome) continue;
+        // Grass-near only needs a small clear zone (SAFE_R); others stay farther out
+        const excl = biome === 'grass_near' ? SAFE_R : SAFE_R + 10;
+        if (Math.abs(tx - stx) < excl && Math.abs(ty - sty) < excl) continue;
         if (this._structureLocs && this._structureLocs.some(s =>
           Math.abs(s.x / TILE - tx) < 10 && Math.abs(s.y / TILE - ty) < 10)) continue;
         cx = tx; cy = ty; break;
