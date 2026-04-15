@@ -6,7 +6,7 @@
 
 // ── VERSION ───────────────────────────────────────────────────
 // Update this each commit so the title screen reflects the build date.
-const VERSION = 'Apr 15, 2026  06:26 AM EDT';
+const VERSION = 'Apr 15, 2026  06:33 AM EDT';
 
 // ── CONSTANTS ─────────────────────────────────────────────────
 // Detect mobile/phone: touch device with a small screen.
@@ -999,18 +999,19 @@ function buildTextures(scene) {
   g.lineStyle(2, 0x0a2010, 0.9); g.strokeEllipse(32, 26, 60, 44);
   g.generateTexture('toxic_pool', 64, 52);
 
-  // Shallow water (32×32) — medium blue, passable, slows movement
+  // Shallow water (32×32) — full-tile fill so adjacent tiles connect seamlessly
   g.clear();
-  g.fillStyle(0x2266aa); g.fillEllipse(16, 16, 30, 28);
-  g.fillStyle(0x3388cc); g.fillEllipse(16, 14, 22, 18);
-  g.fillStyle(0x55aadd); g.fillRect(7, 12, 10, 1); g.fillRect(14, 16, 8, 1); g.fillRect(9, 19, 6, 1);
+  g.fillStyle(0x2266aa); g.fillRect(0, 0, 32, 32);    // base
+  g.fillStyle(0x3388cc); g.fillRect(0, 0, 32, 16);    // lighter upper half
+  g.fillStyle(0x2878bb); g.fillRect(0, 16, 32, 16);   // slightly darker lower half
+  g.fillStyle(0x55aadd); g.fillRect(4, 10, 12, 1); g.fillRect(16, 15, 10, 1); g.fillRect(6, 21, 8, 1); g.fillRect(20, 24, 6, 1); // ripples
   g.generateTexture('water_shallow', 32, 32);
 
-  // Deep water (32×32) — dark navy, impassable obstacle
+  // Deep water (32×32) — full-tile fill, dark navy
   g.clear();
-  g.fillStyle(0x0a1833); g.fillEllipse(16, 16, 30, 28);
-  g.fillStyle(0x0d2244); g.fillEllipse(16, 14, 22, 18);
-  g.fillStyle(0x1a3366); g.fillRect(9, 12, 8, 1); g.fillRect(15, 17, 6, 1);
+  g.fillStyle(0x0a1833); g.fillRect(0, 0, 32, 32);
+  g.fillStyle(0x0d2244); g.fillRect(0, 0, 32, 14);
+  g.fillStyle(0x1a3366); g.fillRect(5, 9, 8, 1); g.fillRect(18, 16, 7, 1); g.fillRect(8, 23, 6, 1);
   g.generateTexture('water_deep', 32, 32);
 
   // Ice tile (32×32) — pale cyan, passable, slippery momentum
