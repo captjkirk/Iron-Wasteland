@@ -8507,8 +8507,8 @@ class GameScene extends Phaser.Scene {
           }
         });
       }
-      // Boss daily check: after day 5, 25% chance each dawn — but not the same dawn a raid respawns
-      else if (!this.bossSpawned && this.dayNum > 5 && Math.random() < 0.25) {
+      // Boss daily check: Day 5 = 75% chance, Day 6 = 75% again if missed, Day 7+ = guaranteed
+      else if (!this.bossSpawned && this.dayNum >= 5 && (this.dayNum >= 7 || Math.random() < 0.75)) {
         this.time.delayedCall(5000, () => {
           if (!this.isOver && !this.bossSpawned) this.spawnBoss();
         });
