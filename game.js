@@ -4872,7 +4872,8 @@ class GameScene extends Phaser.Scene {
     player.isDowned = false;
     player.hp = Math.floor(player.maxHp * 0.3);
     player.downTimer = 0;
-    player.spr.clearTint();
+    if (player._frostSlowed) player.spr.setTint(0x88ccff);
+    else player.spr.clearTint();
     player.spr.setAlpha(1.0);
     if (player.downText) { player.downText.destroy(); player.downText = null; }
     this.reviveProgress = 0;
@@ -5135,7 +5136,8 @@ class GameScene extends Phaser.Scene {
   wakePlayer(player) {
     if (!player.isSleeping) return;
     player.isSleeping = false;
-    player.spr.clearTint();
+    if (player._frostSlowed) player.spr.setTint(0x88ccff);
+    else player.spr.clearTint();
     player.spr.setAlpha(1);
     if (player.zzzText) { player.zzzText.destroy(); player.zzzText = null; }
   }
