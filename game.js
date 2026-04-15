@@ -6,7 +6,7 @@
 
 // ── VERSION ───────────────────────────────────────────────────
 // Update this each commit so the title screen reflects the build date.
-const VERSION = 'Apr 15, 2026  04:20 AM UTC';
+const VERSION = 'Apr 15, 2026  04:31 AM UTC';
 
 // ── CONSTANTS ─────────────────────────────────────────────────
 // Detect mobile/phone: touch device with a small screen.
@@ -6386,9 +6386,13 @@ class GameScene extends Phaser.Scene {
     }).setOrigin(0.5, 1).setDepth(150).setAlpha(1);
     if (this.hudCam) this.hudCam.ignore(t);
     this.tweens.add({
-      targets: t, y: y - 48, alpha: 0, duration: 1400,
-      ease: 'Cubic.Out',
-      onComplete: () => t.destroy(),
+      targets: t, y: y - 28, duration: 900, ease: 'Cubic.Out',
+      onComplete: () => {
+        this.tweens.add({
+          targets: t, y: y - 48, alpha: 0, duration: 350,
+          ease: 'Cubic.In', onComplete: () => t.destroy(),
+        });
+      },
     });
   }
 
@@ -7470,7 +7474,6 @@ class GameScene extends Phaser.Scene {
     this.craftMenuOpen = true;
     this.craftMenuOwner = player;
     this.craftMenuSel = 0;
-    this._craftMenuJustOpened = true; // skip close-on-Q check for the frame Q was pressed
     // Contextual tip: first time opening crafting menu
     if (!this._ctx.firstCraft) {
       this._ctx.firstCraft = true;
@@ -7484,8 +7487,7 @@ class GameScene extends Phaser.Scene {
     this._craftNavUp2  = this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.UP);
     this._craftNavDn   = this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.S);
     this._craftNavDn2  = this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.DOWN);
-    this._craftClose   = this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.Q);
-    this._craftClose2  = this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.ZERO);
+    // Close is handled by the p1build/p2build key listeners (toggle via openCraftMenu)
   }
 
   closeCraftMenu() {
@@ -7507,13 +7509,6 @@ class GameScene extends Phaser.Scene {
     if (Phaser.Input.Keyboard.JustDown(this._craftNavDn) || Phaser.Input.Keyboard.JustDown(this._craftNavDn2)) {
       this.craftMenuSel = (this.craftMenuSel + 1) % RECIPES.length;
     }
-    // Close on Q/0 — skip the first frame to avoid closing immediately after opening
-    if (this._craftMenuJustOpened) {
-      this._craftMenuJustOpened = false;
-    } else if (Phaser.Input.Keyboard.JustDown(this._craftClose) || Phaser.Input.Keyboard.JustDown(this._craftClose2)) {
-      this.closeCraftMenu(); return;
-    }
-
     this.renderCraftMenu();
   }
 
