@@ -2679,7 +2679,7 @@ function activeInputMode() {
 // ── SCENE: BOOT ───────────────────────────────────────────────
 class BootScene extends Phaser.Scene {
   constructor() { super('Boot'); }
-  create() { buildTextures(this); this.scene.start('ModeSelect'); }
+  create() { _qlog(`session start  v=${_fmtVersion(VERSION)}  ua=${navigator.userAgent.slice(0,80)}`, 'boot'); buildTextures(this); this.scene.start('ModeSelect'); }
 }
 
 // ── SCENE: MODE SELECT ────────────────────────────────────────
@@ -2858,6 +2858,7 @@ class ModeSelectScene extends Phaser.Scene {
   confirm() {
     STATE.mode = this.selMode;
     STATE.difficulty = this.selDiff;
+    _qlog(`ModeSelect: confirmed  mode=${this.selMode === 1 ? '1P' : '2P'}  diff=${this.selDiff}`, 'menu');
     Music.start();
     // Apply saved audio settings
     const _as = loadSettings();
@@ -3027,6 +3028,8 @@ class SettingsScene extends Phaser.Scene {
     backBtn.on('pointerout',  () => backBtn.setColor('#aaffaa'));
 
     const goBack = () => {
+      const _s = loadSettings();
+      _qlog(`Settings: back  returnTo=${this._returnTo||'menu'}  inputMode=${_s.inputMode||'auto'}  music=${_s.musicEnabled!==false}  sfx=${_s.sfxEnabled!==false}`, 'menu');
       this.cameras.main.fadeOut(200, 0, 0, 0);
       this.time.delayedCall(200, () => {
         if (this._returnTo === 'Game') {
@@ -3337,6 +3340,7 @@ class GameScene extends Phaser.Scene {
     this.raiders = [];
     this.raidCamp = null;
     this.raidRespawnDay = null;
+    this.enemies = [];
 
     // Build system state
     this.buildMode = false;
@@ -3384,6 +3388,7 @@ class GameScene extends Phaser.Scene {
       _destroyBar();
       const msg = err?.message || String(err);
       this._log('INIT FAILED: ' + msg, 'error');
+      if (err?.stack) this._log('stack: ' + err.stack.split('\n').slice(0, 4).join(' | '), 'error');
       console.error('[IW] World init exception:', err);
       this.add.text(CFG.W / 2, CFG.H / 2,
         'Load error on run #' + this._runCount + '\n' + msg + '\n\nCheck console (F12) or press ` to view log',
@@ -7529,7 +7534,7 @@ class GameScene extends Phaser.Scene {
   spawnEnemies(worldW, worldH, cx, cy) {
     this.enemyWorldW = worldW; this.enemyWorldH = worldH;
     this.enemyCX = cx; this.enemyCY = cy;
-    this.enemies = [];
+    // this.enemies already initialised in create() so water lurkers from _buildLakes are preserved
     this.waveNum = 0;
     this.waveTimer = 0;
     this.WAVE_INTERVAL = 90000; // 90 seconds between waves
@@ -8748,6 +8753,7 @@ class GameScene extends Phaser.Scene {
       this.exitBuildMode(); return;
     }
 
+    this.exitBuildMode();
     SFX._play(400, 'triangle', 0.08, 0.2);
     this.hint(this.buildType.charAt(0).toUpperCase() + this.buildType.slice(1) + ' placed!', 1500);
   }
