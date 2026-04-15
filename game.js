@@ -463,6 +463,30 @@ function drawDustHound(g) {
   g.generateTexture('dust_hound', 18, 12);
 }
 
+function drawWaterLurker(g) {
+  g.clear();
+  // Elongated crocodilian body — dark teal
+  g.fillStyle(0x1a4a3a); g.fillRect(1, 4, 20, 8);
+  g.fillStyle(0x256050); g.fillRect(2, 5, 18, 5);   // highlight stripe
+  // Ridged back spines
+  g.fillStyle(0x0d2e24);
+  g.fillRect(4, 3, 2, 2); g.fillRect(8, 2, 2, 3); g.fillRect(12, 2, 2, 3); g.fillRect(16, 3, 2, 2);
+  // Head (wider snout at left)
+  g.fillStyle(0x1a4a3a); g.fillRect(19, 3, 5, 8);
+  g.fillStyle(0x0d2e24); g.fillRect(21, 11, 3, 2);  // jaw underside
+  // Eyes — yellow slitted
+  g.fillStyle(0xddcc00); g.fillRect(20, 4, 2, 2); g.fillRect(22, 4, 1, 1);
+  g.fillStyle(0x111111); g.fillRect(21, 5, 1, 1);   // slit pupil
+  // Stubby legs
+  g.fillStyle(0x163d2e);
+  g.fillRect(4, 11, 3, 3); g.fillRect(10, 11, 3, 3);
+  g.fillRect(4, 2, 3, 2);  g.fillRect(10, 2, 3, 2);
+  // Tail — tapers left
+  g.fillStyle(0x1a4a3a); g.fillRect(0, 5, 2, 6);
+  g.fillStyle(0x0d2e24); g.fillRect(0, 7, 1, 2);
+  g.generateTexture('water_lurker', 24, 14);
+}
+
 function getControls(playerNum, charId, isSolo) {
   if (isSolo && playerNum === 1) {
     const map = {
@@ -1459,7 +1483,7 @@ function buildTextures(scene) {
   g.generateTexture('boss_hydra', 40, 40);
 
   // Enemy sprites
-  drawWolf(g); drawRat(g); drawBear(g); drawIceCrawler(g); drawSpiderRuins(g); drawBogLurker(g); drawDustHound(g);
+  drawWolf(g); drawRat(g); drawBear(g); drawIceCrawler(g); drawSpiderRuins(g); drawBogLurker(g); drawDustHound(g); drawWaterLurker(g);
 
   g.destroy();
 }
@@ -3891,6 +3915,8 @@ class GameScene extends Phaser.Scene {
 
     // Water ponds — swamp/tundra/fungal/grass (shallow+deep or ice)
     this._buildPonds(stx, sty);
+    // Larger lakes (6–8 per map) with water-den spawners
+    this._buildLakes(stx, sty);
 
     // _preCacheTiles already populated above (all POI positions, before tree/rock placement)
 
@@ -5504,6 +5530,7 @@ class GameScene extends Phaser.Scene {
     this.updateEnemies(delta);
     this.updateWaves(delta);
     this.updateEnemyDens(delta);
+    this.updateWaterDens(delta);
     this.updateRaiders(delta);
     this.updateBoss(delta);
     this.updateSleep(delta);
@@ -6453,6 +6480,21 @@ class GameScene extends Phaser.Scene {
     });
   }
 
+  updateWaterDens(delta) {
+    if (!this.waterDens) return;
+    this.waterDens.forEach(den => {
+      den.respawnTimer += delta;
+      if (den.respawnTimer < 25000) return;  // respawn every 25 seconds
+      den.respawnTimer = 0;
+      // Pick a random tile within the lake's tileSet to spawn from
+      if (!den.tileSet || den.tileSet.size === 0) return;
+      const keys = Array.from(den.tileSet);
+      const rk = keys[Phaser.Math.Between(0, keys.length - 1)];
+      const [ltx, lty] = rk.split(',').map(Number);
+      this._spawnWaterLurker(ltx * CFG.TILE, lty * CFG.TILE);
+    });
+  }
+
   movePlayer(player, L, R, U, D) {
     const spd = player.charData.speed * (player._speedMult !== undefined ? player._speedMult : 1);
     let vx=0, vy=0;
@@ -7362,6 +7404,127 @@ class GameScene extends Phaser.Scene {
     }
   }
 
+  // ── LAKE GENERATION ──────────────────────────────────────────────────────
+  // Lakes are larger than ponds (60–120 tiles), appear in varied biomes, and
+  // each lake hosts a water-den that respawns water_lurker enemies.
+  _buildLakes(stx, sty) {
+    const { TILE, SAFE_R } = CFG;
+    this.waterDens = this.waterDens || [];
+    // 7 lakes spread across the map; biome variety makes them feel natural
+    const lakeSpecs = ['grass','grass','swamp','swamp','waste','tundra','fungal'];
+    for (const biome of lakeSpecs) {
+      // Pick a center tile — lakes stay farther from spawn than ponds
+      let cx = -1, cy = -1;
+      for (let attempt = 0; attempt < 80; attempt++) {
+        const tx = Phaser.Math.Between(12, CFG.MAP_W - 12);
+        const ty = Phaser.Math.Between(12, CFG.MAP_H - 12);
+        if (getBiome(tx, ty) !== biome) continue;
+        // Keep a safe distance from spawn
+        const spawnExcl = biome === 'grass' ? SAFE_R + 8 : SAFE_R + 14;
+        if (Math.abs(tx - stx) < spawnExcl && Math.abs(ty - sty) < spawnExcl) continue;
+        // Don't overlap existing structures or dens
+        if (this._structureLocs && this._structureLocs.some(s =>
+          Math.abs(s.x / TILE - tx) < 12 && Math.abs(s.y / TILE - ty) < 12)) continue;
+        cx = tx; cy = ty; break;
+      }
+      if (cx < 0) continue;
+
+      // BFS blob — slower decay (0.72) grows larger blobs than ponds (0.58)
+      const tileSet = new Set();
+      const visited = new Set();
+      const queue = [[cx, cy, 1.0]];
+      while (queue.length) {
+        const [tx, ty, prob] = queue.shift();
+        const key = `${tx},${ty}`;
+        if (visited.has(key)) continue;
+        visited.add(key);
+        if (Math.random() > prob) continue;
+        tileSet.add(key);
+        [[tx-1,ty],[tx+1,ty],[tx,ty-1],[tx,ty+1],[tx-1,ty-1],[tx+1,ty+1],[tx-1,ty+1],[tx+1,ty-1]]
+          .forEach(([nx, ny]) => {
+            if (!visited.has(`${nx},${ny}`) && prob * 0.72 > 0.06) {
+              queue.push([nx, ny, prob * 0.72]);
+            }
+          });
+      }
+      // Lakes need to be substantial — skip tiny results
+      if (tileSet.size < 40) continue;
+
+      // Place tiles — lakes are all-shallow for wading (no impassable deep center)
+      // so players can walk through them and encounter water_lurkers inside
+      tileSet.forEach(key => {
+        const [tx, ty] = key.split(',').map(Number);
+        if (tx < 1 || ty < 1 || tx >= CFG.MAP_W - 1 || ty >= CFG.MAP_H - 1) return;
+        const x = tx * TILE, y = ty * TILE;
+        if (biome === 'tundra') {
+          // Tundra lakes become ice
+          const tile = this.physics.add.image(x, y, 'water_ice').setDepth(0.6).setAlpha(0.75);
+          tile.body.allowGravity = false; tile.body.setImmovable(true);
+          tile.body.setSize(30, 30);
+          if (this.hudCam) this.hudCam.ignore(tile);
+          this._w(tile);
+          this.iceTiles.push(tile);
+          this._iceTileSet.add(key);
+        } else {
+          const tile = this._w(this.add.image(x, y, 'water_shallow').setOrigin(0).setDepth(0.75));
+          if (this.hudCam) this.hudCam.ignore(tile);
+          this.waterTiles.push(tile);
+          this._waterTileSet.add(key);
+        }
+      });
+
+      // Place a water den at the lake center (skip tundra — ice, not water dens)
+      if (biome !== 'tundra') {
+        const denX = cx * TILE, denY = cy * TILE;
+        const spr = this._w(this.add.image(denX, denY, 'enemy_den')
+          .setScale(1.6).setDepth(5).setTint(0x226688));
+        const lbl = this._w(this.add.text(denX, denY - 20, 'WATER DEN', {
+          fontFamily:'monospace', fontSize:'8px', color:'#44aacc',
+          stroke:'#000', strokeThickness:2
+        }).setOrigin(0.5).setDepth(7));
+        if (this.hudCam) { this.hudCam.ignore(spr); this.hudCam.ignore(lbl); }
+        this.waterDens.push({ x: denX, y: denY, respawnTimer: 0, tileSet });
+        this.pois.push({ type:'den', tx: cx, ty: cy, spr });
+
+        // Spawn 2 water_lurkers lurking inside this lake at world start
+        for (let i = 0; i < 2; i++) {
+          const keys = Array.from(tileSet);
+          const rk = keys[Phaser.Math.Between(0, keys.length - 1)];
+          const [ltx, lty] = rk.split(',').map(Number);
+          this._spawnWaterLurker(ltx * TILE, lty * TILE);
+        }
+      }
+    }
+  }
+
+  _spawnWaterLurker(x, y) {
+    const sizeMult = Phaser.Math.FloatBetween(1.0, 1.4);
+    const sc = 2.0 * sizeMult;
+    const D = this._diffMult();
+    const hp  = Math.floor(75 * sizeMult * D);
+    const dmg = Math.max(1, Math.floor(14 * sizeMult * D));
+    const spd = 52 * D;
+    const spr = this.physics.add.image(x, y, 'water_lurker').setScale(sc).setDepth(8);
+    spr.setCollideWorldBounds(true);
+    spr.body.setSize(22, 12);
+    if (this.hudCam) this.hudCam.ignore(spr);
+    this.physics.add.collider(spr, this.obstacles);
+    const e = {
+      spr, hp, maxHp: hp, speed: spd, dmg, atkInterval: 2000,
+      type: 'water_lurker', attackTimer: 0, wanderTimer: 0,
+      aggroRange: 180, attackRange: 28 * sizeMult, sizeMult,
+      _lurking: true,
+    };
+    spr.setAlpha(0.15);
+    const allPlayers = [this.p1, this.p2].filter(p => p && p.spr && p.spr.active);
+    const dist = allPlayers.length
+      ? Math.min(...allPlayers.map(p => Phaser.Math.Distance.Between(x, y, p.spr.x, p.spr.y)))
+      : Infinity;
+    if (dist > CFG.DORMANT_RADIUS) { e._dormant = true; spr.setVisible(false); if (spr.body) spr.body.enable = false; }
+    this.enemies.push(e);
+    return e;
+  }
+
   _spawnBiomeEnemy(type, biome, count, packSize) {
     const { TILE, SAFE_R } = CFG;
     const D = this._diffMult();
@@ -7823,6 +7986,33 @@ class GameScene extends Phaser.Scene {
           e._effectiveSpeed = e.speed * 2.8;
         } else {
           e._effectiveSpeed = e.speed;
+        }
+      } else if (e.type === 'water_lurker') {
+        // Lurks nearly invisible until player steps within 110px, then bursts
+        if (e._lurking) {
+          const closePlayer = [this.p1, this.p2].find(p =>
+            p && !p.isDowned && Phaser.Math.Distance.Between(e.spr.x, e.spr.y, p.spr.x, p.spr.y) < 110
+          );
+          if (closePlayer) {
+            e._lurking = false;
+            e.spr.setAlpha(1);
+            e._ambushTimer = 2000;
+            SFX._play(160, 'sawtooth', 0.12, 0.4, 'drop');
+          } else {
+            e.spr.setVelocity(0, 0);
+            return;
+          }
+        }
+        // Speed burst on ambush; faster in water than on land
+        const onWater = this._waterTileSet && this._waterTileSet.has(
+          `${Math.floor(e.spr.x / CFG.TILE)},${Math.floor(e.spr.y / CFG.TILE)}`
+        );
+        const waterMult = onWater ? 2.2 : 1.0;
+        if ((e._ambushTimer || 0) > 0) {
+          e._ambushTimer -= delta;
+          e._effectiveSpeed = e.speed * 2.4 * waterMult;
+        } else {
+          e._effectiveSpeed = e.speed * waterMult;
         }
       } else if (e.type === 'ice_crawler') {
         const btile = getBiome(Math.round(e.spr.x / CFG.TILE), Math.round(e.spr.y / CFG.TILE));
