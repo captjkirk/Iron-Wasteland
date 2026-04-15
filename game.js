@@ -6066,30 +6066,53 @@ class GameScene extends Phaser.Scene {
         this.hint('No ammo left! Find more drops.', 2000);
       }
     } else if (id === 'knight') {
-      // RALLY — war cry boosts partner's speed for 5 seconds
-      if (player.rallyCooldown > 0) return;
-      player.rallyCooldown = 15000;
-      this.tickCooldown(player, 'rallyCooldown', 15000);
+      // RALLY — war cry boosts speed + frightens nearby enemies (30s cooldown)
+      if (player.rallyCooldown > 0) {
+        this.hint('RALLY: ' + Math.ceil(player.rallyCooldown / 1000) + 's', 1200);
+        return;
+      }
+      player.rallyCooldown = 30000;
+      this.tickCooldown(player, 'rallyCooldown', 30000);
+      this.time.delayedCall(30000, () => this.hint('RALLY is ready!', 2000));
       SFX._play(330, 'square', 0.15, 0.5, 'rise');
       SFX._play(440, 'square', 0.2, 0.4, 'rise');
-      this.hint('RALLY! Speed boost!', 2000);
-      // Boost visual
+      this.hint('RALLY! Speed boost + enemies flee!', 2500);
+      // Inner gold circle (speed boost range)
       const fx = this.add.graphics().setDepth(20);
       if (this.hudCam) this.hudCam.ignore(fx);
       fx.lineStyle(3, 0xffdd44, 0.8);
       fx.strokeCircle(player.spr.x, player.spr.y, 60);
       this.tweens.add({ targets:fx, alpha:0, duration:800, onComplete:()=>fx.destroy() });
-      // Boost partner speed
+      // Outer blue circle (frighten radius)
+      const fx2 = this.add.graphics().setDepth(20);
+      if (this.hudCam) this.hudCam.ignore(fx2);
+      fx2.lineStyle(2, 0xaaddff, 0.7);
+      fx2.strokeCircle(player.spr.x, player.spr.y, 200);
+      this.tweens.add({ targets:fx2, alpha:0, duration:700, onComplete:()=>fx2.destroy() });
+      // Boost partner speed — or self if solo
       const partner = player === this.p1 ? this.p2 : this.p1;
-      if (partner && !partner.isDowned) {
-        const origSpeed = partner.charData.speed;
-        partner.charData.speed = Math.floor(origSpeed * 1.5);
-        partner.spr.setTint(0xffdd44);
-        this.time.delayedCall(5000, () => {
-          partner.charData.speed = origSpeed;
-          if (partner.spr.active) partner.spr.clearTint();
-        });
-      }
+      const rallyTarget = (partner && !partner.isDowned) ? partner : player;
+      const origSpeed = rallyTarget.charData.speed;
+      rallyTarget.charData.speed = Math.floor(origSpeed * 1.5);
+      rallyTarget.spr.setTint(0xffdd44);
+      this.time.delayedCall(5000, () => {
+        rallyTarget.charData.speed = origSpeed;
+        if (rallyTarget.spr.active) rallyTarget.spr.clearTint();
+      });
+      // Frighten nearby enemies — they flee for 5 seconds
+      const rallyX = player.spr.x;
+      const rallyY = player.spr.y;
+      this.enemies.forEach(e => {
+        if (!e.spr?.active) return;
+        const d = Phaser.Math.Distance.Between(e.spr.x, e.spr.y, rallyX, rallyY);
+        if (d < 200) {
+          e._scaredTimer = 5000;
+          e._scaredFromX = rallyX;
+          e._scaredFromY = rallyY;
+          e._fearFlashTimer = 0;
+          e.spr.setTint(0xaaddff);
+        }
+      });
     } else if (id === 'architect') {
       // ORCHESTRATE — deploy auto-turret for 30 seconds
       if (player.turretCooldown > 0) return;
@@ -6793,6 +6816,27 @@ class GameScene extends Phaser.Scene {
       if (e.isBoss) return; // boss movement/attack handled by updateBoss
       // Flinch stagger — freeze AI and movement briefly after being hit
       if ((e._flinchTimer || 0) > 0) { e._flinchTimer -= delta; e.spr.setVelocity(0, 0); return; }
+      // Scared — flee away from Rally cast point for 5 seconds
+      if ((e._scaredTimer || 0) > 0) {
+        e._scaredTimer -= delta;
+        const dx = e.spr.x - e._scaredFromX;
+        const dy = e.spr.y - e._scaredFromY;
+        const dist = Math.sqrt(dx * dx + dy * dy) || 1;
+        e.spr.setVelocity((dx / dist) * e.speed * 1.3, (dy / dist) * e.speed * 1.3);
+        // Flicker tint between white and light-blue while scared
+        if (!e._fearFlashTimer || e._fearFlashTimer <= 0) {
+          e._fearFlashTimer = 400;
+          e.spr.setTint(0xffffff);
+          this.time.delayedCall(150, () => { if (e.spr?.active) e.spr.setTint(0xaaddff); });
+        } else {
+          e._fearFlashTimer -= delta;
+        }
+        if (e._scaredTimer <= 0) {
+          if (e.spr?.active) e.spr.clearTint();
+          e._scaredFromX = null; e._scaredFromY = null;
+        }
+        return;
+      }
       let nearest = null, nearDist = Infinity;
       players.forEach(p => {
         const d = Phaser.Math.Distance.Between(e.spr.x, e.spr.y, p.spr.x, p.spr.y);
