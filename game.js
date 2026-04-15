@@ -5368,18 +5368,25 @@ class GameScene extends Phaser.Scene {
       });
       if (!nearest) return;
 
+      // Mutual aggro: redirect toward boss if closer and within 220px
+      let target = nearest, targetDist = nearDist;
+      if (this.boss && !this.boss.dying && this.boss.spr && this.boss.spr.active) {
+        const bd = Phaser.Math.Distance.Between(raider.spr.x, raider.spr.y, this.boss.spr.x, this.boss.spr.y);
+        if (bd < 220 && bd < nearDist) { target = this.boss; targetDist = bd; }
+      }
+
       // Brawler charge lunge: triple speed for 400ms when closing within 100px
       if (raider.type === 'brawler') {
         raider.chargeCooldown = (raider.chargeCooldown || 0) - delta;
         raider.chargeTimer   = (raider.chargeTimer   || 0) - delta;
         if (raider.chargeTimer > 0) {
           // Mid-charge: override movement speed to triple via velocity boost
-          const ang = Phaser.Math.Angle.Between(raider.spr.x, raider.spr.y, nearest.spr.x, nearest.spr.y);
+          const ang = Phaser.Math.Angle.Between(raider.spr.x, raider.spr.y, target.spr.x, target.spr.y);
           raider.spr.setVelocity(Math.cos(ang) * raider.speed * 3, Math.sin(ang) * raider.speed * 3);
           raider.spr.setTint(0xff4422);
         } else {
           if (raider.spr.tintTopLeft === 0xff4422) raider.spr.clearTint();
-          if (nearDist < 100 && nearDist > raider.attackRange && raider.chargeCooldown <= 0) {
+          if (targetDist < 100 && targetDist > raider.attackRange && raider.chargeCooldown <= 0) {
             raider.chargeTimer   = 400;
             raider.chargeCooldown = 2000;
           }
@@ -5389,11 +5396,11 @@ class GameScene extends Phaser.Scene {
 
       // Shooters and heavy: ranged fire when in range
       if (!raider.shootRange) return;
-      if (nearDist < raider.shootRange && nearDist > raider.attackRange * 1.5) {
+      if (targetDist < raider.shootRange && targetDist > raider.attackRange * 1.5) {
         raider.rangedTimer -= delta;
         if (raider.rangedTimer <= 0) {
           raider.rangedTimer = raider.atkInterval;
-          this._fireRaiderShot(raider, nearest);
+          this._fireRaiderShot(raider, target);
         }
       }
     });
@@ -5430,6 +5437,14 @@ class GameScene extends Phaser.Scene {
         this.checkDeaths();
       });
     });
+    // Raider bullets also hit the boss (mutual aggro — 40% of raider damage)
+    if (this.boss && this.boss.spr && this.boss.spr.active) {
+      this.physics.add.overlap(bullet, this.boss.spr, () => {
+        if (!bullet.active) return;
+        bullet.destroy();
+        this._hurtEnemy(this.boss, Math.round(raider.dmg * 0.4), bullet.x, bullet.y);
+      });
+    }
     // Auto-destroy after 2s
     this.time.delayedCall(2000, () => { if (bullet.active) bullet.destroy(); });
   }
@@ -5583,31 +5598,48 @@ class GameScene extends Phaser.Scene {
         b.specialTimer = b.specialInterval;
       }
     } else {
-      // Normal chase toward nearest player
-      const ang = Phaser.Math.Angle.Between(b.spr.x, b.spr.y, nearest.spr.x, nearest.spr.y);
-      b.spr.setVelocity(Math.cos(ang) * b.speed, Math.sin(ang) * b.speed);
-      b.spr.setFlipX(nearest.spr.x < b.spr.x);
+      // Mutual aggro — if a raider is within 160px and closer than the nearest player,
+      // redirect the boss to fight the raider instead.
+      let foeX = nearest.spr.x, foeY = nearest.spr.y, foeDist = nearDist;
+      let aggroRaider = null;
+      if (this.raiders && this.raiders.length > 0) {
+        this.raiders.forEach(r => {
+          if (r.dying || !r.spr.active) return;
+          const d = Phaser.Math.Distance.Between(b.spr.x, b.spr.y, r.spr.x, r.spr.y);
+          if (d < 160 && d < foeDist) { foeDist = d; foeX = r.spr.x; foeY = r.spr.y; aggroRaider = r; }
+        });
+      }
 
-      // Trigger special attack telegraph when cooldown expires and player is close enough
+      // Chase toward nearest foe (raider or player)
+      const ang = Phaser.Math.Angle.Between(b.spr.x, b.spr.y, foeX, foeY);
+      b.spr.setVelocity(Math.cos(ang) * b.speed, Math.sin(ang) * b.speed);
+      b.spr.setFlipX(foeX < b.spr.x);
+
+      // Special attacks always target the nearest player even when fighting raiders
       if (b.specialTimer <= 0 && nearDist < 300) {
         b._bossState = 'telegraph';
         b._telegraphTimer = 900;
-        b._lockedTarget = nearest; // lock target at telegraph start
+        b._lockedTarget = nearest;
         this._bossTelegraph(b, nearest);
       }
 
-      // Base melee attack (only while chasing normally)
-      if (nearDist < 70) {
+      // Melee — swipe nearest raider or player depending on what's in range
+      if (foeDist < 70) {
         b.attackTimer -= delta;
         if (b.attackTimer <= 0) {
           b.attackTimer = b.atkInterval;
-          nearest.hp = Math.max(0, nearest.hp - b.dmg);
-          this._log(nearest.charData.player + ' hit for ' + b.dmg + '  hp=' + nearest.hp + '/' + nearest.maxHp);
-          SFX.playerHurt();
-          nearest.spr.setTint(0xff0000);
-          this.cameras.main.shake(300, 0.008);
-          this.time.delayedCall(200, () => { if (nearest.spr.active) nearest.spr.clearTint(); });
-          this.checkDeaths();
+          if (aggroRaider) {
+            // Hit the raider — uses _hurtEnemy so flinch + log applies
+            this._hurtEnemy(aggroRaider, b.dmg, b.spr.x, b.spr.y);
+          } else {
+            nearest.hp = Math.max(0, nearest.hp - b.dmg);
+            this._log(nearest.charData.player + ' hit for ' + b.dmg + '  hp=' + nearest.hp + '/' + nearest.maxHp);
+            SFX.playerHurt();
+            nearest.spr.setTint(0xff0000);
+            this.cameras.main.shake(300, 0.008);
+            this.time.delayedCall(200, () => { if (nearest.spr.active) nearest.spr.clearTint(); });
+            this.checkDeaths();
+          }
         }
       }
     }
