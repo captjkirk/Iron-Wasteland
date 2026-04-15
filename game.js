@@ -6,7 +6,7 @@
 
 // ── VERSION ───────────────────────────────────────────────────
 // Update this each commit so the title screen reflects the build date.
-const VERSION = 'Apr 15, 2026  09:03 AM EDT';
+const VERSION = 'Apr 15, 2026  09:28 AM EDT';
 
 // ── CONSTANTS ─────────────────────────────────────────────────
 // Detect mobile/phone: touch device with a small screen.
@@ -57,6 +57,15 @@ function _biomeNoise(tx, ty, scale) {
 
 // Biome seeds set at scene init — Voronoi regions produce a unique map each session
 let _biomeSeeds = [];
+
+// Module-level log queue: other scenes (GameOver, CharSelect) push messages here;
+// GameScene flushes them into _dbgEntries at the start of each run.
+let _pendingLogMsgs = [];
+function _qlog(msg, cat) {
+  const tag = (cat || 'menu').toUpperCase().padEnd(6).slice(0, 6);
+  _pendingLogMsgs.push(`[${tag}] ${msg}`);
+  console.log('[IW]', msg);
+}
 
 function getBiome(tileX, tileY) {
   const cx = CFG.MAP_W / 2, cy = CFG.MAP_H / 2;
@@ -3218,6 +3227,8 @@ class CharSelectScene extends Phaser.Scene {
   }
 
   go() {
+    const p2id = this.solo ? 'none' : STATE.p2CharId;
+    _qlog(`CharSelect: starting game  P1=${STATE.p1CharId}  P2=${p2id}  solo=${this.solo}`, 'menu');
     this.time.delayedCall(500, () => {
       this.cameras.main.fadeOut(400, 0, 0, 0);
       this.time.delayedCall(400, () => this.scene.start('Game'));
@@ -3248,6 +3259,16 @@ class GameScene extends Phaser.Scene {
 
     const worldW = CFG.MAP_W * CFG.TILE, worldH = CFG.MAP_H * CFG.TILE;
     const cx = worldW/2, cy = worldH/2;
+
+    // Debug log persists across restarts so the full session history is always in the download.
+    // Flush any menu-button events that were queued between scenes.
+    if (!this._dbgEntries) this._dbgEntries = [];
+    this._dbgVisible = false;
+    this._runCount = (this._runCount || 0) + 1;
+    const _runLabel = `=== RUN #${this._runCount} === mode=${STATE.mode === 1 ? '1P' : '2P'} diff=${STATE.difficulty || 'survival'}`;
+    this._dbgEntries.push(_runLabel);
+    _pendingLogMsgs.forEach(m => this._dbgEntries.push(m));
+    _pendingLogMsgs = [];
 
     this.solo        = STATE.mode === 1;
     this.hardcore    = STATE.difficulty === 'hardcore';
@@ -3312,12 +3333,17 @@ class GameScene extends Phaser.Scene {
     }).setOrigin(0.5).setScrollFactor(0).setDepth(999);
 
     this.time.delayedCall(64, () => {
+      try {
+      this._log(`World init start  run=#${this._runCount}  ${this.solo?'1P':'2P'}  ${this.hardcore?'hardcore':'survival'}`, 'world');
       if (_loadTxt.active) _loadTxt.destroy();
       this.cameras.main.fadeIn(600, 0, 0, 0);
       this.physics.world.setBounds(0, 0, worldW, worldH);
 
+      this._log('World init: biome seeds', 'world');
       this._initBiomeSeeds();
+      this._log('World init: buildWorld start', 'world');
       this.buildWorld(worldW, worldH, cx, cy);
+      this._log(`World init: buildWorld done  enemies_placed=${(this.enemies||[]).length}`, 'world');
 
     const p1Ch = CHARS.find(c => c.id === STATE.p1CharId);
     const p2Ch = this.solo ? null : CHARS.find(c => c.id === STATE.p2CharId);
@@ -3482,6 +3508,7 @@ class GameScene extends Phaser.Scene {
       this.cameras.main.centerOn(cx, cy);
     }
 
+    this._log('World init: HUD + overlays', 'world');
     this.buildHUD();
     this.buildControlsOverlay();
     this.buildBarrackOverlay();
@@ -3497,8 +3524,10 @@ class GameScene extends Phaser.Scene {
     this.harvestGfx = this._w(this.add.graphics().setDepth(20));
 
     // Spawn enemies after camera setup
+    this._log('World init: spawning enemies', 'world');
     this.spawnEnemies(worldW, worldH, cx, cy);
     this.placeRaiderCamp(worldW, worldH);
+    this._log(`World init: enemies spawned  total=${(this.enemies||[]).length}  dens=${(this.enemyDens||[]).length}+${(this.waterDens||[]).length}w`, 'world');
 
     // Touch controls (1P only — 2P touch is out of scope)
     if (this.solo && activeInputMode() === 'touch') {
@@ -3514,7 +3543,20 @@ class GameScene extends Phaser.Scene {
     this.time.delayedCall(9200, () => this.startTutorial());
 
       this._worldReady = true;
+      this._log('World init: READY', 'world');
       this.showStartupControls();
+      } catch (err) {
+        // Log the error so it shows in the overlay and download
+        const msg = err?.message || String(err);
+        this._log('INIT FAILED: ' + msg, 'error');
+        console.error('[IW] World init exception:', err);
+        // Show visible error on screen so the player knows something went wrong
+        this.add.text(CFG.W / 2, CFG.H / 2,
+          'Load error on run #' + this._runCount + '\n' + msg + '\n\nCheck console (F12) or press ` to view log',
+          { fontFamily: 'monospace', fontSize: '12px', color: '#ff4444',
+            backgroundColor: '#000000cc', padding: { x: 12, y: 8 }, align: 'center' }
+        ).setOrigin(0.5).setScrollFactor(0).setDepth(1000);
+      }
     }); // end deferred world init
   }
 
@@ -4623,8 +4665,7 @@ class GameScene extends Phaser.Scene {
     this._renderMinimapBase();
 
     // ── DEBUG LOG (toggle with backtick `) ──────────────────────
-    this._dbgEntries = [];
-    this._dbgVisible = false;
+    // NOTE: _dbgEntries is initialized early in create() and persists across restarts.
     this._dbgTxt = this._h(this.add.text(8, 28, '', {
       fontFamily: 'monospace', fontSize: '9px', color: '#00ff88',
       stroke: '#000000', strokeThickness: 1,
@@ -5133,6 +5174,7 @@ class GameScene extends Phaser.Scene {
       const td = Phaser.Math.Distance.Between(player.spr.x, player.spr.y, this.radioTower.x, this.radioTower.y);
       if (td < 80) {
         this.radioTower.used = true;
+        this._log(`${player.charData.player} activated Radio Tower  day=${this.dayNum}`, 'world');
         this.radioTower.spr.setTint(0x66aaff);
         this.fogRevealMult = 2; // permanently doubles player fog-of-war radius
         this.hint('Radio Tower online! Vision range doubled permanently!', 5000);
@@ -5174,6 +5216,7 @@ class GameScene extends Phaser.Scene {
       );
 
       player.isSleeping = true;
+      this._log(`${player.charData.player} sleeping  hp=${player.hp}/${player.maxHp}  day=${this.dayNum}`, 'player');
       player.spr.setTint(0x9977cc);
       player.spr.setAlpha(0.75);
 
@@ -5203,6 +5246,7 @@ class GameScene extends Phaser.Scene {
   wakePlayer(player) {
     if (!player.isSleeping) return;
     player.isSleeping = false;
+    this._log(`${player.charData.player} woke up  hp=${player.hp}/${player.maxHp}`, 'player');
     if (player._frostSlowed) player.spr.setTint(0x88ccff);
     else player.spr.clearTint();
     player.spr.setAlpha(1);
@@ -6268,12 +6312,14 @@ class GameScene extends Phaser.Scene {
             if (b.type === 'boss_troll' && !nearest._frostSlowed) {
               nearest._frostSlowed = true;
               nearest._speedMult = 0.55;
+              this._log(`${nearest.charData.player} frost slowed  hp=${nearest.hp}/${nearest.maxHp}`, 'combat');
               this.hint('FROST SLOW! (-45% speed)', 1500);
               this.time.delayedCall(280, () => { if (nearest.spr?.active && nearest._frostSlowed) nearest.spr.setTint(0x88ccff); });
               this.time.delayedCall(3000, () => {
                 if (!nearest) return;
                 nearest._frostSlowed = false;
                 nearest._speedMult = 1;
+                this._log(`${nearest.charData.player} frost slow expired`, 'combat');
                 if (nearest.spr?.active) nearest.spr.clearTint();
               });
             }
@@ -6371,6 +6417,7 @@ class GameScene extends Phaser.Scene {
   _bossExecuteSpecial(b, nearest) {
     if (b._telegraphGfx && b._telegraphGfx.active) { b._telegraphGfx.destroy(); b._telegraphGfx = null; }
     const players = [this.p1, this.p2].filter(p => p && !p.isDowned && p.hp > 0 && p.spr.active);
+    this._log(`Boss special: ${b.specialType}  boss=${b.type}  hp=${b.hp}/${b.maxHp}  pct=${Math.round(b.hp/b.maxHp*100)}%`, 'combat');
 
     if (b.specialType === 'slam') {
       // ── Ground Slam: AoE damage within 130px, big shake ──────
@@ -6501,6 +6548,7 @@ class GameScene extends Phaser.Scene {
           const _sd = _ap.length ? Math.min(..._ap.map(p => Phaser.Math.Distance.Between(ex, ey, p.spr.x, p.spr.y))) : Infinity;
           if (_sd > CFG.DORMANT_RADIUS) { e._dormant = true; spr.setVisible(false); if (spr.body) spr.body.enable = false; }
         }
+        this._log(`Den respawn: ${type}  total_enemies=${this.enemies.length+1}`, 'world');
         this.enemies.push(e);
       }
     });
@@ -6517,6 +6565,7 @@ class GameScene extends Phaser.Scene {
       const keys = Array.from(den.tileSet);
       const rk = keys[Phaser.Math.Between(0, keys.length - 1)];
       const [ltx, lty] = rk.split(',').map(Number);
+      this._log(`Water den respawn: water_lurker  total_enemies=${this.enemies.length+1}`, 'world');
       this._spawnWaterLurker(ltx * CFG.TILE, lty * CFG.TILE);
     });
   }
@@ -6747,6 +6796,7 @@ class GameScene extends Phaser.Scene {
           player.ammo += fill;
           player.reserveAmmo -= fill;
           player.reloading = false;
+          this._log(`${player.charData.player} reloaded  ammo=${player.ammo}  reserve=${player.reserveAmmo}`, 'player');
           this.redrawHUD(); SFX.reload();
         });
       } else if (player.reserveAmmo <= 0 && player.ammo < clipSize) {
@@ -6759,6 +6809,7 @@ class GameScene extends Phaser.Scene {
         return;
       }
       player.rallyCooldown = 30000;
+      this._log(`${player.charData.player} used RALLY  hp=${player.hp}/${player.maxHp}  enemies_nearby=${(this.enemies||[]).filter(e=>e.spr?.active&&!e._dormant&&Phaser.Math.Distance.Between(e.spr.x,e.spr.y,player.spr.x,player.spr.y)<300).length}`, 'player');
       this.tickCooldown(player, 'rallyCooldown', 30000);
       this.time.delayedCall(30000, () => this.hint('RALLY is ready!', 2000));
       SFX._play(330, 'square', 0.15, 0.5, 'rise');
@@ -6807,6 +6858,7 @@ class GameScene extends Phaser.Scene {
       this.tickCooldown(player, 'turretCooldown', 45000);
       SFX._play(500, 'square', 0.1, 0.3);
       SFX._play(700, 'triangle', 0.08, 0.2);
+      this._log(`${player.charData.player} deployed TURRET  pos=(${Math.floor(player.spr.x/CFG.TILE)},${Math.floor(player.spr.y/CFG.TILE)})`, 'player');
       this.hint('Turret deployed!', 2000);
       this.deployTurret(player.spr.x, player.spr.y);
     }
@@ -6982,6 +7034,7 @@ class GameScene extends Phaser.Scene {
         if (!web.active || (p._webSlowCd || 0) > 0) return;
         p._webSlowCd = 2500;
         p._speedMult = 0.4;
+        this._log(`${p.charData.player} caught in spider web  hp=${p.hp}/${p.maxHp}`, 'combat');
         this.hint('Caught in a web!', 1500);
         this.time.delayedCall(2500, () => {
           if (p && p.spr?.active) { p._speedMult = 1; p._webSlowCd = 0; }
@@ -7032,7 +7085,7 @@ class GameScene extends Phaser.Scene {
     const ts = `${Math.floor(t/60).toString().padStart(2,'0')}:${(t%60).toString().padStart(2,'0')}`;
     const tag = (cat || 'info').toUpperCase().padEnd(6).slice(0, 6);
     this._dbgEntries.push(`T${ts} [${tag}] ${msg}`);
-    if (this._dbgEntries.length > 30) this._dbgEntries.shift();
+    // No hard cap — full history is kept for download. Overlay shows last 28 lines.
     this._dbgRefresh(true);
   }
 
@@ -7045,6 +7098,13 @@ class GameScene extends Phaser.Scene {
       this._dbgRefreshCd = 500; // refresh stats header 2× per second
     }
     const fps    = Math.round(this.game.loop.actualFps);
+    // Log FPS warnings (throttled: at most once every 10 s)
+    if (fps < 30 && (!this._lastFpsWarn || (this.timeAlive||0) - this._lastFpsWarn > 10)) {
+      this._lastFpsWarn = this.timeAlive || 0;
+      this._dbgEntries && this._dbgEntries.push(
+        `T${Math.floor((this.timeAlive||0)/60).toString().padStart(2,'0')}:${(Math.floor(this.timeAlive||0)%60).toString().padStart(2,'0')} [PERF  ] FPS drop: ${fps}  enemies=${(this.enemies||[]).length}`
+      );
+    }
     const t      = Math.floor(this.timeAlive || 0);
     const ts     = `${Math.floor(t/60).toString().padStart(2,'0')}:${(t%60).toString().padStart(2,'0')}`;
     const active = (this.enemies || []).filter(e => e.spr?.active && !e._dormant).length;
@@ -7065,7 +7125,9 @@ class GameScene extends Phaser.Scene {
       `[\`] close  [C] copy  [G] download .txt`,
       `────────────────────────────────────────────────────`,
     ];
-    const entries = this._dbgEntries.length ? this._dbgEntries : ['(no events yet)'];
+    const allEntries = this._dbgEntries.length ? this._dbgEntries : ['(no events yet)'];
+    const entries = allEntries.slice(-28); // overlay shows last 28; download has everything
+    if (allEntries.length > 28) entries.unshift(`  … ${allEntries.length - 28} earlier entries (G to download all)`);
     this._dbgTxt.setText([...header, ...entries].join('\n'));
   }
 
@@ -7130,6 +7192,7 @@ class GameScene extends Phaser.Scene {
     if (e.isRaider) {
       this.raiders = this.raiders.filter(r => r !== e);
       if (this.raiders.length === 0 && this.raidCamp) {
+        this._log(`Raider camp cleared!  day=${this.dayNum}  kills=${this.kills}  raiders_return_day=${this.dayNum+10}`, 'world');
         this.hint('Raider camp cleared! Loot cache unlocked — raiders return in 10 days…', 4500);
         this.raidRespawnDay = this.dayNum + 10;
         if (this.raidCamp.spr && this.raidCamp.spr.active) this.raidCamp.spr.setTint(0x555555);
@@ -7321,10 +7384,12 @@ class GameScene extends Phaser.Scene {
           label = '+3 Ammo';
         } else if (item.itemType === 'food') {
           player.hp = Math.min(player.maxHp, player.hp + 15);
+          this._log(`${player.charData.player} picked up food  hp=${player.hp}/${player.maxHp}`, 'player');
           label = '+15 HP';
         } else {
           player.inv[item.itemType] = (player.inv[item.itemType] || 0) + 1;
           this.resourcesGathered++;
+          this._log(`${player.charData.player} +1 ${item.itemType}  inv=${JSON.stringify(player.inv)}`, 'player');
           label = '+1 ' + item.itemType.charAt(0).toUpperCase() + item.itemType.slice(1);
         }
         SFX._play(600, 'triangle', 0.06, 0.2);
@@ -9119,6 +9184,7 @@ class GameOverScene extends Phaser.Scene {
   }
 
   restart() {
+    _qlog(`GameOver: "Play Again" clicked  score=${this._score}  day=${this.days}  kills=${this.kills}`, 'menu');
     this._ensureSaved();
     this._cleanupInput();
     this.cameras.main.fadeOut(300, 0, 0, 0);
@@ -9126,6 +9192,7 @@ class GameOverScene extends Phaser.Scene {
   }
 
   goMenu() {
+    _qlog(`GameOver: "Main Menu" clicked  score=${this._score}  day=${this.days}  kills=${this.kills}`, 'menu');
     this._ensureSaved();
     this._cleanupInput();
     this.cameras.main.fadeOut(300, 0, 0, 0);
