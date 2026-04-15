@@ -6,7 +6,7 @@
 
 // ── VERSION ───────────────────────────────────────────────────
 // Update this each commit so the title screen reflects the build date.
-const VERSION = 'Apr 15, 2026  08:39 AM EDT';
+const VERSION = 'Apr 15, 2026  08:48 AM EDT';
 
 // ── CONSTANTS ─────────────────────────────────────────────────
 // Detect mobile/phone: touch device with a small screen.
@@ -3396,13 +3396,29 @@ class GameScene extends Phaser.Scene {
       this._dbgVisible = !this._dbgVisible;
       if (this._dbgTxt) {
         this._dbgTxt.setVisible(this._dbgVisible);
-        if (this._dbgVisible) {
-          const lines = (this._dbgEntries && this._dbgEntries.length > 0)
-            ? ['── debug log ──', ...this._dbgEntries]
-            : ['── debug log (no events yet) ──'];
-          this._dbgTxt.setText(lines.join('\n'));
-        }
+        if (this._dbgVisible) this._dbgRefresh(true);
       }
+    });
+    // C — copy log to clipboard while overlay is open
+    this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.C).on('down', () => {
+      if (!this._dbgVisible || !this._dbgEntries) return;
+      const t = Math.floor(this.timeAlive || 0);
+      const text = [
+        `IRON WASTELAND SESSION LOG`,
+        `Version : ${VERSION}  Exported: ${new Date().toLocaleString()}`,
+        `Time    : ${Math.floor(t/60)}m ${t%60}s  Day: ${this.dayNum||1}  Kills: ${this.kills||0}`,
+        ``,
+        ...this._dbgEntries,
+      ].join('\n');
+      navigator.clipboard.writeText(text)
+        .then(() => this.hint('Log copied to clipboard!', 2000))
+        .catch(() => this.hint('Copy failed — try G to download instead', 2000));
+    });
+    // G — download full log as .txt while overlay is open
+    this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.G).on('down', () => {
+      if (!this._dbgVisible) return;
+      this._downloadLog();
+      this.hint('Log saved as .txt file!', 2000);
     });
 
     // Barracks navigation keys
@@ -4610,10 +4626,10 @@ class GameScene extends Phaser.Scene {
     this._dbgEntries = [];
     this._dbgVisible = false;
     this._dbgTxt = this._h(this.add.text(8, 28, '', {
-      fontFamily: 'monospace', fontSize: '10px', color: '#00ff88',
-      stroke: '#000', strokeThickness: 1,
-      backgroundColor: '#00000099',
-      padding: { x: 6, y: 4 },
+      fontFamily: 'monospace', fontSize: '9px', color: '#00ff88',
+      stroke: '#000000', strokeThickness: 1,
+      backgroundColor: '#000000bb',
+      padding: { x: 7, y: 5 },
     }).setScrollFactor(0).setDepth(500).setVisible(false));
   }
 
@@ -4793,6 +4809,7 @@ class GameScene extends Phaser.Scene {
     // Go downed — partner has a chance to revive
     player.hp = 0;
     player.isDowned = true;
+    this._log(`${player.charData.player} (${player.charData.id}) DOWNED  day=${this.dayNum}`, 'player');
     player.downTimer = CFG.DOWN_TIME;
     player.spr.setTint(0xaa0000);
     player.spr.setAlpha(0.7);
@@ -4917,6 +4934,7 @@ class GameScene extends Phaser.Scene {
     if (!player || !player.isDowned) return; // guard: timer may have expired same frame
     player.isDowned = false;
     player.hp = Math.floor(player.maxHp * 0.3);
+    this._log(`${player.charData.player} revived  hp=${player.hp}/${player.maxHp}`, 'player');
     player.downTimer = 0;
     if (player._frostSlowed) player.spr.setTint(0x88ccff);
     else player.spr.clearTint();
@@ -4933,6 +4951,9 @@ class GameScene extends Phaser.Scene {
   triggerGameOver(reason) {
     if (this.isOver) return;
     this.isOver = true;
+    this._log(`GAME OVER — ${reason}  day=${this.dayNum}  kills=${this.kills||0}  T=${Math.floor(this.timeAlive||0)}s`, 'world');
+    // Auto-download log so players can share/report without remembering to copy
+    this.time.delayedCall(800, () => this._downloadLog());
     // Close controls overlay if it was open when game ended
     if (this.controlsVis && this.ctrlObjs) {
       this.ctrlObjs.forEach(o => o.setVisible(false));
@@ -5286,6 +5307,8 @@ class GameScene extends Phaser.Scene {
     if (other && newCh.id===other.id) { this.hint('That character is already taken!', 1800); return; }
 
     const hpPct      = player.hp / player.maxHp;
+    const _prevChar  = player.charData.id;
+    this._log(`Barracks: ${player.charData.player} swapped ${_prevChar} → ${newCh.id}`, 'player');
     player.charData  = newCh;
     player.maxHp     = newCh.maxHp;
     player.hp        = Math.max(1, Math.round(newCh.maxHp * hpPct));
@@ -5480,6 +5503,7 @@ class GameScene extends Phaser.Scene {
     }
 
     this.timeAlive += delta / 1000;
+    if (this._dbgVisible) this._dbgRefresh(); // throttled live stats refresh
 
     // Movement — skip if downed, sleeping, or owns the open craft menu
     const p1CraftHalt = this.craftMenuOpen && this.craftMenuOwner === this.p1;
@@ -5873,6 +5897,7 @@ class GameScene extends Phaser.Scene {
   spawnRaiders(cx, cy) {
     const { TILE } = CFG;
     const count = Phaser.Math.Between(5, 10);
+    this._log(`Raider attack!  count=${count}  day=${this.dayNum}`, 'world');
     const types = ['brawler', 'shooter', 'brawler', 'shooter', 'heavy', 'brawler', 'shooter', 'heavy', 'brawler', 'shooter'];
     for (let i = 0; i < count; i++) {
       const rtype = types[i % types.length];
@@ -6061,6 +6086,7 @@ class GameScene extends Phaser.Scene {
     this.enemies.push(this.boss);
 
     // Announce arrival
+    this._log(`Boss spawned: ${bt.name}  hp=${bt.hp}  day=${this.dayNum}  diff=${this._diffMult().toFixed(1)}x`, 'world');
     this.hint('\u2620 ' + bt.name.toUpperCase() + ' APPROACHES! \u2620', 6000);
     SFX.bossRoar();
     Music.switchToBoss();
@@ -6229,7 +6255,7 @@ class GameScene extends Phaser.Scene {
             this._hurtEnemy(aggroRaider, b.dmg, b.spr.x, b.spr.y);
           } else {
             nearest.hp = Math.max(0, nearest.hp - b.dmg);
-            this._log(nearest.charData.player + ' hit for ' + b.dmg + '  hp=' + nearest.hp + '/' + nearest.maxHp);
+            this._log(nearest.charData.player + ' hit for ' + b.dmg + '  hp=' + nearest.hp + '/' + nearest.maxHp, 'combat');
             SFX.playerHurt();
             nearest.spr.setTint(0xff0000);
             this.cameras.main.shake(300, 0.008);
@@ -6919,7 +6945,7 @@ class GameScene extends Phaser.Scene {
     e.spr.setTint(tint);
     this.time.delayedCall(110, () => { if (e.spr && e.spr.active) e.spr.clearTint(); });
     SFX.hit();
-    this._log(e.type + ' hit  dmg=' + dmg + '  hp=' + e.hp + '/' + (e.maxHp || '?'));
+    this._log(e.type + ' hit  dmg=' + dmg + '  hp=' + e.hp + '/' + (e.maxHp || '?'), 'combat');
     if (e.hp <= 0) this.killEnemy(e);
   }
 
@@ -6998,14 +7024,81 @@ class GameScene extends Phaser.Scene {
     return tc;
   }
 
-  // Push a timestamped entry to the in-game debug log (` key to show/hide).
-  _log(msg) {
+  // Push a timestamped event entry to the in-game debug log (` key to show/hide).
+  // cat (optional): 'world' | 'player' | 'combat' | 'build'
+  _log(msg, cat) {
     if (!this._dbgEntries) return;
-    const d = new Date();
-    const ts = d.getMinutes().toString().padStart(2,'0') + ':' + d.getSeconds().toString().padStart(2,'0');
-    this._dbgEntries.push('[' + ts + '] ' + msg);
-    if (this._dbgEntries.length > 18) this._dbgEntries.shift();
-    if (this._dbgTxt) this._dbgTxt.setText(['── debug log ──', ...this._dbgEntries].join('\n'));
+    const t = Math.floor(this.timeAlive || 0);
+    const ts = `${Math.floor(t/60).toString().padStart(2,'0')}:${(t%60).toString().padStart(2,'0')}`;
+    const tag = (cat || 'info').toUpperCase().padEnd(6).slice(0, 6);
+    this._dbgEntries.push(`T${ts} [${tag}] ${msg}`);
+    if (this._dbgEntries.length > 30) this._dbgEntries.shift();
+    this._dbgRefresh(true);
+  }
+
+  // Rebuild the debug overlay text. force=true skips throttle (use from _log).
+  _dbgRefresh(force) {
+    if (!this._dbgTxt || !this._dbgVisible) return;
+    if (!force) {
+      this._dbgRefreshCd = (this._dbgRefreshCd || 0) - (this.game.loop.delta || 16);
+      if (this._dbgRefreshCd > 0) return;
+      this._dbgRefreshCd = 500; // refresh stats header 2× per second
+    }
+    const fps    = Math.round(this.game.loop.actualFps);
+    const t      = Math.floor(this.timeAlive || 0);
+    const ts     = `${Math.floor(t/60).toString().padStart(2,'0')}:${(t%60).toString().padStart(2,'0')}`;
+    const active = (this.enemies || []).filter(e => e.spr?.active && !e._dormant).length;
+    const total  = (this.enemies || []).length;
+    const phase  = this.isNight ? 'NIGHT' : 'DAY';
+    const p1s    = this.p1
+      ? `P1(${this.p1.charData?.id||'?'}): ${this.p1.hp}/${this.p1.maxHp}hp${this.p1.isDowned?' [DOWN]':''}`
+      : '';
+    const p2s    = this.p2
+      ? `  P2(${this.p2.charData?.id||'?'}): ${this.p2.hp}/${this.p2.maxHp}hp${this.p2.isDowned?' [DOWN]':''}`
+      : '';
+    const diff   = this._diffMult ? this._diffMult().toFixed(1) : '?';
+    const header = [
+      `── Iron Wasteland Debug Log ──  ${VERSION}`,
+      `FPS:${fps}  ${phase} ${this.dayNum||1}  T:${ts}  Diff:${diff}x`,
+      `Enemies: ${active} active / ${total} total  |  Kills: ${this.kills||0}`,
+      `${p1s}${p2s}`,
+      `[\`] close  [C] copy  [G] download .txt`,
+      `────────────────────────────────────────────────────`,
+    ];
+    const entries = this._dbgEntries.length ? this._dbgEntries : ['(no events yet)'];
+    this._dbgTxt.setText([...header, ...entries].join('\n'));
+  }
+
+  // Trigger a .txt download of the full session log.
+  _downloadLog() {
+    if (!this._dbgEntries) return;
+    const t    = Math.floor(this.timeAlive || 0);
+    const mode = `${this.solo ? 'Solo' : '2P'} ${this.hardcore ? 'Hardcore' : 'Survival'}`;
+    const p1s  = this.p1 ? `P1 (${this.p1.charData?.id||'?'}): HP ${this.p1.hp}/${this.p1.maxHp}` : '';
+    const p2s  = this.p2 ? `P2 (${this.p2.charData?.id||'?'}): HP ${this.p2.hp}/${this.p2.maxHp}` : '';
+    const lines = [
+      `IRON WASTELAND SESSION LOG`,
+      `─────────────────────────────────────────`,
+      `Version  : ${VERSION}`,
+      `Exported : ${new Date().toLocaleString()}`,
+      `Mode     : ${mode}`,
+      `Session  : ${Math.floor(t/60)}m ${t%60}s`,
+      `Day      : ${this.dayNum||1}   Diff: ${this._diffMult ? this._diffMult().toFixed(1) : '?'}x`,
+      `Kills    : ${this.kills||0}`,
+      p1s, p2s,
+      `─────────────────────────────────────────`,
+      `EVENT LOG (${this._dbgEntries.length} entries)`,
+      `─────────────────────────────────────────`,
+      ...this._dbgEntries,
+    ].filter(Boolean).join('\n');
+    const blob = new Blob([lines], { type: 'text/plain' });
+    const url  = URL.createObjectURL(blob);
+    const a    = Object.assign(document.createElement('a'), {
+      href: url,
+      download: `iron-wasteland-${new Date().toISOString().slice(0,10)}.txt`,
+    });
+    a.click();
+    URL.revokeObjectURL(url);
   }
 
   killEnemy(e) {
@@ -7013,7 +7106,7 @@ class GameScene extends Phaser.Scene {
     e.dying = true;
     e.hp = 0;
     this.kills++;
-    this._log('Enemy killed  type=' + e.type + '  kills=' + this.kills);
+    this._log('Enemy killed  type=' + e.type + '  kills=' + this.kills, 'combat');
     // Remove from update loop immediately so dead entries don't accumulate
     this.enemies = this.enemies.filter(e2 => e2 !== e);
     SFX.enemyDie();
@@ -7060,6 +7153,7 @@ class GameScene extends Phaser.Scene {
       if (e._telegraphGfx && e._telegraphGfx.active) e._telegraphGfx.destroy();
       this.boss = null;
       this.bossDefeated = true;
+      this._log(`Boss defeated: ${e.name||e.type}  day=${this.dayNum}  kills=${this.kills}`, 'world');
       this.hint('BOSS DEFEATED! A rare material was left behind…', 5000);
       Music.switchFromBoss();
       SFX._play(880, 'triangle', 0.3, 0.6, 'rise');
@@ -7670,7 +7764,7 @@ class GameScene extends Phaser.Scene {
         this._spawnBiomeEnemy('bog_lurker',   'swamp',  Math.min(1 + wn, 4),  1);
         this._spawnBiomeEnemy('dust_hound',   'waste',  Math.min(3 * wn, 9),  3);
       }
-      this._log('Wave ' + (this.waveNum+1) + ' day=' + this.dayNum + ' diff=' + this._diffMult().toFixed(1) + 'x  w=' + w + ' r=' + r + ' b=' + b);
+      this._log('Wave ' + (this.waveNum+1) + ' day=' + this.dayNum + ' diff=' + this._diffMult().toFixed(1) + 'x  w=' + w + ' r=' + r + ' b=' + b, 'world');
       this.hint('Wave ' + (this.waveNum+1) + '! Enemies approaching from the wastes!', 3000);
       SFX._play(200, 'sawtooth', 0.3, 0.4, 'drop');
     }
@@ -7788,7 +7882,7 @@ class GameScene extends Phaser.Scene {
       if (wall._hpBar && wall._hpBar.active) wall._hpBar.destroy();
       this.tweens.add({ targets: wall, alpha: 0, duration: 200, onComplete: () => { if (wall.active) wall.destroy(); } });
       this.hint('Structure destroyed!', 1500);
-      this._log('Wall destroyed');
+      this._log('Wall destroyed', 'combat');
     } else if (pct < 0.25) {
       wall.setTint(0xff2200); // nearly gone — red
     } else if (pct < 0.5) {
@@ -7997,6 +8091,7 @@ class GameScene extends Phaser.Scene {
             e._lurking = false;
             e.spr.setAlpha(1);
             e._ambushTimer = 2000;
+            this._log(`water_lurker ambush  target=${closePlayer.charData.player}  pos=(${Math.floor(e.spr.x/CFG.TILE)},${Math.floor(e.spr.y/CFG.TILE)})`, 'combat');
             SFX._play(160, 'sawtooth', 0.12, 0.4, 'drop');
           } else {
             e.spr.setVelocity(0, 0);
@@ -8176,6 +8271,7 @@ class GameScene extends Phaser.Scene {
     // Music transitions + first-night contextual tip
     if (this.isNight && !wasNight) {
       Music.switchToNight();
+      this._log(`Night ${this.dayNum} begins  active_enemies=${(this.enemies||[]).filter(e=>e.spr?.active&&!e._dormant).length}`, 'world');
       if (!this._ctx.firstNight) {
         this._ctx.firstNight = true;
         this.hint('Night falls — enemies are faster and more dangerous! Build Walls or sleep in a Bed.', 6000);
@@ -8187,6 +8283,7 @@ class GameScene extends Phaser.Scene {
       this.dayNum = newDay;
       this._nightWallHinted = false; // D5 — reset so next night gives warning again
       Music.switchToDay();
+      this._log(`Day ${this.dayNum} begins  diff=${this._diffMult().toFixed(1)}x  kills_so_far=${this.kills||0}  enemies=${(this.enemies||[]).filter(e=>e.spr?.active).length}`, 'world');
       this.hint('Dawn of Day ' + this.dayNum + ' \u2014 enemies grow stronger!', 3000);
       // Raider respawn check
       if (this.raidRespawnDay !== null && this.dayNum >= this.raidRespawnDay) {
@@ -8349,6 +8446,7 @@ class GameScene extends Phaser.Scene {
     }
 
     // Place the structure
+    this._log(`Build placed: ${this.buildType}  pos=(${Math.floor(x/CFG.TILE)},${Math.floor(y/CFG.TILE)})  by=${this.buildOwner?.charData?.player||'?'}`, 'build');
     if (this.buildType === 'wall') {
       const w = this.obstacles.create(x, y, 'wall').setDepth(5).setImmovable(true);
       w.setAngle(this.buildRotation * 90);
@@ -8669,6 +8767,7 @@ class GameScene extends Phaser.Scene {
     this.closeCraftMenu();
 
     if (rec.type === 'build') {
+      this._log(`Craft queued: ${rec.label}  by=${player.charData.player}`, 'build');
       // Enter ghost build mode; resources are deducted in placeBuild() as normal
       this.buildMode = true;
       this.buildOwner = player;
@@ -8709,6 +8808,7 @@ class GameScene extends Phaser.Scene {
     } else if (rec.type === 'instant' && rec.key === 'med_kit') {
       // D8 — Med Kit: restore 40 HP to the crafting player, green flash
       player.hp = Math.min(player.maxHp, player.hp + 40);
+      this._log(`${player.charData.player} used Med Kit  hp=${player.hp}/${player.maxHp}`, 'player');
       player.spr.setTint(0x44ff44);
       this.time.delayedCall(300, () => {
         if (!player.spr?.active) return;
@@ -8723,6 +8823,7 @@ class GameScene extends Phaser.Scene {
       const upgradeFlag = '_' + rec.charId + 'Upgraded';
       if (target[upgradeFlag]) { this.hint('Already upgraded!', 1500); return; }
       target[upgradeFlag] = true;
+      this._log(`${target.charData.player} upgrade: ${rec.label}`, 'player');
       if (rec.charId === 'gunslinger') target._gunslingerClip = 12;
       target.spr.setTint(0xffaa22);
       this.time.delayedCall(400, () => {
