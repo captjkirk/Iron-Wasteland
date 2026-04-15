@@ -5675,12 +5675,7 @@ class GameScene extends Phaser.Scene {
           this.physics.add.overlap(blt, e.spr, () => {
             if (!blt.active || e.dying) return; // dying guard: second in-flight bullet can't double-kill
             blt.destroy();
-            e.hp -= 35;
-            this._log(e.type + ' shot  hp=' + e.hp + '/' + e.maxHp);
-            SFX.hit();
-            e.spr.setTint(0xff6644);
-            this.time.delayedCall(100, () => { if (e.spr.active) e.spr.clearTint(); });
-            if (e.hp <= 0) this.killEnemy(e);
+            this._hurtEnemy(e, 35, blt.x, blt.y);
           });
         });
       }
@@ -5717,12 +5712,7 @@ class GameScene extends Phaser.Scene {
         this.physics.add.overlap(blt, e.spr, () => {
           if (!blt.active || e.dying) return;
           blt.destroy();
-          e.hp -= 28;
-          this._log(e.type + ' nail-gunned  hp=' + e.hp + '/' + e.maxHp);
-          SFX.hit();
-          e.spr.setTint(0x5599ff);
-          this.time.delayedCall(120, () => { if (e.spr.active) e.spr.clearTint(); });
-          if (e.hp <= 0) this.killEnemy(e);
+          this._hurtEnemy(e, 28, blt.x, blt.y, 0x5599ff);
         });
       });
     }
@@ -5746,12 +5736,7 @@ class GameScene extends Phaser.Scene {
         this.physics.add.overlap(blt, e.spr, () => {
           if (!blt.active || e.dying) return;
           blt.destroy();
-          e.hp -= 14;
-          this._log(e.type + ' nailed  hp=' + e.hp + '/' + e.maxHp);
-          SFX.hit();
-          e.spr.setTint(0xff8833);
-          this.time.delayedCall(80, () => { if (e.spr.active) e.spr.clearTint(); });
-          if (e.hp <= 0) this.killEnemy(e);
+          this._hurtEnemy(e, 14, blt.x, blt.y, 0xff8833);
         });
       });
     }
@@ -5849,10 +5834,7 @@ class GameScene extends Phaser.Scene {
           bfx.lineStyle(2, 0xddff44, 0.8);
           bfx.lineBetween(x, y-10, nearest.spr.x, nearest.spr.y);
           this.tweens.add({ targets:bfx, alpha:0, duration:150, onComplete:()=>bfx.destroy() });
-          nearest.hp -= 15;
-          nearest.spr.setTint(0xff6644);
-          this.time.delayedCall(100, () => { if(nearest.spr.active) nearest.spr.clearTint(); });
-          if (nearest.hp <= 0) this.killEnemy(nearest);
+          this._hurtEnemy(nearest, 15, x, y);
         }
       }
     });
@@ -5887,22 +5869,35 @@ class GameScene extends Phaser.Scene {
           const angToE = Phaser.Math.Angle.Between(player.spr.x, player.spr.y, e.spr.x, e.spr.y);
           const diff = Phaser.Math.Angle.Wrap(angToE - dirAngle);
           if (Math.abs(diff) > Math.PI * 0.65) return;
-          e.hp -= player.charData.id==='knight' ? 45 : 30;
-          this._log(e.type + ' melee-hit  hp=' + e.hp + '/' + e.maxHp);
-          SFX.hit();
-          e.spr.setTint(0xff6644);
-          this.time.delayedCall(120, () => { if(e.spr.active) e.spr.clearTint(); });
-          // Knockback (architect wrench)
+          const meleeDmg = player.charData.id === 'knight' ? 45 : 30;
+          this._hurtEnemy(e, meleeDmg, player.spr.x, player.spr.y);
+          // Extra architect knockback (stacks on top of _hurtEnemy base impulse)
           if (knockback && e.spr.body) {
-            const kb = knockback;
-            e.spr.body.velocity.x += Math.cos(angToE) * kb;
-            e.spr.body.velocity.y += Math.sin(angToE) * kb;
+            e.spr.body.velocity.x += Math.cos(angToE) * knockback;
+            e.spr.body.velocity.y += Math.sin(angToE) * knockback;
           }
-          if (e.hp <= 0) this.killEnemy(e);
         }
       });
     }
     this.tweens.add({ targets:fx, alpha:0, duration:dur*1000, onComplete:()=>fx.destroy() });
+  }
+
+  // Central damage handler: applies damage, 220ms flinch stagger, knockback impulse,
+  // hit-flash tint, SFX, and kill check. Use instead of inline e.hp -= X everywhere.
+  _hurtEnemy(e, dmg, fromX, fromY, tint = 0xff6644) {
+    if (!e || e.dying) return;
+    e.hp -= dmg;
+    e._flinchTimer = 220;
+    if (fromX !== undefined && e.spr.body) {
+      const ang = Phaser.Math.Angle.Between(fromX, fromY, e.spr.x, e.spr.y);
+      e.spr.body.velocity.x += Math.cos(ang) * 90;
+      e.spr.body.velocity.y += Math.sin(ang) * 90;
+    }
+    e.spr.setTint(tint);
+    this.time.delayedCall(110, () => { if (e.spr && e.spr.active) e.spr.clearTint(); });
+    SFX.hit();
+    this._log(e.type + ' hit  dmg=' + dmg + '  hp=' + e.hp + '/' + (e.maxHp || '?'));
+    if (e.hp <= 0) this.killEnemy(e);
   }
 
   // Floating pickup notification — shows "+N Item" rising from world position
@@ -6019,9 +6014,7 @@ class GameScene extends Phaser.Scene {
       for (const e of this.enemies) {
         if (e.dying || !e.spr.active) continue;
         if (Phaser.Math.Distance.Between(e.spr.x, e.spr.y, st.x, st.y) < 26) {
-          e.hp = Math.max(0, e.hp - 35);
-          SFX.hit();
-          if (e.hp <= 0) this.killEnemy(e);
+          this._hurtEnemy(e, 35, st.x, st.y);
           st.destroy();
           this.spikeTraps.splice(si, 1);
           break; // trap gone — move to next trap
@@ -6432,6 +6425,8 @@ class GameScene extends Phaser.Scene {
     this.enemies.forEach(e => {
       if (e.dying || !e.spr.active) return;
       if (e.isBoss) return; // boss movement/attack handled by updateBoss
+      // Flinch stagger — freeze AI and movement briefly after being hit
+      if ((e._flinchTimer || 0) > 0) { e._flinchTimer -= delta; e.spr.setVelocity(0, 0); return; }
       let nearest = null, nearDist = Infinity;
       players.forEach(p => {
         const d = Phaser.Math.Distance.Between(e.spr.x, e.spr.y, p.spr.x, p.spr.y);
