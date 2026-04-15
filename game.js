@@ -6,7 +6,7 @@
 
 // ── VERSION ───────────────────────────────────────────────────
 // Update this each commit so the title screen reflects the build date.
-const VERSION = 'Apr 15, 2026  06:33 AM EDT';
+const VERSION = 'Apr 15, 2026  06:40 AM EDT';
 
 // ── CONSTANTS ─────────────────────────────────────────────────
 // Detect mobile/phone: touch device with a small screen.
@@ -999,19 +999,18 @@ function buildTextures(scene) {
   g.lineStyle(2, 0x0a2010, 0.9); g.strokeEllipse(32, 26, 60, 44);
   g.generateTexture('toxic_pool', 64, 52);
 
-  // Shallow water (32×32) — full-tile fill so adjacent tiles connect seamlessly
+  // Shallow water (32×32) — translucent tint, drawn at low alpha so ground shows through
   g.clear();
-  g.fillStyle(0x2266aa); g.fillRect(0, 0, 32, 32);    // base
-  g.fillStyle(0x3388cc); g.fillRect(0, 0, 32, 16);    // lighter upper half
-  g.fillStyle(0x2878bb); g.fillRect(0, 16, 32, 16);   // slightly darker lower half
-  g.fillStyle(0x55aadd); g.fillRect(4, 10, 12, 1); g.fillRect(16, 15, 10, 1); g.fillRect(6, 21, 8, 1); g.fillRect(20, 24, 6, 1); // ripples
+  g.fillStyle(0x4488bb, 0.55); g.fillRect(0, 0, 32, 32);
+  g.fillStyle(0x66aacc, 0.25); g.fillRect(0, 0, 32, 14);  // faint surface sheen
+  g.fillStyle(0x88ccee, 0.3); g.fillRect(4, 10, 12, 1); g.fillRect(16, 16, 10, 1); g.fillRect(7, 22, 8, 1); // subtle ripples
   g.generateTexture('water_shallow', 32, 32);
 
-  // Deep water (32×32) — full-tile fill, dark navy
+  // Deep water (32×32) — slightly more opaque to signal impassable
   g.clear();
-  g.fillStyle(0x0a1833); g.fillRect(0, 0, 32, 32);
-  g.fillStyle(0x0d2244); g.fillRect(0, 0, 32, 14);
-  g.fillStyle(0x1a3366); g.fillRect(5, 9, 8, 1); g.fillRect(18, 16, 7, 1); g.fillRect(8, 23, 6, 1);
+  g.fillStyle(0x1a3a66, 0.7); g.fillRect(0, 0, 32, 32);
+  g.fillStyle(0x224488, 0.3); g.fillRect(0, 0, 32, 12);
+  g.fillStyle(0x3366aa, 0.2); g.fillRect(6, 10, 8, 1); g.fillRect(17, 18, 7, 1);
   g.generateTexture('water_deep', 32, 32);
 
   // Ice tile (32×32) — pale cyan, passable, slippery momentum
@@ -7208,7 +7207,7 @@ class GameScene extends Phaser.Scene {
         const neighborCount = [[tx-1,ty],[tx+1,ty],[tx,ty-1],[tx,ty+1]]
           .filter(([nx, ny]) => tileSet.has(`${nx},${ny}`)).length;
         if (isIce) {
-          const tile = this.physics.add.image(x, y, 'water_ice').setDepth(2).setAlpha(0.92);
+          const tile = this.physics.add.image(x, y, 'water_ice').setDepth(1).setAlpha(0.75);
           tile.body.allowGravity = false; tile.body.setImmovable(true);
           tile.body.setSize(30, 30);
           if (this.hudCam) this.hudCam.ignore(tile);
@@ -7216,12 +7215,12 @@ class GameScene extends Phaser.Scene {
           this.iceTiles.push(tile);
           this._iceTileSet.add(key);
         } else if (neighborCount >= 3) {
-          const tile = this.obstacles.create(x, y, 'water_deep').setDepth(2).setAlpha(0.95);
+          const tile = this.obstacles.create(x, y, 'water_deep').setDepth(1).setAlpha(1);
           if (this.hudCam) this.hudCam.ignore(tile);
           tile.refreshBody();
           this.deepWaterTiles.push(tile);
         } else {
-          const tile = this.physics.add.image(x, y, 'water_shallow').setDepth(2).setAlpha(0.9);
+          const tile = this.physics.add.image(x, y, 'water_shallow').setDepth(1).setAlpha(1);
           tile.body.allowGravity = false; tile.body.setImmovable(true);
           tile.body.setSize(30, 30);
           if (this.hudCam) this.hudCam.ignore(tile);
