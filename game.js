@@ -5372,11 +5372,16 @@ class GameScene extends Phaser.Scene {
     hitPlayers.forEach(p => {
       this.physics.add.overlap(p.spr, bullet, () => {
         if (!bullet.active) return;
+        const baseDmg = raider.dmg * 0.7;
+        const dmg = this._knightShieldBlock(p, bullet.x, bullet.y, baseDmg);
         bullet.destroy();
-        p.hp = Math.max(0, p.hp - raider.dmg * 0.7);
+        p.hp = Math.max(0, p.hp - dmg);
         SFX.playerHurt();
-        p.spr.setTint(0xff0000);
-        this.time.delayedCall(150, () => { if (p.spr.active) p.spr.clearTint(); });
+        // Only apply red hurt tint if shield didn't already flash blue
+        if (dmg >= baseDmg) {
+          p.spr.setTint(0xff0000);
+          this.time.delayedCall(150, () => { if (p.spr.active) p.spr.clearTint(); });
+        }
         this.checkDeaths();
       });
     });
@@ -5920,6 +5925,37 @@ class GameScene extends Phaser.Scene {
       });
     }
     this.tweens.add({ targets:fx, alpha:0, duration:dur*1000, onComplete:()=>fx.destroy() });
+  }
+
+  // Knight (Hudson) shield block check — call before applying damage to the player.
+  // Returns the adjusted damage; also triggers visual/audio block effects if facing attacker.
+  // fromX/fromY = world position of the attacker or projectile.
+  _knightShieldBlock(player, fromX, fromY, baseDmg) {
+    if (player.charData.id !== 'knight' || player.isSleeping || player.isDowned) return baseDmg;
+    const facingAngle = this.getAimAngle(player);
+    const toSrcAngle  = Phaser.Math.Angle.Between(player.spr.x, player.spr.y, fromX, fromY);
+    const diff = Math.abs(Phaser.Math.Angle.Wrap(toSrcAngle - facingAngle));
+    if (diff >= Math.PI / 2) return baseDmg; // enemy outside front 180° arc — no block
+
+    // Shield absorbs 60% of damage (70% with upgrade)
+    const blockPct = player._knightUpgraded ? 0.70 : 0.60;
+    const dmg = Math.max(1, Math.round(baseDmg * (1 - blockPct)));
+
+    // Blue shield flash instead of red hurt tint
+    player.spr.setTint(0x7799ff);
+    this.time.delayedCall(200, () => { if (player.spr && player.spr.active) player.spr.clearTint(); });
+    // Metallic clank
+    SFX._play(380, 'square', 0.06, 0.08);
+    // Floating "BLOCK!" label
+    const bt = this.add.text(player.spr.x, player.spr.y - 20, 'BLOCK!', {
+      fontFamily: 'monospace', fontSize: '14px', color: '#88aaff',
+      stroke: '#000033', strokeThickness: 3,
+    }).setOrigin(0.5, 1).setDepth(150);
+    if (this.hudCam) this.hudCam.ignore(bt);
+    this.tweens.add({ targets: bt, y: player.spr.y - 56, alpha: 0, duration: 900,
+      ease: 'Cubic.Out', onComplete: () => bt.destroy() });
+
+    return dmg;
   }
 
   // Central damage handler: applies damage, 220ms flinch stagger, knockback impulse,
@@ -6534,12 +6570,16 @@ class GameScene extends Phaser.Scene {
         if (nearDist < e.attackRange) {
           e.attackTimer -= delta;
           if (e.attackTimer <= 0) {
-            nearest.hp -= e.dmg;
+            const dmg = this._knightShieldBlock(nearest, e.spr.x, e.spr.y, e.dmg);
+            nearest.hp -= dmg;
             nearest.hp = Math.max(0, nearest.hp);
             SFX.playerHurt();
             if (nearest.isSleeping) { this.wakePlayer(nearest); this._hideSleepIndicator(); this.hint(nearest.charData.player + ' was woken by an enemy!', 2000); }
-            nearest.spr.setTint(0xff0000);
-            this.time.delayedCall(150, () => { if(nearest.spr.active) nearest.spr.clearTint(); });
+            // Only apply red hurt tint if shield didn't already flash blue
+            if (dmg >= e.dmg) {
+              nearest.spr.setTint(0xff0000);
+              this.time.delayedCall(150, () => { if(nearest.spr.active) nearest.spr.clearTint(); });
+            }
             e.attackTimer = e.atkInterval || (e.type==='bear' ? 2400 : e.type==='wolf' ? 1600 : 1200);
             this.checkDeaths();
           }
