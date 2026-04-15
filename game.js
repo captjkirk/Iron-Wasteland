@@ -3301,7 +3301,11 @@ class GameScene extends Phaser.Scene {
             this.p1.hp = Math.max(0, this.p1.hp - 3);
             this._toxicCd1 = 500;
             this.p1.spr.setTint(0x44ff22);
-            this.time.delayedCall(150, () => { if(this.p1.spr.active) this.p1.spr.clearTint(); });
+            this.time.delayedCall(150, () => {
+              if (!this.p1.spr?.active) return;
+              if (this.p1._frostSlowed) this.p1.spr.setTint(0x88ccff);
+              else this.p1.spr.clearTint();
+            });
           }
         });
         if (this.p2) {
@@ -3310,7 +3314,11 @@ class GameScene extends Phaser.Scene {
               this.p2.hp = Math.max(0, this.p2.hp - 3);
               this._toxicCd2 = 500;
               this.p2.spr.setTint(0x44ff22);
-              this.time.delayedCall(150, () => { if(this.p2.spr.active) this.p2.spr.clearTint(); });
+              this.time.delayedCall(150, () => {
+                if (!this.p2.spr?.active) return;
+                if (this.p2._frostSlowed) this.p2.spr.setTint(0x88ccff);
+                else this.p2.spr.clearTint();
+              });
             }
           });
         }
@@ -5893,7 +5901,11 @@ class GameScene extends Phaser.Scene {
         // Only apply red hurt tint if shield didn't already flash blue
         if (dmg >= baseDmg) {
           p.spr.setTint(0xff0000);
-          this.time.delayedCall(150, () => { if (p.spr.active) p.spr.clearTint(); });
+          this.time.delayedCall(150, () => {
+            if (!p.spr?.active) return;
+            if (p._frostSlowed) p.spr.setTint(0x88ccff);
+            else p.spr.clearTint();
+          });
         }
         this.checkDeaths();
       });
@@ -6134,7 +6146,11 @@ class GameScene extends Phaser.Scene {
             SFX.playerHurt();
             nearest.spr.setTint(0xff0000);
             this.cameras.main.shake(300, 0.008);
-            this.time.delayedCall(200, () => { if (nearest.spr?.active) nearest.spr.clearTint(); });
+            this.time.delayedCall(200, () => {
+              if (!nearest.spr?.active) return;
+              if (nearest._frostSlowed) nearest.spr.setTint(0x88ccff);
+              else nearest.spr.clearTint();
+            });
             // Frost Troll — apply frost slow on melee hit
             if (b.type === 'boss_troll' && !nearest._frostSlowed) {
               nearest._frostSlowed = true;
@@ -6259,7 +6275,11 @@ class GameScene extends Phaser.Scene {
           p.hp = Math.max(0, p.hp - Math.round(b.dmg * 0.85));
           SFX.playerHurt();
           p.spr.setTint(b.type === 'boss_troll' ? 0x88ccff : 0xff4400);
-          this.time.delayedCall(250, () => { if (p.spr.active) p.spr.clearTint(); });
+          this.time.delayedCall(250, () => {
+            if (!p.spr?.active) return;
+            if (p._frostSlowed) p.spr.setTint(0x88ccff);
+            else p.spr.clearTint();
+          });
         }
       });
       this.checkDeaths();
@@ -6278,7 +6298,11 @@ class GameScene extends Phaser.Scene {
             SFX.playerHurt();
             p.spr.setTint(0xff8800);
             this.cameras.main.shake(250, 0.01);
-            this.time.delayedCall(200, () => { if (p.spr.active) p.spr.clearTint(); });
+            this.time.delayedCall(200, () => {
+              if (!p.spr?.active) return;
+              if (p._frostSlowed) p.spr.setTint(0x88ccff);
+              else p.spr.clearTint();
+            });
           }
         });
         this.checkDeaths();
@@ -6313,10 +6337,16 @@ class GameScene extends Phaser.Scene {
                 if (!p) return;
                 p._webbed = false;
                 p._speedMult = 1;
-                if (p.spr?.active) p.spr.clearTint();
+                if (!p.spr?.active) return;
+                if (p._frostSlowed) p.spr.setTint(0x88ccff);
+                else p.spr.clearTint();
               });
             } else {
-              this.time.delayedCall(220, () => { if (p.spr?.active) p.spr.clearTint(); });
+              this.time.delayedCall(220, () => {
+                if (!p.spr?.active) return;
+                if (p._frostSlowed) p.spr.setTint(0x88ccff);
+                else p.spr.clearTint();
+              });
             }
             this.checkDeaths();
           });
@@ -6753,7 +6783,11 @@ class GameScene extends Phaser.Scene {
 
     // Blue shield flash instead of red hurt tint
     player.spr.setTint(0x7799ff);
-    this.time.delayedCall(200, () => { if (player.spr && player.spr.active) player.spr.clearTint(); });
+    this.time.delayedCall(200, () => {
+      if (!player.spr?.active) return;
+      if (player._frostSlowed) player.spr.setTint(0x88ccff);
+      else player.spr.clearTint();
+    });
     // Metallic clank
     SFX._play(380, 'square', 0.06, 0.08);
     // Floating "BLOCK!" label
@@ -7801,7 +7835,11 @@ class GameScene extends Phaser.Scene {
             // Only apply red hurt tint if shield didn't already flash blue
             if (dmg >= e.dmg) {
               nearest.spr.setTint(0xff0000);
-              this.time.delayedCall(150, () => { if(nearest.spr.active) nearest.spr.clearTint(); });
+              this.time.delayedCall(150, () => {
+                if (!nearest.spr?.active) return;
+                if (nearest._frostSlowed) nearest.spr.setTint(0x88ccff);
+                else nearest.spr.clearTint();
+              });
             }
             e.attackTimer = e.atkInterval || (e.type==='bear' ? 2400 : e.type==='wolf' ? 1600 : 1200);
             this.checkDeaths();
@@ -8350,7 +8388,11 @@ class GameScene extends Phaser.Scene {
       // D8 — Med Kit: restore 40 HP to the crafting player, green flash
       player.hp = Math.min(player.maxHp, player.hp + 40);
       player.spr.setTint(0x44ff44);
-      this.time.delayedCall(300, () => { if(player.spr.active) player.spr.clearTint(); });
+      this.time.delayedCall(300, () => {
+        if (!player.spr?.active) return;
+        if (player._frostSlowed) player.spr.setTint(0x88ccff);
+        else player.spr.clearTint();
+      });
       this.hint(player.charData.player + ' used Med Kit: +40 HP!', 2000);
     } else if (rec.type === 'upgrade') {
       const target = [this.p1, this.p2].filter(Boolean).find(p => p.charData.id === rec.charId);
@@ -8361,7 +8403,11 @@ class GameScene extends Phaser.Scene {
       target[upgradeFlag] = true;
       if (rec.charId === 'gunslinger') target._gunslingerClip = 12;
       target.spr.setTint(0xffaa22);
-      this.time.delayedCall(400, () => { if(target.spr.active) target.spr.clearTint(); });
+      this.time.delayedCall(400, () => {
+        if (!target.spr?.active) return;
+        if (target._frostSlowed) target.spr.setTint(0x88ccff);
+        else target.spr.clearTint();
+      });
       this.hint(rec.label + ' unlocked for ' + target.charData.player + '!', 3000);
     }
   }
