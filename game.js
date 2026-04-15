@@ -6,7 +6,7 @@
 
 // ── VERSION ───────────────────────────────────────────────────
 // Update this each commit so the title screen reflects the build date.
-const VERSION = 'Apr 15, 2026  04:08 AM UTC';
+const VERSION = 'Apr 15, 2026  04:20 AM UTC';
 
 // ── CONSTANTS ─────────────────────────────────────────────────
 // Detect mobile/phone: touch device with a small screen.
@@ -140,13 +140,28 @@ const Music = {
   },
   switchToNight() {
     if (this.mode === 'night') return;
+    if (this.mode !== 'boss') this._preNightMode = null;
     this.mode = 'night';
     // The current loop will naturally end and _nightLoop will take over
   },
   switchToDay() {
     if (this.mode === 'day') return;
+    if (this.mode !== 'boss') this._preBossMode = null;
     this.mode = 'day';
     this._dawnJingle();
+  },
+  switchToBoss() {
+    if (this.mode === 'boss') return;
+    this._preBossMode = this.mode; // remember day/night so we can restore it
+    this.mode = 'boss';
+    this._bossLoop(this.ctx ? this.ctx.currentTime + 0.15 : 0);
+  },
+  switchFromBoss() {
+    if (this.mode !== 'boss') return;
+    this.mode = this._preBossMode || 'day';
+    this._preBossMode = null;
+    if (this.mode === 'night') this._nightLoop(this.ctx ? this.ctx.currentTime + 0.1 : 0);
+    else { this._dawnJingle(); this._dayLoop(this.ctx ? this.ctx.currentTime + 2 : 0); }
   },
   _note(freq, t, dur, type, vol) {
     if (!this.ctx || !this.playing) return;
@@ -253,10 +268,64 @@ const Music = {
     const delay = Math.max(50, (nextStart - 0.5 - this.ctx.currentTime) * 1000);
     setTimeout(() => this._nightLoop(nextStart), delay);
   },
+
+  // ── BOSS BATTLE LOOP ─────────────────────────────────────────
+  // Intense, driving 130 BPM loop — heroic tension, not pure horror.
+  _bossLoop(startAt) {
+    if (!this.playing || !this.ctx) return;
+    if (this.mode !== 'boss') {
+      if (this.mode === 'night') this._nightLoop(this.ctx.currentTime);
+      else this._dayLoop(this.ctx.currentTime);
+      return;
+    }
+    const b = 60 / 130; // 130 BPM
+    const len = b * 16;  // 4 bars
+    const now = this.ctx.currentTime;
+    if (startAt + len < now) {
+      const skips = Math.ceil((now - startAt) / len);
+      startAt += skips * len;
+    }
+    const o = startAt - now;
+
+    // Driving bass line — low E minor root motion
+    [[82.41,0],[82.41,b*2],[98,b*4],[82.41,b*6],
+     [92.5,b*8],[82.41,b*10],[73.42,b*12],[82.41,b*14],
+    ].forEach(([f,t]) => { if (o+t > -0.05) this._note(f, o+t, b*1.8, 'sawtooth', 0.5); });
+
+    // Heroic melody stabs — E minor / G major intervals, driving eighth notes
+    [[329.63,0,b*.6],[392,b,b*.5],[440,b*2,b*.6],[392,b*3,b*.5],
+     [329.63,b*4,b*.6],[311.13,b*5,b*.5],[349.23,b*6,b*.6],[392,b*7,b*.5],
+     [329.63,b*8,b*.6],[440,b*9,b*.5],[392,b*10,b*.6],[349.23,b*11,b*.5],
+     [329.63,b*12,b*.8],[293.66,b*13,b*.5],[311.13,b*14,b*.6],[349.23,b*15,b*.8],
+    ].forEach(([f,t,d]) => { if (o+t > -0.05) this._note(f, o+t, d, 'square', 0.3); });
+
+    // Power chord stabs on every beat (two-note parallel fifths)
+    [0, b*2, b*4, b*6, b*8, b*10, b*12, b*14].forEach(t => {
+      if (o+t > -0.05) {
+        this._note(196, o+t, b*0.4, 'sawtooth', 0.22);
+        this._note(293.66, o+t, b*0.4, 'sawtooth', 0.18);
+      }
+    });
+
+    // Snare-like noise bursts on beats 2 and 4
+    [b*2, b*6, b*10, b*14].forEach(t => {
+      if (o+t > -0.05) this._noise(0.06, 0.45);
+    });
+
+    // Sustained pad swells (triangle, lower octave for warmth)
+    [[98,0,b*4,0.15],[110,b*4,b*4,0.15],[98,b*8,b*4,0.15],[87.31,b*12,b*4,0.18],
+    ].forEach(([f,t,d,v]) => { if (o+t > -0.05) this._note(f, o+t, d, 'triangle', v); });
+
+    const nextStart = startAt + len;
+    const delay = Math.max(50, (nextStart - 0.5 - this.ctx.currentTime) * 1000);
+    setTimeout(() => this._bossLoop(nextStart), delay);
+  },
 };
 
 const SFX = {
+  _enabled: true,
   _play(freq, type, dur, vol, shape) {
+    if (!this._enabled) return;
     try {
       const ctx = Music.ctx;
       if (!ctx) return;
@@ -271,6 +340,7 @@ const SFX = {
     } catch(e) {}
   },
   _noise(dur, vol) {
+    if (!this._enabled) return;
     try {
       const ctx = Music.ctx; if (!ctx) return;
       const buf = ctx.createBuffer(1, ctx.sampleRate*dur, ctx.sampleRate);
@@ -282,6 +352,13 @@ const SFX = {
       g.gain.linearRampToValueAtTime(0, ctx.currentTime+dur);
       src.start(); src.stop(ctx.currentTime+dur+0.01);
     } catch(e) {}
+  },
+  bossRoar() {
+    // Deep, rumbling roar — overlapping sawtooth drones that drop in pitch
+    this._play(55,  'sawtooth', 2.0, 0.7, 'drop');
+    this._play(73.4,'sawtooth', 1.5, 0.5, 'drop');
+    this._play(41.2,'sawtooth', 2.5, 0.4, 'drop');
+    this._noise(0.6, 0.3);
   },
   sword()  { this._play(300,'square',0.08,0.4,'drop'); this._play(180,'sawtooth',0.12,0.2); },
   wrench() { this._play(220,'square',0.06,0.35,'drop'); this._play(140,'sawtooth',0.1,0.15); },
@@ -2505,6 +2582,10 @@ class ModeSelectScene extends Phaser.Scene {
     STATE.mode = this.selMode;
     STATE.difficulty = this.selDiff;
     Music.start();
+    // Apply saved audio settings
+    const _as = loadSettings();
+    if (_as.musicEnabled === false && Music.gain) Music.gain.gain.value = 0;
+    SFX._enabled = _as.sfxEnabled !== false;
     this.cameras.main.fadeOut(300, 0, 0, 0);
     this.time.delayedCall(300, () => this.scene.start('CharSelect'));
   }
@@ -2568,39 +2649,66 @@ class SettingsScene extends Phaser.Scene {
       fontFamily:'monospace', fontSize:'12px', color:'#4a6a4a',
     }).setOrigin(0.5);
 
-    // ── Touch controls preview ───────────────────────────────
-    this.add.text(W/2, 390, 'TOUCH CONTROLS LAYOUT', {
-      fontFamily:'monospace', fontSize:'11px', color:'#334433', letterSpacing: 2,
+    // ── Audio settings ───────────────────────────────────────
+    this.add.text(W/2, 390, 'AUDIO', {
+      fontFamily:'monospace', fontSize:'13px', color:'#556655', letterSpacing: 3,
     }).setOrigin(0.5);
 
-    // Mini preview diagram
-    const prev = this.add.graphics();
-    const px = W/2 - 220, py = 410, pw = 440, ph = 160;
-    prev.lineStyle(1, 0x223322, 0.6); prev.strokeRoundedRect(px, py, pw, ph, 6);
-    prev.fillStyle(0x0d160d, 0.7); prev.fillRoundedRect(px, py, pw, ph, 6);
-    // Joystick placeholder
-    prev.lineStyle(1, 0x448844, 0.5); prev.strokeCircle(px + 75, py + ph/2, 45);
-    prev.fillStyle(0x448844, 0.3); prev.fillCircle(px + 75, py + ph/2, 25);
-    this.add.text(px + 75, py + ph/2, 'MOVE', { fontFamily:'monospace', fontSize:'9px', color:'#66aa66' }).setOrigin(0.5);
-    // Buttons placeholder
+    const s = loadSettings();
+    const musicOn = s.musicEnabled !== false;
+    const sfxOn   = s.sfxEnabled   !== false;
+    const fogOn   = s.fogEnabled   !== false;
+
+    const makeToggle = (label, x, y, initial, onToggle) => {
+      const opts = [{ key:true, label:'ON' }, { key:false, label:'OFF' }];
+      this.add.text(x, y - 20, label, { fontFamily:'monospace', fontSize:'10px', color:'#445544', letterSpacing:2 }).setOrigin(0.5);
+      const boxes = opts.map((o, i) => {
+        const bx = x + (i === 0 ? -60 : 60), by = y;
+        const bg = this.add.graphics();
+        const lbl = this.add.text(bx, by, o.label, { fontFamily:'monospace', fontSize:'16px', color:'#fff', stroke:'#000', strokeThickness:2 }).setOrigin(0.5);
+        const zone = this.add.zone(bx, by, 100, 46).setInteractive({ useHandCursor:true });
+        zone.on('pointerdown', () => { onToggle(o.key); redraw(o.key); });
+        return { bg, lbl, bx, by, key: o.key };
+      });
+      const redraw = (sel) => boxes.forEach(b => {
+        b.bg.clear();
+        b.bg.fillStyle(b.key === sel ? 0x142014 : 0x0d0d14, 0.95);
+        b.bg.fillRoundedRect(b.bx - 46, b.by - 20, 92, 40, 6);
+        b.bg.lineStyle(2, b.key === sel ? 0x88cc44 : 0x222233);
+        b.bg.strokeRoundedRect(b.bx - 46, b.by - 20, 92, 40, 6);
+        b.lbl.setColor(b.key === sel ? '#aaffaa' : '#888899');
+      });
+      redraw(initial);
+    };
+
+    makeToggle('MUSIC', W/2 - 200, 445, musicOn, (v) => {
+      saveSettings({ musicEnabled: v });
+      if (Music.gain) Music.gain.gain.value = v ? 0.07 : 0;
+    });
+    makeToggle('SFX', W/2, 445, sfxOn, (v) => {
+      saveSettings({ sfxEnabled: v });
+      SFX._enabled = v;
+    });
+
+    // ── Gameplay settings ────────────────────────────────────
+    this.add.text(W/2, 506, 'GAMEPLAY', {
+      fontFamily:'monospace', fontSize:'13px', color:'#556655', letterSpacing: 3,
+    }).setOrigin(0.5);
+
+    makeToggle('FOG OF WAR', W/2 - 200, 560, fogOn, (v) => {
+      saveSettings({ fogEnabled: v });
+    });
+    makeToggle('MINIMAP', W/2, 560, s.minimapEnabled !== false, (v) => {
+      saveSettings({ minimapEnabled: v });
+    });
+
+    // (legacy touch-controls hint — one compact line)
     const btnDefs = [
-      { lx: pw - 65, ly: ph/2 + 12, r: 34, col: 0xff6644, label: 'ATK' },
-      { lx: pw - 140, ly: ph/2 + 20, r: 24, col: 0x44cc66, label: 'USE' },
-      { lx: pw - 65, ly: ph/2 - 48, r: 24, col: 0x6699ff, label: 'ALT' },
-      { lx: pw - 148, ly: ph/2 - 48, r: 24, col: 0xccaa33, label: 'BLD' },
+      { lx: 0, ly: 0, r: 0, col: 0, label: '' },
     ];
     btnDefs.forEach(b => {
-      prev.fillStyle(b.col, 0.25); prev.fillCircle(px + b.lx, py + b.ly, b.r);
-      prev.lineStyle(1, b.col, 0.6); prev.strokeCircle(px + b.lx, py + b.ly, b.r);
-      this.add.text(px + b.lx, py + b.ly, b.label, { fontFamily:'monospace', fontSize:'8px', color:'#ffffff' }).setOrigin(0.5);
+      void b; // replaced by new settings above
     });
-    this.add.text(px + pw - 65, py + 14, 'MENU', { fontFamily:'monospace', fontSize:'8px', color:'#888888' }).setOrigin(0.5);
-    prev.fillStyle(0x888888, 0.2); prev.fillCircle(px + pw - 65, py + 14, 16);
-    prev.lineStyle(1, 0x888888, 0.4); prev.strokeCircle(px + pw - 65, py + 14, 16);
-
-    this.add.text(W/2, py + ph + 14, 'Joystick appears wherever you touch on the left side — no need to aim precisely!', {
-      fontFamily:'monospace', fontSize:'10px', color:'#334433',
-    }).setOrigin(0.5);
 
     // ── Tutorial toggle ──────────────────────────────────────
     this.add.text(W/2, 606, 'TUTORIAL TIPS', {
@@ -3652,10 +3760,14 @@ class GameScene extends Phaser.Scene {
       const lbl = this._w(this.add.text(px, py - 24, 'SUPPLY CACHE', {
         fontFamily:'monospace', fontSize:'8px', color:'#ccaa00', stroke:'#000', strokeThickness:2
       }).setOrigin(0.5).setDepth(7));
-      // Drop valuable crates near supply cache
-      for (let j = 0; j < 3; j++) {
+      // Drop valuable crates near supply cache — more items the further from center
+      const distFromCenter = Math.sqrt(Math.pow(pos.tx - CFG.MAP_W/2, 2) + Math.pow(pos.ty - CFG.MAP_H/2, 2));
+      const lootCount = distFromCenter > 70 ? 5 : distFromCenter > 45 ? 4 : 3;
+      const rareItems = distFromCenter > 70
+        ? ['item_ammo','item_ammo','item_metal','item_metal','item_fiber']
+        : ['item_ammo','item_metal','item_food'];
+      for (let j = 0; j < lootCount; j++) {
         const dx = px + Phaser.Math.Between(-40, 40), dy = py + Phaser.Math.Between(-40, 40);
-        const rareItems = ['item_ammo','item_metal','item_food'];
         const itemKey = rareItems[Phaser.Math.Between(0, rareItems.length-1)];
         const crate = this.physics.add.image(dx, dy, itemKey).setScale(2.5).setDepth(6);
         crate.body.allowGravity = false; crate.body.setImmovable(true);
@@ -3988,6 +4100,7 @@ class GameScene extends Phaser.Scene {
 
   updateFog() {
     if (!this.fogGfx) return;
+    if (loadSettings().fogEnabled === false) { this.fogGfx.clear(); return; }
     this._fogFrame++;
     if (this._fogFrame % CFG.FOG_UPDATE_INTERVAL !== 0) return;
 
@@ -4166,6 +4279,13 @@ class GameScene extends Phaser.Scene {
 
   updateMinimap() {
     if (!this.minimapDots || !this.mmBounds) return;
+    if (loadSettings().minimapEnabled === false) {
+      this.minimapGfx && this.minimapGfx.setVisible(false);
+      this.minimapDots.setVisible(false);
+      return;
+    }
+    this.minimapGfx && this.minimapGfx.setVisible(true);
+    this.minimapDots.setVisible(true);
     // Only update every 8 frames
     if (this._fogFrame % 8 !== 0) return;
 
@@ -5035,6 +5155,7 @@ class GameScene extends Phaser.Scene {
     this.updateSpikeTraps();
     this.updateFog();
     this.updateMinimap();
+    this.updateTreeSeeds(delta);
     this.redrawHUD();
     if (this._touchActive) this._drawTouchHUD();
   }
@@ -5502,8 +5623,8 @@ class GameScene extends Phaser.Scene {
 
     // Announce arrival
     this.hint('\u2620 ' + bt.name.toUpperCase() + ' APPROACHES! \u2620', 6000);
-    SFX._play(80,  'sawtooth', 0.6, 0.7, 'drop');
-    SFX._play(60,  'sawtooth', 0.4, 0.6, 'drop');
+    SFX.bossRoar();
+    Music.switchToBoss();
 
     // Camera shake
     this.cameras.main.shake(800, 0.012);
@@ -6364,6 +6485,7 @@ class GameScene extends Phaser.Scene {
       this.boss = null;
       this.bossDefeated = true;
       this.hint('BOSS DEFEATED! A rare material was left behind…', 5000);
+      Music.switchFromBoss();
       SFX._play(880, 'triangle', 0.3, 0.6, 'rise');
       SFX._play(1100, 'triangle', 0.25, 0.5, 'rise');
       this.cameras.main.shake(600, 0.018);
@@ -6389,6 +6511,52 @@ class GameScene extends Phaser.Scene {
         }
       }
     }
+  }
+
+  updateTreeSeeds(delta) {
+    if (!this.obstacles || this.isOver) return;
+    // Tick seed spawn timer — every 90 seconds, randomly sprout seeds near trees
+    this._seedTimer = (this._seedTimer || 0) + delta;
+    if (this._seedTimer >= 90000) {
+      this._seedTimer = 0;
+      const trees = this.obstacles.getChildren().filter(o => o.isTree && o.active);
+      if (trees.length > 0) {
+        // Pick up to 3 random trees; each has a 15% chance to drop a seed
+        for (let i = 0; i < Math.min(3, trees.length); i++) {
+          const t = trees[Phaser.Math.Between(0, trees.length - 1)];
+          if (Math.random() > 0.15) continue;
+          const { TILE } = CFG;
+          const angle = Math.random() * Math.PI * 2;
+          const dist = Phaser.Math.Between(TILE * 2, TILE * 4);
+          const sx = t.x + Math.cos(angle) * dist;
+          const sy = t.y + Math.sin(angle) * dist;
+          // Grow into a tree after 90s
+          const seedGfx = this.add.graphics().setDepth(4);
+          if (this.hudCam) this.hudCam.ignore(seedGfx);
+          seedGfx.fillStyle(0x44aa44, 0.85);
+          seedGfx.fillCircle(sx, sy, 4);
+          this._w(seedGfx);
+          this.time.delayedCall(90000, () => {
+            if (!seedGfx.active) return;
+            seedGfx.destroy();
+            // Choose biome-appropriate tree key
+            const biome = getBiome(Math.floor(sx / TILE), Math.floor(sy / TILE));
+            let treeKey = 'tree';
+            if (biome === 'tundra') treeKey = 'tree_snow';
+            else if (biome === 'ruins') treeKey = Math.random() < 0.5 ? 'tree_dead' : 'tree';
+            else if (biome === 'swamp') treeKey = Math.random() < 0.55 ? 'tree_swamp' : 'tree';
+            const sc = Phaser.Math.FloatBetween(1.4, 2.0);
+            const newTree = this.obstacles.create(sx, sy, treeKey);
+            newTree.setScale(sc).setDepth(5 + (sy / TILE) * 0.01).setImmovable(true);
+            newTree.body.setSize(8, 12).setOffset(10, 24);
+            newTree.refreshBody();
+            newTree.isTree = true;
+            this._w(newTree);
+          });
+        }
+      }
+    }
+    // Also tick any saplings already queued — handled via delayedCall above
   }
 
   openRaidCache(cache) {
@@ -7290,6 +7458,7 @@ class GameScene extends Phaser.Scene {
       { label: 'Bed',                key: 'bed',               cost: {wood:8, fiber:6, metal:2},needsBench: true,  type: 'build' },
       { label: 'Reinforced Wall',    key: 'reinforced_wall',   cost: {wood:4, metal:3},         needsBench: true,  type: 'build' },
       { label: 'Med Kit (+40 HP)',   key: 'med_kit',           cost: {fiber:3, food:2},         needsBench: true,  type: 'instant' },
+      { label: 'Ammo Pack (+8)',     key: 'ammo_pack',         cost: {metal:2},                 needsBench: false, type: 'instant' },
       { label: 'Knight Upgrade',     key: 'knight_upgrade',    cost: {metal:3, fiber:2},        needsBench: true,  type: 'upgrade', charId: 'knight' },
       { label: 'Architect Upgrade',  key: 'architect_upgrade', cost: {metal:3, wood:2},         needsBench: true,  type: 'upgrade', charId: 'architect' },
       { label: 'Gunslinger Upgrade', key: 'gunslinger_upgrade',cost: {metal:2, fiber:1},        needsBench: true,  type: 'upgrade', charId: 'gunslinger' },
@@ -7451,7 +7620,19 @@ class GameScene extends Phaser.Scene {
       }
     }
 
-    if (rec.type === 'instant' && rec.key === 'med_kit') {
+    if (rec.type === 'instant' && rec.key === 'ammo_pack') {
+      // Ammo Pack: +8 reserve ammo for Gunslinger; small metal refund hint for others
+      const gunslinger = [this.p1, this.p2].filter(Boolean).find(p => p.charData.id === 'gunslinger');
+      if (gunslinger) {
+        const maxReserve = 40 - gunslinger.ammo;
+        const added = Math.min(8, maxReserve - gunslinger.reserveAmmo);
+        gunslinger.reserveAmmo = Math.min(maxReserve, gunslinger.reserveAmmo + 8);
+        this.hint('+' + Math.max(0, added) + ' ammo (Gunslinger)', 2000);
+        this.redrawHUD();
+      } else {
+        this.hint('No Gunslinger in play — ammo wasted!', 2000);
+      }
+    } else if (rec.type === 'instant' && rec.key === 'med_kit') {
       // D8 — Med Kit: restore 40 HP to the crafting player, green flash
       player.hp = Math.min(player.maxHp, player.hp + 40);
       player.spr.setTint(0x44ff44);
