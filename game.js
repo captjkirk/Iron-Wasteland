@@ -3851,15 +3851,15 @@ class GameScene extends Phaser.Scene {
       for (let row = 0; row < rows; row++) {
         const bx = cl + col * (blockW + streetW);
         const by = ct + row * (blockH + streetH);
-        // N or S wall torch (60% chance per block)
-        if (Math.random() < 0.60) {
+        // N or S wall torch (30% chance per block)
+        if (Math.random() < 0.30) {
           const side = Math.random() < 0.5 ? 'N' : 'S';
           const wx = (bx + Math.floor(blockW / 2)) * TILE;
           const wy = side === 'N' ? by * TILE : (by + blockH - 1) * TILE;
           this._spawnTorch(wx, wy);
         }
-        // E or W wall torch (35% chance per block)
-        if (Math.random() < 0.35) {
+        // E or W wall torch (10% chance per block)
+        if (Math.random() < 0.10) {
           const side = Math.random() < 0.5 ? 'W' : 'E';
           const wx = side === 'W' ? bx * TILE : (bx + blockW - 1) * TILE;
           const wy = (by + Math.floor(blockH / 2)) * TILE;
