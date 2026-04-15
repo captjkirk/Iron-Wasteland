@@ -586,6 +586,15 @@ function buildTextures(scene) {
   g.fillStyle(0xffee44); g.fillEllipse(8, 5, 3, 4);
   g.generateTexture('campfire', 16, 14);
 
+  // Fire glow (radial warm gradient, used for pulsating campfire/campsite glow)
+  g.clear();
+  g.fillStyle(0xff7711, 0.12); g.fillCircle(64, 64, 64);
+  g.fillStyle(0xff8822, 0.14); g.fillCircle(64, 64, 50);
+  g.fillStyle(0xffaa33, 0.16); g.fillCircle(64, 64, 36);
+  g.fillStyle(0xffcc55, 0.18); g.fillCircle(64, 64, 22);
+  g.fillStyle(0xffee88, 0.20); g.fillCircle(64, 64, 10);
+  g.generateTexture('fire_glow', 128, 128);
+
   // Crafting bench
   g.clear();
   g.fillStyle(0x6b4422); g.fillRect(0, 6, 24, 12);
@@ -3667,6 +3676,7 @@ class GameScene extends Phaser.Scene {
       : ['grass', 'waste'].map(b => findInBiome(b, 50));
     for (const pos of campsitePositions) {
       const px = pos.tx * TILE, py = pos.ty * TILE;
+      this._addFireGlow(px, py);
       const spr = this._w(this.add.image(px, py, 'campsite').setScale(2).setDepth(5));
       const lbl = this._w(this.add.text(px, py - 28, 'CAMPSITE', {
         fontFamily:'monospace', fontSize:'8px', color:'#44cc66', stroke:'#000', strokeThickness:2
@@ -5872,6 +5882,26 @@ class GameScene extends Phaser.Scene {
     });
   }
 
+  // Attach a pulsating warm-glow halo to a campfire or campsite sprite.
+  _addFireGlow(x, y) {
+    const glow = this.add.image(x, y, 'fire_glow')
+      .setScale(1.0).setAlpha(0.55).setDepth(3)
+      .setBlendMode(Phaser.BlendModes.ADD);
+    this._w(glow);
+    if (this.hudCam) this.hudCam.ignore(glow);
+    // Pulse scale
+    this.tweens.add({
+      targets: glow, scale: 1.28, duration: 1400,
+      ease: 'Sine.InOut', yoyo: true, loop: -1,
+    });
+    // Pulse alpha (slightly offset phase for organic feel)
+    this.tweens.add({
+      targets: glow, alpha: 0.80, duration: 1100,
+      ease: 'Sine.InOut', yoyo: true, loop: -1, delay: 200,
+    });
+    return glow;
+  }
+
   // Push a timestamped entry to the in-game debug log (` key to show/hide).
   _log(msg) {
     if (!this._dbgEntries) return;
@@ -6685,6 +6715,7 @@ class GameScene extends Phaser.Scene {
       this.physics.add.collider(this.p1.spr, gate, () => this.openGate(gate));
       if (this.p2) this.physics.add.collider(this.p2.spr, gate, () => this.openGate(gate));
     } else if (this.buildType === 'campfire') {
+      this._addFireGlow(x, y);
       const cf = this.add.image(x, y, 'campfire').setScale(2).setDepth(5);
       if (this.hudCam) this.hudCam.ignore(cf);
       this._w(cf);
