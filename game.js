@@ -2874,7 +2874,7 @@ class SettingsScene extends Phaser.Scene {
     }).setOrigin(0.5);
 
     // ── Audio settings ───────────────────────────────────────
-    this.add.text(W/2, 390, 'AUDIO', {
+    this.add.text(W/2, 374, 'AUDIO', {
       fontFamily:'monospace', fontSize:'13px', color:'#556655', letterSpacing: 3,
     }).setOrigin(0.5);
 
@@ -2885,7 +2885,7 @@ class SettingsScene extends Phaser.Scene {
 
     const makeToggle = (label, x, y, initial, onToggle) => {
       const opts = [{ key:true, label:'ON' }, { key:false, label:'OFF' }];
-      this.add.text(x, y - 20, label, { fontFamily:'monospace', fontSize:'10px', color:'#445544', letterSpacing:2 }).setOrigin(0.5);
+      this.add.text(x, y - 36, label, { fontFamily:'monospace', fontSize:'10px', color:'#445544', letterSpacing:2 }).setOrigin(0.5);
       const boxes = opts.map((o, i) => {
         const bx = x + (i === 0 ? -60 : 60), by = y;
         const bg = this.add.graphics();
@@ -2905,24 +2905,24 @@ class SettingsScene extends Phaser.Scene {
       redraw(initial);
     };
 
-    makeToggle('MUSIC', W/2 - 200, 445, musicOn, (v) => {
+    makeToggle('MUSIC', W/2 - 200, 428, musicOn, (v) => {
       saveSettings({ musicEnabled: v });
       if (Music.gain) Music.gain.gain.value = v ? 0.07 : 0;
     });
-    makeToggle('SFX', W/2, 445, sfxOn, (v) => {
+    makeToggle('SFX', W/2, 428, sfxOn, (v) => {
       saveSettings({ sfxEnabled: v });
       SFX._enabled = v;
     });
 
     // ── Gameplay settings ────────────────────────────────────
-    this.add.text(W/2, 506, 'GAMEPLAY', {
+    this.add.text(W/2, 488, 'GAMEPLAY', {
       fontFamily:'monospace', fontSize:'13px', color:'#556655', letterSpacing: 3,
     }).setOrigin(0.5);
 
-    makeToggle('FOG OF WAR', W/2 - 200, 560, fogOn, (v) => {
+    makeToggle('FOG OF WAR', W/2 - 200, 543, fogOn, (v) => {
       saveSettings({ fogEnabled: v });
     });
-    makeToggle('MINIMAP', W/2, 560, s.minimapEnabled !== false, (v) => {
+    makeToggle('MINIMAP', W/2, 543, s.minimapEnabled !== false, (v) => {
       saveSettings({ minimapEnabled: v });
     });
 
@@ -2935,7 +2935,7 @@ class SettingsScene extends Phaser.Scene {
     });
 
     // ── Tutorial toggle ──────────────────────────────────────
-    this.add.text(W/2, 606, 'TUTORIAL TIPS', {
+    this.add.text(W/2, 578, 'TUTORIAL TIPS', {
       fontFamily:'monospace', fontSize:'11px', color:'#445544', letterSpacing: 3,
     }).setOrigin(0.5);
 
@@ -2946,7 +2946,7 @@ class SettingsScene extends Phaser.Scene {
       { key: false, label: 'OFF', sub: 'No tutorial tips — for experienced players' },
     ];
     this._tutBoxes = tutOpts.map((o, i) => {
-      const x = W/2 + (i === 0 ? -140 : 140), y = 648;
+      const x = W/2 + (i === 0 ? -140 : 140), y = 640;
       const box = this.add.graphics();
       const lbl = this.add.text(x, y, o.label, {
         fontFamily:'monospace', fontSize:'18px', color:'#ffffff', stroke:'#000', strokeThickness:2,
