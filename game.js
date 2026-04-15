@@ -6,7 +6,17 @@
 
 // ── VERSION ───────────────────────────────────────────────────
 // Update this each commit so the title screen reflects the build date.
-const VERSION = 'Apr 15, 2026  09:43 AM EDT';
+// Stored as UTC ISO so it can be displayed in each player's local timezone.
+const VERSION = '2026-04-15T13:43:00Z';
+// Format VERSION into the viewer's local time with abbreviated tz name (EDT, PDT, BST, etc.)
+function _fmtVersion(iso) {
+  try {
+    return new Date(iso).toLocaleString(undefined, {
+      month: 'short', day: 'numeric', year: 'numeric',
+      hour: 'numeric', minute: '2-digit', timeZoneName: 'short',
+    });
+  } catch (_) { return iso; }
+}
 
 // ── CONSTANTS ─────────────────────────────────────────────────
 // Detect mobile/phone: touch device with a small screen.
@@ -2765,7 +2775,7 @@ class ModeSelectScene extends Phaser.Scene {
       fontFamily:'monospace', fontSize:'12px', color:'#334433',
     }).setOrigin(0.5);
 
-    this.add.text(W - 8, H - 8, 'Last updated ' + VERSION, {
+    this.add.text(W - 8, H - 8, 'Last updated ' + _fmtVersion(VERSION), {
       fontFamily:'monospace', fontSize:'10px', color:'#2a3a2a',
     }).setOrigin(1, 1);
 
@@ -3494,7 +3504,7 @@ class GameScene extends Phaser.Scene {
               const t = Math.floor(this.timeAlive || 0);
               const text = [
                 `IRON WASTELAND SESSION LOG`,
-                `Version : ${VERSION}  Exported: ${new Date().toLocaleString()}`,
+                `Version : ${_fmtVersion(VERSION)}  Exported: ${new Date().toLocaleString()}`,
                 `Time    : ${Math.floor(t/60)}m ${t%60}s  Day: ${this.dayNum||1}  Kills: ${this.kills||0}`,
                 ``,
                 ...this._dbgEntries,
@@ -7227,7 +7237,7 @@ class GameScene extends Phaser.Scene {
       : '';
     const diff   = this._diffMult ? this._diffMult().toFixed(1) : '?';
     const header = [
-      `── Iron Wasteland Debug Log ──  ${VERSION}`,
+      `── Iron Wasteland Debug Log ──  ${_fmtVersion(VERSION)}`,
       `FPS:${fps}  ${phase} ${this.dayNum||1}  T:${ts}  Diff:${diff}x`,
       `Enemies: ${active} active / ${total} total  |  Kills: ${this.kills||0}`,
       `${p1s}${p2s}`,
@@ -7250,7 +7260,7 @@ class GameScene extends Phaser.Scene {
     const lines = [
       `IRON WASTELAND SESSION LOG`,
       `─────────────────────────────────────────`,
-      `Version  : ${VERSION}`,
+      `Version  : ${_fmtVersion(VERSION)}`,
       `Exported : ${new Date().toLocaleString()}`,
       `Mode     : ${mode}`,
       `Session  : ${Math.floor(t/60)}m ${t%60}s`,
