@@ -6,7 +6,7 @@
 
 // ── VERSION ───────────────────────────────────────────────────
 // Update this each commit so the title screen reflects the build date.
-const VERSION = 'Apr 15, 2026  01:15 AM EDT';
+const VERSION = 'Apr 15, 2026  06:26 AM EDT';
 
 // ── CONSTANTS ─────────────────────────────────────────────────
 // Detect mobile/phone: touch device with a small screen.
@@ -19,13 +19,13 @@ const _isMobile = typeof navigator !== 'undefined' &&
 const CFG = {
   W: _isMobile ? 640 : 1280, H: _isMobile ? 360 : 720,
   TILE: 32,
-  MAP_W: 220, MAP_H: 220,
+  MAP_W: 400, MAP_H: 400,
   SAFE_R: 10,
   CAM_ZOOM_MAX: 1.0,
   CAM_ZOOM_MIN: _isMobile ? 0.15 : 0.25, // mobile: show more world at min zoom
   CAM_PAD: _isMobile ? 115 : 230,        // mobile: tighter 2-player framing
-  TREES: 420,
-  ROCKS: 180,
+  TREES: 700,
+  ROCKS: 500,
   DOWN_TIME: 20,     // seconds before a downed player dies permanently
   REVIVE_TIME: 3,    // seconds to hold interact to revive
   REVIVE_RANGE: 80,  // px to be close enough to revive
@@ -53,27 +53,27 @@ function _biomeNoise(tx, ty, scale) {
   return top + (bot - top) * fy; // 0..1
 }
 
+// Biome seeds set at scene init — Voronoi regions produce a unique map each session
+let _biomeSeeds = [];
+
 function getBiome(tileX, tileY) {
   const cx = CFG.MAP_W / 2, cy = CFG.MAP_H / 2;
-  const dx = tileX - cx, dy = tileY - cy;
-  const dist = Math.sqrt(dx * dx + dy * dy);
-  const noise = _biomeNoise(tileX, tileY, 12) * 8; // organic borders
+  const dist = Math.sqrt((tileX - cx) ** 2 + (tileY - cy) ** 2);
+  if (dist < CFG.SAFE_R + 15) return 'grass';
+  if (_biomeSeeds.length === 0) return 'waste'; // fallback before init
 
-  // Center = always grasslands
-  if (dist < CFG.SAFE_R + 15 + noise * 0.5) return 'grass';
+  // Domain warp: nudge coordinates with low-freq noise for organic borders
+  const warpX = _biomeNoise(tileX * 0.8, tileY * 0.8, 7) * 18;
+  const warpY = _biomeNoise(tileX * 0.8 + 50, tileY * 0.8 + 50, 7) * 18;
+  const wtx = tileX + warpX, wty = tileY + warpY;
 
-  // Beyond center, assign by quadrant with noise
-  const angle = Math.atan2(dy, dx); // -PI..PI
-  const n2 = _biomeNoise(tileX + 100, tileY + 100, 18) * 0.6;
-
-  // NW quadrant (-PI..-PI/2) = tundra
-  if (angle < -Math.PI / 2 + n2 && angle > -Math.PI + n2) return 'tundra';
-  // NE quadrant (-PI/2..0) = ruins
-  if (angle < 0 + n2 && angle > -Math.PI / 2 - n2) return 'ruins';
-  // SE quadrant (0..PI/2) = swamp
-  if (angle > 0 - n2 && angle < Math.PI / 2 + n2) return 'swamp';
-  // SW + remaining = wasteland
-  return 'waste';
+  // Nearest Voronoi seed wins
+  let nearest = null, nearestDist = Infinity;
+  for (const seed of _biomeSeeds) {
+    const d = (wtx - seed.tx) ** 2 + (wty - seed.ty) ** 2;
+    if (d < nearestDist) { nearestDist = d; nearest = seed; }
+  }
+  return nearest ? nearest.biome : 'waste';
 }
 
 // Biome color map for minimap
@@ -83,6 +83,8 @@ const BIOME_COLORS = {
   swamp:  0x2a4a2a,
   tundra: 0xbbccdd,
   ruins:  0x444450,
+  fungal: 0x4a1a5a,
+  desert: 0xc8a060,
 };
 
 // ── CHARACTER DEFINITIONS ─────────────────────────────────────
@@ -594,6 +596,15 @@ function buildTextures(scene) {
   g.beginPath(); g.moveTo(14,4); g.lineTo(16,8); g.strokePath();
   g.generateTexture('rock', 22, 16);
 
+  // Desert rock — sandstone orange-red (22×16)
+  g.clear();
+  g.fillStyle(0xcc7744);
+  g.fillPoints([{x:2,y:15},{x:0,y:9},{x:3,y:3},{x:9,y:1},{x:15,y:1},{x:20,y:4},{x:22,y:10},{x:18,y:15}], true);
+  g.fillStyle(0xdd9966);
+  g.fillPoints([{x:3,y:13},{x:1,y:8},{x:4,y:3},{x:9,y:2},{x:14,y:2},{x:17,y:6},{x:18,y:11},{x:15,y:13}], true);
+  g.fillStyle(0xeebb88); g.fillRect(6, 4, 2, 2); g.fillRect(12, 6, 1, 1);
+  g.generateTexture('rock_desert', 22, 16);
+
   // Barracks
   g.clear();
   g.fillStyle(0x556644); g.fillRect(0, 12, 80, 44);
@@ -818,6 +829,26 @@ function buildTextures(scene) {
   g.fillStyle(0x383844); g.fillRect(8, 22, 4, 3); g.fillRect(22, 6, 3, 2);
   g.generateTexture('ground_ruins', 32, 32);
 
+  // Fungal ground (32×32) — dark purple-teal with bioluminescent spore clusters
+  g.clear();
+  g.fillStyle(0x1a0a2a); g.fillRect(0, 0, 32, 32);
+  g.fillStyle(0x2a1a3a); g.fillRect(2, 2, 14, 14); g.fillRect(18, 18, 12, 12);
+  g.fillStyle(0x221533); g.fillRect(16, 2, 14, 14); g.fillRect(2, 18, 14, 12);
+  g.fillStyle(0xaa44cc); g.fillCircle(8, 6, 2); g.fillCircle(22, 21, 2); g.fillCircle(13, 27, 1);
+  g.fillStyle(0x8833aa); g.fillCircle(4, 19, 1); g.fillCircle(28, 8, 2); g.fillCircle(20, 13, 1);
+  g.fillStyle(0xcc66ee); g.fillCircle(10, 11, 1); g.fillCircle(26, 26, 1); g.fillCircle(17, 4, 1);
+  g.generateTexture('ground_fungal', 32, 32);
+
+  // Desert ground (32×32) — sandy gold with wind-ripple marks and pebbles
+  g.clear();
+  g.fillStyle(0xd4a56a); g.fillRect(0, 0, 32, 32);
+  g.fillStyle(0xbb9050); g.fillRect(0, 8, 32, 2); g.fillRect(0, 18, 32, 2); g.fillRect(0, 26, 32, 1);
+  g.fillStyle(0xe8c07a); g.fillRect(0, 10, 32, 1); g.fillRect(0, 20, 32, 1);
+  g.fillStyle(0xc99055); g.fillRect(0, 14, 32, 1);
+  g.fillStyle(0x997744); g.fillCircle(6, 4, 1); g.fillCircle(24, 14, 1); g.fillCircle(14, 28, 1);
+  g.fillStyle(0xaa8855); g.fillCircle(20, 5, 1); g.fillCircle(4, 24, 1);
+  g.generateTexture('ground_desert', 32, 32);
+
   // Dead tree — gray trunk, bare branches, no foliage
   g.clear();
   g.fillStyle(0x666666); g.fillRect(11, 16, 6, 20);
@@ -852,6 +883,26 @@ function buildTextures(scene) {
   g.fillStyle(0x1c2e14); g.fillRect(8, 18, 2, 9); g.fillRect(14, 17, 2, 8); g.fillRect(19, 18, 2, 10);
   g.fillStyle(0x162410); g.fillRect(11, 19, 1, 7); g.fillRect(17, 18, 1, 8);
   g.generateTexture('tree_swamp', 28, 36);
+
+  // Mushroom tree (28×40) — thick gray-brown stalk, wide purple cap with spots
+  g.clear();
+  g.fillStyle(0x887766); g.fillRect(10, 22, 8, 18); // stalk
+  g.fillStyle(0x665544); g.fillRect(10, 22, 2, 18); // shadow side
+  g.fillStyle(0xaa33bb); g.fillEllipse(14, 20, 28, 18); // cap
+  g.fillStyle(0xcc55dd); g.fillEllipse(14, 18, 22, 12); // cap highlight
+  g.fillStyle(0x8822aa); g.fillEllipse(14, 22, 28, 8); // cap underside
+  g.fillStyle(0xeebb44); g.fillCircle(8, 15, 2); g.fillCircle(20, 14, 2); g.fillCircle(14, 12, 1); // spots
+  g.generateTexture('tree_mushroom', 28, 40);
+
+  // Cactus (16×36) — green pillar with two offset arms
+  g.clear();
+  g.fillStyle(0x2d7a3a); g.fillRect(5, 4, 6, 32); // main trunk
+  g.fillStyle(0x3d9a4a); g.fillRect(5, 6, 3, 26); // highlight
+  g.fillStyle(0x2d7a3a); g.fillRect(2, 14, 5, 4); g.fillRect(2, 10, 4, 6); // left arm
+  g.fillStyle(0x3d9a4a); g.fillRect(2, 14, 2, 4);
+  g.fillStyle(0x2d7a3a); g.fillRect(9, 20, 5, 4); g.fillRect(9, 16, 4, 6); // right arm (lower)
+  g.fillStyle(0x3d9a4a); g.fillRect(11, 20, 2, 4);
+  g.generateTexture('tree_cactus', 16, 36);
 
   // Great Oak — wide round canopy, thick trunk, grassland landmark (40×52)
   g.clear();
@@ -947,6 +998,32 @@ function buildTextures(scene) {
   // Dark edge for depth
   g.lineStyle(2, 0x0a2010, 0.9); g.strokeEllipse(32, 26, 60, 44);
   g.generateTexture('toxic_pool', 64, 52);
+
+  // Shallow water (32×32) — medium blue, passable, slows movement
+  g.clear();
+  g.fillStyle(0x2266aa); g.fillEllipse(16, 16, 30, 28);
+  g.fillStyle(0x3388cc); g.fillEllipse(16, 14, 22, 18);
+  g.fillStyle(0x55aadd); g.fillRect(7, 12, 10, 1); g.fillRect(14, 16, 8, 1); g.fillRect(9, 19, 6, 1);
+  g.generateTexture('water_shallow', 32, 32);
+
+  // Deep water (32×32) — dark navy, impassable obstacle
+  g.clear();
+  g.fillStyle(0x0a1833); g.fillEllipse(16, 16, 30, 28);
+  g.fillStyle(0x0d2244); g.fillEllipse(16, 14, 22, 18);
+  g.fillStyle(0x1a3366); g.fillRect(9, 12, 8, 1); g.fillRect(15, 17, 6, 1);
+  g.generateTexture('water_deep', 32, 32);
+
+  // Ice tile (32×32) — pale cyan, passable, slippery momentum
+  g.clear();
+  g.fillStyle(0xbbddee); g.fillRect(0, 0, 32, 32);
+  g.fillStyle(0xddeeff); g.fillRect(1, 1, 30, 30);
+  g.lineStyle(1, 0x99bbcc);
+  g.beginPath(); g.moveTo(4, 8); g.lineTo(16, 4); g.strokePath();
+  g.beginPath(); g.moveTo(8, 20); g.lineTo(20, 14); g.strokePath();
+  g.beginPath(); g.moveTo(20, 26); g.lineTo(28, 20); g.strokePath();
+  g.beginPath(); g.moveTo(10, 8); g.lineTo(10, 18); g.strokePath();
+  g.beginPath(); g.moveTo(22, 14); g.lineTo(22, 28); g.strokePath();
+  g.generateTexture('water_ice', 32, 32);
 
   // Ice rock — polygon-based, blue-grey with icy highlight face
   g.clear();
@@ -1173,6 +1250,42 @@ function buildTextures(scene) {
   g.fillStyle(0x5a5a5a, 0.6); g.fillRect(2, 2, 11, 1); g.fillRect(19, 19, 11, 1);
   g.fillStyle(0x1a1a1a); g.fillRect(4, 6, 1, 1); g.fillRect(8, 10, 1, 1); g.fillRect(20, 22, 1, 1);
   g.generateTexture('metal_floor', 32, 32);
+
+  // Fungal wall — dark wood with purple mycelium tendrils (32×32)
+  g.clear();
+  g.fillStyle(0x1a0e08); g.fillRect(0, 0, 32, 32);
+  g.fillStyle(0x2a1a10); g.fillRect(0, 0, 14, 14); g.fillRect(18, 18, 14, 14);
+  g.fillStyle(0x1e1208); g.fillRect(0, 15, 32, 2); g.fillRect(15, 0, 2, 32); // plank lines
+  g.fillStyle(0x8822aa); g.fillRect(4, 6, 1, 8); g.fillRect(7, 3, 1, 5); // mycelium tendrils
+  g.fillStyle(0xaa44cc); g.fillRect(20, 18, 1, 9); g.fillRect(24, 20, 1, 7);
+  g.fillStyle(0xcc66ee); g.fillCircle(4, 6, 1); g.fillCircle(20, 18, 1); g.fillCircle(7, 3, 1);
+  g.generateTexture('fungal_wall', 32, 32);
+
+  // Fungal floor — dark planks with spore patterns (32×32)
+  g.clear();
+  g.fillStyle(0x18100a); g.fillRect(0, 0, 32, 32);
+  g.fillStyle(0x221810); g.fillRect(0, 0, 32, 7); g.fillRect(0, 16, 32, 8);
+  g.fillStyle(0x0e0a06); g.fillRect(0, 7, 32, 1); g.fillRect(0, 24, 32, 1); // plank seams
+  g.fillStyle(0x8822aa); g.fillCircle(6, 4, 1); g.fillCircle(22, 20, 1); g.fillCircle(14, 27, 1);
+  g.fillStyle(0xaa44cc); g.fillCircle(28, 5, 1); g.fillCircle(4, 20, 1);
+  g.generateTexture('fungal_floor', 32, 32);
+
+  // Sandstone wall — beige/tan stone brick for desert outpost (32×32)
+  g.clear();
+  g.fillStyle(0xc8a868); g.fillRect(0, 0, 32, 32);
+  g.fillStyle(0xb09050); g.fillRect(0, 0, 14, 14); g.fillRect(18, 18, 14, 14);
+  g.fillStyle(0x907840); g.fillRect(0, 15, 32, 2); g.fillRect(15, 0, 2, 32); // mortar lines
+  g.fillStyle(0xddb870); g.fillRect(1, 1, 12, 4); g.fillRect(17, 17, 12, 4); // highlight face
+  g.fillStyle(0x887030); g.fillRect(3, 10, 4, 2); g.fillRect(20, 8, 3, 2); // shadow detail
+  g.generateTexture('sandstone_wall', 32, 32);
+
+  // Sandstone floor — sandy tile for desert outpost interiors (32×32)
+  g.clear();
+  g.fillStyle(0xd4a86a); g.fillRect(0, 0, 32, 32);
+  g.fillStyle(0xbc9055); g.fillRect(0, 15, 32, 2); g.fillRect(15, 0, 2, 32); // tile seams
+  g.fillStyle(0xe0bb7a); g.fillRect(2, 2, 12, 12); g.fillRect(18, 18, 12, 12); // lighter tiles
+  g.fillStyle(0xb08040); g.fillRect(3, 10, 2, 2); g.fillRect(24, 4, 2, 2); // small chips
+  g.generateTexture('sandstone_floor', 32, 32);
 
   // Crater (large) — decorative ground depression
   g.clear();
@@ -3160,6 +3273,7 @@ class GameScene extends Phaser.Scene {
       this.cameras.main.fadeIn(600, 0, 0, 0);
       this.physics.world.setBounds(0, 0, worldW, worldH);
 
+      this._initBiomeSeeds();
       this.buildWorld(worldW, worldH, cx, cy);
 
     const p1Ch = CHARS.find(c => c.id === STATE.p1CharId);
@@ -3198,6 +3312,21 @@ class GameScene extends Phaser.Scene {
             }
           });
         }
+      });
+    }
+
+    // Shallow water — flags player as in water each frame while overlapping
+    if (this.waterTiles && this.waterTiles.length) {
+      this.waterTiles.forEach(t => {
+        this.physics.add.overlap(this.p1.spr, t, () => { this.p1._inShallowWater = true; });
+        if (this.p2) this.physics.add.overlap(this.p2.spr, t, () => { this.p2._inShallowWater = true; });
+      });
+    }
+    // Ice tiles — flags player for slippery momentum physics
+    if (this.iceTiles && this.iceTiles.length) {
+      this.iceTiles.forEach(t => {
+        this.physics.add.overlap(this.p1.spr, t, () => { this.p1._onIce = true; });
+        if (this.p2) this.physics.add.overlap(this.p2.spr, t, () => { this.p2._onIce = true; });
       });
     }
 
@@ -3416,13 +3545,32 @@ class GameScene extends Phaser.Scene {
     this.input.keyboard.once('keydown', dismiss);
   }
 
+  // Scatter Voronoi biome seeds randomly — called once before buildWorld each session
+  _initBiomeSeeds() {
+    const biomes = ['waste', 'swamp', 'tundra', 'ruins', 'fungal', 'desert'];
+    const seedsPerBiome = 3; // multiple seeds → more irregular, organic shapes
+    _biomeSeeds = [];
+    const cx = CFG.MAP_W / 2, cy = CFG.MAP_H / 2;
+    biomes.forEach(biome => {
+      for (let i = 0; i < seedsPerBiome; i++) {
+        const angle = Math.random() * Math.PI * 2;
+        const dist = CFG.MAP_W * Phaser.Math.FloatBetween(0.25, 0.48);
+        _biomeSeeds.push({
+          biome,
+          tx: cx + Math.cos(angle) * dist,
+          ty: cy + Math.sin(angle) * dist,
+        });
+      }
+    });
+  }
+
   // ── WORLD ──────────────────────────────────────────────────
   buildWorld(worldW, worldH, cx, cy) {
     const { TILE, SAFE_R } = CFG;
     const stx = cx/TILE, sty = cy/TILE;
 
     // Biome ground map — key for each tile
-    const groundTexMap = { grass:'grass', waste:'ground_waste', swamp:'ground_swamp', tundra:'ground_tundra', ruins:'ground_ruins' };
+    const groundTexMap = { grass:'grass', waste:'ground_waste', swamp:'ground_swamp', tundra:'ground_tundra', ruins:'ground_ruins', fungal:'ground_fungal', desert:'ground_desert' };
 
     // Base ground fill (grass) then overlay biome tiles in patches
     this._w(this.add.tileSprite(cx, cy, worldW, worldH, 'grass').setOrigin(0.5).setDepth(0));
@@ -3520,6 +3668,10 @@ class GameScene extends Phaser.Scene {
 
     this.obstacles = this.physics.add.staticGroup();
     this.toxicPools = []; // for swamp damage
+    this.waterTiles = [];     // shallow water — overlap (slow)
+    this.deepWaterTiles = []; // deep water — obstacles (impassable)
+    this.iceTiles = [];       // frozen water — overlap (slippery)
+    this._iceTileSet = new Set(); // O(1) lookup for ice_crawler AI
 
     // Trees — dense forest clusters, biome-appropriate, non-overlapping
     const treesPlaced = [];
@@ -3532,6 +3684,8 @@ class GameScene extends Phaser.Scene {
       else if (biome === 'tundra') treeKey = 'tree_snow';
       else if (biome === 'ruins' && Math.random() < 0.5) treeKey = 'tree_dead';
       else if (biome === 'swamp') treeKey = Math.random() < 0.55 ? 'tree_swamp' : 'tree';
+      else if (biome === 'fungal') treeKey = 'tree_mushroom';
+      else if (biome === 'desert') { if (Math.random() < 0.4) treeKey = 'tree_cactus'; else return; } // desert sparse
       const sc = Phaser.Math.FloatBetween(1.6, 2.8);
       const t = this.obstacles.create(tx*TILE+14, ty*TILE+18, treeKey);
       t.setScale(sc).setDepth(5 + ty*0.01).setImmovable(true);
@@ -3542,8 +3696,8 @@ class GameScene extends Phaser.Scene {
       treesPlaced.push({ tx, ty });
     };
 
-    // 20 forest clusters — each is a tight pack of 28-45 trees
-    for (let f = 0; f < 20; f++) {
+    // 55 forest clusters — each is a tight pack of 28-45 trees (scaled for 400×400 map)
+    for (let f = 0; f < 55; f++) {
       let cx, cy, attempts = 0;
       do {
         cx = Phaser.Math.Between(18, CFG.MAP_W-18);
@@ -3596,7 +3750,7 @@ class GameScene extends Phaser.Scene {
       const tx = Phaser.Math.Between(1, CFG.MAP_W-2), ty = Phaser.Math.Between(1, CFG.MAP_H-2);
       if (Math.abs(tx-stx)<SAFE_R && Math.abs(ty-sty)<SAFE_R) continue;
       const biome = getBiome(tx, ty);
-      const rockKey = biome === 'tundra' ? 'ice_rock' : 'rock';
+      const rockKey = biome === 'tundra' ? 'ice_rock' : biome === 'desert' ? 'rock_desert' : 'rock';
       const sc = Phaser.Math.FloatBetween(0.4, 3.5);
       const r = this.obstacles.create(tx*TILE+11, ty*TILE+8, rockKey);
       r.setScale(sc).setDepth(5 + ty*0.01).setImmovable(true);
@@ -3606,7 +3760,7 @@ class GameScene extends Phaser.Scene {
     }
 
     // Extra rocks in wasteland
-    for (let i = 0; i < 60; i++) {
+    for (let i = 0; i < 180; i++) {
       const tx = Phaser.Math.Between(1, CFG.MAP_W-2), ty = Phaser.Math.Between(1, CFG.MAP_H-2);
       if (getBiome(tx, ty) !== 'waste') continue;
       const sc = Phaser.Math.FloatBetween(0.3, 2.0);
@@ -3618,7 +3772,7 @@ class GameScene extends Phaser.Scene {
 
     // ── BIOME-SPECIFIC TERRAIN OBSTACLES ────────────────────────
     // Ice spires — tundra (impassable jagged ice formations)
-    for (let i = 0; i < 35; i++) {
+    for (let i = 0; i < 80; i++) {
       const tx = Phaser.Math.Between(2, CFG.MAP_W-2), ty = Phaser.Math.Between(2, CFG.MAP_H-2);
       if (getBiome(tx, ty) !== 'tundra') continue;
       if (Math.abs(tx-stx)<SAFE_R+3 && Math.abs(ty-sty)<SAFE_R+3) continue;
@@ -3629,7 +3783,7 @@ class GameScene extends Phaser.Scene {
       spr.refreshBody();
     }
     // Rock spires — wasteland (impassable jagged rock pillars)
-    for (let i = 0; i < 35; i++) {
+    for (let i = 0; i < 80; i++) {
       const tx = Phaser.Math.Between(2, CFG.MAP_W-2), ty = Phaser.Math.Between(2, CFG.MAP_H-2);
       if (getBiome(tx, ty) !== 'waste') continue;
       if (Math.abs(tx-stx)<SAFE_R+3 && Math.abs(ty-sty)<SAFE_R+3) continue;
@@ -3640,7 +3794,7 @@ class GameScene extends Phaser.Scene {
       spr.refreshBody();
     }
     // Mangrove root clusters — swamp (impassable tangled roots)
-    for (let i = 0; i < 25; i++) {
+    for (let i = 0; i < 55; i++) {
       const tx = Phaser.Math.Between(2, CFG.MAP_W-2), ty = Phaser.Math.Between(2, CFG.MAP_H-2);
       if (getBiome(tx, ty) !== 'swamp') continue;
       if (Math.abs(tx-stx)<SAFE_R+4 && Math.abs(ty-sty)<SAFE_R+4) continue;
@@ -3651,7 +3805,7 @@ class GameScene extends Phaser.Scene {
       spr.refreshBody();
     }
     // Spiderwebs — ruins (decorative, visual only)
-    for (let i = 0; i < 40; i++) {
+    for (let i = 0; i < 90; i++) {
       const tx = Phaser.Math.Between(2, CFG.MAP_W-2), ty = Phaser.Math.Between(2, CFG.MAP_H-2);
       if (getBiome(tx, ty) !== 'ruins') continue;
       if (Math.abs(tx-stx)<SAFE_R+3 && Math.abs(ty-sty)<SAFE_R+3) continue;
@@ -3697,7 +3851,7 @@ class GameScene extends Phaser.Scene {
     }
 
     // Toxic pools in swamp biome — large murky water tiles, clustered for density
-    for (let i = 0; i < 70; i++) {
+    for (let i = 0; i < 200; i++) {
       const tx = Phaser.Math.Between(2, CFG.MAP_W-3), ty = Phaser.Math.Between(2, CFG.MAP_H-3);
       if (getBiome(tx, ty) !== 'swamp') continue;
       if (Math.abs(tx-stx)<SAFE_R+5 && Math.abs(ty-sty)<SAFE_R+5) continue;
@@ -3711,6 +3865,9 @@ class GameScene extends Phaser.Scene {
       this._w(pool);
       this.toxicPools.push(pool);
     }
+
+    // Water ponds — swamp/tundra/fungal/grass (shallow+deep or ice)
+    this._buildPonds(stx, sty);
 
     // _preCacheTiles already populated above (all POI positions, before tree/rock placement)
 
@@ -3863,7 +4020,7 @@ class GameScene extends Phaser.Scene {
     // Mountains excluded — fjord algorithm already handles their entrance gaps.
     if (this._preCacheTiles && this.obstacles) {
       const CLEAR_R = 160;
-      const ROCK_KEYS = new Set(['rock', 'rock2', 'ice_rock', 'ice_spire', 'rock_spire', 'mangrove_roots']);
+      const ROCK_KEYS = new Set(['rock', 'rock2', 'ice_rock', 'rock_desert', 'ice_spire', 'rock_spire', 'mangrove_roots']);
       this.obstacles.getChildren().slice().forEach(ob => {
         const k = ob.texture && ob.texture.key;
         if (k === 'mountain' || k === 'mountain2') return;
@@ -4156,10 +4313,12 @@ class GameScene extends Phaser.Scene {
     const W = 7, H = 5; // structure footprint in tiles
 
     const biomeConfig = [
-      { biome: 'grass',  wallKey: 'plank_wall', floorKey: 'plank_floor',     label: 'FARMHOUSE' },
-      { biome: 'tundra', wallKey: 'ruin_block',  floorKey: 'ice_floor',       label: 'OUTPOST'   },
-      { biome: 'swamp',  wallKey: 'rot_plank',   floorKey: 'rot_plank_floor', label: 'SHACK'     },
-      { biome: 'waste',  wallKey: 'metal_wall',  floorKey: 'metal_floor',     label: 'BUNKER'    },
+      { biome: 'grass',  wallKey: 'plank_wall',    floorKey: 'plank_floor',     label: 'FARMHOUSE'    },
+      { biome: 'tundra', wallKey: 'ruin_block',    floorKey: 'ice_floor',       label: 'OUTPOST'      },
+      { biome: 'swamp',  wallKey: 'rot_plank',     floorKey: 'rot_plank_floor', label: 'SHACK'        },
+      { biome: 'waste',  wallKey: 'metal_wall',    floorKey: 'metal_floor',     label: 'BUNKER'       },
+      { biome: 'fungal', wallKey: 'fungal_wall',   floorKey: 'fungal_floor',    label: 'SPORE SHRINE' },
+      { biome: 'desert', wallKey: 'sandstone_wall',floorKey: 'sandstone_floor', label: 'DESERT OUTPOST'},
     ];
 
     for (const { biome, wallKey, floorKey, label } of biomeConfig) {
@@ -5251,6 +5410,10 @@ class GameScene extends Phaser.Scene {
     if (this.isOver) return;
     if (this._paused) return;
 
+    // Reset per-frame water/ice flags — overlap callbacks re-set them while active
+    if (this.p1) { this.p1._inShallowWater = false; this.p1._onIce = false; }
+    if (this.p2) { this.p2._inShallowWater = false; this.p2._onIce = false; }
+
     if (this.controlsVis || this.barrackOpen) {
       this.p1.spr.setVelocity(0,0);
       if (this.p2) this.p2.spr.setVelocity(0,0);
@@ -5288,8 +5451,8 @@ class GameScene extends Phaser.Scene {
     if (this.p2 && (this.p2._webSlowCd || 0) > 0) this.p2._webSlowCd = Math.max(0, this.p2._webSlowCd - delta);
 
     // Tundra slowdown effect
-    this.applyTundraSlowdown(this.p1);
-    if (this.p2) this.applyTundraSlowdown(this.p2);
+    this.applyTerrainEffects(this.p1);
+    if (this.p2) this.applyTerrainEffects(this.p2);
 
     this.syncLabels();
     this.updateCamera();
@@ -5519,16 +5682,34 @@ class GameScene extends Phaser.Scene {
     }
   }
 
-  applyTundraSlowdown(player) {
+  applyTerrainEffects(player) {
     if (!player || player.isDowned) return;
+
+    // Shallow water: 50% speed cap (flag set by overlap callback)
+    if (player._inShallowWater) {
+      const vx = player.spr.body.velocity.x, vy = player.spr.body.velocity.y;
+      player.spr.setVelocity(vx * 0.5, vy * 0.5);
+      return;
+    }
+
+    // Ice: momentum slide — 88/12 blend preserves previous velocity
+    if (player._onIce) {
+      const vx = player.spr.body.velocity.x, vy = player.spr.body.velocity.y;
+      if (player._iceVx === undefined) { player._iceVx = vx; player._iceVy = vy; }
+      player._iceVx = player._iceVx * 0.88 + vx * 0.12;
+      player._iceVy = player._iceVy * 0.88 + vy * 0.12;
+      player.spr.setVelocity(player._iceVx, player._iceVy);
+      return;
+    }
+    player._iceVx = undefined; player._iceVy = undefined;
+
+    // Tundra ground slow (non-ice tiles, existing behavior)
     const TILE = CFG.TILE;
     const ptx = Math.floor(player.spr.x / TILE), pty = Math.floor(player.spr.y / TILE);
     const biome = getBiome(ptx, pty);
     if (biome === 'tundra') {
       const vx = player.spr.body.velocity.x, vy = player.spr.body.velocity.y;
-      if (vx !== 0 || vy !== 0) {
-        player.spr.setVelocity(vx * 0.7, vy * 0.7);
-      }
+      if (vx !== 0 || vy !== 0) player.spr.setVelocity(vx * 0.7, vy * 0.7);
     }
   }
 
@@ -6868,6 +7049,18 @@ class GameScene extends Phaser.Scene {
         if (Math.random() < 0.6) drops.push('item_ammo');
         if (Math.random() < 0.4) drops.push('item_metal');
         if (Math.random() < 0.3) drops.push('item_food');
+      } else if (enemyType === 'ice_crawler') {
+        if (Math.random() < 0.5) drops.push('item_fiber');
+        if (Math.random() < 0.2) drops.push('item_rare');
+      } else if (enemyType === 'spider_ruins') {
+        if (Math.random() < 0.7) drops.push('item_fiber');
+        if (Math.random() < 0.25) drops.push('item_metal');
+      } else if (enemyType === 'bog_lurker') {
+        if (Math.random() < 0.5) drops.push('item_food');
+        if (Math.random() < 0.3) drops.push('item_fiber');
+      } else if (enemyType === 'dust_hound') {
+        if (Math.random() < 0.4) drops.push('item_food');
+        if (Math.random() < 0.35) drops.push('item_fiber');
       }
     }
     drops.forEach((key, i) => {
@@ -6913,23 +7106,27 @@ class GameScene extends Phaser.Scene {
     this.waveNum = 0;
     this.waveTimer = 0;
     this.WAVE_INTERVAL = 90000; // 90 seconds between waves
-    this._spawnGroup(worldW, worldH, cx, cy, { wolf:8, rat:10, bear:3 }, false);
+    this._spawnGroup(worldW, worldH, cx, cy, { wolf:15, rat:20, bear:6 }, false);
 
     // Initial biome-exclusive enemy spawns
     this._nextPackId = 0;
-    this._spawnBiomeEnemy('ice_crawler',  'tundra', 8,  1);
-    this._spawnBiomeEnemy('spider_ruins', 'ruins',  8,  1);
-    this._spawnBiomeEnemy('bog_lurker',   'swamp',  6,  1);
-    this._spawnBiomeEnemy('dust_hound',   'waste',  12, 3); // 4 packs of 3
+    this._spawnBiomeEnemy('ice_crawler',  'tundra', 15, 1);
+    this._spawnBiomeEnemy('spider_ruins', 'ruins',  15, 1);
+    this._spawnBiomeEnemy('bog_lurker',   'swamp',  10, 1);
+    this._spawnBiomeEnemy('bog_lurker',   'fungal', 8,  1);
+    this._spawnBiomeEnemy('dust_hound',   'waste',  18, 3);
+    this._spawnBiomeEnemy('dust_hound',   'desert', 12, 3);
 
     // Spawn structure guards — 2-4 enemies per biome structure (high danger zone)
     if (this._structureLocs) {
-      const biomeGuardType = { grass:'wolf', tundra:'wolf', swamp:'rat', waste:'bear' };
+      const biomeGuardType = { grass:'wolf', tundra:'wolf', swamp:'rat', waste:'bear', fungal:'bog_lurker', desert:'dust_hound' };
       for (const loc of this._structureLocs) {
         const type = biomeGuardType[loc.biome] || 'wolf';
-        const t = { wolf:{key:'wolf',hp:70,speed:95,dmg:10,baseScale:2.0,w:20,h:12},
-                    rat: {key:'rat', hp:38,speed:145,dmg:7, baseScale:1.6,w:15,h:9 },
-                    bear:{key:'bear',hp:160,speed:58,dmg:20,baseScale:2.4,w:24,h:18} }[type];
+        const t = { wolf:      {key:'wolf',      hp:70, speed:95, dmg:10,baseScale:2.0,w:20,h:12},
+                    rat:       {key:'rat',       hp:38, speed:145,dmg:7, baseScale:1.6,w:15,h:9 },
+                    bear:      {key:'bear',      hp:160,speed:58, dmg:20,baseScale:2.4,w:24,h:18},
+                    bog_lurker:{key:'bog_lurker',hp:65, speed:60, dmg:14,baseScale:1.8,w:20,h:14},
+                    dust_hound:{key:'dust_hound',hp:35, speed:125,dmg:6, baseScale:1.3,w:18,h:12} }[type];
         const count = Phaser.Math.Between(2, 4);
         for (let i = 0; i < count; i++) {
           const ang = (i / count) * Math.PI * 2;
@@ -6957,6 +7154,80 @@ class GameScene extends Phaser.Scene {
           });
         }
       }
+    }
+  }
+
+  // ── POND GENERATION ──────────────────────────────────────────
+  // BFS blob growth: organic irregular shapes with deep center + shallow edges.
+  // Tundra ponds become ice tiles (passable, slippery); others have deep impassable center.
+  _buildPonds(stx, sty) {
+    const { TILE, SAFE_R } = CFG;
+    const specs = [
+      ...Array.from({length: 35}, () => 'swamp'),   // 35 swamp ponds
+      ...Array.from({length: 25}, () => 'tundra'),  // 25 tundra ice ponds
+      ...Array.from({length: 20}, () => 'fungal'),  // 20 fungal ponds
+      ...Array.from({length: 10}, () => 'grass'),   // 10 grassland ponds
+    ];
+    for (const biome of specs) {
+      const isIce = biome === 'tundra';
+      // Pick center tile in correct biome
+      let cx = -1, cy = -1;
+      for (let attempt = 0; attempt < 40; attempt++) {
+        const tx = Phaser.Math.Between(8, CFG.MAP_W - 8);
+        const ty = Phaser.Math.Between(8, CFG.MAP_H - 8);
+        if (getBiome(tx, ty) !== biome) continue;
+        if (Math.abs(tx - stx) < SAFE_R + 10 && Math.abs(ty - sty) < SAFE_R + 10) continue;
+        if (this._structureLocs && this._structureLocs.some(s =>
+          Math.abs(s.x / TILE - tx) < 10 && Math.abs(s.y / TILE - ty) < 10)) continue;
+        cx = tx; cy = ty; break;
+      }
+      if (cx < 0) continue;
+      // BFS blob expansion
+      const tileSet = new Set();
+      const visited = new Set();
+      const queue = [[cx, cy, 1.0]];
+      while (queue.length) {
+        const [tx, ty, prob] = queue.shift();
+        const key = `${tx},${ty}`;
+        if (visited.has(key)) continue;
+        visited.add(key);
+        if (Math.random() > prob) continue;
+        tileSet.add(key);
+        [[tx-1,ty],[tx+1,ty],[tx,ty-1],[tx,ty+1]].forEach(([nx, ny]) => {
+          if (!visited.has(`${nx},${ny}`) && prob * 0.58 > 0.08) {
+            queue.push([nx, ny, prob * 0.58]);
+          }
+        });
+      }
+      // Classify and place tiles
+      tileSet.forEach(key => {
+        const [tx, ty] = key.split(',').map(Number);
+        if (tx < 1 || ty < 1 || tx >= CFG.MAP_W - 1 || ty >= CFG.MAP_H - 1) return;
+        const x = tx * TILE, y = ty * TILE;
+        const neighborCount = [[tx-1,ty],[tx+1,ty],[tx,ty-1],[tx,ty+1]]
+          .filter(([nx, ny]) => tileSet.has(`${nx},${ny}`)).length;
+        if (isIce) {
+          const tile = this.physics.add.image(x, y, 'water_ice').setDepth(2).setAlpha(0.92);
+          tile.body.allowGravity = false; tile.body.setImmovable(true);
+          tile.body.setSize(30, 30);
+          if (this.hudCam) this.hudCam.ignore(tile);
+          this._w(tile);
+          this.iceTiles.push(tile);
+          this._iceTileSet.add(key);
+        } else if (neighborCount >= 3) {
+          const tile = this.obstacles.create(x, y, 'water_deep').setDepth(2).setAlpha(0.95);
+          if (this.hudCam) this.hudCam.ignore(tile);
+          tile.refreshBody();
+          this.deepWaterTiles.push(tile);
+        } else {
+          const tile = this.physics.add.image(x, y, 'water_shallow').setDepth(2).setAlpha(0.9);
+          tile.body.allowGravity = false; tile.body.setImmovable(true);
+          tile.body.setSize(30, 30);
+          if (this.hudCam) this.hudCam.ignore(tile);
+          this._w(tile);
+          this.waterTiles.push(tile);
+        }
+      });
     }
   }
 
