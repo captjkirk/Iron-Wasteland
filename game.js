@@ -2751,7 +2751,7 @@ class CharSelectScene extends Phaser.Scene {
       const p2s = this.p1Done && !this.p2Done && i===this.p2Idx, p2l = this.p2Done && i===this.p2Idx;
       c.p1b.setVisible(p1s||p1l); c.p2b.setVisible(p2s||p2l);
       c.p1badge.setVisible(p1l);  c.p2badge.setVisible(p2l);
-      c.sprite.setScale((p1s||p1l||p2s||p2l ? 4.5 : 4.0) * this._S);
+      c.sprite.setScale((p1s||p1l||p2s||p2l ? 3.0 : 2.0) * this._S);
     });
     if (!this.p1Done) this.statusText.setText('Player 1 — A/D to choose, F to confirm');
   }
@@ -2789,6 +2789,10 @@ class GameScene extends Phaser.Scene {
     this._wo = []; this._ho = [];
     this._w = o => { this._wo.push(o); return o; };
     this._h = o => { this._ho.push(o); return o; };
+
+    // Pause state
+    this._paused = false;
+    this._pauseOverlay = null;
 
     // Day/night state
     this.dayNum = 1; this.dayTimer = 0; this.DAY_DUR = 150000; this.isNight = false;
@@ -2876,8 +2880,12 @@ class GameScene extends Phaser.Scene {
 
     this.hotkeys.p1use.on('down', () => { if (!this.barrackOpen && !this.isOver) this.tryInteract(this.p1); });
     if (this.p2) this.hotkeys.p2use.on('down', () => { if (!this.barrackOpen && !this.isOver) this.tryInteract(this.p2); });
-    this.hotkeys.tab.on('down', () => { if (!this.barrackOpen && !this.craftMenuOpen && !this.isOver) this.toggleControls(); });
-    this.hotkeys.esc.on('down', () => { this.closeBarrack(); if (this.controlsVis) this.toggleControls(); });
+    this.hotkeys.tab.on('down', () => { if (!this.barrackOpen && !this.craftMenuOpen && !this.isOver) this.togglePause(); });
+    this.hotkeys.esc.on('down', () => {
+      this.closeBarrack();
+      if (this._paused) { this.togglePause(); return; }
+      if (this.controlsVis) this.toggleControls();
+    });
 
     // Backtick/grave (`) toggles the debug event log
     this.input.keyboard.addKey(192).on('down', () => {
@@ -3457,15 +3465,16 @@ class GameScene extends Phaser.Scene {
     // Runs after buildBiomeStructures so structure wall tiles are never destroyed.
     // Mountains excluded — fjord algorithm already handles their entrance gaps.
     if (this._preCacheTiles && this.obstacles) {
-      const CLEAR_R = 80;
+      const CLEAR_R = 160;
       const ROCK_KEYS = new Set(['rock', 'rock2', 'ice_rock']);
       this.obstacles.getChildren().slice().forEach(ob => {
         const k = ob.texture && ob.texture.key;
         if (k === 'mountain' || k === 'mountain2') return;
         if (!ob.isTree && !ROCK_KEYS.has(k)) return; // keep structure walls, ruin blocks, etc.
+        const obR = (ob.displayWidth || 32) / 2;
         for (const pos of this._preCacheTiles) {
           const dx = ob.x - pos.tx * TILE, dy = ob.y - pos.ty * TILE;
-          if (dx * dx + dy * dy < CLEAR_R * CLEAR_R) { ob.destroy(); break; }
+          if (dx * dx + dy * dy < (CLEAR_R + obR) * (CLEAR_R + obR)) { ob.destroy(); break; }
         }
       });
     }
@@ -3610,6 +3619,7 @@ class GameScene extends Phaser.Scene {
       w.setDepth(5 + ty*0.01).setImmovable(true);
       w.body.setSize(28, 28); // slightly smaller than full tile for passability at seams
       w.refreshBody();
+      w.hp = 200; w.maxHp = 200;
     };
 
     for (let col = 0; col < cols; col++) {
@@ -3964,7 +3974,7 @@ class GameScene extends Phaser.Scene {
       stroke: '#000', strokeThickness: 1,
       backgroundColor: '#00000099',
       padding: { x: 6, y: 4 },
-    }).setDepth(500).setVisible(false));
+    }).setScrollFactor(0).setDepth(500).setVisible(false));
   }
 
   _renderMinimapBase() {
@@ -4284,6 +4294,7 @@ class GameScene extends Phaser.Scene {
     this.p1.spr.setVelocity(0, 0);
     if (this.p2) this.p2.spr.setVelocity(0, 0);
 
+    Music.stop();
     this.cameras.main.fadeOut(800, 0, 0, 0);
     this.time.delayedCall(900, () => {
       this.scene.start('GameOver', {
@@ -4391,6 +4402,32 @@ class GameScene extends Phaser.Scene {
       this.ctrlObjs.forEach(o => o.setVisible(true));
     }
     // When hiding: objects stay invisible (default from buildControlsOverlay)
+  }
+
+  togglePause() {
+    this._paused = !this._paused;
+    if (this._paused) {
+      this.physics.world.pause();
+      if (!this._pauseOverlay) {
+        const { W, H } = CFG;
+        const g = this.add.graphics().setScrollFactor(0).setDepth(200);
+        g.fillStyle(0x000000, 0.55);
+        g.fillRect(0, 0, W, H);
+        const t = this.add.text(W/2, H/2, 'PAUSED', {
+          fontFamily: 'monospace', fontSize: '36px', color: '#ffffff',
+          stroke: '#000', strokeThickness: 4,
+        }).setOrigin(0.5).setScrollFactor(0).setDepth(201);
+        const sub = this.add.text(W/2, H/2 + 44, 'Press TAB to resume', {
+          fontFamily: 'monospace', fontSize: '14px', color: '#aaaaaa',
+        }).setOrigin(0.5).setScrollFactor(0).setDepth(201);
+        this._pauseOverlay = [g, t, sub];
+        this._pauseOverlay.forEach(o => this._h(o));
+      }
+      this._pauseOverlay.forEach(o => o.setVisible(true));
+    } else {
+      this.physics.world.resume();
+      if (this._pauseOverlay) this._pauseOverlay.forEach(o => o.setVisible(false));
+    }
   }
 
   // ── BARRACKS OVERLAY ─────────────────────────────────────────
@@ -4731,6 +4768,7 @@ class GameScene extends Phaser.Scene {
   update(time, delta) {
     if (!this._worldReady) return; // deferred world init not yet complete
     if (this.isOver) return;
+    if (this._paused) return;
 
     if (this.controlsVis || this.barrackOpen) {
       this.p1.spr.setVelocity(0,0);
@@ -5135,6 +5173,7 @@ class GameScene extends Phaser.Scene {
     if (this.hudCam) this.hudCam.ignore(bullet);
     const speed = 380;
     bullet.setVelocity(Math.cos(ang) * speed, Math.sin(ang) * speed);
+    bullet.setRotation(ang);
     SFX._play(320, 'square', 0.04, 0.15);
     // Raider bullets blocked by terrain and player-built structures
     if (this.obstacles) {
@@ -5981,7 +6020,7 @@ class GameScene extends Phaser.Scene {
     if (!this.obstacles || !this.harvestGfx) return;
     this.harvestGfx.clear();
 
-    const HARVEST_RANGE = 50; // px
+    const HARVEST_RANGE = 72; // px
     const HARVEST_TIMES = { architect: 1500, knight: 2500, gunslinger: 4000 };
     const players = [this.p1, this.p2].filter(p => p && !p.isDowned && !p.isSleeping && p.hp > 0);
 
@@ -6339,8 +6378,8 @@ class GameScene extends Phaser.Scene {
           }
         });
       }
-      // Boss daily check: after day 5, 25% chance each dawn
-      if (!this.bossSpawned && this.dayNum > 5 && Math.random() < 0.25) {
+      // Boss daily check: after day 5, 25% chance each dawn — but not the same dawn a raid respawns
+      else if (!this.bossSpawned && this.dayNum > 5 && Math.random() < 0.25) {
         this.time.delayedCall(5000, () => {
           if (!this.isOver && !this.bossSpawned) this.spawnBoss();
         });
@@ -6637,6 +6676,7 @@ class GameScene extends Phaser.Scene {
     this.craftMenuOpen = true;
     this.craftMenuOwner = player;
     this.craftMenuSel = 0;
+    this._craftMenuJustOpened = true; // skip close-on-Q check for the frame Q was pressed
     // Nav keys (reuse attack confirm, movement for up/down)
     this._craftNavUp   = this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.W);
     this._craftNavUp2  = this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.UP);
@@ -6665,8 +6705,10 @@ class GameScene extends Phaser.Scene {
     if (Phaser.Input.Keyboard.JustDown(this._craftNavDn) || Phaser.Input.Keyboard.JustDown(this._craftNavDn2)) {
       this.craftMenuSel = (this.craftMenuSel + 1) % RECIPES.length;
     }
-    // Close on Q/0
-    if (Phaser.Input.Keyboard.JustDown(this._craftClose) || Phaser.Input.Keyboard.JustDown(this._craftClose2)) {
+    // Close on Q/0 — skip the first frame to avoid closing immediately after opening
+    if (this._craftMenuJustOpened) {
+      this._craftMenuJustOpened = false;
+    } else if (Phaser.Input.Keyboard.JustDown(this._craftClose) || Phaser.Input.Keyboard.JustDown(this._craftClose2)) {
       this.closeCraftMenu(); return;
     }
 
@@ -7070,7 +7112,10 @@ class GameOverScene extends Phaser.Scene {
   }
 
   _loadLeaderboard() {
-    try { return JSON.parse(localStorage.getItem('iw_scores') || '[]'); } catch(e) { return []; }
+    try {
+      const d = JSON.parse(localStorage.getItem('iw_scores') || '[]');
+      return Array.isArray(d) ? d.filter(e => e && typeof e.score === 'number') : [];
+    } catch(e) { return []; }
   }
 
   restart() {
