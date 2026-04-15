@@ -407,6 +407,34 @@ function buildTextures(scene) {
   g.fillStyle(0x4a7c2f); g.fillRect(17, 5, 2, 2); g.fillRect(25, 14, 2, 2); g.fillRect(6, 13, 2, 2);
   g.generateTexture('grass3', 32, 32);
 
+  // Tall grass — grassland biome (bright green blades)
+  g.clear();
+  g.fillStyle(0x3a6820); g.fillRect(6, 10, 3, 14); g.fillRect(11, 8, 3, 16); g.fillRect(16, 11, 2, 13); g.fillRect(21, 9, 3, 15);
+  g.fillStyle(0x4e8a2a); g.fillRect(7, 6, 2, 8); g.fillRect(12, 4, 2, 9); g.fillRect(17, 7, 2, 7); g.fillRect(22, 5, 2, 8);
+  g.fillStyle(0x62aa36); g.fillRect(7, 3, 1, 5); g.fillRect(12, 1, 2, 5); g.fillRect(17, 4, 1, 5); g.fillRect(22, 2, 1, 5);
+  g.generateTexture('tall_grass', 32, 24);
+
+  // Tall grass — wasteland (dry yellow-brown stalks)
+  g.clear();
+  g.fillStyle(0x6a5020); g.fillRect(5, 12, 3, 12); g.fillRect(11, 10, 2, 14); g.fillRect(16, 13, 3, 11); g.fillRect(22, 11, 2, 13);
+  g.fillStyle(0x8a6e30); g.fillRect(5, 7, 2, 7); g.fillRect(11, 6, 2, 6); g.fillRect(16, 8, 2, 7); g.fillRect(22, 7, 2, 6);
+  g.fillStyle(0xaa8c44); g.fillRect(5, 4, 2, 4); g.fillRect(11, 3, 2, 4); g.fillRect(16, 5, 2, 4); g.fillRect(22, 4, 1, 4);
+  g.generateTexture('tall_grass_waste', 32, 24);
+
+  // Tall grass — tundra (pale blue-white frost grass)
+  g.clear();
+  g.fillStyle(0x8899aa); g.fillRect(6, 12, 3, 12); g.fillRect(12, 10, 2, 14); g.fillRect(17, 13, 3, 11); g.fillRect(23, 11, 2, 13);
+  g.fillStyle(0xaabbcc); g.fillRect(6, 7, 2, 7); g.fillRect(12, 6, 2, 6); g.fillRect(17, 8, 2, 7); g.fillRect(23, 7, 2, 6);
+  g.fillStyle(0xddeeff); g.fillRect(6, 4, 2, 4); g.fillRect(12, 3, 2, 4); g.fillRect(17, 5, 2, 4); g.fillRect(23, 4, 1, 4);
+  g.generateTexture('tall_grass_tundra', 32, 24);
+
+  // Tall grass — swamp (dark murky reeds)
+  g.clear();
+  g.fillStyle(0x2a4a1a); g.fillRect(5, 8, 3, 16); g.fillRect(11, 6, 2, 18); g.fillRect(17, 9, 3, 15); g.fillRect(23, 7, 2, 17);
+  g.fillStyle(0x3a6628); g.fillRect(5, 4, 2, 6); g.fillRect(11, 2, 2, 6); g.fillRect(17, 5, 2, 6); g.fillRect(23, 3, 2, 6);
+  g.fillStyle(0x1a3010); g.fillRect(4, 12, 2, 4); g.fillRect(10, 14, 2, 4); g.fillRect(16, 11, 2, 4); g.fillRect(22, 13, 2, 4);
+  g.generateTexture('tall_grass_swamp', 32, 24);
+
   // Bush (16×14, decorative only)
   g.clear();
   g.fillStyle(0x1f5c0f); g.fillCircle(8, 9, 7);
@@ -752,14 +780,23 @@ function buildTextures(scene) {
   g.fillStyle(0x666677); g.fillRect(9, 4, 3, 6);
   g.generateTexture('pillar', 22, 36);
 
-  // Toxic pool — green/yellow bubbling
+  // Toxic pool — murky poison water tile (large, clearly reads as dangerous liquid)
   g.clear();
-  g.fillStyle(0x44aa22, 0.8); g.fillEllipse(12, 10, 22, 16);
-  g.fillStyle(0x66cc33, 0.7); g.fillEllipse(12, 9, 16, 10);
-  g.fillStyle(0x88ee44, 0.6); g.fillEllipse(10, 8, 8, 5);
-  g.fillStyle(0xaaff66, 0.5); g.fillCircle(8, 7, 2); g.fillCircle(14, 6, 2);
-  g.fillStyle(0xccff88, 0.4); g.fillCircle(11, 5, 1);
-  g.generateTexture('toxic_pool', 24, 20);
+  // Deep murky base
+  g.fillStyle(0x1a3a1a); g.fillEllipse(32, 26, 60, 44);
+  // Mid-tone water body
+  g.fillStyle(0x2a5a20); g.fillEllipse(32, 25, 52, 36);
+  // Lighter surface sheen
+  g.fillStyle(0x3a7a28); g.fillEllipse(30, 23, 40, 26);
+  // Toxic highlight — sickly yellow-green shimmer
+  g.fillStyle(0x6ab830, 0.7); g.fillEllipse(28, 21, 26, 14);
+  g.fillStyle(0x88cc44, 0.5); g.fillEllipse(26, 19, 14, 8);
+  // Bubble spots
+  g.fillStyle(0x9edd55, 0.8); g.fillCircle(20, 18, 3); g.fillCircle(38, 24, 2); g.fillCircle(30, 30, 2);
+  g.fillStyle(0xccff77, 0.6); g.fillCircle(22, 17, 1); g.fillCircle(36, 22, 1);
+  // Dark edge for depth
+  g.lineStyle(2, 0x0a2010, 0.9); g.strokeEllipse(32, 26, 60, 44);
+  g.generateTexture('toxic_pool', 64, 52);
 
   // Ice rock — polygon-based, blue-grey with icy highlight face
   g.clear();
@@ -818,16 +855,25 @@ function buildTextures(scene) {
   g.fillStyle(0xeedd22); g.fillRect(11, 9, 2, 2);
   g.generateTexture('supply_cache', 24, 20);
 
-  // Ruin wall block — crumbling brick wall tile
+  // Ruin wall block — crumbling brick wall tile (high contrast for readability)
   g.clear();
-  g.fillStyle(0x555566); g.fillRect(0, 0, 32, 32);
-  g.fillStyle(0x666677); g.fillRect(0, 0, 32, 8); g.fillRect(0, 16, 32, 8);
-  g.fillStyle(0x4a4a5a); g.fillRect(0, 8, 32, 8); g.fillRect(0, 24, 32, 8);
-  g.fillStyle(0x333344); g.fillRect(0, 7, 32, 2); g.fillRect(0, 15, 32, 2); g.fillRect(0, 23, 32, 2);
-  g.fillStyle(0x333344); g.fillRect(15, 0, 2, 7); g.fillRect(7, 8, 2, 7); g.fillRect(22, 8, 2, 7);
-  g.fillStyle(0x333344); g.fillRect(10, 16, 2, 7); g.fillRect(25, 16, 2, 7); g.fillRect(4, 24, 2, 8);
-  g.fillStyle(0x222233); g.fillRect(2, 2, 3, 3); g.fillRect(20, 18, 4, 4); g.fillRect(27, 10, 4, 3);
-  g.lineStyle(1, 0x222233, 1); g.lineBetween(5, 0, 3, 7); g.lineBetween(18, 8, 22, 14); g.lineBetween(9, 16, 7, 24);
+  g.fillStyle(0x2a2a36); g.fillRect(0, 0, 32, 32);           // dark mortar base
+  g.fillStyle(0x6a5c4a); g.fillRect(1, 1, 14, 6);             // brick row 1 left
+  g.fillStyle(0x7a6c5a); g.fillRect(17, 1, 14, 6);            // brick row 1 right
+  g.fillStyle(0x7a6c5a); g.fillRect(1, 9, 6, 6);              // brick row 2 far left
+  g.fillStyle(0x6a5c4a); g.fillRect(9, 9, 14, 6);             // brick row 2 mid
+  g.fillStyle(0x5a4c3a); g.fillRect(25, 9, 6, 6);             // brick row 2 right (darker)
+  g.fillStyle(0x6a5c4a); g.fillRect(1, 17, 14, 6);            // brick row 3 left
+  g.fillStyle(0x7a6c5a); g.fillRect(17, 17, 14, 6);           // brick row 3 right
+  g.fillStyle(0x5a4c3a); g.fillRect(1, 25, 6, 6);             // brick row 4 far left
+  g.fillStyle(0x7a6c5a); g.fillRect(9, 25, 14, 6);            // brick row 4 mid
+  g.fillStyle(0x6a5c4a); g.fillRect(25, 25, 6, 6);            // brick row 4 right
+  // Mortar cracks / damage marks
+  g.fillStyle(0x1a1a24); g.fillRect(3, 4, 1, 3); g.fillRect(20, 20, 2, 2);
+  g.fillStyle(0x1a1a24); g.fillRect(14, 11, 1, 4); g.fillRect(27, 28, 2, 2);
+  // Bright highlight edge on top-left (gives depth)
+  g.fillStyle(0x9a8c7a); g.fillRect(1, 1, 13, 1); g.fillRect(17, 1, 13, 1);
+  g.fillStyle(0x9a8c7a); g.fillRect(1, 9, 5, 1); g.fillRect(9, 9, 13, 1);
   g.generateTexture('ruin_block', 32, 32);
 
   // Ruin interior floor — worn stone tile
@@ -881,6 +927,36 @@ function buildTextures(scene) {
   g.fillRect(4, 4, 1, 9); g.fillRect(4, 12, 5, 1); g.fillRect(20, 18, 7, 1); g.fillRect(26, 18, 1, 6);
   g.fillStyle(0xdcf0ff); g.fillRect(2, 2, 5, 5); g.fillRect(18, 18, 6, 6); // frost highlights
   g.generateTexture('ice_floor', 32, 32);
+
+  // Plank floor — warm wood planks for farmhouse interiors
+  g.clear();
+  g.fillStyle(0x7a5a30); g.fillRect(0, 0, 32, 32);
+  g.fillStyle(0x8a6a3a); g.fillRect(0, 0, 32, 7); g.fillRect(0, 16, 32, 8);
+  g.fillStyle(0x6a4c28); g.fillRect(0, 8, 32, 7); g.fillRect(0, 24, 32, 8);
+  g.fillStyle(0x5a3c1e); g.fillRect(0, 7, 32, 1); g.fillRect(0, 15, 32, 1); g.fillRect(0, 23, 32, 1);
+  g.fillStyle(0x5a3c1e); g.fillRect(10, 0, 1, 7); g.fillRect(22, 8, 1, 7); g.fillRect(6, 16, 1, 8); g.fillRect(18, 24, 1, 8);
+  g.fillStyle(0x9a7a4a, 0.4); g.fillRect(2, 2, 8, 4); g.fillRect(14, 18, 8, 4);
+  g.generateTexture('plank_floor', 32, 32);
+
+  // Rot plank floor — decayed wood for swamp shack interiors
+  g.clear();
+  g.fillStyle(0x3a2c18); g.fillRect(0, 0, 32, 32);
+  g.fillStyle(0x4a3820); g.fillRect(0, 0, 32, 7); g.fillRect(0, 16, 32, 8);
+  g.fillStyle(0x2e2010); g.fillRect(0, 8, 32, 7); g.fillRect(0, 24, 32, 8);
+  g.fillStyle(0x1e1208); g.fillRect(0, 7, 32, 1); g.fillRect(0, 15, 32, 1); g.fillRect(0, 23, 32, 1);
+  g.fillStyle(0x1e1208); g.fillRect(10, 0, 1, 7); g.fillRect(22, 8, 1, 7); g.fillRect(6, 16, 1, 8);
+  g.fillStyle(0x283810, 0.5); g.fillRect(4, 3, 3, 2); g.fillRect(18, 20, 4, 2); g.fillRect(26, 10, 3, 3);
+  g.generateTexture('rot_plank_floor', 32, 32);
+
+  // Metal floor — industrial grating for bunker interiors
+  g.clear();
+  g.fillStyle(0x3a3a3a); g.fillRect(0, 0, 32, 32);
+  g.fillStyle(0x4a4a4a); g.fillRect(0, 0, 15, 15); g.fillRect(17, 17, 15, 15);
+  g.fillStyle(0x2e2e2e); g.fillRect(17, 0, 15, 15); g.fillRect(0, 17, 15, 15);
+  g.fillStyle(0x222222); g.fillRect(0, 15, 32, 2); g.fillRect(15, 0, 2, 32);
+  g.fillStyle(0x5a5a5a, 0.6); g.fillRect(2, 2, 11, 1); g.fillRect(19, 19, 11, 1);
+  g.fillStyle(0x1a1a1a); g.fillRect(4, 6, 1, 1); g.fillRect(8, 10, 1, 1); g.fillRect(20, 22, 1, 1);
+  g.generateTexture('metal_floor', 32, 32);
 
   // Crater (large) — decorative ground depression
   g.clear();
@@ -2794,6 +2870,12 @@ class GameScene extends Phaser.Scene {
     this._paused = false;
     this._pauseOverlay = null;
 
+    // Contextual tutorial hint flags (each fires once)
+    this._ctx = {
+      nearTree: false, firstHarvest: false, firstCraft: false,
+      firstNight: false, firstUpgradeHint: false,
+    };
+
     // Day/night state
     this.dayNum = 1; this.dayTimer = 0; this.DAY_DUR = 150000; this.isNight = false;
     this.kills = 0;
@@ -3110,6 +3192,20 @@ class GameScene extends Phaser.Scene {
       this._w(this.add.image(tx*TILE, ty*TILE, variant).setOrigin(0).setDepth(1).setAlpha(0.65));
     }
 
+    // Tall grass — biome-specific decorative blades (depth 4 = below player, above ground)
+    const tallGrassMap = { grass:'tall_grass', waste:'tall_grass_waste', tundra:'tall_grass_tundra', swamp:'tall_grass_swamp' };
+    for (let i = 0; i < 600; i++) {
+      const tx = Phaser.Math.Between(2, CFG.MAP_W-3), ty = Phaser.Math.Between(2, CFG.MAP_H-3);
+      if (Math.abs(tx-stx) < SAFE_R+3 && Math.abs(ty-sty) < SAFE_R+3) continue;
+      const biome = getBiome(tx, ty);
+      const key = tallGrassMap[biome];
+      if (!key) continue; // ruins gets no tall grass
+      const sc = Phaser.Math.FloatBetween(0.7, 1.3);
+      const ox = Phaser.Math.Between(-10, 10), oy = Phaser.Math.Between(-8, 8);
+      this._w(this.add.image(tx*TILE+ox, ty*TILE+oy, key)
+        .setOrigin(0.5, 1).setScale(sc).setDepth(4 + ty*0.001).setAlpha(0.82));
+    }
+
     // ── PRE-COMPUTE ALL POI POSITIONS ────────────────────────────────────────
     // Must happen BEFORE trees, rocks, and mountains so that:
     //  • placeTree / rock loops can skip tiles near any POI
@@ -3191,8 +3287,8 @@ class GameScene extends Phaser.Scene {
       treesPlaced.push({ tx, ty });
     };
 
-    // 12 forest clusters — each is a tight pack of 20-35 trees
-    for (let f = 0; f < 12; f++) {
+    // 20 forest clusters — each is a tight pack of 28-45 trees
+    for (let f = 0; f < 20; f++) {
       let cx, cy, attempts = 0;
       do {
         cx = Phaser.Math.Between(18, CFG.MAP_W-18);
@@ -3200,8 +3296,8 @@ class GameScene extends Phaser.Scene {
         attempts++;
       } while (attempts < 40 && (Math.abs(cx-stx) < SAFE_R+20 && Math.abs(cy-sty) < SAFE_R+20));
       const biome = getBiome(cx, cy);
-      const radius = Phaser.Math.Between(5, 9); // 5-9 tile radius cluster
-      const count  = Phaser.Math.Between(22, 35);
+      const radius = Phaser.Math.Between(6, 11); // larger radius clusters
+      const count  = Phaser.Math.Between(28, 45); // denser clusters
       for (let i = 0; i < count; i++) {
         const angle = Math.random() * Math.PI * 2;
         const dist  = Math.sqrt(Math.random()) * radius; // sqrt = uniform density
@@ -3210,7 +3306,7 @@ class GameScene extends Phaser.Scene {
     }
 
     // Scattered fringe trees outside clusters (sparse woodland, not in clusters)
-    for (let i = 0; i < 100; i++) {
+    for (let i = 0; i < 180; i++) {
       const tx = Phaser.Math.Between(2, CFG.MAP_W-2), ty = Phaser.Math.Between(2, CFG.MAP_H-2);
       placeTree(tx, ty, getBiome(tx, ty));
     }
@@ -3302,14 +3398,17 @@ class GameScene extends Phaser.Scene {
       this._w(this.add.image(tx*TILE + Phaser.Math.Between(-8, 8), ty*TILE + Phaser.Math.Between(-8, 8), 'crater_small').setScale(sc).setDepth(1.5).setAlpha(0.55));
     }
 
-    // Toxic pools in swamp biome
-    for (let i = 0; i < 30; i++) {
+    // Toxic pools in swamp biome — large murky water tiles, clustered for density
+    for (let i = 0; i < 70; i++) {
       const tx = Phaser.Math.Between(2, CFG.MAP_W-3), ty = Phaser.Math.Between(2, CFG.MAP_H-3);
       if (getBiome(tx, ty) !== 'swamp') continue;
       if (Math.abs(tx-stx)<SAFE_R+5 && Math.abs(ty-sty)<SAFE_R+5) continue;
-      const pool = this.physics.add.image(tx*TILE, ty*TILE, 'toxic_pool').setScale(Phaser.Math.FloatBetween(1.5, 3.0)).setDepth(2).setAlpha(0.85);
+      const sc = Phaser.Math.FloatBetween(0.8, 2.2);
+      const pool = this.physics.add.image(tx*TILE + Phaser.Math.Between(-8,8), ty*TILE + Phaser.Math.Between(-8,8), 'toxic_pool')
+        .setScale(sc).setDepth(2).setAlpha(0.9);
       pool.body.allowGravity = false; pool.body.setImmovable(true);
-      pool.body.setSize(16, 12);
+      // Physics body scales with sprite size
+      pool.body.setSize(Math.round(40 * sc), Math.round(28 * sc));
       if (this.hudCam) this.hudCam.ignore(pool);
       this._w(pool);
       this.toxicPools.push(pool);
@@ -3732,10 +3831,10 @@ class GameScene extends Phaser.Scene {
     const W = 7, H = 5; // structure footprint in tiles
 
     const biomeConfig = [
-      { biome: 'grass',  wallKey: 'plank_wall', floorKey: null,        label: 'FARMHOUSE' },
-      { biome: 'tundra', wallKey: 'ruin_block',  floorKey: 'ice_floor', label: 'OUTPOST'   },
-      { biome: 'swamp',  wallKey: 'rot_plank',   floorKey: null,        label: 'SHACK'     },
-      { biome: 'waste',  wallKey: 'metal_wall',  floorKey: null,        label: 'BUNKER'    },
+      { biome: 'grass',  wallKey: 'plank_wall', floorKey: 'plank_floor',     label: 'FARMHOUSE' },
+      { biome: 'tundra', wallKey: 'ruin_block',  floorKey: 'ice_floor',       label: 'OUTPOST'   },
+      { biome: 'swamp',  wallKey: 'rot_plank',   floorKey: 'rot_plank_floor', label: 'SHACK'     },
+      { biome: 'waste',  wallKey: 'metal_wall',  floorKey: 'metal_floor',     label: 'BUNKER'    },
     ];
 
     for (const { biome, wallKey, floorKey, label } of biomeConfig) {
@@ -4643,9 +4742,11 @@ class GameScene extends Phaser.Scene {
     }
     // Cancel orphaned delayedCall from the previous hint (killTweensOf won't reach it)
     if (this._hintTimer) { this._hintTimer.remove(false); this._hintTimer = null; }
+    const minDur = 3500;
+    duration = Math.max(duration, minDur);
     const h = this.add.text(CFG.W/2, 112, text, {
-      fontFamily:'monospace', fontSize:'14px', color:'#ffffff',
-      stroke:'#000', strokeThickness:3, backgroundColor:'#00000099', padding:{x:12,y:6},
+      fontFamily:'monospace', fontSize:'17px', color:'#ffffff',
+      stroke:'#000', strokeThickness:4, backgroundColor:'#000000bb', padding:{x:16,y:9},
     }).setOrigin(0.5).setDepth(160).setAlpha(0);
     this.cameras.main.ignore(h);
     this._activeHint = h;
@@ -5757,6 +5858,20 @@ class GameScene extends Phaser.Scene {
     this.tweens.add({ targets:fx, alpha:0, duration:dur*1000, onComplete:()=>fx.destroy() });
   }
 
+  // Floating pickup notification — shows "+N Item" rising from world position
+  _floatPickup(x, y, label) {
+    const t = this.add.text(x, y - 10, label, {
+      fontFamily: 'monospace', fontSize: '12px', color: '#ffffff',
+      stroke: '#000000', strokeThickness: 3,
+    }).setOrigin(0.5, 1).setDepth(150).setAlpha(1);
+    if (this.hudCam) this.hudCam.ignore(t);
+    this.tweens.add({
+      targets: t, y: y - 48, alpha: 0, duration: 1400,
+      ease: 'Cubic.Out',
+      onComplete: () => t.destroy(),
+    });
+  }
+
   // Push a timestamped entry to the in-game debug log (` key to show/hide).
   _log(msg) {
     if (!this._dbgEntries) return;
@@ -5877,17 +5992,22 @@ class GameScene extends Phaser.Scene {
       const pickupCb = (playerSpr) => {
         const player = playerSpr === this.p1.spr ? this.p1 : this.p2;
         if (!player) return;
+        let label = '';
         if (item.itemType === 'ammo' && player.charData.id === 'gunslinger') {
           const maxReserve = 40 - player.ammo;
           player.reserveAmmo = Math.min(maxReserve, player.reserveAmmo + 3);
           this.redrawHUD();
+          label = '+3 Ammo';
         } else if (item.itemType === 'food') {
           player.hp = Math.min(player.maxHp, player.hp + 15);
+          label = '+15 HP';
         } else {
           player.inv[item.itemType] = (player.inv[item.itemType] || 0) + 1;
           this.resourcesGathered++;
+          label = '+1 ' + item.itemType.charAt(0).toUpperCase() + item.itemType.slice(1);
         }
         SFX._play(600, 'triangle', 0.06, 0.2);
+        this._floatPickup(item.x, item.y, label);
         item.destroy();
       };
       this.physics.add.overlap(this.p1.spr, item, () => { if(item.active) pickupCb(this.p1.spr); });
@@ -6041,6 +6161,12 @@ class GameScene extends Phaser.Scene {
         }
       }
 
+      // Contextual tip: first time near a harvestable tree
+      if (!this._ctx.nearTree && nearestTree) {
+        this._ctx.nearTree = true;
+        this.hint('Hold E (P1) or Enter (P2) near a tree to harvest Wood', 5000);
+      }
+
       if (keyHeld && nearestTree) {
         // Don't harvest if barracks/menus open or another menu-blocking state active
         if (this.barrackOpen || this.isOver) { player.harvestProgress = 0; player.harvestTarget = null; continue; }
@@ -6085,6 +6211,11 @@ class GameScene extends Phaser.Scene {
               p.inv.wood = (p.inv.wood || 0) + 1;
               this.resourcesGathered++;
               SFX._play(600, 'triangle', 0.06, 0.2);
+              this._floatPickup(item.x, item.y, '+1 Wood');
+              if (!this._ctx.firstHarvest) {
+                this._ctx.firstHarvest = true;
+                this.time.delayedCall(800, () => this.hint('Press Q (P1) or 0 (P2) to open the Crafting Menu', 5000));
+              }
               item.destroy();
             };
             this.physics.add.overlap(this.p1.spr, item, () => pickupCb(this.p1));
@@ -6356,9 +6487,13 @@ class GameScene extends Phaser.Scene {
       this.nightOverlay.fillRect(0, 0, worldW, worldH);
     }
 
-    // Music transitions
+    // Music transitions + first-night contextual tip
     if (this.isNight && !wasNight) {
       Music.switchToNight();
+      if (!this._ctx.firstNight) {
+        this._ctx.firstNight = true;
+        this.hint('Night falls — enemies are faster and more dangerous! Build Walls or sleep in a Bed.', 6000);
+      }
     }
 
     const newDay = Math.floor(this.dayTimer / this.DAY_DUR) + 1;
@@ -6677,6 +6812,14 @@ class GameScene extends Phaser.Scene {
     this.craftMenuOwner = player;
     this.craftMenuSel = 0;
     this._craftMenuJustOpened = true; // skip close-on-Q check for the frame Q was pressed
+    // Contextual tip: first time opening crafting menu
+    if (!this._ctx.firstCraft) {
+      this._ctx.firstCraft = true;
+      this.time.delayedCall(400, () => this.hint('W/S to navigate, Attack to craft. Build Walls to protect yourself!', 5000));
+    } else if (!this._ctx.firstUpgradeHint && this.dayNum >= 2) {
+      this._ctx.firstUpgradeHint = true;
+      this.time.delayedCall(400, () => this.hint('Craft a Craftbench to unlock character upgrades — enemies get stronger each day!', 6000));
+    }
     // Nav keys (reuse attack confirm, movement for up/down)
     this._craftNavUp   = this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.W);
     this._craftNavUp2  = this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.UP);
