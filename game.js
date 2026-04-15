@@ -595,6 +595,21 @@ function buildTextures(scene) {
   g.fillStyle(0xffee88, 0.20); g.fillCircle(64, 64, 10);
   g.generateTexture('fire_glow', 128, 128);
 
+  // Torch — wall sconce (bracket + cup + flame, top-down isometric style)
+  g.clear();
+  // Wall mounting plate
+  g.fillStyle(0x3a2a1a); g.fillRect(3, 13, 5, 5);
+  // Stem / handle
+  g.fillStyle(0x7a5a2a); g.fillRect(4, 7, 3, 7);
+  // Cup / holder
+  g.fillStyle(0xa07838); g.fillRect(2, 5, 7, 3);
+  g.fillStyle(0x7a5a2a); g.fillRect(1, 7, 9, 1); // rim shadow
+  // Flame
+  g.fillStyle(0xff6600); g.fillEllipse(5, 3, 6, 7);
+  g.fillStyle(0xffaa00); g.fillEllipse(5, 2, 4, 5);
+  g.fillStyle(0xffee44); g.fillEllipse(5, 1, 2, 3);
+  g.generateTexture('torch', 10, 18);
+
   // Crafting bench
   g.clear();
   g.fillStyle(0x6b4422); g.fillRect(0, 6, 24, 12);
@@ -3830,6 +3845,28 @@ class GameScene extends Phaser.Scene {
         placeWall(tx, ty);
       }
     }
+
+    // Torch sconces on building exteriors — one per block on a street-facing wall
+    for (let col = 0; col < cols; col++) {
+      for (let row = 0; row < rows; row++) {
+        const bx = cl + col * (blockW + streetW);
+        const by = ct + row * (blockH + streetH);
+        // N or S wall torch (60% chance per block)
+        if (Math.random() < 0.60) {
+          const side = Math.random() < 0.5 ? 'N' : 'S';
+          const wx = (bx + Math.floor(blockW / 2)) * TILE;
+          const wy = side === 'N' ? by * TILE : (by + blockH - 1) * TILE;
+          this._spawnTorch(wx, wy);
+        }
+        // E or W wall torch (35% chance per block)
+        if (Math.random() < 0.35) {
+          const side = Math.random() < 0.5 ? 'W' : 'E';
+          const wx = side === 'W' ? bx * TILE : (bx + blockW - 1) * TILE;
+          const wy = (by + Math.floor(blockH / 2)) * TILE;
+          this._spawnTorch(wx, wy);
+        }
+      }
+    }
   }
 
   // ── BIOME STRUCTURES ──────────────────────────────────────────
@@ -5882,16 +5919,17 @@ class GameScene extends Phaser.Scene {
     });
   }
 
-  // Attach a pulsating warm-glow halo to a campfire or campsite sprite.
-  _addFireGlow(x, y) {
+  // Attach a pulsating warm-glow halo to a campfire, campsite, or torch.
+  // baseScale controls the radius: 1.0 = campfire/campsite, 0.45 = torch.
+  _addFireGlow(x, y, baseScale = 1.0) {
     const glow = this.add.image(x, y, 'fire_glow')
-      .setScale(1.0).setAlpha(0.55).setDepth(3)
+      .setScale(baseScale).setAlpha(0.55).setDepth(3)
       .setBlendMode(Phaser.BlendModes.ADD);
     this._w(glow);
     if (this.hudCam) this.hudCam.ignore(glow);
     // Pulse scale
     this.tweens.add({
-      targets: glow, scale: 1.28, duration: 1400,
+      targets: glow, scale: baseScale * 1.28, duration: 1400,
       ease: 'Sine.InOut', yoyo: true, loop: -1,
     });
     // Pulse alpha (slightly offset phase for organic feel)
@@ -5900,6 +5938,15 @@ class GameScene extends Phaser.Scene {
       ease: 'Sine.InOut', yoyo: true, loop: -1, delay: 200,
     });
     return glow;
+  }
+
+  // Spawn a wall-mounted torch sprite + glow at world position (x, y).
+  // Used by world-gen (ruins) and placeBuild().
+  _spawnTorch(x, y) {
+    this._addFireGlow(x, y, 0.45);
+    const tc = this._w(this.add.image(x, y, 'torch').setScale(2).setDepth(5));
+    if (this.hudCam) this.hudCam.ignore(tc);
+    return tc;
   }
 
   // Push a timestamped entry to the in-game debug log (` key to show/hide).
@@ -6736,6 +6783,8 @@ class GameScene extends Phaser.Scene {
           });
         }
       });
+    } else if (this.buildType === 'torch') {
+      this._spawnTorch(x, y);
     } else if (this.buildType === 'craftbench') {
       const cb = this.add.image(x, y, 'craftbench').setScale(2).setDepth(5);
       if (this.hudCam) this.hudCam.ignore(cb);
@@ -6826,6 +6875,7 @@ class GameScene extends Phaser.Scene {
       { label: 'Wall',               key: 'wall',              cost: {wood:3},                  needsBench: false, type: 'build' },
       { label: 'Gate',               key: 'gate',              cost: {wood:4, metal:2},         needsBench: false, type: 'build' },
       { label: 'Campfire',           key: 'campfire',          cost: {wood:5},                  needsBench: false, type: 'build' },
+      { label: 'Torch',              key: 'torch',             cost: {wood:2, fiber:1},         needsBench: false, type: 'build' },
       { label: 'Spike Trap',         key: 'spike_trap',        cost: {wood:2, metal:1},         needsBench: false, type: 'build' },
       { label: 'Craftbench',         key: 'craftbench',        cost: {wood:5, metal:3},         needsBench: false, type: 'build' },
       { label: 'Bed',                key: 'bed',               cost: {wood:8, fiber:6, metal:2},needsBench: true,  type: 'build' },
