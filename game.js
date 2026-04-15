@@ -6,7 +6,7 @@
 
 // ── VERSION ───────────────────────────────────────────────────
 // Update this each commit so the title screen reflects the build date.
-const VERSION = 'Apr 14, 2026  06:33 PM EST';
+const VERSION = 'Apr 15, 2026  04:08 AM UTC';
 
 // ── CONSTANTS ─────────────────────────────────────────────────
 // Detect mobile/phone: touch device with a small screen.
@@ -5331,8 +5331,8 @@ class GameScene extends Phaser.Scene {
       if (this.hudCam) this.hudCam.ignore(spr);
       this.physics.add.collider(spr, this.obstacles);
 
-      // D6 — difficulty scaling (ramps from day 3 onward, caps at 2.5×)
-      const diffScale = Math.min(2.5, 1 + Math.max(0, ((this.dayNum || 1) - 3) * 0.08));
+      // Difficulty scaling — matches regular enemy formula (10% per day, caps at 3×)
+      const diffScale = this._diffMult();
       const stats = {
         brawler: { hp: 130, speed: 110, dmg: 20, range: 36, atkInterval: 1100, shootRange: 0 },
         shooter: { hp: 80,  speed: 90,  dmg: 16, range: 40, atkInterval: 1200, shootRange: 280 },
@@ -5460,9 +5460,9 @@ class GameScene extends Phaser.Scene {
     // Pick boss type based on biome spread — random for now
     const bossTypes = [
       { key: 'boss_golem',  name: 'Iron Golem',   biome: 'waste',  hp: 600, speed: 55,  dmg: 22, specialType: 'slam',   specialInterval: 5500 },
-      { key: 'boss_wolf',   name: 'Alpha Wolf',    biome: 'grass',  hp: 420, speed: 130, dmg: 16, specialType: 'charge', specialInterval: 4000 },
+      { key: 'boss_wolf',   name: 'Alpha Wolf',    biome: 'grass',  hp: 420, speed: 100, dmg: 16, specialType: 'charge', specialInterval: 4000 },
       { key: 'boss_spider', name: 'Spider Queen',  biome: 'ruins',  hp: 480, speed: 85,  dmg: 18, specialType: 'spray',  specialInterval: 5000 },
-      { key: 'boss_troll',  name: 'Frost Troll',   biome: 'tundra', hp: 700, speed: 45,  dmg: 28, specialType: 'slam',   specialInterval: 6500 },
+      { key: 'boss_troll',  name: 'Frost Troll',   biome: 'tundra', hp: 700, speed: 65,  dmg: 28, specialType: 'slam',   specialInterval: 6500 },
       { key: 'boss_hydra',  name: 'Bog Hydra',     biome: 'swamp',  hp: 540, speed: 65,  dmg: 20, specialType: 'spray',  specialInterval: 5500 },
     ];
     const bt = bossTypes[Phaser.Math.Between(0, bossTypes.length - 1)];
@@ -6160,7 +6160,7 @@ class GameScene extends Phaser.Scene {
           bfx.lineStyle(2, 0xddff44, 0.8);
           bfx.lineBetween(x, y-10, nearest.spr.x, nearest.spr.y);
           this.tweens.add({ targets:bfx, alpha:0, duration:150, onComplete:()=>bfx.destroy() });
-          this._hurtEnemy(nearest, 15, x, y);
+          this._hurtEnemy(nearest, 18, x, y);
         }
       }
     });
@@ -7688,7 +7688,8 @@ class GameOverScene extends Phaser.Scene {
     // Persist to localStorage
     const lb = this._loadLeaderboard();
     const isHighScore = lb.length < 5 || this._score > (lb[lb.length - 1]?.score ?? -1);
-    lb.push({ name, score: this._score, days: this.days, time: Math.floor(this.timeAlive) });
+    const dateStr = new Date().toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+    lb.push({ name, score: this._score, days: this.days, time: Math.floor(this.timeAlive), date: dateStr });
     lb.sort((a, b) => b.score - a.score);
     lb.splice(10);
     try { localStorage.setItem('iw_scores', JSON.stringify(lb)); } catch(e) {}
@@ -7719,7 +7720,8 @@ class GameOverScene extends Phaser.Scene {
     y += 16;
     this._loadLeaderboard().slice(0, 5).forEach((entry, i) => {
       const col = i === 0 ? '#ffdd44' : '#778899';
-      const txt = (i + 1) + '.  ' + entry.name.padEnd(14) + entry.score.toLocaleString() + '  Day ' + entry.days;
+      const datePart = entry.date ? '  ' + entry.date : '';
+      const txt = (i + 1) + '.  ' + entry.name.padEnd(14) + entry.score.toLocaleString() + '  Day ' + entry.days + datePart;
       this.add.text(W/2 - 200, y + i * 14, txt, { fontFamily:'monospace', fontSize:'10px', color: col });
     });
   }
@@ -7737,7 +7739,8 @@ class GameOverScene extends Phaser.Scene {
       this._nameSaved = true;
       const name = (this._htmlInp ? this._htmlInp.value.trim() : '') || this._defaultName || 'Player';
       const lb = this._loadLeaderboard();
-      lb.push({ name, score: this._score, days: this.days, time: Math.floor(this.timeAlive) });
+      const dateStr = new Date().toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+      lb.push({ name, score: this._score, days: this.days, time: Math.floor(this.timeAlive), date: dateStr });
       lb.sort((a, b) => b.score - a.score);
       lb.splice(10);
       try { localStorage.setItem('iw_scores', JSON.stringify(lb)); } catch(e) {}
