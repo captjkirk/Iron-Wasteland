@@ -5548,6 +5548,12 @@ class GameScene extends Phaser.Scene {
     const { W, H } = CFG;
     const px = pointer.x, py = pointer.y;
 
+    // Skip joystick/button activation when tapping inside the craft menu panel
+    if (this.craftMenuOpen) {
+      const PW = 440, PH = 330, PX = (W - PW) / 2, PY = H - PH - 20;
+      if (px >= PX && px <= PX + PW && py >= PY && py <= PY + PH) return;
+    }
+
     // Left 45% of screen and bottom 55% → joystick
     if (px < W * 0.45 && py > H * 0.35 && !this._joy.active) {
       this._joy.active = true;
@@ -8240,8 +8246,8 @@ class GameScene extends Phaser.Scene {
     if (!this._ctx.firstCraft) {
       this._ctx.firstCraft = true;
       const craftHint = this._touchActive
-        ? 'Joystick ↑↓ to navigate, ATK to craft. Build Walls to protect yourself!'
-        : 'W/S to navigate, Attack to craft. Build Walls to protect yourself!';
+        ? 'Tap to select, tap again (or ATK) to craft. Build Walls to protect yourself!'
+        : 'Click to select, click again (or Attack) to craft. Build Walls to protect yourself!';
       this.time.delayedCall(400, () => this.hint(craftHint, 5000));
     } else if (!this._ctx.firstUpgradeHint && this.dayNum >= 2) {
       this._ctx.firstUpgradeHint = true;
@@ -8253,11 +8259,33 @@ class GameScene extends Phaser.Scene {
     this._craftNavDn   = this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.S);
     this._craftNavDn2  = this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.DOWN);
     // Close is handled by the p1build/p2build key listeners (toggle via openCraftMenu)
+
+    // Tap / click to select or craft — works for mouse and touch
+    this._craftMenuPointerFn = (ptr) => {
+      const { W, H } = CFG;
+      const PW = 440, PH = 330, PX = (W - PW) / 2, PY = H - PH - 20;
+      const px = ptr.x, py = ptr.y;
+      if (px < PX || px > PX + PW || py < PY || py > PY + PH) return;
+      const RECIPES = GameScene.RECIPES;
+      for (let idx = 0; idx < RECIPES.length; idx++) {
+        const rowY = PY + 34 + idx * 25;
+        if (py >= rowY - 2 && py < rowY + 20) {
+          if (idx === this.craftMenuSel) this.craftSelected();
+          else this.craftMenuSel = idx;
+          return;
+        }
+      }
+    };
+    this.input.on('pointerdown', this._craftMenuPointerFn);
   }
 
   closeCraftMenu() {
     this.craftMenuOpen = false;
     this.craftMenuOwner = null;
+    if (this._craftMenuPointerFn) {
+      this.input.off('pointerdown', this._craftMenuPointerFn);
+      this._craftMenuPointerFn = null;
+    }
     if (this.craftMenuGfx) { this.craftMenuGfx.destroy(); this.craftMenuGfx = null; }
     this._craftMenuText && this._craftMenuText.forEach(t => t.destroy());
     this._craftMenuText = [];
@@ -8318,18 +8346,30 @@ class GameScene extends Phaser.Scene {
 
     addTxt(PX + PW/2, PY + 14, '[ CRAFTING ]', { fontSize:'14px', color:'#aacc88', stroke:'#000', strokeThickness:2 }).setOrigin(0.5);
     const navHint = this._touchActive
-      ? 'Joystick ↑↓ navigate  |  ATK = craft  |  BLD = close'
-      : 'W/S or ↑↓ navigate  |  Attack = craft  |  Q/0 = close';
+      ? 'Tap to select  |  Tap again / ATK = craft  |  BLD = close'
+      : 'Click / W/S = select  |  Click again / Attack = craft  |  Q/0 = close';
     addTxt(PX + PW/2, PY + PH - 14, navHint, { fontSize:'9px', color:'#556644' }).setOrigin(0.5);
+
+    // Hover detection for mouse (skip on touch)
+    const mPtr = this._touchActive ? null : this.input.activePointer;
+    const hoverIdx = mPtr
+      ? RECIPES.findIndex((_, idx) => {
+          const rowY = PY + 34 + idx * 25;
+          return mPtr.x >= PX && mPtr.x <= PX + PW && mPtr.y >= rowY - 2 && mPtr.y < rowY + 20;
+        })
+      : -1;
 
     RECIPES.forEach((rec, idx) => {
       const rowY = PY + 34 + idx * 25;
       const isSelected = idx === this.craftMenuSel;
+      const isHovered = idx === hoverIdx && !isSelected;
 
       // Selection highlight
       if (isSelected) {
         g.fillStyle(0x224411, 0.9); g.fillRect(PX + 6, rowY - 2, PW - 12, 22);
         g.lineStyle(1, 0x44aa22, 0.8); g.strokeRect(PX + 6, rowY - 2, PW - 12, 22);
+      } else if (isHovered) {
+        g.fillStyle(0x1a2a11, 0.7); g.fillRect(PX + 6, rowY - 2, PW - 12, 22);
       }
 
       // Bench requirement
@@ -8337,7 +8377,7 @@ class GameScene extends Phaser.Scene {
       // Can afford?
       const canAfford = !locked && Object.entries(rec.cost).every(([r,a]) => (team[r]||0) >= a);
 
-      const nameColor = locked ? '#555544' : isSelected ? '#ffffff' : '#aabbaa';
+      const nameColor = locked ? '#555544' : isSelected ? '#ffffff' : isHovered ? '#ddeedd' : '#aabbaa';
       const costColor = canAfford ? '#66ee44' : '#ee4422';
 
       const costStr = Object.entries(rec.cost).map(([r,a]) => a+' '+r).join(', ');
