@@ -143,14 +143,14 @@ const Music = {
     if (this.ctx) { this.ctx.close(); this.ctx = null; }
   },
   switchToNight() {
-    if (this.mode === 'night') return;
-    if (this.mode !== 'boss') this._preNightMode = null;
+    if (this.mode === 'night' || this.mode === 'boss') return;
+    this._preBossMode = null;
     this.mode = 'night';
     // The current loop will naturally end and _nightLoop will take over
   },
   switchToDay() {
-    if (this.mode === 'day') return;
-    if (this.mode !== 'boss') this._preBossMode = null;
+    if (this.mode === 'day' || this.mode === 'boss') return;
+    this._preBossMode = null;
     this.mode = 'day';
     this._dawnJingle();
   },
@@ -5235,7 +5235,7 @@ class GameScene extends Phaser.Scene {
     player.hp        = Math.max(1, Math.round(newCh.maxHp * hpPct));
     player.spr.setTexture(newCh.id);
     player.lbl.setText(newCh.player);
-    if (newCh.id==='gunslinger') player.ammo = 8;
+    if (newCh.id==='gunslinger') { player.ammo = 8; player.reserveAmmo = 32; }
 
     // Update STATE for consistency
     if (player === this.p1) STATE.p1CharId = newCh.id;
@@ -7625,16 +7625,15 @@ class GameScene extends Phaser.Scene {
       // ── Dormancy: wildlife enemies far from all players sleep (no AI, no physics) ──
       // Raiders are always aggressive — never dormant. Boss already excluded above.
       if (!e.isRaider) {
-        let _minDist = Infinity;
+        let _minDist2 = Infinity;
         for (const p of players) {
           const _dx = e.spr.x - p.spr.x, _dy = e.spr.y - p.spr.y;
-          const _d = Math.sqrt(_dx * _dx + _dy * _dy);
-          if (_d < _minDist) _minDist = _d;
+          const _d2 = _dx * _dx + _dy * _dy;
+          if (_d2 < _minDist2) _minDist2 = _d2;
         }
-        if (!players.length) _minDist = Infinity;
 
         if (e._dormant) {
-          if (_minDist < CFG.WAKE_RADIUS) {
+          if (_minDist2 < CFG.WAKE_RADIUS * CFG.WAKE_RADIUS) {
             // Wake up
             e._dormant = false;
             if (e.spr.body) e.spr.body.enable = true;
@@ -7646,7 +7645,7 @@ class GameScene extends Phaser.Scene {
             return;
           }
         } else {
-          if (_minDist > CFG.DORMANT_RADIUS) {
+          if (_minDist2 > CFG.DORMANT_RADIUS * CFG.DORMANT_RADIUS) {
             // Go dormant
             e._dormant = true;
             e.spr.setVelocity(0, 0);
