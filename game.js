@@ -879,6 +879,19 @@ function buildTextures(scene) {
   g.fillStyle(0xeedd22); g.fillRect(11, 9, 2, 2);
   g.generateTexture('supply_cache', 24, 20);
 
+  // Raid loot cache — locked military crate (dark green, red lock)
+  g.clear();
+  g.fillStyle(0x2e3d1e); g.fillRect(2, 4, 22, 14);   // dark military body
+  g.fillStyle(0x3e5028); g.fillRect(3, 5, 20, 12);   // body highlight
+  g.fillStyle(0x1e2d0e); g.fillRect(2, 4, 22, 2);    // lid top edge
+  g.fillStyle(0x5a6a44); g.fillRect(3, 5, 20, 3);    // lid face
+  g.fillStyle(0x7a8a60); g.fillRect(2, 10, 22, 1);   // metal band
+  g.fillStyle(0x7a8a60); g.fillRect(13, 4, 1, 14);   // vertical divider
+  g.fillStyle(0xcc2222); g.fillRect(10, 7, 5, 6);    // red lock body
+  g.fillStyle(0xee3333); g.fillRect(11, 5, 3, 4);    // lock shackle
+  g.fillStyle(0x881111); g.fillRect(12, 9, 1, 2);    // keyhole
+  g.generateTexture('raid_cache', 26, 22);
+
   // Ruin wall block — crumbling brick wall tile (high contrast for readability)
   g.clear();
   g.fillStyle(0x2a2a36); g.fillRect(0, 0, 32, 32);           // dark mortar base
@@ -4622,6 +4635,13 @@ class GameScene extends Phaser.Scene {
       }
     }
 
+    // Raid camp loot cache — only interactable after all raiders are killed
+    if (this.raidCamp && this.raidCamp.cache && !this.raidCamp.cache.locked && !this.raidCamp.cache.opened) {
+      const cache = this.raidCamp.cache;
+      const cd = Phaser.Math.Distance.Between(player.spr.x, player.spr.y, cache.x, cache.y);
+      if (cd < 70) { this.openRaidCache(cache); return; }
+    }
+
     // Bed interaction — toggle sleep
     for (const bed of (this.beds || [])) {
       const bd = Phaser.Math.Distance.Between(player.spr.x, player.spr.y, bed.x, bed.y);
@@ -4998,6 +5018,7 @@ class GameScene extends Phaser.Scene {
     this.updateCamera();
     this.checkBarrackRange();
     this.checkRadioTowerRange();
+    this.checkRaidCacheRange();
     this.checkDeaths();
     this.updateDowned(delta);
     this.updateRevive(delta);
@@ -5242,6 +5263,16 @@ class GameScene extends Phaser.Scene {
     this.radioTower.prompt.setVisible(near(this.p1) || near(this.p2));
   }
 
+  checkRaidCacheRange() {
+    const cache = this.raidCamp && this.raidCamp.cache;
+    if (!cache || cache.locked || cache.opened) {
+      if (cache && cache.prompt && cache.prompt.active) cache.prompt.setVisible(false);
+      return;
+    }
+    const near = p => p && Phaser.Math.Distance.Between(p.spr.x, p.spr.y, cache.x, cache.y) < 70;
+    if (cache.prompt && cache.prompt.active) cache.prompt.setVisible(near(this.p1) || near(this.p2));
+  }
+
   // ── RAIDER CAMP ───────────────────────────────────────────────
   placeRaiderCamp(worldW, worldH) {
     const { TILE } = CFG;
@@ -5265,6 +5296,20 @@ class GameScene extends Phaser.Scene {
     this.raidCamp = { x: cx, y: cy, spr: campSpr };
     const tx = Math.floor(cx / TILE), ty = Math.floor(cy / TILE);
     this.pois.push({ type: 'raidcamp', tx, ty, spr: campSpr });
+
+    // Locked loot cache — visible but inaccessible until all raiders are killed
+    const cacheSpr = this._w(this.add.image(cx, cy + 52, 'raid_cache').setScale(2.5).setDepth(6));
+    if (this.hudCam) this.hudCam.ignore(cacheSpr);
+    const cacheLbl = this._w(this.add.text(cx, cy + 52 - 30, '\uD83D\uDD12 LOCKED', {
+      fontFamily: 'monospace', fontSize: '9px', color: '#ff4444', stroke: '#000000', strokeThickness: 2,
+    }).setOrigin(0.5).setDepth(8));
+    if (this.hudCam) this.hudCam.ignore(cacheLbl);
+    const cachePrompt = this._w(this.add.text(cx, cy + 52 - 46, 'E \u2014 open cache', {
+      fontFamily: 'monospace', fontSize: '10px', color: '#ccaa00',
+      stroke: '#000000', strokeThickness: 2, backgroundColor: '#00000088', padding: { x: 4, y: 2 },
+    }).setOrigin(0.5).setDepth(8).setVisible(false));
+    if (this.hudCam) this.hudCam.ignore(cachePrompt);
+    this.raidCamp.cache = { x: cx, y: cy + 52, spr: cacheSpr, lbl: cacheLbl, prompt: cachePrompt, locked: true, opened: false };
 
     this.spawnRaiders(cx, cy);
   }
@@ -5935,7 +5980,7 @@ class GameScene extends Phaser.Scene {
     const facingAngle = this.getAimAngle(player);
     const toSrcAngle  = Phaser.Math.Angle.Between(player.spr.x, player.spr.y, fromX, fromY);
     const diff = Math.abs(Phaser.Math.Angle.Wrap(toSrcAngle - facingAngle));
-    if (diff >= Math.PI / 2) return baseDmg; // enemy outside front 180° arc — no block
+    if (diff >= Math.PI * 7 / 18) return baseDmg; // enemy outside front 140° arc (±70°) — no block
 
     // Shield absorbs 60% of damage (70% with upgrade)
     const blockPct = player._knightUpgraded ? 0.70 : 0.60;
@@ -6059,9 +6104,19 @@ class GameScene extends Phaser.Scene {
     if (e.isRaider) {
       this.raiders = this.raiders.filter(r => r !== e);
       if (this.raiders.length === 0 && this.raidCamp) {
-        this.hint('Raider camp cleared! They\'ll return in 10 days…', 4000);
+        this.hint('Raider camp cleared! Loot cache unlocked — raiders return in 10 days…', 4500);
         this.raidRespawnDay = this.dayNum + 10;
         if (this.raidCamp.spr && this.raidCamp.spr.active) this.raidCamp.spr.setTint(0x555555);
+        // Unlock the loot cache
+        const cache = this.raidCamp.cache;
+        if (cache && cache.locked && cache.spr.active) {
+          cache.locked = false;
+          cache.lbl.setText('LOOT CACHE').setStyle({ color: '#ccaa00', stroke: '#000000', strokeThickness: 2 });
+          // Unlock pop animation
+          this.tweens.add({ targets: cache.spr, scale: 3.3, duration: 180, yoyo: true, ease: 'Back.Out' });
+          SFX._play(660, 'triangle', 0.12, 0.3, 'rise');
+          SFX._play(880, 'triangle', 0.10, 0.25, 'rise');
+        }
       }
     }
     // Boss kill
@@ -6099,10 +6154,31 @@ class GameScene extends Phaser.Scene {
     }
   }
 
+  openRaidCache(cache) {
+    if (cache.opened || cache.locked) return;
+    cache.opened = true;
+    if (cache.prompt && cache.prompt.active) cache.prompt.destroy();
+    // Pop animation then destroy
+    this.tweens.add({
+      targets: cache.spr, scaleY: 0, duration: 280, ease: 'Back.In',
+      onComplete: () => { if (cache.spr.active) cache.spr.destroy(); if (cache.lbl.active) cache.lbl.destroy(); }
+    });
+    SFX._play(440, 'triangle', 0.15, 0.35);
+    this.cameras.main.shake(160, 0.006);
+    this.dropResource(cache.x, cache.y, 'raid_cache');
+    this.hint('Raider cache opened! Supplies recovered.', 3000);
+  }
+
   dropResource(x, y, enemyType) {
     const drops = [];
+    // Raid cache — guaranteed haul of ammo, metal and food, small chance of rare
+    if (enemyType === 'raid_cache') {
+      drops.push('item_ammo', 'item_ammo', 'item_metal', 'item_metal', 'item_food');
+      if (Math.random() < 0.45) drops.push('item_fiber');
+      if (Math.random() < 0.25) drops.push('item_rare');
+    }
     // Rare boss drop — guaranteed crystal shard
-    if (enemyType === 'rare') {
+    else if (enemyType === 'rare') {
       drops.push('item_rare');
       drops.push('item_metal');
       drops.push('item_ammo');
