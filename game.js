@@ -5444,11 +5444,11 @@ class GameScene extends Phaser.Scene {
 
     // Pick boss type based on biome spread — random for now
     const bossTypes = [
-      { key: 'boss_golem',  name: 'Iron Golem',   biome: 'waste',  hp: 600, speed: 55,  dmg: 22 },
-      { key: 'boss_wolf',   name: 'Alpha Wolf',    biome: 'grass',  hp: 420, speed: 130, dmg: 16 },
-      { key: 'boss_spider', name: 'Spider Queen',  biome: 'ruins',  hp: 480, speed: 85,  dmg: 18 },
-      { key: 'boss_troll',  name: 'Frost Troll',   biome: 'tundra', hp: 700, speed: 45,  dmg: 28 },
-      { key: 'boss_hydra',  name: 'Bog Hydra',     biome: 'swamp',  hp: 540, speed: 65,  dmg: 20 },
+      { key: 'boss_golem',  name: 'Iron Golem',   biome: 'waste',  hp: 600, speed: 55,  dmg: 22, specialType: 'slam',   specialInterval: 5500 },
+      { key: 'boss_wolf',   name: 'Alpha Wolf',    biome: 'grass',  hp: 420, speed: 130, dmg: 16, specialType: 'charge', specialInterval: 4000 },
+      { key: 'boss_spider', name: 'Spider Queen',  biome: 'ruins',  hp: 480, speed: 85,  dmg: 18, specialType: 'spray',  specialInterval: 5000 },
+      { key: 'boss_troll',  name: 'Frost Troll',   biome: 'tundra', hp: 700, speed: 45,  dmg: 28, specialType: 'slam',   specialInterval: 6500 },
+      { key: 'boss_hydra',  name: 'Bog Hydra',     biome: 'swamp',  hp: 540, speed: 65,  dmg: 20, specialType: 'spray',  specialInterval: 5500 },
     ];
     const bt = bossTypes[Phaser.Math.Between(0, bossTypes.length - 1)];
 
@@ -5478,6 +5478,9 @@ class GameScene extends Phaser.Scene {
       attackTimer: 0, atkInterval: 2200,
       aggroRange: 99999, attackRange: 70, wanderTimer: 0, sizeMult: 1,
       hpBg, hpBar,
+      specialType: bt.specialType, specialInterval: bt.specialInterval,
+      specialTimer: bt.specialInterval * 0.6, // first special fires sooner
+      _bossState: 'chase', _telegraphTimer: 0, _telegraphGfx: null,
     };
     // Add boss to main enemy array so melee + bullets can hit it
     this.enemies.push(this.boss);
@@ -5567,27 +5570,205 @@ class GameScene extends Phaser.Scene {
       if (d < nearDist) { nearDist = d; nearest = p; }
     });
 
-    const ang = Phaser.Math.Angle.Between(b.spr.x, b.spr.y, nearest.spr.x, nearest.spr.y);
-    b.spr.setVelocity(Math.cos(ang) * b.speed, Math.sin(ang) * b.speed);
-    b.spr.setFlipX(nearest.spr.x < b.spr.x);
+    // ── SPECIAL ATTACK STATE MACHINE ─────────────────────────────
+    b.specialTimer -= delta;
 
-    // Attack when in range
-    if (nearDist < 70) {
-      b.attackTimer -= delta;
-      if (b.attackTimer <= 0) {
-        b.attackTimer = b.atkInterval;
-        nearest.hp = Math.max(0, nearest.hp - b.dmg);
-        this._log(nearest.charData.player + ' hit for ' + b.dmg + '  hp=' + nearest.hp + '/' + nearest.maxHp);
-        SFX.playerHurt();
-        nearest.spr.setTint(0xff0000);
-        this.cameras.main.shake(300, 0.008);
-        this.time.delayedCall(200, () => { if (nearest.spr.active) nearest.spr.clearTint(); });
-        this.checkDeaths();
+    if (b._bossState === 'telegraph') {
+      // Frozen during telegraph windup
+      b.spr.setVelocity(0, 0);
+      b._telegraphTimer -= delta;
+      if (b._telegraphTimer <= 0) {
+        b._bossState = 'chase';
+        this._bossExecuteSpecial(b, nearest);
+        b.specialTimer = b.specialInterval;
+      }
+    } else {
+      // Normal chase toward nearest player
+      const ang = Phaser.Math.Angle.Between(b.spr.x, b.spr.y, nearest.spr.x, nearest.spr.y);
+      b.spr.setVelocity(Math.cos(ang) * b.speed, Math.sin(ang) * b.speed);
+      b.spr.setFlipX(nearest.spr.x < b.spr.x);
+
+      // Trigger special attack telegraph when cooldown expires and player is close enough
+      if (b.specialTimer <= 0 && nearDist < 300) {
+        b._bossState = 'telegraph';
+        b._telegraphTimer = 900;
+        b._lockedTarget = nearest; // lock target at telegraph start
+        this._bossTelegraph(b, nearest);
+      }
+
+      // Base melee attack (only while chasing normally)
+      if (nearDist < 70) {
+        b.attackTimer -= delta;
+        if (b.attackTimer <= 0) {
+          b.attackTimer = b.atkInterval;
+          nearest.hp = Math.max(0, nearest.hp - b.dmg);
+          this._log(nearest.charData.player + ' hit for ' + b.dmg + '  hp=' + nearest.hp + '/' + nearest.maxHp);
+          SFX.playerHurt();
+          nearest.spr.setTint(0xff0000);
+          this.cameras.main.shake(300, 0.008);
+          this.time.delayedCall(200, () => { if (nearest.spr.active) nearest.spr.clearTint(); });
+          this.checkDeaths();
+        }
       }
     }
 
     // Boss can be damaged by player attacks — handled in doAttack via enemies array
     // Add boss to enemies array for bullet hit detection (done in spawnBoss)
+  }
+
+  // Show the telegraphed windup visual for each boss special type.
+  _bossTelegraph(b, nearest) {
+    if (b._telegraphGfx && b._telegraphGfx.active) b._telegraphGfx.destroy();
+    b._telegraphGfx = null;
+    const bx = b.spr.x, by = b.spr.y;
+
+    if (b.specialType === 'slam') {
+      if (b.type === 'boss_troll') {
+        // ── Club overhead swing ──────────────────────────────────
+        // Draw a club as a Graphics object (pivot at handle grip = boss position).
+        // Starts raised over-the-shoulder (-1.9 rad) and sweeps to a slam (+1.0 rad).
+        const club = this.add.graphics().setDepth(20);
+        if (this.hudCam) this.hudCam.ignore(club);
+        club.fillStyle(0x5a3010); club.fillRect(-4, -58, 8, 46);  // handle
+        club.fillStyle(0x3a1808); club.fillRect(-11, -72, 22, 16); // club head
+        club.fillStyle(0x6a4020); club.fillRect(-9, -70, 18, 12);  // head highlight
+        club.fillStyle(0x888888); club.fillRect(-3, -76, 6, 5);    // metal cap
+        club.setPosition(bx, by).setRotation(-1.9);
+        b._telegraphGfx = club;
+        this.tweens.add({
+          targets: club, rotation: 1.0, duration: 900, ease: 'Cubic.In',
+          onUpdate: () => { if (club.active && b.spr.active) club.setPosition(b.spr.x, b.spr.y); },
+        });
+        SFX._play(110, 'sawtooth', 0.12, 0.4, 'rise');
+      } else {
+        // ── Iron Golem — expanding red ground ring ───────────────
+        const ring = this.add.graphics().setDepth(20);
+        if (this.hudCam) this.hudCam.ignore(ring);
+        b._telegraphGfx = ring;
+        const tweenObj = { t: 0 };
+        this.tweens.add({
+          targets: tweenObj, t: 1, duration: 900, ease: 'Sine.Out',
+          onUpdate: () => {
+            if (!ring.active) return;
+            ring.clear();
+            ring.lineStyle(4, 0xff3300, 0.3 + tweenObj.t * 0.55);
+            ring.strokeCircle(b.spr.x, b.spr.y, 130 * tweenObj.t);
+          },
+        });
+        SFX._play(75, 'sawtooth', 0.18, 0.5, 'drop');
+      }
+
+    } else if (b.specialType === 'charge') {
+      // ── Alpha Wolf — pulsing yellow directional arrow ─────────
+      b._chargeAngle = Phaser.Math.Angle.Between(bx, by, nearest.spr.x, nearest.spr.y);
+      const arrow = this.add.graphics().setDepth(20);
+      if (this.hudCam) this.hudCam.ignore(arrow);
+      b._telegraphGfx = arrow;
+      const tweenObj = { t: 0 };
+      this.tweens.add({
+        targets: tweenObj, t: 1, duration: 900, ease: 'Linear',
+        onUpdate: () => {
+          if (!arrow.active) return;
+          arrow.clear();
+          const a = b._chargeAngle;
+          const pulse = 0.4 + Math.sin(tweenObj.t * Math.PI * 5) * 0.35;
+          arrow.lineStyle(3, 0xffcc00, pulse);
+          arrow.lineBetween(b.spr.x, b.spr.y,
+            b.spr.x + Math.cos(a) * 90, b.spr.y + Math.sin(a) * 90);
+          // Arrow head
+          arrow.lineBetween(
+            b.spr.x + Math.cos(a) * 90, b.spr.y + Math.sin(a) * 90,
+            b.spr.x + Math.cos(a - 0.5) * 60, b.spr.y + Math.sin(a - 0.5) * 60);
+          arrow.lineBetween(
+            b.spr.x + Math.cos(a) * 90, b.spr.y + Math.sin(a) * 90,
+            b.spr.x + Math.cos(a + 0.5) * 60, b.spr.y + Math.sin(a + 0.5) * 60);
+        },
+      });
+      SFX._play(500, 'square', 0.05, 0.15);
+
+    } else if (b.specialType === 'spray') {
+      // ── Spider / Hydra — colored boss flash ───────────────────
+      b._sprayAngle = Phaser.Math.Angle.Between(bx, by, nearest.spr.x, nearest.spr.y);
+      const col = b.type === 'boss_spider' ? 0xaa44ff : 0x44bb44;
+      b.spr.setTint(col);
+      this.time.delayedCall(900, () => { if (b.spr && b.spr.active) b.spr.clearTint(); });
+      SFX._play(b.type === 'boss_spider' ? 900 : 280, 'square', 0.06, 0.25);
+    }
+  }
+
+  // Execute the telegraphed special attack — called 900ms after _bossTelegraph.
+  _bossExecuteSpecial(b, nearest) {
+    if (b._telegraphGfx && b._telegraphGfx.active) { b._telegraphGfx.destroy(); b._telegraphGfx = null; }
+    const players = [this.p1, this.p2].filter(p => p && !p.isDowned && p.hp > 0 && p.spr.active);
+
+    if (b.specialType === 'slam') {
+      // ── Ground Slam: AoE damage within 130px, big shake ──────
+      this.cameras.main.shake(500, 0.02);
+      SFX._play(55, 'sawtooth', 0.45, 0.55, 'drop');
+      // Impact ring flash
+      const ring = this.add.graphics().setDepth(20);
+      if (this.hudCam) this.hudCam.ignore(ring);
+      ring.lineStyle(6, b.type === 'boss_troll' ? 0x88ccff : 0xff4400, 1.0);
+      ring.strokeCircle(b.spr.x, b.spr.y, 130);
+      this.tweens.add({ targets: ring, alpha: 0, duration: 450, onComplete: () => ring.destroy() });
+      // Damage
+      players.forEach(p => {
+        if (Phaser.Math.Distance.Between(b.spr.x, b.spr.y, p.spr.x, p.spr.y) < 130) {
+          p.hp = Math.max(0, p.hp - Math.round(b.dmg * 0.85));
+          SFX.playerHurt();
+          p.spr.setTint(b.type === 'boss_troll' ? 0x88ccff : 0xff4400);
+          this.time.delayedCall(250, () => { if (p.spr.active) p.spr.clearTint(); });
+        }
+      });
+      this.checkDeaths();
+
+    } else if (b.specialType === 'charge') {
+      // ── Charge Dash: velocity burst, hit on contact ───────────
+      const ang = b._chargeAngle || 0;
+      SFX._play(200, 'sawtooth', 0.18, 0.22, 'drop');
+      b.spr.setVelocity(Math.cos(ang) * b.speed * 4.5, Math.sin(ang) * b.speed * 4.5);
+      this.time.delayedCall(380, () => {
+        if (!b || !b.spr || !b.spr.active) return;
+        b.spr.setVelocity(0, 0);
+        players.forEach(p => {
+          if (Phaser.Math.Distance.Between(b.spr.x, b.spr.y, p.spr.x, p.spr.y) < 55) {
+            p.hp = Math.max(0, p.hp - Math.round(b.dmg * 1.3));
+            SFX.playerHurt();
+            p.spr.setTint(0xff8800);
+            this.cameras.main.shake(250, 0.01);
+            this.time.delayedCall(200, () => { if (p.spr.active) p.spr.clearTint(); });
+          }
+        });
+        this.checkDeaths();
+      });
+
+    } else if (b.specialType === 'spray') {
+      // ── Projectile Spray: 3 shots in spread ──────────────────
+      const baseAng = b._sprayAngle || 0;
+      const col = b.type === 'boss_spider' ? 0xcc55ff : 0x55dd55;
+      SFX._play(b.type === 'boss_spider' ? 1100 : 380, 'square', 0.1, 0.3);
+      for (let i = -1; i <= 1; i++) {
+        const ang = baseAng + i * 0.38;
+        const blt = this.physics.add.image(b.spr.x, b.spr.y, 'bullet')
+          .setScale(2.5).setTint(col).setDepth(15).setRotation(ang);
+        blt.body.allowGravity = false;
+        if (this.hudCam) this.hudCam.ignore(blt);
+        blt.setVelocity(Math.cos(ang) * 210, Math.sin(ang) * 210);
+        if (this.obstacles) this.physics.add.collider(blt, this.obstacles, () => { if (blt.active) blt.destroy(); });
+        players.forEach(p => {
+          this.physics.add.overlap(p.spr, blt, () => {
+            if (!blt.active) return;
+            blt.destroy();
+            p.hp = Math.max(0, p.hp - Math.round(b.dmg * 0.75));
+            SFX.playerHurt();
+            p.spr.setTint(col);
+            this.time.delayedCall(220, () => { if (p.spr.active) p.spr.clearTint(); });
+            this.checkDeaths();
+          });
+        });
+        this.time.delayedCall(2200, () => { if (blt.active) blt.destroy(); });
+      }
+    }
   }
 
   updateEnemyDens(delta) {
@@ -6124,6 +6305,7 @@ class GameScene extends Phaser.Scene {
       if (e.hpBg && e.hpBg.active) e.hpBg.destroy();
       if (e.hpBar && e.hpBar.active) e.hpBar.destroy();
       if (e.nameLabel && e.nameLabel.active) e.nameLabel.destroy();
+      if (e._telegraphGfx && e._telegraphGfx.active) e._telegraphGfx.destroy();
       this.boss = null;
       this.bossDefeated = true;
       this.hint('BOSS DEFEATED! A rare material was left behind…', 5000);
