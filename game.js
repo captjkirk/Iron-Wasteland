@@ -6,7 +6,7 @@
 
 // ── VERSION ───────────────────────────────────────────────────
 // Update this each commit so the title screen reflects the build date.
-const VERSION = 'Apr 15, 2026  09:28 AM EDT';
+const VERSION = 'Apr 15, 2026  09:43 AM EDT';
 
 // ── CONSTANTS ─────────────────────────────────────────────────
 // Detect mobile/phone: touch device with a small screen.
@@ -2862,6 +2862,11 @@ class ModeSelectScene extends Phaser.Scene {
 class SettingsScene extends Phaser.Scene {
   constructor() { super('Settings'); }
 
+  init(data) {
+    // Remember who launched us so the back button can return there
+    this._returnTo = (data && data.returnTo) ? data.returnTo : null;
+  }
+
   create() {
     const { W, H } = CFG;
     this.cameras.main.fadeIn(300, 0, 0, 0);
@@ -3004,22 +3009,34 @@ class SettingsScene extends Phaser.Scene {
     });
 
     // ── Back button ──────────────────────────────────────────
-    const backBtn = this.add.text(W/2, H - 22, '[ BACK TO MAIN MENU ]', {
+    const backLabel = this._returnTo === 'Game' ? '[ BACK TO GAME ]' : '[ BACK TO MAIN MENU ]';
+    const backBtn = this.add.text(W/2, H - 22, backLabel, {
       fontFamily:'monospace', fontSize:'18px', color:'#aaffaa',
     }).setOrigin(0.5).setInteractive({ useHandCursor: true });
     backBtn.on('pointerover', () => backBtn.setColor('#ffffff'));
     backBtn.on('pointerout',  () => backBtn.setColor('#aaffaa'));
-    backBtn.on('pointerdown', () => {
+
+    const goBack = () => {
       this.cameras.main.fadeOut(200, 0, 0, 0);
-      this.time.delayedCall(200, () => this.scene.start('ModeSelect'));
-    });
+      this.time.delayedCall(200, () => {
+        if (this._returnTo === 'Game') {
+          const gameScene = this.scene.get('Game');
+          this.scene.stop('Settings');
+          this.scene.resume('Game');
+          if (gameScene && gameScene.cameras && gameScene.cameras.main) {
+            gameScene.cameras.main.fadeIn(300, 0, 0, 0);
+          }
+        } else {
+          this.scene.start('ModeSelect');
+        }
+      });
+    };
+
+    backBtn.on('pointerdown', goBack);
     this.tweens.add({ targets: backBtn, alpha: 0.4, duration: 700, yoyo: true, repeat: -1 });
 
     const K = Phaser.Input.Keyboard.KeyCodes;
-    this.input.keyboard.addKey(K.ESC).on('down', () => {
-      this.cameras.main.fadeOut(200, 0, 0, 0);
-      this.time.delayedCall(200, () => this.scene.start('ModeSelect'));
-    });
+    this.input.keyboard.addKey(K.ESC).on('down', goBack);
 
     this.setInput(curMode);
     this.setTutorial(tutEnabled);
@@ -3326,237 +3343,294 @@ class GameScene extends Phaser.Scene {
     this.craftMenuSel = 0;
     this.craftMenuGfx = null;
 
-    // Show loading indicator on the black screen — iOS PWA needs at least one yielded
-    // frame before heavy synchronous work, otherwise WKWebView may not render at all.
-    const _loadTxt = this.add.text(CFG.W / 2, CFG.H / 2, 'Building world...', {
-      fontFamily: 'monospace', fontSize: '16px', color: '#555555'
+    // Show loading progress bar on the black screen.
+    // iOS PWA needs at least one yielded frame before heavy synchronous work.
+    // Staged init lets the browser repaint between each phase so the bar stays live.
+    const _BAR_W = 300, _BAR_H = 14;
+    const _barX = CFG.W / 2 - _BAR_W / 2, _barY = CFG.H / 2 + 8;
+    const _barBg  = this.add.graphics().setScrollFactor(0).setDepth(999);
+    const _barFg  = this.add.graphics().setScrollFactor(0).setDepth(999);
+    const _loadTx = this.add.text(CFG.W / 2, CFG.H / 2 - 18, 'Building world...', {
+      fontFamily: 'monospace', fontSize: '14px', color: '#556655',
+    }).setOrigin(0.5).setScrollFactor(0).setDepth(999);
+    const _pctTx  = this.add.text(CFG.W / 2, _barY + _BAR_H + 7, '0%', {
+      fontFamily: 'monospace', fontSize: '10px', color: '#334433',
     }).setOrigin(0.5).setScrollFactor(0).setDepth(999);
 
+    const _setProgress = (pct, label) => {
+      _barBg.clear();
+      _barBg.fillStyle(0x1a1a28);
+      _barBg.fillRect(_barX, _barY, _BAR_W, _BAR_H);
+      _barFg.clear();
+      _barFg.fillStyle(0x3a6a3a);
+      _barFg.fillRect(_barX, _barY, Math.max(2, Math.floor(_BAR_W * pct / 100)), _BAR_H);
+      if (label) _loadTx.setText(label);
+      _pctTx.setText(pct + '%');
+    };
+    const _destroyBar = () => {
+      [_barBg, _barFg, _loadTx, _pctTx].forEach(o => { if (o?.active) o.destroy(); });
+    };
+    const _initFail = (err) => {
+      _destroyBar();
+      const msg = err?.message || String(err);
+      this._log('INIT FAILED: ' + msg, 'error');
+      console.error('[IW] World init exception:', err);
+      this.add.text(CFG.W / 2, CFG.H / 2,
+        'Load error on run #' + this._runCount + '\n' + msg + '\n\nCheck console (F12) or press ` to view log',
+        { fontFamily: 'monospace', fontSize: '12px', color: '#ff4444',
+          backgroundColor: '#000000cc', padding: { x: 12, y: 8 }, align: 'center' }
+      ).setOrigin(0.5).setScrollFactor(0).setDepth(1000);
+    };
+    _setProgress(0, 'Building world...');
+
+    // ── Stage 0 (t≈64 ms): physics bounds + biome seeds ────────
     this.time.delayedCall(64, () => {
       try {
-      this._log(`World init start  run=#${this._runCount}  ${this.solo?'1P':'2P'}  ${this.hardcore?'hardcore':'survival'}`, 'world');
-      if (_loadTxt.active) _loadTxt.destroy();
-      this.cameras.main.fadeIn(600, 0, 0, 0);
-      this.physics.world.setBounds(0, 0, worldW, worldH);
+        this._log(`World init start  run=#${this._runCount}  ${this.solo?'1P':'2P'}  ${this.hardcore?'hardcore':'survival'}`, 'world');
+        this.physics.world.setBounds(0, 0, worldW, worldH);
+        _setProgress(5, 'Seeding biomes...');
+        this._log('World init: biome seeds', 'world');
+        this._initBiomeSeeds();
+      } catch (err) { _initFail(err); return; }
 
-      this._log('World init: biome seeds', 'world');
-      this._initBiomeSeeds();
-      this._log('World init: buildWorld start', 'world');
-      this.buildWorld(worldW, worldH, cx, cy);
-      this._log(`World init: buildWorld done  enemies_placed=${(this.enemies||[]).length}`, 'world');
+      // ── Stage 1 (t≈80 ms): world generation ─────────────────
+      this.time.delayedCall(16, () => {
+        try {
+          _setProgress(12, 'Building world...');
+          this._log('World init: buildWorld start', 'world');
+          this.buildWorld(worldW, worldH, cx, cy);
+          this._log(`World init: buildWorld done  enemies_placed=${(this.enemies||[]).length}`, 'world');
+          _setProgress(58, 'Spawning players...');
+        } catch (err) { _initFail(err); return; }
 
-    const p1Ch = CHARS.find(c => c.id === STATE.p1CharId);
-    const p2Ch = this.solo ? null : CHARS.find(c => c.id === STATE.p2CharId);
+        // ── Stage 2 (t≈96 ms): players + input + camera ──────
+        this.time.delayedCall(16, () => {
+          try {
+            const p1Ch = CHARS.find(c => c.id === STATE.p1CharId);
+            const p2Ch = this.solo ? null : CHARS.find(c => c.id === STATE.p2CharId);
 
-    this.p1 = this.spawnPlayer(cx-55, cy, p1Ch, 1);
-    this.p2 = this.solo ? null : this.spawnPlayer(cx+55, cy, p2Ch, 2);
+            this.p1 = this.spawnPlayer(cx - 55, cy, p1Ch, 1);
+            this.p2 = this.solo ? null : this.spawnPlayer(cx + 55, cy, p2Ch, 2);
 
-    this.physics.add.collider(this.p1.spr, this.obstacles);
-    if (this.p2) {
-      this.physics.add.collider(this.p2.spr, this.obstacles);
-      this.physics.add.collider(this.p1.spr, this.p2.spr);
-    }
+            this.physics.add.collider(this.p1.spr, this.obstacles);
+            if (this.p2) {
+              this.physics.add.collider(this.p2.spr, this.obstacles);
+              this.physics.add.collider(this.p1.spr, this.p2.spr);
+            }
 
-    // Setup crate pickups now that players exist
-    this.setupCratePickups();
+            // Setup crate pickups now that players exist
+            this.setupCratePickups();
 
-    // Setup toxic pool damage overlaps
-    if (this.toxicPools) {
-      this.toxicPools.forEach(pool => {
-        this.physics.add.overlap(this.p1.spr, pool, () => {
-          if (!this._toxicCd1 || this._toxicCd1 <= 0) {
-            this.p1.hp = Math.max(0, this.p1.hp - 3);
-            this._toxicCd1 = 500;
-            this.p1.spr.setTint(0x44ff22);
-            this.time.delayedCall(150, () => {
-              if (!this.p1.spr?.active) return;
-              if (this.p1._frostSlowed) this.p1.spr.setTint(0x88ccff);
-              else this.p1.spr.clearTint();
-            });
-          }
-        });
-        if (this.p2) {
-          this.physics.add.overlap(this.p2.spr, pool, () => {
-            if (!this._toxicCd2 || this._toxicCd2 <= 0) {
-              this.p2.hp = Math.max(0, this.p2.hp - 3);
-              this._toxicCd2 = 500;
-              this.p2.spr.setTint(0x44ff22);
-              this.time.delayedCall(150, () => {
-                if (!this.p2.spr?.active) return;
-                if (this.p2._frostSlowed) this.p2.spr.setTint(0x88ccff);
-                else this.p2.spr.clearTint();
+            // Setup toxic pool damage overlaps
+            if (this.toxicPools) {
+              this.toxicPools.forEach(pool => {
+                this.physics.add.overlap(this.p1.spr, pool, () => {
+                  if (!this._toxicCd1 || this._toxicCd1 <= 0) {
+                    this.p1.hp = Math.max(0, this.p1.hp - 3);
+                    this._toxicCd1 = 500;
+                    this.p1.spr.setTint(0x44ff22);
+                    this.time.delayedCall(150, () => {
+                      if (!this.p1.spr?.active) return;
+                      if (this.p1._frostSlowed) this.p1.spr.setTint(0x88ccff);
+                      else this.p1.spr.clearTint();
+                    });
+                  }
+                });
+                if (this.p2) {
+                  this.physics.add.overlap(this.p2.spr, pool, () => {
+                    if (!this._toxicCd2 || this._toxicCd2 <= 0) {
+                      this.p2.hp = Math.max(0, this.p2.hp - 3);
+                      this._toxicCd2 = 500;
+                      this.p2.spr.setTint(0x44ff22);
+                      this.time.delayedCall(150, () => {
+                        if (!this.p2.spr?.active) return;
+                        if (this.p2._frostSlowed) this.p2.spr.setTint(0x88ccff);
+                        else this.p2.spr.clearTint();
+                      });
+                    }
+                  });
+                }
               });
             }
+
+            // Shallow water wading detection — handled per-frame via _waterTileSet tile lookup
+            // (physics overlap approach was broken: callbacks fired before update() reset the flag)
+            // Ice tiles — flags player for slippery momentum physics
+            if (this.iceTiles && this.iceTiles.length) {
+              this.iceTiles.forEach(t => {
+                this.physics.add.overlap(this.p1.spr, t, () => { this.p1._onIce = true; });
+                if (this.p2) this.physics.add.overlap(this.p2.spr, t, () => { this.p2._onIce = true; });
+              });
+            }
+
+            // Input
+            const K = Phaser.Input.Keyboard.KeyCodes;
+            this.wasd    = this.input.keyboard.addKeys({ up:K.W, down:K.S, left:K.A, right:K.D });
+            this.cursors = this.input.keyboard.createCursorKeys();
+            this.hotkeys = this.input.keyboard.addKeys({ p1use:K.E, p2use:K.ENTER, tab:K.TAB, esc:K.ESC });
+
+            this.hotkeys.p1use.on('down', () => { if (!this.barrackOpen && !this.isOver) this.tryInteract(this.p1); });
+            if (this.p2) this.hotkeys.p2use.on('down', () => { if (!this.barrackOpen && !this.isOver) this.tryInteract(this.p2); });
+            this.hotkeys.tab.on('down', () => { if (!this.barrackOpen && !this.craftMenuOpen && !this.isOver) this.togglePause(); });
+            this.hotkeys.esc.on('down', () => {
+              this.closeBarrack();
+              if (this._paused) { this.togglePause(); return; }
+              if (this.controlsVis) this.toggleControls();
+            });
+
+            // Backtick/grave (`) toggles the debug event log
+            this.input.keyboard.addKey(192).on('down', () => {
+              this._dbgVisible = !this._dbgVisible;
+              if (this._dbgTxt) {
+                this._dbgTxt.setVisible(this._dbgVisible);
+                if (this._dbgVisible) this._dbgRefresh(true);
+              }
+            });
+            // C — copy log to clipboard while overlay is open
+            this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.C).on('down', () => {
+              if (!this._dbgVisible || !this._dbgEntries) return;
+              const t = Math.floor(this.timeAlive || 0);
+              const text = [
+                `IRON WASTELAND SESSION LOG`,
+                `Version : ${VERSION}  Exported: ${new Date().toLocaleString()}`,
+                `Time    : ${Math.floor(t/60)}m ${t%60}s  Day: ${this.dayNum||1}  Kills: ${this.kills||0}`,
+                ``,
+                ...this._dbgEntries,
+              ].join('\n');
+              navigator.clipboard.writeText(text)
+                .then(() => this.hint('Log copied to clipboard!', 2000))
+                .catch(() => this.hint('Copy failed — try G to download instead', 2000));
+            });
+            // G — download full log as .txt while overlay is open
+            this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.G).on('down', () => {
+              if (!this._dbgVisible) return;
+              this._downloadLog();
+              this.hint('Log saved as .txt file!', 2000);
+            });
+
+            // Barracks navigation keys
+            this.bKeys = this.input.keyboard.addKeys({ L:K.A, R:K.D, La:K.LEFT, Ra:K.RIGHT, ok1:K.F, ok2:K.FORWARD_SLASH });
+            this.bKeys.L.on('down',  () => { if (this.barrackOpen) this.barrackNav(-1); });
+            this.bKeys.R.on('down',  () => { if (this.barrackOpen) this.barrackNav( 1); });
+            this.bKeys.La.on('down', () => { if (this.barrackOpen) this.barrackNav(-1); });
+            this.bKeys.Ra.on('down', () => { if (this.barrackOpen) this.barrackNav( 1); });
+            this.bKeys.ok1.on('down',() => { if (this.barrackOpen) this.barrackConfirm(); });
+            this.bKeys.ok2.on('down',() => { if (this.barrackOpen) this.barrackConfirm(); });
+
+            // Attack keys
+            this.atkKeys = this.input.keyboard.addKeys({
+              p1atk: K.F, p1alt: K.G, p1build: K.Q,
+              p2atk: K.FORWARD_SLASH, p2alt: K.PERIOD, p2build: K.ZERO,
+            });
+            this.atkKeys.p1atk.on('down', () => {
+              if (!this.barrackOpen && !this.isOver && !this.p1.isDowned && !this.p1.isSleeping) {
+                if (this.craftMenuOpen && this.craftMenuOwner === this.p1) { this.craftSelected(); return; }
+                if (this.buildMode && this.buildOwner === this.p1) this.placeBuild();
+                else this.doAttack(this.p1);
+              }
+            });
+            this.atkKeys.p1alt.on('down', () => { if (!this.barrackOpen && !this.isOver && !this.p1.isDowned && !this.p1.isSleeping) this.doAlt(this.p1); });
+            this.atkKeys.p1build.on('down', () => { if (!this.barrackOpen && !this.isOver && !this.p1.isDowned && !this.p1.isSleeping) this.openCraftMenu(this.p1); });
+            if (this.p2) {
+              this.atkKeys.p2atk.on('down', () => {
+                if (!this.barrackOpen && !this.isOver && !this.p2.isDowned && !this.p2.isSleeping) {
+                  if (this.craftMenuOpen && this.craftMenuOwner === this.p2) { this.craftSelected(); return; }
+                  if (this.buildMode && this.buildOwner === this.p2) this.placeBuild();
+                  else this.doAttack(this.p2);
+                }
+              });
+              this.atkKeys.p2alt.on('down', () => { if (!this.barrackOpen && !this.isOver && !this.p2.isDowned && !this.p2.isSleeping) this.doAlt(this.p2); });
+              this.atkKeys.p2build.on('down', () => { if (!this.barrackOpen && !this.isOver && !this.p2.isDowned && !this.p2.isSleeping) this.openCraftMenu(this.p2); });
+            }
+
+            // Mouse controls for 1P keyboard mode (touch mode uses button overlay instead)
+            if (this.solo) {
+              this.input.on('pointerdown', (pointer) => {
+                if (activeInputMode() === 'touch') return; // touch mode handles its own attack
+                if (this.barrackOpen || this.isOver || this.p1.isDowned || this.p1.isSleeping) return;
+                if (pointer.leftButtonDown()) {
+                  if (this.buildMode && this.buildOwner === this.p1) this.placeBuild();
+                  else this.doAttack(this.p1);
+                }
+                if (pointer.rightButtonDown()) {
+                  this.doAlt(this.p1);
+                }
+              });
+              // Disable context menu on right-click (no-op on iOS but safe to call)
+              if (this.input.mouse) this.input.mouse.disableContextMenu();
+            }
+
+            // Camera
+            if (this.solo) {
+              this.cameras.main.startFollow(this.p1.spr, true, 0.1, 0.1);
+              this.cameras.main.setZoom(CFG.CAM_ZOOM_MAX);
+            } else {
+              this.cameras.main.setZoom(0.8);
+              this.cameras.main.centerOn(cx, cy);
+            }
+
+            _setProgress(75, 'Building HUD...');
+          } catch (err) { _initFail(err); return; }
+
+          // ── Stage 3 (t≈112 ms): HUD + cameras ───────────────
+          this.time.delayedCall(16, () => {
+            try {
+              this._log('World init: HUD + overlays', 'world');
+              this.buildHUD();
+              this.buildControlsOverlay();
+              this.buildBarrackOverlay();
+              this.buildReviveBar();
+
+              // Set up HUD camera (fixed zoom=1, no scroll)
+              this.hudCam = this.cameras.add(0, 0, CFG.W, CFG.H).setZoom(1).setName('hud');
+              this.cameras.main.ignore(this._ho);
+              this.hudCam.ignore(this._wo);
+              this.hudCam.ignore(this.obstacles.getChildren());
+
+              // Harvest progress graphics — world-space, depth 20
+              this.harvestGfx = this._w(this.add.graphics().setDepth(20));
+
+              _setProgress(88, 'Spawning enemies...');
+            } catch (err) { _initFail(err); return; }
+
+            // ── Stage 4 (t≈128 ms): enemies + touch controls ─
+            this.time.delayedCall(16, () => {
+              try {
+                // Spawn enemies after camera setup
+                this._log('World init: spawning enemies', 'world');
+                this.spawnEnemies(worldW, worldH, cx, cy);
+                this.placeRaiderCamp(worldW, worldH);
+                this._log(`World init: enemies spawned  total=${(this.enemies||[]).length}  dens=${(this.enemyDens||[]).length}+${(this.waterDens||[]).length}w`, 'world');
+
+                // Touch controls (1P only — 2P touch is out of scope)
+                if (this.solo && activeInputMode() === 'touch') {
+                  this.initTouchControls();
+                }
+
+                _setProgress(100, 'Ready!');
+              } catch (err) { _initFail(err); return; }
+
+              // ── Stage 5 (t≈144 ms): finalize ─────────────
+              this.time.delayedCall(16, () => {
+                _destroyBar();
+                this.cameras.main.fadeIn(600, 0, 0, 0);
+
+                // Opening hints (delayed to appear after the startup controls popup fades)
+                const modeNote = this.hardcore ? '\u2620 HARDCORE \u2014 death is permanent!' : '\u2665 SURVIVAL mode';
+                this.time.delayedCall(10000, () => this.hint(modeNote + ' Explore the biomes! Watch your minimap.', 5000));
+                this.time.delayedCall(16500, () => this.hint('TAB for controls  |  Beware toxic swamps and frozen tundra!', 3500));
+
+                // Tutorial sequence — starts after startup controls dismiss (~9 s)
+                this.time.delayedCall(9200, () => this.startTutorial());
+
+                this._worldReady = true;
+                this._log('World init: READY', 'world');
+                this.showStartupControls();
+              });
+            });
           });
-        }
+        });
       });
-    }
-
-    // Shallow water wading detection — handled per-frame via _waterTileSet tile lookup
-    // (physics overlap approach was broken: callbacks fired before update() reset the flag)
-    // Ice tiles — flags player for slippery momentum physics
-    if (this.iceTiles && this.iceTiles.length) {
-      this.iceTiles.forEach(t => {
-        this.physics.add.overlap(this.p1.spr, t, () => { this.p1._onIce = true; });
-        if (this.p2) this.physics.add.overlap(this.p2.spr, t, () => { this.p2._onIce = true; });
-      });
-    }
-
-    // Input
-    const K = Phaser.Input.Keyboard.KeyCodes;
-    this.wasd    = this.input.keyboard.addKeys({ up:K.W, down:K.S, left:K.A, right:K.D });
-    this.cursors = this.input.keyboard.createCursorKeys();
-    this.hotkeys = this.input.keyboard.addKeys({ p1use:K.E, p2use:K.ENTER, tab:K.TAB, esc:K.ESC });
-
-    this.hotkeys.p1use.on('down', () => { if (!this.barrackOpen && !this.isOver) this.tryInteract(this.p1); });
-    if (this.p2) this.hotkeys.p2use.on('down', () => { if (!this.barrackOpen && !this.isOver) this.tryInteract(this.p2); });
-    this.hotkeys.tab.on('down', () => { if (!this.barrackOpen && !this.craftMenuOpen && !this.isOver) this.togglePause(); });
-    this.hotkeys.esc.on('down', () => {
-      this.closeBarrack();
-      if (this._paused) { this.togglePause(); return; }
-      if (this.controlsVis) this.toggleControls();
-    });
-
-    // Backtick/grave (`) toggles the debug event log
-    this.input.keyboard.addKey(192).on('down', () => {
-      this._dbgVisible = !this._dbgVisible;
-      if (this._dbgTxt) {
-        this._dbgTxt.setVisible(this._dbgVisible);
-        if (this._dbgVisible) this._dbgRefresh(true);
-      }
-    });
-    // C — copy log to clipboard while overlay is open
-    this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.C).on('down', () => {
-      if (!this._dbgVisible || !this._dbgEntries) return;
-      const t = Math.floor(this.timeAlive || 0);
-      const text = [
-        `IRON WASTELAND SESSION LOG`,
-        `Version : ${VERSION}  Exported: ${new Date().toLocaleString()}`,
-        `Time    : ${Math.floor(t/60)}m ${t%60}s  Day: ${this.dayNum||1}  Kills: ${this.kills||0}`,
-        ``,
-        ...this._dbgEntries,
-      ].join('\n');
-      navigator.clipboard.writeText(text)
-        .then(() => this.hint('Log copied to clipboard!', 2000))
-        .catch(() => this.hint('Copy failed — try G to download instead', 2000));
-    });
-    // G — download full log as .txt while overlay is open
-    this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.G).on('down', () => {
-      if (!this._dbgVisible) return;
-      this._downloadLog();
-      this.hint('Log saved as .txt file!', 2000);
-    });
-
-    // Barracks navigation keys
-    this.bKeys = this.input.keyboard.addKeys({ L:K.A, R:K.D, La:K.LEFT, Ra:K.RIGHT, ok1:K.F, ok2:K.FORWARD_SLASH });
-    this.bKeys.L.on('down',  () => { if (this.barrackOpen) this.barrackNav(-1); });
-    this.bKeys.R.on('down',  () => { if (this.barrackOpen) this.barrackNav( 1); });
-    this.bKeys.La.on('down', () => { if (this.barrackOpen) this.barrackNav(-1); });
-    this.bKeys.Ra.on('down', () => { if (this.barrackOpen) this.barrackNav( 1); });
-    this.bKeys.ok1.on('down',() => { if (this.barrackOpen) this.barrackConfirm(); });
-    this.bKeys.ok2.on('down',() => { if (this.barrackOpen) this.barrackConfirm(); });
-
-    // Attack keys
-    this.atkKeys = this.input.keyboard.addKeys({
-      p1atk: K.F, p1alt: K.G, p1build: K.Q,
-      p2atk: K.FORWARD_SLASH, p2alt: K.PERIOD, p2build: K.ZERO,
-    });
-    this.atkKeys.p1atk.on('down', () => {
-      if (!this.barrackOpen && !this.isOver && !this.p1.isDowned && !this.p1.isSleeping) {
-        if (this.craftMenuOpen && this.craftMenuOwner === this.p1) { this.craftSelected(); return; }
-        if (this.buildMode && this.buildOwner === this.p1) this.placeBuild();
-        else this.doAttack(this.p1);
-      }
-    });
-    this.atkKeys.p1alt.on('down', () => { if (!this.barrackOpen && !this.isOver && !this.p1.isDowned && !this.p1.isSleeping) this.doAlt(this.p1); });
-    this.atkKeys.p1build.on('down', () => { if (!this.barrackOpen && !this.isOver && !this.p1.isDowned && !this.p1.isSleeping) this.openCraftMenu(this.p1); });
-    if (this.p2) {
-      this.atkKeys.p2atk.on('down', () => {
-        if (!this.barrackOpen && !this.isOver && !this.p2.isDowned && !this.p2.isSleeping) {
-          if (this.craftMenuOpen && this.craftMenuOwner === this.p2) { this.craftSelected(); return; }
-          if (this.buildMode && this.buildOwner === this.p2) this.placeBuild();
-          else this.doAttack(this.p2);
-        }
-      });
-      this.atkKeys.p2alt.on('down', () => { if (!this.barrackOpen && !this.isOver && !this.p2.isDowned && !this.p2.isSleeping) this.doAlt(this.p2); });
-      this.atkKeys.p2build.on('down', () => { if (!this.barrackOpen && !this.isOver && !this.p2.isDowned && !this.p2.isSleeping) this.openCraftMenu(this.p2); });
-    }
-
-    // Mouse controls for 1P keyboard mode (touch mode uses button overlay instead)
-    if (this.solo) {
-      this.input.on('pointerdown', (pointer) => {
-        if (activeInputMode() === 'touch') return; // touch mode handles its own attack
-        if (this.barrackOpen || this.isOver || this.p1.isDowned || this.p1.isSleeping) return;
-        if (pointer.leftButtonDown()) {
-          if (this.buildMode && this.buildOwner === this.p1) this.placeBuild();
-          else this.doAttack(this.p1);
-        }
-        if (pointer.rightButtonDown()) {
-          this.doAlt(this.p1);
-        }
-      });
-      // Disable context menu on right-click (no-op on iOS but safe to call)
-      if (this.input.mouse) this.input.mouse.disableContextMenu();
-    }
-
-    // Camera
-    if (this.solo) {
-      this.cameras.main.startFollow(this.p1.spr, true, 0.1, 0.1);
-      this.cameras.main.setZoom(CFG.CAM_ZOOM_MAX);
-    } else {
-      this.cameras.main.setZoom(0.8);
-      this.cameras.main.centerOn(cx, cy);
-    }
-
-    this._log('World init: HUD + overlays', 'world');
-    this.buildHUD();
-    this.buildControlsOverlay();
-    this.buildBarrackOverlay();
-    this.buildReviveBar();
-
-    // Set up HUD camera (fixed zoom=1, no scroll)
-    this.hudCam = this.cameras.add(0, 0, CFG.W, CFG.H).setZoom(1).setName('hud');
-    this.cameras.main.ignore(this._ho);
-    this.hudCam.ignore(this._wo);
-    this.hudCam.ignore(this.obstacles.getChildren());
-
-    // Harvest progress graphics — world-space, depth 20
-    this.harvestGfx = this._w(this.add.graphics().setDepth(20));
-
-    // Spawn enemies after camera setup
-    this._log('World init: spawning enemies', 'world');
-    this.spawnEnemies(worldW, worldH, cx, cy);
-    this.placeRaiderCamp(worldW, worldH);
-    this._log(`World init: enemies spawned  total=${(this.enemies||[]).length}  dens=${(this.enemyDens||[]).length}+${(this.waterDens||[]).length}w`, 'world');
-
-    // Touch controls (1P only — 2P touch is out of scope)
-    if (this.solo && activeInputMode() === 'touch') {
-      this.initTouchControls();
-    }
-
-    // Opening hints (delayed to appear after the startup controls popup fades)
-    const modeNote = this.hardcore ? '\u2620 HARDCORE \u2014 death is permanent!' : '\u2665 SURVIVAL mode';
-    this.time.delayedCall(10000, () => this.hint(modeNote + ' Explore the biomes! Watch your minimap.', 5000));
-    this.time.delayedCall(16500, () => this.hint('TAB for controls  |  Beware toxic swamps and frozen tundra!', 3500));
-
-    // Tutorial sequence — starts after startup controls dismiss (~9 s)
-    this.time.delayedCall(9200, () => this.startTutorial());
-
-      this._worldReady = true;
-      this._log('World init: READY', 'world');
-      this.showStartupControls();
-      } catch (err) {
-        // Log the error so it shows in the overlay and download
-        const msg = err?.message || String(err);
-        this._log('INIT FAILED: ' + msg, 'error');
-        console.error('[IW] World init exception:', err);
-        // Show visible error on screen so the player knows something went wrong
-        this.add.text(CFG.W / 2, CFG.H / 2,
-          'Load error on run #' + this._runCount + '\n' + msg + '\n\nCheck console (F12) or press ` to view log',
-          { fontFamily: 'monospace', fontSize: '12px', color: '#ff4444',
-            backgroundColor: '#000000cc', padding: { x: 12, y: 8 }, align: 'center' }
-        ).setOrigin(0.5).setScrollFactor(0).setDepth(1000);
-      }
     }); // end deferred world init
   }
 
@@ -5085,7 +5159,10 @@ class GameScene extends Phaser.Scene {
       this.ctrlObjs.forEach(o => o.setVisible(false));
       this.controlsVis = false;
       this.cameras.main.fadeOut(200, 0, 0, 0);
-      this.time.delayedCall(200, () => this.scene.start('Settings'));
+      this.time.delayedCall(200, () => {
+        this.scene.pause();
+        this.scene.launch('Settings', { returnTo: 'Game' });
+      });
     });
 
     const quitBtn = push(this.add.text(W/2 + 140, btnY, '\u2715  QUIT TO MENU', btnStyle('#cc6655'))
