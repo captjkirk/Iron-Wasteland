@@ -5168,6 +5168,7 @@ class GameScene extends Phaser.Scene {
     settBtn.on('pointerover', () => settBtn.setColor('#ccddff'));
     settBtn.on('pointerout',  () => settBtn.setColor('#88aacc'));
     settBtn.on('pointerdown', () => {
+      this._log('controls: SETTINGS button pressed – launching Settings scene', 'player');
       this.ctrlObjs.forEach(o => o.setVisible(false));
       this.controlsVis = false;
       this.cameras.main.fadeOut(200, 0, 0, 0);
@@ -5182,6 +5183,7 @@ class GameScene extends Phaser.Scene {
     quitBtn.on('pointerover', () => quitBtn.setColor('#ff9988'));
     quitBtn.on('pointerout',  () => quitBtn.setColor('#cc6655'));
     quitBtn.on('pointerdown', () => {
+      this._log('controls: QUIT TO MENU button pressed', 'player');
       this.ctrlObjs.forEach(o => o.setVisible(false));
       this.controlsVis = false;
       this.triggerGameOver('Run abandoned — better luck next time.');
@@ -5433,6 +5435,7 @@ class GameScene extends Phaser.Scene {
 
   barrackNav(dir) {
     this.barrackSel = Phaser.Math.Wrap(this.barrackSel+dir, 0, CHARS.length);
+    this._log(`barracks nav ${dir > 0 ? 'right' : 'left'}  sel=${this.barrackSel} (${CHARS[this.barrackSel].id})  owner=${this.barrackOwner?.charData?.player}`, 'player');
     this.refreshBarrackCards();
   }
 
@@ -5441,7 +5444,7 @@ class GameScene extends Phaser.Scene {
     const player = this.barrackOwner;
     const newCh  = CHARS[this.barrackSel];
     const other  = (player===this.p1 && this.p2) ? this.p2.charData : (player===this.p2) ? this.p1.charData : null;
-    if (other && newCh.id===other.id) { this.hint('That character is already taken!', 1800); return; }
+    if (other && newCh.id===other.id) { this._log(`barracks confirm blocked – ${newCh.id} already taken`, 'player'); this.hint('That character is already taken!', 1800); return; }
 
     const hpPct      = player.hp / player.maxHp;
     const _prevChar  = player.charData.id;
@@ -8547,6 +8550,7 @@ class GameScene extends Phaser.Scene {
       // Cycle to next build type, exit after last
       const idx = BUILD_TYPES.indexOf(this.buildType);
       if (idx >= BUILD_TYPES.length - 1) {
+        this._log(`${player.charData.player} build mode off (cycled past last type)`, 'player');
         this.exitBuildMode();
         this.hint('Build mode off', 1000);
         return;
@@ -8554,6 +8558,7 @@ class GameScene extends Phaser.Scene {
       this.buildType = BUILD_TYPES[idx + 1];
       const cost = this.getBuildCost(this.buildType);
       const costStr = Object.entries(cost).map(([k,v])=>v+' '+k).join(', ');
+      this._log(`${player.charData.player} build cycle → ${this.buildType}  cost=${costStr}`, 'player');
       this.hint('Build: ' + this.buildType.toUpperCase() + ' (cost: ' + costStr + ')', 2000);
       return;
     }
@@ -8561,6 +8566,7 @@ class GameScene extends Phaser.Scene {
     this.buildOwner = player;
     this.buildType = 'wall';
     this.buildRotation = 0;
+    this._log(`${player.charData.player} build mode ON  type=wall`, 'player');
     if (this.buildGhost) this.buildGhost.destroy();
     this.buildGhost = this.add.image(player.spr.x + 40, player.spr.y, 'build_ghost').setDepth(50).setAlpha(0.6);
     if (this.hudCam) this.hudCam.ignore(this.buildGhost);
@@ -8570,6 +8576,7 @@ class GameScene extends Phaser.Scene {
   }
 
   exitBuildMode() {
+    if (this.buildMode) this._log(`${this.buildOwner?.charData?.player || 'unknown'} build mode OFF  was=${this.buildType}`, 'player');
     this.buildMode = false;
     this.buildOwner = null;
     if (this.buildGhost) { this.buildGhost.destroy(); this.buildGhost = null; }
@@ -8595,6 +8602,7 @@ class GameScene extends Phaser.Scene {
     // Check for type cycle (same key as build mode — double tap cycles)
     if (Phaser.Input.Keyboard.JustDown(this.buildRotKey1) || Phaser.Input.Keyboard.JustDown(this.buildRotKey2)) {
       this.buildRotation = (this.buildRotation + 1) % 4;
+      this._log(`${this.buildOwner?.charData?.player} build rotate  type=${this.buildType}  rot=${this.buildRotation * 90}°`, 'player');
     }
   }
 
@@ -8813,8 +8821,13 @@ class GameScene extends Phaser.Scene {
       for (let idx = 0; idx < RECIPES.length; idx++) {
         const rowY = PY + 34 + idx * 25;
         if (py >= rowY - 2 && py < rowY + 20) {
-          if (idx === this.craftMenuSel) this.craftSelected();
-          else this.craftMenuSel = idx;
+          if (idx === this.craftMenuSel) {
+            this._log(`craft click confirm  sel=${idx} (${RECIPES[idx].label})  owner=${this.craftMenuOwner?.charData?.player}`, 'player');
+            this.craftSelected();
+          } else {
+            this._log(`craft click select  sel=${idx} (${RECIPES[idx].label})  owner=${this.craftMenuOwner?.charData?.player}`, 'player');
+            this.craftMenuSel = idx;
+          }
           return;
         }
       }
@@ -8842,9 +8855,11 @@ class GameScene extends Phaser.Scene {
     // Keyboard navigate up / down
     if (Phaser.Input.Keyboard.JustDown(this._craftNavUp) || Phaser.Input.Keyboard.JustDown(this._craftNavUp2)) {
       this.craftMenuSel = (this.craftMenuSel - 1 + RECIPES.length) % RECIPES.length;
+      this._log(`craft nav up  sel=${this.craftMenuSel} (${RECIPES[this.craftMenuSel].label})  owner=${this.craftMenuOwner?.charData?.player}`, 'player');
     }
     if (Phaser.Input.Keyboard.JustDown(this._craftNavDn) || Phaser.Input.Keyboard.JustDown(this._craftNavDn2)) {
       this.craftMenuSel = (this.craftMenuSel + 1) % RECIPES.length;
+      this._log(`craft nav dn  sel=${this.craftMenuSel} (${RECIPES[this.craftMenuSel].label})  owner=${this.craftMenuOwner?.charData?.player}`, 'player');
     }
 
     // Touch joystick navigate up / down (350ms repeat debounce)
@@ -8854,6 +8869,7 @@ class GameScene extends Phaser.Scene {
       if (this._craftTouchNavCd <= 0 && Math.abs(jy) > 0.5) {
         this.craftMenuSel = (this.craftMenuSel + (jy > 0 ? 1 : -1) + RECIPES.length) % RECIPES.length;
         this._craftTouchNavCd = 350;
+        this._log(`craft nav joy  sel=${this.craftMenuSel} (${RECIPES[this.craftMenuSel].label})  owner=${this.craftMenuOwner?.charData?.player}`, 'player');
       }
     }
 
