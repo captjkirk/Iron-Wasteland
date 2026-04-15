@@ -4063,6 +4063,9 @@ class GameScene extends Phaser.Scene {
     this._log('buildWorld: _buildPonds start', 'world');
     this._buildPonds(stx, sty);
     this._log(`buildWorld: _buildPonds done  water=${(this.waterTiles||[]).length} ice=${(this.iceTiles||[]).length} deep=${(this.deepWaterTiles||[]).length}`, 'world');
+    // ── POINTS OF INTEREST (initialised early so _buildLakes can push to it) ──
+    this.pois = [];
+
     // Larger lakes (6–8 per map) with water-den spawners
     this._log('buildWorld: _buildLakes start', 'world');
     this._buildLakes(stx, sty);
@@ -4208,7 +4211,7 @@ class GameScene extends Phaser.Scene {
     }
 
     // ── POINTS OF INTEREST ────────────────────────────────────
-    this.pois = [];
+    // (this.pois already initialised above before _buildLakes)
     this._log('buildWorld: buildPOIs start', 'world');
     this.buildPOIs(stx, sty, TILE);
     this._log(`buildWorld: buildPOIs done  pois=${(this.pois||[]).length}`, 'world');
@@ -7693,6 +7696,7 @@ class GameScene extends Phaser.Scene {
   _buildLakes(stx, sty) {
     const { TILE, SAFE_R } = CFG;
     this.waterDens = this.waterDens || [];
+    this.pois = this.pois || [];
     let _lakePlaced = 0, _lakeSkipCenter = 0, _lakeSkipBlob = 0;
     // 7 lakes spread across the map; biome variety makes them feel natural
     const lakeSpecs = ['grass','grass','swamp','swamp','waste','tundra','fungal'];
