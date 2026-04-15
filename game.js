@@ -1001,26 +1001,36 @@ function buildTextures(scene) {
   g.lineStyle(2, 0x0a2010, 0.9); g.strokeEllipse(32, 26, 60, 44);
   g.generateTexture('toxic_pool', 64, 52);
 
-  // Shallow water (32×32) — translucent tint, drawn at low alpha so ground shows through
+  // Shallow water (32×32) — solid blue-green ground tile
   g.clear();
-  g.fillStyle(0x4488bb, 0.55); g.fillRect(0, 0, 32, 32);
-  g.fillStyle(0x66aacc, 0.25); g.fillRect(0, 0, 32, 14);  // faint surface sheen
-  g.fillStyle(0x88ccee, 0.3); g.fillRect(4, 10, 12, 1); g.fillRect(16, 16, 10, 1); g.fillRect(7, 22, 8, 1); // subtle ripples
+  g.fillStyle(0x1a5570); g.fillRect(0, 0, 32, 32);
+  g.fillStyle(0x226688); g.fillRect(1, 1, 30, 30);
+  g.fillStyle(0x3a88a8, 0.5); g.fillRect(0, 0, 32, 10);  // surface lighter zone
+  g.lineStyle(1, 0x66aac8, 0.85);
+  g.beginPath(); g.moveTo(4,  8); g.lineTo(14,  8); g.strokePath();
+  g.beginPath(); g.moveTo(18, 15); g.lineTo(27, 15); g.strokePath();
+  g.beginPath(); g.moveTo(5,  23); g.lineTo(17, 23); g.strokePath();
+  g.fillStyle(0xaadeee, 0.18); g.fillRect(5, 3, 9, 2); g.fillRect(20, 10, 5, 1);
   g.generateTexture('water_shallow', 32, 32);
 
-  // Deep water (32×32) — slightly more opaque to signal impassable
+  // Deep water (32×32) — darker, impassable
   g.clear();
-  g.fillStyle(0x1a3a66, 0.7); g.fillRect(0, 0, 32, 32);
-  g.fillStyle(0x224488, 0.3); g.fillRect(0, 0, 32, 12);
-  g.fillStyle(0x3366aa, 0.2); g.fillRect(6, 10, 8, 1); g.fillRect(17, 18, 7, 1);
+  g.fillStyle(0x0d2233); g.fillRect(0, 0, 32, 32);
+  g.fillStyle(0x112840); g.fillRect(1, 1, 30, 30);
+  g.lineStyle(1, 0x1a4060, 0.6);
+  g.beginPath(); g.moveTo(5, 10); g.lineTo(13, 10); g.strokePath();
+  g.beginPath(); g.moveTo(17, 19); g.lineTo(27, 19); g.strokePath();
   g.generateTexture('water_deep', 32, 32);
 
-  // Water submersion overlay (32×18) — used to render over player lower half when wading
+  // Water submersion overlay — semi-transparent water surface drawn over player's lower body
   g.clear();
-  g.fillStyle(0x3366aa, 0.5); g.fillRect(0, 0, 32, 18);
-  g.fillStyle(0x5588cc, 0.2); g.fillRect(0, 0, 32, 5);  // surface highlight band
-  g.fillStyle(0x88bbdd, 0.25); g.fillRect(3, 7, 10, 1); g.fillRect(16, 11, 9, 1); g.fillRect(7, 14, 7, 1); // ripple lines
-  g.generateTexture('water_sub_overlay', 32, 18);
+  g.fillStyle(0x1a6080, 0.62); g.fillRect(0, 0, 32, 22);
+  g.fillStyle(0x44aacc, 0.22); g.fillRect(0, 0, 32, 6);   // surface highlight
+  g.lineStyle(1, 0x66ccee, 0.4);
+  g.beginPath(); g.moveTo(3, 8);  g.lineTo(12, 8);  g.strokePath();
+  g.beginPath(); g.moveTo(16, 14); g.lineTo(27, 14); g.strokePath();
+  g.beginPath(); g.moveTo(5, 18); g.lineTo(15, 18); g.strokePath();
+  g.generateTexture('water_sub_overlay', 32, 22);
 
   // Ice tile (32×32) — pale cyan, passable, slippery momentum
   g.clear();
@@ -3332,13 +3342,8 @@ class GameScene extends Phaser.Scene {
       });
     }
 
-    // Shallow water — flags player as in water each frame while overlapping
-    if (this.waterTiles && this.waterTiles.length) {
-      this.waterTiles.forEach(t => {
-        this.physics.add.overlap(this.p1.spr, t, () => { this.p1._inShallowWater = true; });
-        if (this.p2) this.physics.add.overlap(this.p2.spr, t, () => { this.p2._inShallowWater = true; });
-      });
-    }
+    // Shallow water wading detection — handled per-frame via _waterTileSet tile lookup
+    // (physics overlap approach was broken: callbacks fired before update() reset the flag)
     // Ice tiles — flags player for slippery momentum physics
     if (this.iceTiles && this.iceTiles.length) {
       this.iceTiles.forEach(t => {
@@ -3685,10 +3690,11 @@ class GameScene extends Phaser.Scene {
 
     this.obstacles = this.physics.add.staticGroup();
     this.toxicPools = []; // for swamp damage
-    this.waterTiles = [];     // shallow water — overlap (slow)
-    this.deepWaterTiles = []; // deep water — obstacles (impassable)
-    this.iceTiles = [];       // frozen water — overlap (slippery)
+    this.waterTiles = [];       // shallow water — visual only (no physics body)
+    this.deepWaterTiles = [];   // deep water — obstacles (impassable)
+    this.iceTiles = [];         // frozen water — overlap (slippery)
     this._iceTileSet = new Set(); // O(1) lookup for ice_crawler AI
+    this._waterTileSet = new Set(); // O(1) shallow water tile lookup for wading detection
 
     // Trees — dense forest clusters, biome-appropriate, non-overlapping
     const treesPlaced = [];
@@ -5436,9 +5442,10 @@ class GameScene extends Phaser.Scene {
     if (this.isOver) return;
     if (this._paused) return;
 
-    // Reset per-frame water/ice flags — overlap callbacks re-set them while active
-    if (this.p1) { this.p1._inShallowWater = false; this.p1._onIce = false; }
-    if (this.p2) { this.p2._inShallowWater = false; this.p2._onIce = false; }
+    // Reset per-frame ice flag — overlap callbacks re-set it while active
+    // (water flag is computed directly per-frame in applyTerrainEffects via _waterTileSet)
+    if (this.p1) { this.p1._onIce = false; }
+    if (this.p2) { this.p2._onIce = false; }
 
     if (this.controlsVis || this.barrackOpen) {
       this.p1.spr.setVelocity(0,0);
@@ -5724,7 +5731,17 @@ class GameScene extends Phaser.Scene {
   applyTerrainEffects(player) {
     if (!player || player.isDowned) return;
 
-    // Shallow water: 50% speed cap (flag set by overlap callback)
+    // Shallow water: detect via tile-set, apply 50% speed cap
+    {
+      const TILE = CFG.TILE;
+      const ptx = Math.floor(player.spr.x / TILE);
+      const pty = Math.floor(player.spr.y / TILE);
+      player._inShallowWater = !!(this._waterTileSet &&
+        (this._waterTileSet.has(`${ptx},${pty}`) ||
+         this._waterTileSet.has(`${ptx+1},${pty}`) ||
+         this._waterTileSet.has(`${ptx},${pty+1}`) ||
+         this._waterTileSet.has(`${ptx+1},${pty+1}`)));
+    }
     if (player._inShallowWater) {
       const vx = player.spr.body.velocity.x, vy = player.spr.body.velocity.y;
       player.spr.setVelocity(vx * 0.5, vy * 0.5);
@@ -5756,10 +5773,11 @@ class GameScene extends Phaser.Scene {
     if (!p || !p.waterOverlay || !p.waterOverlay.active) return;
     if (p._inShallowWater && !p.isDowned && p.spr.visible) {
       const h = p.spr.displayHeight;
-      // Position overlay so it covers the lower ~50% of the player sprite
-      p.waterOverlay.setPosition(p.spr.x, p.spr.y + h * 0.04);
-      p.waterOverlay.setDisplaySize(p.spr.displayWidth * 1.15, h * 0.52);
-      p.waterOverlay.setVisible(true).setAlpha(0.72);
+      const w = p.spr.displayWidth;
+      // Anchor at player center+, covers lower ~35% — looks like ankle/shin-deep wading
+      p.waterOverlay.setPosition(p.spr.x, p.spr.y + h * 0.18);
+      p.waterOverlay.setDisplaySize(w * 1.3, h * 0.38);
+      p.waterOverlay.setVisible(true).setAlpha(0.78);
     } else {
       p.waterOverlay.setVisible(false);
     }
@@ -7258,7 +7276,7 @@ class GameScene extends Phaser.Scene {
       ...Array.from({length: 35}, () => 'swamp'),   // 35 swamp ponds
       ...Array.from({length: 25}, () => 'tundra'),  // 25 tundra ice ponds
       ...Array.from({length: 20}, () => 'fungal'),  // 20 fungal ponds
-      ...Array.from({length: 10}, () => 'grass'),   // 10 grassland ponds
+      ...Array.from({length: 22}, () => 'grass'),   // 22 grassland ponds (players find these early)
     ];
     for (const biome of specs) {
       const isIce = biome === 'tundra';
@@ -7316,12 +7334,11 @@ class GameScene extends Phaser.Scene {
           tile.refreshBody();
           this.deepWaterTiles.push(tile);
         } else {
-          const tile = this.physics.add.image(x, y, 'water_shallow').setDepth(0.6).setAlpha(1);
-          tile.body.allowGravity = false; tile.body.setImmovable(true);
-          tile.body.setSize(30, 30);
+          // Pure visual ground tile — no physics body. Detection via _waterTileSet per-frame.
+          const tile = this._w(this.add.image(x, y, 'water_shallow').setOrigin(0).setDepth(0.75));
           if (this.hudCam) this.hudCam.ignore(tile);
-          this._w(tile);
           this.waterTiles.push(tile);
+          this._waterTileSet.add(key);
         }
       });
     }
