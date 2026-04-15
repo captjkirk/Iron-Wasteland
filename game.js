@@ -3428,6 +3428,7 @@ class GameScene extends Phaser.Scene {
                   if (!this._toxicCd1 || this._toxicCd1 <= 0) {
                     this.p1.hp = Math.max(0, this.p1.hp - 3);
                     this._toxicCd1 = 500;
+                    this._log(`${this.p1.charData.player} toxic pool dmg=3 hp=${this.p1.hp}/${this.p1.maxHp}`, 'combat');
                     this.p1.spr.setTint(0x44ff22);
                     this.time.delayedCall(150, () => {
                       if (!this.p1.spr?.active) return;
@@ -3441,6 +3442,7 @@ class GameScene extends Phaser.Scene {
                     if (!this._toxicCd2 || this._toxicCd2 <= 0) {
                       this.p2.hp = Math.max(0, this.p2.hp - 3);
                       this._toxicCd2 = 500;
+                      this._log(`${this.p2.charData.player} toxic pool dmg=3 hp=${this.p2.hp}/${this.p2.maxHp}`, 'combat');
                       this.p2.spr.setTint(0x44ff22);
                       this.time.delayedCall(150, () => {
                         if (!this.p2.spr?.active) return;
@@ -4006,7 +4008,9 @@ class GameScene extends Phaser.Scene {
     }
 
     // Ruins city — navigable abandoned city grid (replaces scattered pillars)
+    this._log('buildWorld: buildRuinsCity start', 'world');
     this.buildRuinsCity(stx, sty, TILE);
+    this._log('buildWorld: buildRuinsCity done', 'world');
 
     // Decorative craters — visual only, non-blocking
     for (let i = 0; i < 36; i++) {
@@ -4046,9 +4050,13 @@ class GameScene extends Phaser.Scene {
     }
 
     // Water ponds — swamp/tundra/fungal/grass (shallow+deep or ice)
+    this._log('buildWorld: _buildPonds start', 'world');
     this._buildPonds(stx, sty);
+    this._log(`buildWorld: _buildPonds done  water=${(this.waterTiles||[]).length} ice=${(this.iceTiles||[]).length} deep=${(this.deepWaterTiles||[]).length}`, 'world');
     // Larger lakes (6–8 per map) with water-den spawners
+    this._log('buildWorld: _buildLakes start', 'world');
     this._buildLakes(stx, sty);
+    this._log(`buildWorld: _buildLakes done  water=${(this.waterTiles||[]).length} ice=${(this.iceTiles||[]).length} dens=${(this.waterDens||[]).length}`, 'world');
 
     // _preCacheTiles already populated above (all POI positions, before tree/rock placement)
 
@@ -4191,10 +4199,14 @@ class GameScene extends Phaser.Scene {
 
     // ── POINTS OF INTEREST ────────────────────────────────────
     this.pois = [];
+    this._log('buildWorld: buildPOIs start', 'world');
     this.buildPOIs(stx, sty, TILE);
+    this._log(`buildWorld: buildPOIs done  pois=${(this.pois||[]).length}`, 'world');
 
     // ── BIOME STRUCTURES ─────────────────────────────────────
+    this._log('buildWorld: buildBiomeStructures start', 'world');
     this.buildBiomeStructures(stx, sty, TILE);
+    this._log(`buildWorld: buildBiomeStructures done  structures=${(this._structureLocs||[]).length}`, 'world');
 
     // Clear trees and rocks near ALL pre-computed POI positions.
     // Runs after buildBiomeStructures so structure wall tiles are never destroyed.
@@ -5182,6 +5194,7 @@ class GameScene extends Phaser.Scene {
 
   toggleControls() {
     this.controlsVis = !this.controlsVis;
+    this._log(`controls overlay ${this.controlsVis ? 'opened' : 'closed'}`, 'player');
     // Destroy old overlay and rebuild with current character data, then show/hide
     this.ctrlObjs.forEach(o => o.destroy());
     this.buildControlsOverlay();
@@ -5193,6 +5206,7 @@ class GameScene extends Phaser.Scene {
 
   togglePause() {
     this._paused = !this._paused;
+    this._log(`game ${this._paused ? 'paused' : 'resumed'}`, 'player');
     if (this._paused) {
       this.physics.world.pause();
       if (!this._pauseOverlay) {
@@ -5243,6 +5257,7 @@ class GameScene extends Phaser.Scene {
   }
 
   tryInteract(player) {
+    this._log(`${player.charData.player} interact  pos=(${Math.floor(player.spr.x/CFG.TILE)},${Math.floor(player.spr.y/CFG.TILE)})`, 'player');
     const dist = Phaser.Math.Distance.Between(player.spr.x, player.spr.y, this.bPos.x, this.bPos.y);
     if (dist < 110) { this.openBarrack(player); return; }
 
@@ -5408,6 +5423,7 @@ class GameScene extends Phaser.Scene {
   }
 
   openBarrack(player) {
+    this._log(`${player.charData.player} opened barracks`, 'player');
     this.barrackOpen = true; this.barrackOwner = player;
     this.barrackSel = CHARS.findIndex(c => c.id === player.charData.id);
     this.bHintText.setText(player===this.p1 ? 'A / D to select   |   F to confirm' : 'Arrow keys   |   / to confirm');
@@ -5470,12 +5486,14 @@ class GameScene extends Phaser.Scene {
 
   closeBarrack() {
     if (!this.barrackOpen) return;
+    this._log(`barracks closed`, 'player');
     this.barrackOpen = false; this.barrackOwner = null;
     this.bObjs.forEach(o => o.setVisible(false));
   }
 
   // ── HINT ─────────────────────────────────────────────────────
   hint(text, duration) {
+    this._log(`HINT: ${text}`, 'player');
     // Destroy any existing hint immediately so they never overlap
     if (this._activeHint && this._activeHint.active) {
       this.tweens.killTweensOf(this._activeHint);
@@ -5936,8 +5954,15 @@ class GameScene extends Phaser.Scene {
     const ptx = Math.floor(player.spr.x / TILE), pty = Math.floor(player.spr.y / TILE);
     const biome = getBiome(ptx, pty);
     if (biome === 'tundra') {
+      if (!player._inTundra) {
+        player._inTundra = true;
+        this._log(`${player.charData.player} entered tundra (speed x0.7)`, 'combat');
+      }
       const vx = player.spr.body.velocity.x, vy = player.spr.body.velocity.y;
       if (vx !== 0 || vy !== 0) player.spr.setVelocity(vx * 0.7, vy * 0.7);
+    } else if (player._inTundra) {
+      player._inTundra = false;
+      this._log(`${player.charData.player} left tundra`, 'combat');
     }
   }
 
@@ -6569,11 +6594,13 @@ class GameScene extends Phaser.Scene {
             if (b.type === 'boss_spider' && !p._webbed) {
               p._webbed = true;
               p._speedMult = 0;
+              this._log(`${p.charData.player} webbed by boss_spider – immobilised 1.5s hp=${p.hp}/${p.maxHp}`, 'combat');
               this.hint('WEBBED! Can\'t move!', 1500);
               this.time.delayedCall(1500, () => {
                 if (!p) return;
                 p._webbed = false;
                 p._speedMult = 1;
+                this._log(`${p.charData.player} web expired`, 'combat');
                 if (!p.spr?.active) return;
                 if (p._frostSlowed) p.spr.setTint(0x88ccff);
                 else p.spr.clearTint();
@@ -6763,6 +6790,7 @@ class GameScene extends Phaser.Scene {
   doAttack(player) {
     if (player.atkCooldown > 0) return;
     const id = player.charData.id;
+    this._log(`${player.charData.player} attack  char=${id}  hp=${player.hp}/${player.maxHp}`, 'player');
     if (id === 'gunslinger') {
       if (player.ammo <= 0) {
         // Pistol whip — melee fallback when out of ammo in clip
@@ -7037,6 +7065,7 @@ class GameScene extends Phaser.Scene {
     // Shield absorbs 60% of damage (70% with upgrade)
     const blockPct = player._knightUpgraded ? 0.70 : 0.60;
     const dmg = Math.max(1, Math.round(baseDmg * (1 - blockPct)));
+    this._log(`${player.charData.player} shield block absorbed ${baseDmg - dmg} (${dmg} through) hp=${player.hp}/${player.maxHp}`, 'combat');
 
     // Blue shield flash instead of red hurt tint
     player.spr.setTint(0x7799ff);
@@ -7458,6 +7487,7 @@ class GameScene extends Phaser.Scene {
           const maxReserve = 40 - player.ammo;
           player.reserveAmmo = Math.min(maxReserve, player.reserveAmmo + 3);
           this.redrawHUD();
+          this._log(`${player.charData.player} picked up ammo  reserve=${player.reserveAmmo}`, 'player');
           label = '+3 Ammo';
         } else if (item.itemType === 'food') {
           player.hp = Math.min(player.maxHp, player.hp + 15);
@@ -7552,6 +7582,7 @@ class GameScene extends Phaser.Scene {
     const { TILE, SAFE_R } = CFG;
     // Grass ponds near spawn use a tighter exclusion so they appear in the starting area.
     // Other biomes keep the larger exclusion to avoid cluttering the immediate spawn zone.
+    let _pondPlaced = 0, _pondSkipCenter = 0, _pondSkipBlob = 0;
     const specs = [
       ...Array.from({length: 35}, () => 'swamp'),   // 35 swamp ponds
       ...Array.from({length: 25}, () => 'tundra'),  // 25 tundra ice ponds
@@ -7587,7 +7618,7 @@ class GameScene extends Phaser.Scene {
           Math.abs(s.x / TILE - tx) < 10 && Math.abs(s.y / TILE - ty) < 10)) continue;
         cx = tx; cy = ty; break;
       }
-      if (cx < 0) continue;
+      if (cx < 0) { _pondSkipCenter++; continue; }
       // BFS blob expansion
       const tileSet = new Set();
       const visited = new Set();
@@ -7606,7 +7637,7 @@ class GameScene extends Phaser.Scene {
         });
       }
       // Discard blobs smaller than 12 tiles — prevents isolated puddles
-      if (tileSet.size < 12) continue;
+      if (tileSet.size < 12) { _pondSkipBlob++; continue; }
       // Classify and place tiles
       tileSet.forEach(key => {
         const [tx, ty] = key.split(',').map(Number);
@@ -7637,7 +7668,10 @@ class GameScene extends Phaser.Scene {
           this._waterTileSet.add(key);
         }
       });
+      _pondPlaced++;
+      this._log(`pond ${biome} placed  tiles=${tileSet.size} cx=${cx},cy=${cy}`, 'world');
     }
+    this._log(`_buildPonds done  placed=${_pondPlaced} skip_center=${_pondSkipCenter} skip_blob=${_pondSkipBlob}  water=${this.waterTiles.length} ice=${this.iceTiles.length} deep=${this.deepWaterTiles.length}`, 'world');
   }
 
   // ── LAKE GENERATION ──────────────────────────────────────────────────────
@@ -7646,6 +7680,7 @@ class GameScene extends Phaser.Scene {
   _buildLakes(stx, sty) {
     const { TILE, SAFE_R } = CFG;
     this.waterDens = this.waterDens || [];
+    let _lakePlaced = 0, _lakeSkipCenter = 0, _lakeSkipBlob = 0;
     // 7 lakes spread across the map; biome variety makes them feel natural
     const lakeSpecs = ['grass','grass','swamp','swamp','waste','tundra','fungal'];
     for (const biome of lakeSpecs) {
@@ -7663,7 +7698,7 @@ class GameScene extends Phaser.Scene {
           Math.abs(s.x / TILE - tx) < 12 && Math.abs(s.y / TILE - ty) < 12)) continue;
         cx = tx; cy = ty; break;
       }
-      if (cx < 0) continue;
+      if (cx < 0) { _lakeSkipCenter++; this._log(`lake ${biome} no center found – skipped`, 'world'); continue; }
 
       // BFS blob — slower decay (0.72) grows larger blobs than ponds (0.58)
       const tileSet = new Set();
@@ -7684,7 +7719,7 @@ class GameScene extends Phaser.Scene {
           });
       }
       // Lakes need to be substantial — skip tiny results
-      if (tileSet.size < 40) continue;
+      if (tileSet.size < 40) { _lakeSkipBlob++; this._log(`lake ${biome} blob too small (${tileSet.size}) – skipped`, 'world'); continue; }
 
       // Place tiles — lakes are all-shallow for wading (no impassable deep center)
       // so players can walk through them and encounter water_lurkers inside
@@ -7730,7 +7765,10 @@ class GameScene extends Phaser.Scene {
           this._spawnWaterLurker(ltx * TILE, lty * TILE);
         }
       }
+      _lakePlaced++;
+      this._log(`lake ${biome} placed  tiles=${tileSet.size} cx=${cx},cy=${cy}  den=${biome !== 'tundra'}`, 'world');
     }
+    this._log(`_buildLakes done  placed=${_lakePlaced} skip_center=${_lakeSkipCenter} skip_blob=${_lakeSkipBlob}  water=${this.waterTiles.length} ice=${this.iceTiles.length} dens=${this.waterDens.length}`, 'world');
   }
 
   _spawnWaterLurker(x, y) {
@@ -8338,6 +8376,7 @@ class GameScene extends Phaser.Scene {
             const dmg = this._knightShieldBlock(nearest, e.spr.x, e.spr.y, e.dmg);
             nearest.hp -= dmg;
             nearest.hp = Math.max(0, nearest.hp);
+            this._log(`${e.type} hit ${nearest.charData.player} dmg=${dmg} hp=${nearest.hp}/${nearest.maxHp}`, 'combat');
             SFX.playerHurt();
             if (nearest.isSleeping) { this.wakePlayer(nearest); this._hideSleepIndicator(); this.hint(nearest.charData.player + ' was woken by an enemy!', 2000); }
             // Only apply red hurt tint if shield didn't already flash blue
@@ -8484,11 +8523,14 @@ class GameScene extends Phaser.Scene {
           const maxReserve = 40 - player.ammo;
           player.reserveAmmo = Math.min(maxReserve, player.reserveAmmo + 4);
           this.redrawHUD();
+          this._log(`${player.charData.player} crate ammo  reserve=${player.reserveAmmo}`, 'player');
         } else if (crate.itemType === 'food') {
           player.hp = Math.min(player.maxHp, player.hp + 20);
+          this._log(`${player.charData.player} crate food  hp=${player.hp}/${player.maxHp}`, 'player');
         } else {
           player.inv[crate.itemType] = (player.inv[crate.itemType] || 0) + 2;
           this.resourcesGathered += 2;
+          this._log(`${player.charData.player} crate ${crate.itemType}  inv=${JSON.stringify(player.inv)}`, 'player');
         }
         SFX._play(600, 'triangle', 0.06, 0.2);
         crate.destroy();
@@ -8740,6 +8782,7 @@ class GameScene extends Phaser.Scene {
   openCraftMenu(player) {
     if (this.craftMenuOpen) { this.closeCraftMenu(); return; }
     this.craftMenuOpen = true;
+    this._log(`${player.charData.player} opened craft menu`, 'player');
     this.craftMenuOwner = player;
     this.craftMenuSel = 0;
     // Contextual tip: first time opening crafting menu
@@ -8780,6 +8823,7 @@ class GameScene extends Phaser.Scene {
   }
 
   closeCraftMenu() {
+    this._log(`craft menu closed`, 'player');
     this.craftMenuOpen = false;
     this.craftMenuOwner = null;
     if (this._craftMenuPointerFn) {
