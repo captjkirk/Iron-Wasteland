@@ -6,7 +6,7 @@
 
 // ── VERSION ───────────────────────────────────────────────────
 // Update this each commit so the title screen reflects the build date.
-const VERSION = 'Apr 15, 2026  12:48 AM EDT';
+const VERSION = 'Apr 15, 2026  01:15 AM EDT';
 
 // ── CONSTANTS ─────────────────────────────────────────────────
 // Detect mobile/phone: touch device with a small screen.
@@ -408,6 +408,55 @@ function drawBear(g) {
   g.fillStyle(0x6b3a1f); g.fillRect(2, 13, 4, 4); g.fillRect(8, 13, 4, 4);
   g.fillRect(13, 13, 4, 4); g.fillRect(17, 13, 3, 4);
   g.generateTexture('bear', 24, 18);
+}
+
+function drawIceCrawler(g) {
+  g.clear();
+  g.fillStyle(0x6699bb); g.fillRect(2, 3, 14, 6);          // body
+  g.fillStyle(0x88bbdd); g.fillRect(3, 4, 12, 4);           // highlight
+  g.fillStyle(0x4477aa); g.fillRect(2, 3, 2, 2); g.fillRect(14, 3, 2, 2); // head/tail caps
+  // Six legs — 3 per side
+  g.fillStyle(0x335577);
+  g.fillRect(4, 8, 1, 3); g.fillRect(7, 9, 1, 3); g.fillRect(10, 8, 1, 3);
+  g.fillRect(4, 1, 1, 3); g.fillRect(7, 0, 1, 3); g.fillRect(10, 1, 1, 3);
+  g.fillStyle(0xcceeff); g.fillRect(8, 5, 2, 1); // icy eye glint
+  g.generateTexture('ice_crawler', 18, 12);
+}
+
+function drawSpiderRuins(g) {
+  g.clear();
+  g.fillStyle(0x3a1a4a); g.fillCircle(8, 6, 5);             // body
+  g.fillStyle(0x5a2a6a); g.fillCircle(8, 4, 3);             // head
+  g.fillStyle(0xcc44ff); g.fillRect(6, 3, 1, 1); g.fillRect(9, 3, 1, 1); // eyes
+  // 4 legs per side
+  g.fillStyle(0x2a0e38);
+  g.fillRect(0, 4, 4, 1); g.fillRect(1, 6, 4, 1); g.fillRect(0, 8, 4, 1); g.fillRect(1, 9, 3, 1);
+  g.fillRect(12, 4, 4, 1); g.fillRect(11, 6, 4, 1); g.fillRect(12, 8, 4, 1); g.fillRect(12, 9, 3, 1);
+  g.generateTexture('spider_ruins', 16, 12);
+}
+
+function drawBogLurker(g) {
+  g.clear();
+  g.fillStyle(0x1a3a1a); g.fillEllipse(10, 8, 18, 10);      // body
+  g.fillStyle(0x2a5a2a); g.fillEllipse(10, 7, 14, 7);       // highlight
+  g.fillStyle(0x0a1e0a); g.fillRect(4, 10, 12, 4);          // bottom shadow
+  g.fillStyle(0x44aa44); g.fillRect(8, 5, 2, 2); g.fillRect(11, 6, 1, 1); // eyes
+  g.fillStyle(0x3a7a3a); g.fillRect(3, 8, 2, 2); g.fillRect(15, 9, 2, 2); // slime bumps
+  g.generateTexture('bog_lurker', 20, 14);
+}
+
+function drawDustHound(g) {
+  g.clear();
+  g.fillStyle(0xaa7733); g.fillRect(3, 4, 11, 6);           // body
+  g.fillStyle(0xcc9944); g.fillRect(4, 5, 9, 4);            // highlight
+  g.fillStyle(0x997722); g.fillRect(13, 3, 4, 5);           // head
+  g.fillStyle(0x553311); g.fillRect(15, 4, 2, 1);           // snout
+  g.fillStyle(0x111111); g.fillRect(14, 3, 1, 1);           // eye
+  g.fillStyle(0x886622);
+  g.fillRect(5, 9, 2, 3); g.fillRect(9, 9, 2, 3);          // back legs
+  g.fillRect(4, 5, 2, 3); g.fillRect(1, 5, 2, 2);          // front legs
+  g.fillStyle(0xaa7733); g.fillRect(0, 3, 3, 2);            // tail
+  g.generateTexture('dust_hound', 18, 12);
 }
 
 function getControls(playerNum, charId, isSolo) {
@@ -1278,7 +1327,7 @@ function buildTextures(scene) {
   g.generateTexture('boss_hydra', 40, 40);
 
   // Enemy sprites
-  drawWolf(g); drawRat(g); drawBear(g);
+  drawWolf(g); drawRat(g); drawBear(g); drawIceCrawler(g); drawSpiderRuins(g); drawBogLurker(g); drawDustHound(g);
 
   g.destroy();
 }
@@ -5234,6 +5283,10 @@ class GameScene extends Phaser.Scene {
     if (this._toxicCd1 > 0) this._toxicCd1 -= delta;
     if (this._toxicCd2 > 0) this._toxicCd2 -= delta;
 
+    // Web slow cooldown ticking
+    if (this.p1 && (this.p1._webSlowCd || 0) > 0) this.p1._webSlowCd = Math.max(0, this.p1._webSlowCd - delta);
+    if (this.p2 && (this.p2._webSlowCd || 0) > 0) this.p2._webSlowCd = Math.max(0, this.p2._webSlowCd - delta);
+
     // Tundra slowdown effect
     this.applyTundraSlowdown(this.p1);
     if (this.p2) this.applyTundraSlowdown(this.p2);
@@ -6562,6 +6615,33 @@ class GameScene extends Phaser.Scene {
     });
   }
 
+  _dropSpiderWeb(x, y) {
+    if (!this.activeWebs) this.activeWebs = [];
+    const web = this.physics.add.image(x, y, 'spiderweb').setScale(1.8).setDepth(3).setAlpha(0.8);
+    web.body.allowGravity = false;
+    web.body.setImmovable(true);
+    web.body.setSize(20, 20);
+    if (this.hudCam) this.hudCam.ignore(web);
+    this._w(web);
+    this.activeWebs.push(web);
+    [this.p1, this.p2].forEach(p => {
+      if (!p) return;
+      this.physics.add.overlap(p.spr, web, () => {
+        if (!web.active || (p._webSlowCd || 0) > 0) return;
+        p._webSlowCd = 2500;
+        p._speedMult = 0.4;
+        this.hint('Caught in a web!', 1500);
+        this.time.delayedCall(2500, () => {
+          if (p && p.spr?.active) { p._speedMult = 1; p._webSlowCd = 0; }
+        });
+      });
+    });
+    this.time.delayedCall(20000, () => {
+      if (web.active) web.destroy();
+      this.activeWebs = (this.activeWebs || []).filter(w => w !== web);
+    });
+  }
+
   // Attach a pulsating warm-glow halo to a campfire, campsite, or torch.
   // baseScale controls the radius: 1.0 = campfire/campsite, 0.45 = torch.
   _addFireGlow(x, y, baseScale = 1.0) {
@@ -6660,6 +6740,18 @@ class GameScene extends Phaser.Scene {
       SFX._play(1100, 'triangle', 0.25, 0.5, 'rise');
       this.cameras.main.shake(600, 0.018);
       this.dropResource(ex, ey, 'rare');
+    }
+    // Dust Hound pack frenzy — surviving packmates speed up for 4s on death
+    if (e.type === 'dust_hound' && e._packId !== undefined) {
+      this.enemies.forEach(other => {
+        if (other.type === 'dust_hound' && other._packId === e._packId && other.spr?.active) {
+          other._frenzied = true;
+          other.spr.setTint(0xff8800);
+          this.time.delayedCall(4000, () => {
+            if (other.spr?.active) { other._frenzied = false; other.spr.clearTint(); }
+          });
+        }
+      });
     }
     this.dropResource(ex, ey, e.type);
   }
@@ -6823,6 +6915,13 @@ class GameScene extends Phaser.Scene {
     this.WAVE_INTERVAL = 90000; // 90 seconds between waves
     this._spawnGroup(worldW, worldH, cx, cy, { wolf:8, rat:10, bear:3 }, false);
 
+    // Initial biome-exclusive enemy spawns
+    this._nextPackId = 0;
+    this._spawnBiomeEnemy('ice_crawler',  'tundra', 8,  1);
+    this._spawnBiomeEnemy('spider_ruins', 'ruins',  8,  1);
+    this._spawnBiomeEnemy('bog_lurker',   'swamp',  6,  1);
+    this._spawnBiomeEnemy('dust_hound',   'waste',  12, 3); // 4 packs of 3
+
     // Spawn structure guards — 2-4 enemies per biome structure (high danger zone)
     if (this._structureLocs) {
       const biomeGuardType = { grass:'wolf', tundra:'wolf', swamp:'rat', waste:'bear' };
@@ -6861,6 +6960,62 @@ class GameScene extends Phaser.Scene {
     }
   }
 
+  _spawnBiomeEnemy(type, biome, count, packSize) {
+    const { TILE, SAFE_R } = CFG;
+    const D = this._diffMult();
+    const worldW = this.enemyWorldW, worldH = this.enemyWorldH;
+    const cx = this.enemyCX, cy = this.enemyCY;
+    const defs = {
+      ice_crawler:  { hp:45,  speed:130, dmg:7,  baseScale:1.6, w:18, h:12, atkInterval:1400 },
+      spider_ruins: { hp:40,  speed:70,  dmg:8,  baseScale:1.6, w:16, h:12, atkInterval:1800 },
+      bog_lurker:   { hp:55,  speed:55,  dmg:13, baseScale:1.8, w:20, h:14, atkInterval:2000 },
+      dust_hound:   { hp:28,  speed:118, dmg:5,  baseScale:1.3, w:18, h:12, atkInterval:1300 },
+    };
+    const aggros = { ice_crawler:160, spider_ruins:130, bog_lurker:80, dust_hound:200 };
+    const t = defs[type];
+    if (!t) return;
+    const ps = packSize || 1;
+    let placed = 0;
+    const maxAttempts = count * 8;
+    let packId = this._nextPackId || 0;
+    for (let attempt = 0; attempt < maxAttempts && placed < count; attempt++) {
+      const tx = Phaser.Math.Between(TILE * 5, worldW - TILE * 5);
+      const ty = Phaser.Math.Between(TILE * 5, worldH - TILE * 5);
+      if (getBiome(Math.round(tx / TILE), Math.round(ty / TILE)) !== biome) continue;
+      if (Phaser.Math.Distance.Between(tx, ty, cx, cy) < SAFE_R * TILE * 2.5) continue;
+      // For pack types, spawn ps enemies clustered near this point
+      const spawnCount = (type === 'dust_hound') ? ps : 1;
+      for (let pi = 0; pi < spawnCount && placed < count; pi++) {
+        const ex = tx + Phaser.Math.Between(-20, 20);
+        const ey = ty + Phaser.Math.Between(-20, 20);
+        const sizeMult = Phaser.Math.FloatBetween(1.0, 1.4);
+        const sc = t.baseScale * sizeMult;
+        const hp  = Math.floor(t.hp  * sizeMult * D);
+        const dmg = Math.max(1, Math.floor(t.dmg * sizeMult * D));
+        const spd = t.speed * D * (sizeMult > 1.2 ? 0.85 : 1);
+        const atkInterval = Math.max(500, Math.round(t.atkInterval / D));
+        const spr = this.physics.add.image(
+          Phaser.Math.Clamp(ex, TILE*3, worldW-TILE*3),
+          Phaser.Math.Clamp(ey, TILE*3, worldH-TILE*3), type
+        ).setScale(sc).setDepth(8);
+        spr.setCollideWorldBounds(true);
+        spr.body.setSize(t.w, t.h);
+        if (this.hudCam) this.hudCam.ignore(spr);
+        this.physics.add.collider(spr, this.obstacles);
+        const aggroR = aggros[type] || 160;
+        const atkR = (30 + t.w / 2) * sizeMult;
+        const e = { spr, hp, maxHp:hp, speed:spd, dmg, atkInterval, type, attackTimer:0,
+          wanderTimer:Phaser.Math.Between(0,2000), aggroRange:aggroR, attackRange:atkR, sizeMult };
+        if (type === 'bog_lurker') { e._lurking = true; spr.setAlpha(0.25); }
+        if (type === 'dust_hound') { e._packId = packId; }
+        this.enemies.push(e);
+        placed++;
+      }
+      if (type === 'dust_hound') packId++;
+    }
+    this._nextPackId = packId;
+  }
+
   // Day-based difficulty multiplier.
   // Day 1 = 1.0× (base tuned values). Grows 10% per day, caps at 3.0× on day 21+.
   // Applies to enemy HP, damage, speed, and attack rate at spawn time.
@@ -6872,11 +7027,15 @@ class GameScene extends Phaser.Scene {
     const { TILE, SAFE_R } = CFG;
     const D = this._diffMult();
     // Base attack intervals (ms) — divided by D so enemies attack faster on later days
-    const baseAtkInterval = { wolf: 1600, rat: 1200, bear: 2400 };
+    const baseAtkInterval = { wolf: 1600, rat: 1200, bear: 2400, ice_crawler: 1400, spider_ruins: 1800, bog_lurker: 2000, dust_hound: 1300 };
     const types = [
-      { key:'wolf', hp:60,  speed:75,  dmg:6,  baseScale:1.8, w:20, h:12 },
-      { key:'rat',  hp:30,  speed:105, dmg:4,  baseScale:1.4, w:15, h:9  },
-      { key:'bear', hp:140, speed:50,  dmg:16, baseScale:2.2, w:24, h:18 },
+      { key:'wolf',         hp:60,  speed:75,  dmg:6,  baseScale:1.8, w:20, h:12 },
+      { key:'rat',          hp:30,  speed:105, dmg:4,  baseScale:1.4, w:15, h:9  },
+      { key:'bear',         hp:140, speed:50,  dmg:16, baseScale:2.2, w:24, h:18 },
+      { key:'ice_crawler',  hp:45,  speed:130, dmg:7,  baseScale:1.6, w:18, h:12 },
+      { key:'spider_ruins', hp:40,  speed:70,  dmg:8,  baseScale:1.6, w:16, h:12 },
+      { key:'bog_lurker',   hp:55,  speed:55,  dmg:13, baseScale:1.8, w:20, h:14 },
+      { key:'dust_hound',   hp:28,  speed:118, dmg:5,  baseScale:1.3, w:18, h:12 },
     ];
     types.forEach(t => {
       const n = counts[t.key] || 0;
@@ -6908,7 +7067,7 @@ class GameScene extends Phaser.Scene {
         if (this.hudCam) this.hudCam.ignore(spr);
         this.physics.add.collider(spr, this.obstacles);
         // Per-type aggro ranges: bears are territorial (wide), rats are skittish (narrow)
-        const baseAggro = { wolf: 190, rat: 110, bear: 290 }[t.key] || 160;
+        const baseAggro = { wolf: 190, rat: 110, bear: 290, ice_crawler: 160, spider_ruins: 130, bog_lurker: 80, dust_hound: 200 }[t.key] || 160;
         const aggroR = baseAggro * (sizeMult > 1.2 ? 1.2 : 1);
         const atkR = (30 + t.w/2) * sizeMult;
         const e = { spr, hp, maxHp:hp, speed:spd, dmg, atkInterval, type:t.key, attackTimer:0, wanderTimer:Phaser.Math.Between(0,2000), aggroRange:aggroR, attackRange:atkR, sizeMult };
@@ -6927,6 +7086,13 @@ class GameScene extends Phaser.Scene {
       const r = Math.min(8 + this.waveNum * 3, 30);
       const b = Math.min(1 + this.waveNum, 8);
       this._spawnGroup(this.enemyWorldW, this.enemyWorldH, this.enemyCX, this.enemyCY, { wolf:w, rat:r, bear:b }, true);
+      if (this.dayNum >= 2) {
+        const wn = this.waveNum;
+        this._spawnBiomeEnemy('ice_crawler',  'tundra', Math.min(2 + wn, 6),  1);
+        this._spawnBiomeEnemy('spider_ruins', 'ruins',  Math.min(2 + wn, 6),  1);
+        this._spawnBiomeEnemy('bog_lurker',   'swamp',  Math.min(1 + wn, 4),  1);
+        this._spawnBiomeEnemy('dust_hound',   'waste',  Math.min(3 * wn, 9),  3);
+      }
       this._log('Wave ' + (this.waveNum+1) + ' day=' + this.dayNum + ' diff=' + this._diffMult().toFixed(1) + 'x  w=' + w + ' r=' + r + ' b=' + b);
       this.hint('Wave ' + (this.waveNum+1) + '! Enemies approaching from the wastes!', 3000);
       SFX._play(200, 'sawtooth', 0.3, 0.4, 'drop');
@@ -7175,6 +7341,46 @@ class GameScene extends Phaser.Scene {
         }
         return;
       }
+      // ── Biome-enemy special pre-frame logic ──────────────────
+      // Bog Lurker: stays hidden until player is within 90px, then bursts
+      if (e.type === 'bog_lurker') {
+        if (e._lurking) {
+          const closePlayer = [this.p1, this.p2].find(p =>
+            p && !p.isDowned && Phaser.Math.Distance.Between(e.spr.x, e.spr.y, p.spr.x, p.spr.y) < 90
+          );
+          if (closePlayer) {
+            e._lurking = false;
+            e.spr.setAlpha(1);
+            e._ambushTimer = 2200;
+            SFX._play(200, 'sawtooth', 0.1, 0.3, 'drop');
+          } else {
+            e.spr.setVelocity(0, 0);
+            return;
+          }
+        }
+        if ((e._ambushTimer || 0) > 0) {
+          e._ambushTimer -= delta;
+          e._effectiveSpeed = e.speed * 2.8;
+        } else {
+          e._effectiveSpeed = e.speed;
+        }
+      } else if (e.type === 'ice_crawler') {
+        const btile = getBiome(Math.round(e.spr.x / CFG.TILE), Math.round(e.spr.y / CFG.TILE));
+        e._effectiveSpeed = (btile === 'tundra') ? e.speed : Math.floor(e.speed * 0.6);
+      } else if (e.type === 'dust_hound') {
+        e._effectiveSpeed = e._frenzied ? Math.floor(e.speed * 1.35) : e.speed;
+      } else {
+        e._effectiveSpeed = e.speed;
+      }
+      // Spider: drop a web every 8 seconds
+      if (e.type === 'spider_ruins') {
+        e._webDropTimer = (e._webDropTimer || 8000) - delta;
+        if (e._webDropTimer <= 0) {
+          e._webDropTimer = 8000;
+          this._dropSpiderWeb(e.spr.x, e.spr.y);
+        }
+      }
+
       let nearest = null, nearDist = Infinity;
       players.forEach(p => {
         const d = Phaser.Math.Distance.Between(e.spr.x, e.spr.y, p.spr.x, p.spr.y);
@@ -7185,7 +7391,7 @@ class GameScene extends Phaser.Scene {
       const aggroRange = e.aggroRange * nightMult;
 
       if (nearDist < aggroRange) {
-        const spd = e.speed * nightMult;
+        const spd = (e._effectiveSpeed !== undefined ? e._effectiveSpeed : e.speed) * nightMult;
 
         // LOS check — can the enemy see the player through mountains/walls?
         const canSee = this._hasLOS(e.spr.x, e.spr.y, nearest.spr.x, nearest.spr.y);
@@ -7260,8 +7466,8 @@ class GameScene extends Phaser.Scene {
         e.wanderTimer -= delta;
         if (e.wanderTimer <= 0) {
           const ang = Math.random() * Math.PI * 2;
-          const spd = e.speed * 0.3;
-          e.spr.setVelocity(Math.cos(ang)*spd, Math.sin(ang)*spd);
+          const wspd = (e._effectiveSpeed !== undefined ? e._effectiveSpeed : e.speed) * 0.3;
+          e.spr.setVelocity(Math.cos(ang)*wspd, Math.sin(ang)*wspd);
           e.wanderTimer = Phaser.Math.Between(1500, 3500);
         }
       }
