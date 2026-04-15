@@ -4637,9 +4637,16 @@ class GameScene extends Phaser.Scene {
       this.wakePlayer(player);
     } else {
       if (player.isDowned || player.isPermanentlyDead) return;
+
+      // Check for nearby enemies — warn but still allow sleep
+      const nearEnemy = this.enemies && this.enemies.some(e =>
+        !e.dying && Phaser.Math.Distance.Between(player.spr.x, player.spr.y, e.spr.x, e.spr.y) < 200
+      );
+
       player.isSleeping = true;
       player.spr.setTint(0x9977cc);
       player.spr.setAlpha(0.75);
+
       // Floating Zzz text
       if (player.zzzText) player.zzzText.destroy();
       player.zzzText = this._w(this.add.text(player.spr.x, player.spr.y - 30, 'Zzz…', {
@@ -4649,8 +4656,17 @@ class GameScene extends Phaser.Scene {
       this.tweens.add({ targets: player.zzzText, y: player.spr.y - 52, alpha: 0.7,
         duration: 2000, yoyo: true, repeat: -1, ease: 'Sine.easeInOut' });
       SFX._play(220, 'sine', 0.05, 0.6);
-      const allNote = this.solo ? '' : ' Both asleep = night speeds up!';
-      this.hint(player.charData.player + ' is sleeping… (+8 HP/tick)' + allNote, 3000);
+
+      // Context-aware hint with vulnerability warning
+      const vulnWarn = nearEnemy
+        ? ' \u26a0 ENEMIES NEARBY \u2014 you will be woken!'
+        : ' Enemies will wake you.';
+      if (this.isNight) {
+        const skipNote = this.solo ? 'Night fast-forwarding to dawn!' : 'Both asleep = night speeds up!';
+        this.hint(player.charData.player + ' sleeping \u2014 ' + skipNote + '\n(+8 HP/tick)' + vulnWarn, 4500);
+      } else {
+        this.hint(player.charData.player + ' resting\u2026 (+8 HP/tick)  Sleep at night to skip to dawn.' + vulnWarn, 3800);
+      }
     }
   }
 
@@ -4680,9 +4696,10 @@ class GameScene extends Phaser.Scene {
     const cycle = this.dayTimer % this.DAY_DUR;
     const pct = cycle / this.DAY_DUR;
     if (pct < 0.05 && sleeping.length > 0) {
+      this._hideSleepIndicator();
       sleeping.forEach(p => {
         this.wakePlayer(p);
-        this.hint(p.charData.player + ' wakes up refreshed!', 2000);
+        this.hint(p.charData.player + ' wakes up refreshed! (+HP restored)', 2500);
       });
       return;
     }
@@ -4708,11 +4725,34 @@ class GameScene extends Phaser.Scene {
     if (allSleeping && this.isNight) {
       if (this.sleepSpeedMult !== 8) {
         this.sleepSpeedMult = 8;
-        this.hint('Everyone asleep \u2014 night rushing by!', 3000);
+        // Show fast-forward HUD indicator
+        this._showSleepIndicator();
       }
     } else {
+      if (this.sleepSpeedMult === 8) this._hideSleepIndicator();
       this.sleepSpeedMult = 1;
     }
+  }
+
+  _showSleepIndicator() {
+    if (this._sleepIndicator && this._sleepIndicator.active) return;
+    const W = this.scale.width;
+    this._sleepIndicator = this._h(this.add.text(W / 2, 52, '\u23e9  NIGHT SKIP  \u23e9', {
+      fontFamily: 'monospace', fontSize: '13px', color: '#ccaaff',
+      backgroundColor: '#1a0033', padding: { x: 10, y: 4 },
+    }).setOrigin(0.5, 0).setDepth(300).setScrollFactor(0).setAlpha(0));
+    this.tweens.add({ targets: this._sleepIndicator, alpha: 0.9, duration: 400, ease: 'Sine.Out' });
+    // Pulse the text while active
+    this.tweens.add({ targets: this._sleepIndicator, alpha: 0.5, duration: 700,
+      yoyo: true, loop: -1, delay: 400, ease: 'Sine.InOut' });
+  }
+
+  _hideSleepIndicator() {
+    if (!this._sleepIndicator || !this._sleepIndicator.active) return;
+    const ind = this._sleepIndicator;
+    this._sleepIndicator = null;
+    this.tweens.add({ targets: ind, alpha: 0, duration: 600, ease: 'Sine.In',
+      onComplete: () => { if (ind.active) ind.destroy(); } });
   }
 
   openBarrack(player) {
@@ -6497,7 +6537,7 @@ class GameScene extends Phaser.Scene {
             nearest.hp -= e.dmg;
             nearest.hp = Math.max(0, nearest.hp);
             SFX.playerHurt();
-            if (nearest.isSleeping) { this.wakePlayer(nearest); this.hint(nearest.charData.player + ' woke up!', 1500); }
+            if (nearest.isSleeping) { this.wakePlayer(nearest); this._hideSleepIndicator(); this.hint(nearest.charData.player + ' was woken by an enemy!', 2000); }
             nearest.spr.setTint(0xff0000);
             this.time.delayedCall(150, () => { if(nearest.spr.active) nearest.spr.clearTint(); });
             e.attackTimer = e.atkInterval || (e.type==='bear' ? 2400 : e.type==='wolf' ? 1600 : 1200);
