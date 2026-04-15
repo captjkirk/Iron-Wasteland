@@ -1,0 +1,22 @@
+#!/usr/bin/env bash
+# Automatically stamps VERSION in game.js with the current UTC ISO time
+# on every commit, so the build date shown to players is always accurate.
+set -euo pipefail
+
+GAME_FILE="game.js"
+
+if [ ! -f "$GAME_FILE" ]; then
+  echo "pre-commit: $GAME_FILE not found, skipping VERSION stamp" >&2
+  exit 0
+fi
+
+# Current time as UTC ISO 8601 (e.g. 2026-04-15T13:43:00Z)
+NEW_VERSION=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
+
+# Replace the VERSION constant — matches the ISO format we now use
+sed -i "s|const VERSION = '[0-9T:Z-]*';|const VERSION = '${NEW_VERSION}';|" "$GAME_FILE"
+
+# Re-stage the file so the updated timestamp is included in this commit
+git add "$GAME_FILE"
+
+echo "pre-commit: VERSION stamped → ${NEW_VERSION}"
