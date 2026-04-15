@@ -3308,7 +3308,11 @@ class GameScene extends Phaser.Scene {
             this.p1.hp = Math.max(0, this.p1.hp - 3);
             this._toxicCd1 = 500;
             this.p1.spr.setTint(0x44ff22);
-            this.time.delayedCall(150, () => { if(this.p1.spr.active) this.p1.spr.clearTint(); });
+            this.time.delayedCall(150, () => {
+              if (!this.p1.spr?.active) return;
+              if (this.p1._frostSlowed) this.p1.spr.setTint(0x88ccff);
+              else this.p1.spr.clearTint();
+            });
           }
         });
         if (this.p2) {
@@ -3317,7 +3321,11 @@ class GameScene extends Phaser.Scene {
               this.p2.hp = Math.max(0, this.p2.hp - 3);
               this._toxicCd2 = 500;
               this.p2.spr.setTint(0x44ff22);
-              this.time.delayedCall(150, () => { if(this.p2.spr.active) this.p2.spr.clearTint(); });
+              this.time.delayedCall(150, () => {
+                if (!this.p2.spr?.active) return;
+                if (this.p2._frostSlowed) this.p2.spr.setTint(0x88ccff);
+                else this.p2.spr.clearTint();
+              });
             }
           });
         }
@@ -4878,7 +4886,8 @@ class GameScene extends Phaser.Scene {
     player.isDowned = false;
     player.hp = Math.floor(player.maxHp * 0.3);
     player.downTimer = 0;
-    player.spr.clearTint();
+    if (player._frostSlowed) player.spr.setTint(0x88ccff);
+    else player.spr.clearTint();
     player.spr.setAlpha(1.0);
     if (player.downText) { player.downText.destroy(); player.downText = null; }
     this.reviveProgress = 0;
@@ -5141,7 +5150,8 @@ class GameScene extends Phaser.Scene {
   wakePlayer(player) {
     if (!player.isSleeping) return;
     player.isSleeping = false;
-    player.spr.clearTint();
+    if (player._frostSlowed) player.spr.setTint(0x88ccff);
+    else player.spr.clearTint();
     player.spr.setAlpha(1);
     if (player.zzzText) { player.zzzText.destroy(); player.zzzText = null; }
   }
@@ -5438,8 +5448,9 @@ class GameScene extends Phaser.Scene {
 
     this.timeAlive += delta / 1000;
 
-    // Movement — skip if downed or sleeping
-    if (!this.p1.isDowned && !this.p1.isSleeping) {
+    // Movement — skip if downed, sleeping, or owns the open craft menu
+    const p1CraftHalt = this.craftMenuOpen && this.craftMenuOwner === this.p1;
+    if (!this.p1.isDowned && !this.p1.isSleeping && !p1CraftHalt) {
       if (this._touchActive) {
         this.applyTouchInput();  // touch: joystick drives movement + facing
       } else {
@@ -5450,7 +5461,8 @@ class GameScene extends Phaser.Scene {
     else this.p1.spr.setVelocity(0,0);
 
     if (this.p2) {
-      if (!this.p2.isDowned && !this.p2.isSleeping) this.movePlayer(this.p2, this.cursors.left, this.cursors.right, this.cursors.up, this.cursors.down);
+      const p2CraftHalt = this.craftMenuOpen && this.craftMenuOwner === this.p2;
+      if (!this.p2.isDowned && !this.p2.isSleeping && !p2CraftHalt) this.movePlayer(this.p2, this.cursors.left, this.cursors.right, this.cursors.up, this.cursors.down);
       else this.p2.spr.setVelocity(0,0);
     }
 
@@ -5554,6 +5566,12 @@ class GameScene extends Phaser.Scene {
     const { W, H } = CFG;
     const px = pointer.x, py = pointer.y;
 
+    // Skip joystick/button activation when tapping inside the craft menu panel
+    if (this.craftMenuOpen) {
+      const PW = 440, PH = 330, PX = (W - PW) / 2, PY = H - PH - 20;
+      if (px >= PX && px <= PX + PW && py >= PY && py <= PY + PH) return;
+    }
+
     // Left 45% of screen and bottom 55% → joystick
     if (px < W * 0.45 && py > H * 0.35 && !this._joy.active) {
       this._joy.active = true;
@@ -5615,6 +5633,7 @@ class GameScene extends Phaser.Scene {
     if (this.isOver || !this.p1) return;
     if (name === 'attack') {
       if (this.barrackOpen || this.p1.isDowned || this.p1.isSleeping) return;
+      if (this.craftMenuOpen && this.craftMenuOwner === this.p1) { this.craftSelected(); return; }
       if (this.buildMode && this.buildOwner === this.p1) this.placeBuild();
       else this.doAttack(this.p1);
     } else if (name === 'alt') {
@@ -5924,7 +5943,11 @@ class GameScene extends Phaser.Scene {
         // Only apply red hurt tint if shield didn't already flash blue
         if (dmg >= baseDmg) {
           p.spr.setTint(0xff0000);
-          this.time.delayedCall(150, () => { if (p.spr.active) p.spr.clearTint(); });
+          this.time.delayedCall(150, () => {
+            if (!p.spr?.active) return;
+            if (p._frostSlowed) p.spr.setTint(0x88ccff);
+            else p.spr.clearTint();
+          });
         }
         this.checkDeaths();
       });
@@ -6165,7 +6188,11 @@ class GameScene extends Phaser.Scene {
             SFX.playerHurt();
             nearest.spr.setTint(0xff0000);
             this.cameras.main.shake(300, 0.008);
-            this.time.delayedCall(200, () => { if (nearest.spr?.active) nearest.spr.clearTint(); });
+            this.time.delayedCall(200, () => {
+              if (!nearest.spr?.active) return;
+              if (nearest._frostSlowed) nearest.spr.setTint(0x88ccff);
+              else nearest.spr.clearTint();
+            });
             // Frost Troll — apply frost slow on melee hit
             if (b.type === 'boss_troll' && !nearest._frostSlowed) {
               nearest._frostSlowed = true;
@@ -6290,7 +6317,11 @@ class GameScene extends Phaser.Scene {
           p.hp = Math.max(0, p.hp - Math.round(b.dmg * 0.85));
           SFX.playerHurt();
           p.spr.setTint(b.type === 'boss_troll' ? 0x88ccff : 0xff4400);
-          this.time.delayedCall(250, () => { if (p.spr.active) p.spr.clearTint(); });
+          this.time.delayedCall(250, () => {
+            if (!p.spr?.active) return;
+            if (p._frostSlowed) p.spr.setTint(0x88ccff);
+            else p.spr.clearTint();
+          });
         }
       });
       this.checkDeaths();
@@ -6309,7 +6340,11 @@ class GameScene extends Phaser.Scene {
             SFX.playerHurt();
             p.spr.setTint(0xff8800);
             this.cameras.main.shake(250, 0.01);
-            this.time.delayedCall(200, () => { if (p.spr.active) p.spr.clearTint(); });
+            this.time.delayedCall(200, () => {
+              if (!p.spr?.active) return;
+              if (p._frostSlowed) p.spr.setTint(0x88ccff);
+              else p.spr.clearTint();
+            });
           }
         });
         this.checkDeaths();
@@ -6344,10 +6379,16 @@ class GameScene extends Phaser.Scene {
                 if (!p) return;
                 p._webbed = false;
                 p._speedMult = 1;
-                if (p.spr?.active) p.spr.clearTint();
+                if (!p.spr?.active) return;
+                if (p._frostSlowed) p.spr.setTint(0x88ccff);
+                else p.spr.clearTint();
               });
             } else {
-              this.time.delayedCall(220, () => { if (p.spr?.active) p.spr.clearTint(); });
+              this.time.delayedCall(220, () => {
+                if (!p.spr?.active) return;
+                if (p._frostSlowed) p.spr.setTint(0x88ccff);
+                else p.spr.clearTint();
+              });
             }
             this.checkDeaths();
           });
@@ -6784,7 +6825,11 @@ class GameScene extends Phaser.Scene {
 
     // Blue shield flash instead of red hurt tint
     player.spr.setTint(0x7799ff);
-    this.time.delayedCall(200, () => { if (player.spr && player.spr.active) player.spr.clearTint(); });
+    this.time.delayedCall(200, () => {
+      if (!player.spr?.active) return;
+      if (player._frostSlowed) player.spr.setTint(0x88ccff);
+      else player.spr.clearTint();
+    });
     // Metallic clank
     SFX._play(380, 'square', 0.06, 0.08);
     // Floating "BLOCK!" label
@@ -7836,7 +7881,11 @@ class GameScene extends Phaser.Scene {
             // Only apply red hurt tint if shield didn't already flash blue
             if (dmg >= e.dmg) {
               nearest.spr.setTint(0xff0000);
-              this.time.delayedCall(150, () => { if(nearest.spr.active) nearest.spr.clearTint(); });
+              this.time.delayedCall(150, () => {
+                if (!nearest.spr?.active) return;
+                if (nearest._frostSlowed) nearest.spr.setTint(0x88ccff);
+                else nearest.spr.clearTint();
+              });
             }
             e.attackTimer = e.atkInterval || (e.type==='bear' ? 2400 : e.type==='wolf' ? 1600 : 1200);
             this.checkDeaths();
@@ -8231,7 +8280,10 @@ class GameScene extends Phaser.Scene {
     // Contextual tip: first time opening crafting menu
     if (!this._ctx.firstCraft) {
       this._ctx.firstCraft = true;
-      this.time.delayedCall(400, () => this.hint('W/S to navigate, Attack to craft. Build Walls to protect yourself!', 5000));
+      const craftHint = this._touchActive
+        ? 'Tap to select, tap again (or ATK) to craft. Build Walls to protect yourself!'
+        : 'Click to select, click again (or Attack) to craft. Build Walls to protect yourself!';
+      this.time.delayedCall(400, () => this.hint(craftHint, 5000));
     } else if (!this._ctx.firstUpgradeHint && this.dayNum >= 2) {
       this._ctx.firstUpgradeHint = true;
       this.time.delayedCall(400, () => this.hint('Craft a Craftbench to unlock character upgrades — enemies get stronger each day!', 6000));
@@ -8242,11 +8294,33 @@ class GameScene extends Phaser.Scene {
     this._craftNavDn   = this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.S);
     this._craftNavDn2  = this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.DOWN);
     // Close is handled by the p1build/p2build key listeners (toggle via openCraftMenu)
+
+    // Tap / click to select or craft — works for mouse and touch
+    this._craftMenuPointerFn = (ptr) => {
+      const { W, H } = CFG;
+      const PW = 440, PH = 330, PX = (W - PW) / 2, PY = H - PH - 20;
+      const px = ptr.x, py = ptr.y;
+      if (px < PX || px > PX + PW || py < PY || py > PY + PH) return;
+      const RECIPES = GameScene.RECIPES;
+      for (let idx = 0; idx < RECIPES.length; idx++) {
+        const rowY = PY + 34 + idx * 25;
+        if (py >= rowY - 2 && py < rowY + 20) {
+          if (idx === this.craftMenuSel) this.craftSelected();
+          else this.craftMenuSel = idx;
+          return;
+        }
+      }
+    };
+    this.input.on('pointerdown', this._craftMenuPointerFn);
   }
 
   closeCraftMenu() {
     this.craftMenuOpen = false;
     this.craftMenuOwner = null;
+    if (this._craftMenuPointerFn) {
+      this.input.off('pointerdown', this._craftMenuPointerFn);
+      this._craftMenuPointerFn = null;
+    }
     if (this.craftMenuGfx) { this.craftMenuGfx.destroy(); this.craftMenuGfx = null; }
     this._craftMenuText && this._craftMenuText.forEach(t => t.destroy());
     this._craftMenuText = [];
@@ -8256,13 +8330,24 @@ class GameScene extends Phaser.Scene {
     if (!this.craftMenuOpen) return;
     const RECIPES = GameScene.RECIPES;
 
-    // Navigate up / down
+    // Keyboard navigate up / down
     if (Phaser.Input.Keyboard.JustDown(this._craftNavUp) || Phaser.Input.Keyboard.JustDown(this._craftNavUp2)) {
       this.craftMenuSel = (this.craftMenuSel - 1 + RECIPES.length) % RECIPES.length;
     }
     if (Phaser.Input.Keyboard.JustDown(this._craftNavDn) || Phaser.Input.Keyboard.JustDown(this._craftNavDn2)) {
       this.craftMenuSel = (this.craftMenuSel + 1) % RECIPES.length;
     }
+
+    // Touch joystick navigate up / down (350ms repeat debounce)
+    if (this._touchActive && this._joy) {
+      this._craftTouchNavCd = (this._craftTouchNavCd || 0) - delta;
+      const jy = this._joy.vec.y;
+      if (this._craftTouchNavCd <= 0 && Math.abs(jy) > 0.5) {
+        this.craftMenuSel = (this.craftMenuSel + (jy > 0 ? 1 : -1) + RECIPES.length) % RECIPES.length;
+        this._craftTouchNavCd = 350;
+      }
+    }
+
     this.renderCraftMenu();
   }
 
@@ -8295,16 +8380,31 @@ class GameScene extends Phaser.Scene {
     };
 
     addTxt(PX + PW/2, PY + 14, '[ CRAFTING ]', { fontSize:'14px', color:'#aacc88', stroke:'#000', strokeThickness:2 }).setOrigin(0.5);
-    addTxt(PX + PW/2, PY + PH - 14, 'W/S or ↑↓ navigate  |  Attack = craft  |  Q/0 = close', { fontSize:'9px', color:'#556644' }).setOrigin(0.5);
+    const navHint = this._touchActive
+      ? 'Tap to select  |  Tap again / ATK = craft  |  BLD = close'
+      : 'Click / W/S = select  |  Click again / Attack = craft  |  Q/0 = close';
+    addTxt(PX + PW/2, PY + PH - 14, navHint, { fontSize:'9px', color:'#556644' }).setOrigin(0.5);
+
+    // Hover detection for mouse (skip on touch)
+    const mPtr = this._touchActive ? null : this.input.activePointer;
+    const hoverIdx = mPtr
+      ? RECIPES.findIndex((_, idx) => {
+          const rowY = PY + 34 + idx * 25;
+          return mPtr.x >= PX && mPtr.x <= PX + PW && mPtr.y >= rowY - 2 && mPtr.y < rowY + 20;
+        })
+      : -1;
 
     RECIPES.forEach((rec, idx) => {
       const rowY = PY + 34 + idx * 25;
       const isSelected = idx === this.craftMenuSel;
+      const isHovered = idx === hoverIdx && !isSelected;
 
       // Selection highlight
       if (isSelected) {
         g.fillStyle(0x224411, 0.9); g.fillRect(PX + 6, rowY - 2, PW - 12, 22);
         g.lineStyle(1, 0x44aa22, 0.8); g.strokeRect(PX + 6, rowY - 2, PW - 12, 22);
+      } else if (isHovered) {
+        g.fillStyle(0x1a2a11, 0.7); g.fillRect(PX + 6, rowY - 2, PW - 12, 22);
       }
 
       // Bench requirement
@@ -8312,7 +8412,7 @@ class GameScene extends Phaser.Scene {
       // Can afford?
       const canAfford = !locked && Object.entries(rec.cost).every(([r,a]) => (team[r]||0) >= a);
 
-      const nameColor = locked ? '#555544' : isSelected ? '#ffffff' : '#aabbaa';
+      const nameColor = locked ? '#555544' : isSelected ? '#ffffff' : isHovered ? '#ddeedd' : '#aabbaa';
       const costColor = canAfford ? '#66ee44' : '#ee4422';
 
       const costStr = Object.entries(rec.cost).map(([r,a]) => a+' '+r).join(', ');
@@ -8385,7 +8485,11 @@ class GameScene extends Phaser.Scene {
       // D8 — Med Kit: restore 40 HP to the crafting player, green flash
       player.hp = Math.min(player.maxHp, player.hp + 40);
       player.spr.setTint(0x44ff44);
-      this.time.delayedCall(300, () => { if(player.spr.active) player.spr.clearTint(); });
+      this.time.delayedCall(300, () => {
+        if (!player.spr?.active) return;
+        if (player._frostSlowed) player.spr.setTint(0x88ccff);
+        else player.spr.clearTint();
+      });
       this.hint(player.charData.player + ' used Med Kit: +40 HP!', 2000);
     } else if (rec.type === 'upgrade') {
       const target = [this.p1, this.p2].filter(Boolean).find(p => p.charData.id === rec.charId);
@@ -8396,7 +8500,11 @@ class GameScene extends Phaser.Scene {
       target[upgradeFlag] = true;
       if (rec.charId === 'gunslinger') target._gunslingerClip = 12;
       target.spr.setTint(0xffaa22);
-      this.time.delayedCall(400, () => { if(target.spr.active) target.spr.clearTint(); });
+      this.time.delayedCall(400, () => {
+        if (!target.spr?.active) return;
+        if (target._frostSlowed) target.spr.setTint(0x88ccff);
+        else target.spr.clearTint();
+      });
       this.hint(rec.label + ' unlocked for ' + target.charData.player + '!', 3000);
     }
   }
