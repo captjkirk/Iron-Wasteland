@@ -19,18 +19,20 @@ const _isMobile = typeof navigator !== 'undefined' &&
 const CFG = {
   W: _isMobile ? 640 : 1280, H: _isMobile ? 360 : 720,
   TILE: 32,
-  MAP_W: 400, MAP_H: 400,
+  MAP_W: 300, MAP_H: 300,
   SAFE_R: 10,
   CAM_ZOOM_MAX: 1.0,
   CAM_ZOOM_MIN: _isMobile ? 0.15 : 0.25, // mobile: show more world at min zoom
   CAM_PAD: _isMobile ? 115 : 230,        // mobile: tighter 2-player framing
-  TREES: 700,
-  ROCKS: 500,
+  TREES: 400,
+  ROCKS: 280,
   DOWN_TIME: 20,     // seconds before a downed player dies permanently
   REVIVE_TIME: 3,    // seconds to hold interact to revive
   REVIVE_RANGE: 80,  // px to be close enough to revive
   FOG_REVEAL_R: 6,   // tiles radius for fog reveal
   FOG_UPDATE_INTERVAL: 4, // update fog every N frames
+  DORMANT_RADIUS: 800, // px — wildlife enemy goes dormant beyond this from all players
+  WAKE_RADIUS:    700, // px — hysteresis: dormant enemy wakes when closer than this
 };
 
 // ── BIOME SYSTEM ──────────────────────────────────────────────
@@ -6350,6 +6352,12 @@ class GameScene extends Phaser.Scene {
         const atkInterval = Math.max(500, Math.round(({ wolf:1600, rat:1200, bear:2400 }[type] || 1400) / D));
         const denBaseAggro = { wolf: 190, rat: 110, bear: 290 }[type] || 160;
         const e = { spr, hp, maxHp:hp, speed:spd, dmg, atkInterval, type, attackTimer:0, wanderTimer:0, aggroRange:denBaseAggro, attackRange:30*sizeMult, sizeMult };
+        // Start dormant if far from all players
+        {
+          const _ap = [this.p1, this.p2].filter(p => p && p.spr && p.spr.active);
+          const _sd = _ap.length ? Math.min(..._ap.map(p => Phaser.Math.Distance.Between(ex, ey, p.spr.x, p.spr.y))) : Infinity;
+          if (_sd > CFG.DORMANT_RADIUS) { e._dormant = true; spr.setVisible(false); if (spr.body) spr.body.enable = false; }
+        }
         this.enemies.push(e);
       }
     });
@@ -6766,6 +6774,7 @@ class GameScene extends Phaser.Scene {
     if (!e || e.dying) return;
     e.hp -= dmg;
     e._flinchTimer = 220;
+    if (e._dormant) { e._dormant = false; if (e.spr.body) e.spr.body.enable = true; }
     if (fromX !== undefined && e.spr.body) {
       const ang = Phaser.Math.Angle.Between(fromX, fromY, e.spr.x, e.spr.y);
       e.spr.body.velocity.x += Math.cos(ang) * 90;
@@ -7144,14 +7153,21 @@ class GameScene extends Phaser.Scene {
           if (this.hudCam) this.hudCam.ignore(spr);
           this.physics.add.collider(spr, this.obstacles);
           const aggroR = { wolf:220, rat:140, bear:320 }[type] * 1.3; // very aggressive
-          this.enemies.push({
+          const eGuard = {
             spr, type: t.key,
             hp: Math.floor(t.hp * sizeMult), maxHp: Math.floor(t.hp * sizeMult),
             speed: t.speed * sizeMult, dmg: Math.max(1, Math.floor(t.dmg * sizeMult)),
             attackTimer: 0, wanderTimer: 0,
             aggroRange: aggroR, attackRange: (30 + t.w / 2) * sizeMult,
             sizeMult, structureGuard: true,
-          });
+          };
+          // Start dormant if far from all players
+          {
+            const _ap = [this.p1, this.p2].filter(p => p && p.spr && p.spr.active);
+            const _sd = _ap.length ? Math.min(..._ap.map(p => Phaser.Math.Distance.Between(ex, ey, p.spr.x, p.spr.y))) : Infinity;
+            if (_sd > CFG.DORMANT_RADIUS) { eGuard._dormant = true; spr.setVisible(false); if (spr.body) spr.body.enable = false; }
+          }
+          this.enemies.push(eGuard);
         }
       }
     }
@@ -7279,6 +7295,12 @@ class GameScene extends Phaser.Scene {
           wanderTimer:Phaser.Math.Between(0,2000), aggroRange:aggroR, attackRange:atkR, sizeMult };
         if (type === 'bog_lurker') { e._lurking = true; spr.setAlpha(0.25); }
         if (type === 'dust_hound') { e._packId = packId; }
+        // Start dormant if far from all players
+        {
+          const _ap = [this.p1, this.p2].filter(p => p && p.spr && p.spr.active);
+          const _sd = _ap.length ? Math.min(..._ap.map(p => Phaser.Math.Distance.Between(ex, ey, p.spr.x, p.spr.y))) : Infinity;
+          if (_sd > CFG.DORMANT_RADIUS) { e._dormant = true; spr.setVisible(false); if (spr.body) spr.body.enable = false; }
+        }
         this.enemies.push(e);
         placed++;
       }
@@ -7342,6 +7364,12 @@ class GameScene extends Phaser.Scene {
         const aggroR = baseAggro * (sizeMult > 1.2 ? 1.2 : 1);
         const atkR = (30 + t.w/2) * sizeMult;
         const e = { spr, hp, maxHp:hp, speed:spd, dmg, atkInterval, type:t.key, attackTimer:0, wanderTimer:Phaser.Math.Between(0,2000), aggroRange:aggroR, attackRange:atkR, sizeMult };
+        // Start dormant if far from all players
+        {
+          const _ap = [this.p1, this.p2].filter(p => p && p.spr && p.spr.active);
+          const _sd = _ap.length ? Math.min(..._ap.map(p => Phaser.Math.Distance.Between(ex, ey, p.spr.x, p.spr.y))) : Infinity;
+          if (_sd > CFG.DORMANT_RADIUS) { e._dormant = true; spr.setVisible(false); if (spr.body) spr.body.enable = false; }
+        }
         this.enemies.push(e);
       }
     });
@@ -7585,10 +7613,57 @@ class GameScene extends Phaser.Scene {
   updateEnemies(delta) {
     if (!this.enemies || this.isOver) return;
     const players = [this.p1, this.p2].filter(p => p && !p.isDowned && p.hp > 0 && p.spr.visible);
+    // Hoist camera view once per frame for dormancy + culling checks
+    const _cam = this.cameras.main;
+    const _view = _cam.worldView;
+    const _VIEW_BUF = 400; // px buffer outside viewport before hiding sprite
 
     this.enemies.forEach(e => {
       if (e.dying || !e.spr.active) return;
       if (e.isBoss) return; // boss movement/attack handled by updateBoss
+
+      // ── Dormancy: wildlife enemies far from all players sleep (no AI, no physics) ──
+      // Raiders are always aggressive — never dormant. Boss already excluded above.
+      if (!e.isRaider) {
+        let _minDist = Infinity;
+        for (const p of players) {
+          const _dx = e.spr.x - p.spr.x, _dy = e.spr.y - p.spr.y;
+          const _d = Math.sqrt(_dx * _dx + _dy * _dy);
+          if (_d < _minDist) _minDist = _d;
+        }
+        if (!players.length) _minDist = Infinity;
+
+        if (e._dormant) {
+          if (_minDist < CFG.WAKE_RADIUS) {
+            // Wake up
+            e._dormant = false;
+            if (e.spr.body) e.spr.body.enable = true;
+          } else {
+            // Stay dormant — update visibility only, skip all AI
+            const _onScr = (e.spr.x > _view.x - _VIEW_BUF && e.spr.x < _view.x + _view.width  + _VIEW_BUF &&
+                            e.spr.y > _view.y - _VIEW_BUF && e.spr.y < _view.y + _view.height + _VIEW_BUF);
+            e.spr.setVisible(_onScr);
+            return;
+          }
+        } else {
+          if (_minDist > CFG.DORMANT_RADIUS) {
+            // Go dormant
+            e._dormant = true;
+            e.spr.setVelocity(0, 0);
+            if (e.spr.body) e.spr.body.enable = false;
+            e.spr.setVisible(false);
+            return;
+          }
+        }
+      }
+
+      // ── Viewport culling for active enemies — hide sprite if off-screen ──
+      {
+        const _onScr = (e.spr.x > _view.x - _VIEW_BUF && e.spr.x < _view.x + _view.width  + _VIEW_BUF &&
+                        e.spr.y > _view.y - _VIEW_BUF && e.spr.y < _view.y + _view.height + _VIEW_BUF);
+        e.spr.setVisible(_onScr);
+      }
+
       // Flinch stagger — freeze AI and movement briefly after being hit
       if ((e._flinchTimer || 0) > 0) { e._flinchTimer -= delta; e.spr.setVelocity(0, 0); return; }
       // Scared — flee away from Rally cast point for 5 seconds
@@ -7743,27 +7818,29 @@ class GameScene extends Phaser.Scene {
         }
       }
 
-      // ── Walk cycle + 8-direction sprites (raiders only) ──────
-      e._walkTimer = ((e._walkTimer || 0) + delta) % 600;
-      const _step = e._walkTimer < 300 ? '' : '_step';
-      const _vx = e.spr.body.velocity.x, _vy = e.spr.body.velocity.y;
-      const _moving = Math.abs(_vx) > 5 || Math.abs(_vy) > 5;
-      if (_moving) {
-        const _diagX = Math.abs(_vx) > 20, _diagY = Math.abs(_vy) > 20;
-        if (_diagX && _diagY) e._dir = _vy > 0 ? 'fside' : 'bside';
-        else if (Math.abs(_vy) > Math.abs(_vx)) e._dir = _vy > 0 ? 'front' : 'back';
-        else e._dir = 'side';
-      }
-      const _dir = e._dir || 'side';
-      const _flip = _vx < 0 || (_vx === 0 && e.spr.flipX);
-      if (_dir === 'side' || _dir === 'fside' || _dir === 'bside') {
-        e.spr.setFlipX(_vx < 0);
-      } else {
-        e.spr.setFlipX(false);
-      }
-      if (e.isRaider) {
-        const _dirSuffix = _dir === 'side' ? '' : '_' + _dir;
-        e.spr.setTexture('raider_' + e.type + _dirSuffix + (_moving ? _step : ''));
+      // ── Walk cycle + 8-direction sprites (raiders only) — skip if off-screen ──
+      if (e.spr.visible) {
+        e._walkTimer = ((e._walkTimer || 0) + delta) % 600;
+        const _step = e._walkTimer < 300 ? '' : '_step';
+        const _vx = e.spr.body.velocity.x, _vy = e.spr.body.velocity.y;
+        const _moving = Math.abs(_vx) > 5 || Math.abs(_vy) > 5;
+        if (_moving) {
+          const _diagX = Math.abs(_vx) > 20, _diagY = Math.abs(_vy) > 20;
+          if (_diagX && _diagY) e._dir = _vy > 0 ? 'fside' : 'bside';
+          else if (Math.abs(_vy) > Math.abs(_vx)) e._dir = _vy > 0 ? 'front' : 'back';
+          else e._dir = 'side';
+        }
+        const _dir = e._dir || 'side';
+        const _flip = _vx < 0 || (_vx === 0 && e.spr.flipX);
+        if (_dir === 'side' || _dir === 'fside' || _dir === 'bside') {
+          e.spr.setFlipX(_vx < 0);
+        } else {
+          e.spr.setFlipX(false);
+        }
+        if (e.isRaider) {
+          const _dirSuffix = _dir === 'side' ? '' : '_' + _dir;
+          e.spr.setTexture('raider_' + e.type + _dirSuffix + (_moving ? _step : ''));
+        }
       }
     });
   }
