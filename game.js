@@ -7282,12 +7282,20 @@ class GameScene extends Phaser.Scene {
     ].filter(Boolean).join('\n');
     const blob = new Blob([lines], { type: 'text/plain' });
     const url  = URL.createObjectURL(blob);
+    const ts   = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
+    const fname = `iron-wasteland-${ts}.txt`;
     const a    = Object.assign(document.createElement('a'), {
       href: url,
-      download: `iron-wasteland-${new Date().toISOString().slice(0,10)}.txt`,
+      download: fname,
     });
     a.click();
     URL.revokeObjectURL(url);
+    // Also save to ./logs/ via dev server when running locally (silent if server not up)
+    fetch('http://localhost:8080/save-log', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ filename: fname, content: lines }),
+    }).catch(() => {}); // no-op if server isn't running
   }
 
   killEnemy(e) {
