@@ -5434,8 +5434,9 @@ class GameScene extends Phaser.Scene {
 
     this.timeAlive += delta / 1000;
 
-    // Movement — skip if downed or sleeping
-    if (!this.p1.isDowned && !this.p1.isSleeping) {
+    // Movement — skip if downed, sleeping, or owns the open craft menu
+    const p1CraftHalt = this.craftMenuOpen && this.craftMenuOwner === this.p1;
+    if (!this.p1.isDowned && !this.p1.isSleeping && !p1CraftHalt) {
       if (this._touchActive) {
         this.applyTouchInput();  // touch: joystick drives movement + facing
       } else {
@@ -5446,7 +5447,8 @@ class GameScene extends Phaser.Scene {
     else this.p1.spr.setVelocity(0,0);
 
     if (this.p2) {
-      if (!this.p2.isDowned && !this.p2.isSleeping) this.movePlayer(this.p2, this.cursors.left, this.cursors.right, this.cursors.up, this.cursors.down);
+      const p2CraftHalt = this.craftMenuOpen && this.craftMenuOwner === this.p2;
+      if (!this.p2.isDowned && !this.p2.isSleeping && !p2CraftHalt) this.movePlayer(this.p2, this.cursors.left, this.cursors.right, this.cursors.up, this.cursors.down);
       else this.p2.spr.setVelocity(0,0);
     }
 
@@ -5607,6 +5609,7 @@ class GameScene extends Phaser.Scene {
     if (this.isOver || !this.p1) return;
     if (name === 'attack') {
       if (this.barrackOpen || this.p1.isDowned || this.p1.isSleeping) return;
+      if (this.craftMenuOpen && this.craftMenuOwner === this.p1) { this.craftSelected(); return; }
       if (this.buildMode && this.buildOwner === this.p1) this.placeBuild();
       else this.doAttack(this.p1);
     } else if (name === 'alt') {
@@ -8236,7 +8239,10 @@ class GameScene extends Phaser.Scene {
     // Contextual tip: first time opening crafting menu
     if (!this._ctx.firstCraft) {
       this._ctx.firstCraft = true;
-      this.time.delayedCall(400, () => this.hint('W/S to navigate, Attack to craft. Build Walls to protect yourself!', 5000));
+      const craftHint = this._touchActive
+        ? 'Joystick ↑↓ to navigate, ATK to craft. Build Walls to protect yourself!'
+        : 'W/S to navigate, Attack to craft. Build Walls to protect yourself!';
+      this.time.delayedCall(400, () => this.hint(craftHint, 5000));
     } else if (!this._ctx.firstUpgradeHint && this.dayNum >= 2) {
       this._ctx.firstUpgradeHint = true;
       this.time.delayedCall(400, () => this.hint('Craft a Craftbench to unlock character upgrades — enemies get stronger each day!', 6000));
@@ -8261,13 +8267,24 @@ class GameScene extends Phaser.Scene {
     if (!this.craftMenuOpen) return;
     const RECIPES = GameScene.RECIPES;
 
-    // Navigate up / down
+    // Keyboard navigate up / down
     if (Phaser.Input.Keyboard.JustDown(this._craftNavUp) || Phaser.Input.Keyboard.JustDown(this._craftNavUp2)) {
       this.craftMenuSel = (this.craftMenuSel - 1 + RECIPES.length) % RECIPES.length;
     }
     if (Phaser.Input.Keyboard.JustDown(this._craftNavDn) || Phaser.Input.Keyboard.JustDown(this._craftNavDn2)) {
       this.craftMenuSel = (this.craftMenuSel + 1) % RECIPES.length;
     }
+
+    // Touch joystick navigate up / down (350ms repeat debounce)
+    if (this._touchActive && this._joy) {
+      this._craftTouchNavCd = (this._craftTouchNavCd || 0) - delta;
+      const jy = this._joy.vec.y;
+      if (this._craftTouchNavCd <= 0 && Math.abs(jy) > 0.5) {
+        this.craftMenuSel = (this.craftMenuSel + (jy > 0 ? 1 : -1) + RECIPES.length) % RECIPES.length;
+        this._craftTouchNavCd = 350;
+      }
+    }
+
     this.renderCraftMenu();
   }
 
@@ -8300,7 +8317,10 @@ class GameScene extends Phaser.Scene {
     };
 
     addTxt(PX + PW/2, PY + 14, '[ CRAFTING ]', { fontSize:'14px', color:'#aacc88', stroke:'#000', strokeThickness:2 }).setOrigin(0.5);
-    addTxt(PX + PW/2, PY + PH - 14, 'W/S or ↑↓ navigate  |  Attack = craft  |  Q/0 = close', { fontSize:'9px', color:'#556644' }).setOrigin(0.5);
+    const navHint = this._touchActive
+      ? 'Joystick ↑↓ navigate  |  ATK = craft  |  BLD = close'
+      : 'W/S or ↑↓ navigate  |  Attack = craft  |  Q/0 = close';
+    addTxt(PX + PW/2, PY + PH - 14, navHint, { fontSize:'9px', color:'#556644' }).setOrigin(0.5);
 
     RECIPES.forEach((rec, idx) => {
       const rowY = PY + 34 + idx * 25;
