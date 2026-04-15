@@ -6,7 +6,7 @@
 
 // ── VERSION ───────────────────────────────────────────────────
 // Update this each commit so the title screen reflects the build date.
-const VERSION = 'Apr 15, 2026  12:35 AM EDT';
+const VERSION = 'Apr 15, 2026  12:48 AM EDT';
 
 // ── CONSTANTS ─────────────────────────────────────────────────
 // Detect mobile/phone: touch device with a small screen.
@@ -915,6 +915,59 @@ function buildTextures(scene) {
   g.beginPath(); g.moveTo(8,7); g.lineTo(11,11); g.lineTo(9,15); g.strokePath();
   g.beginPath(); g.moveTo(14,4); g.lineTo(16,8); g.strokePath();
   g.generateTexture('ice_rock', 22, 16);
+
+  // Ice spire — tundra biome, jagged ice spike cluster (16×32)
+  g.clear();
+  g.fillStyle(0x3a6080); g.fillTriangle(8, 0, 1, 31, 15, 31);     // dark back spike
+  g.fillStyle(0x5a8aaa); g.fillTriangle(8, 2, 3, 29, 13, 29);     // mid face
+  g.fillStyle(0x8ab8d0); g.fillTriangle(8, 4, 5, 22, 11, 22);     // bright front face
+  g.fillStyle(0xc0dff0); g.fillRect(7, 5, 2, 4); g.fillRect(5, 15, 1, 2); g.fillRect(10, 12, 1, 1); // frost sparkles
+  g.fillStyle(0x2a4a60); g.fillTriangle(8, 0, 1, 31, 4, 20);      // shadow side
+  g.fillStyle(0x1a2e3a); g.fillRect(2, 29, 12, 3);                // base shadow
+  g.generateTexture('ice_spire', 16, 32);
+
+  // Rock spire — wasteland biome, tall jagged rock formation (14×36)
+  g.clear();
+  g.fillStyle(0x5a3a20); g.fillTriangle(7, 0, 0, 35, 14, 35);    // dark rock body
+  g.fillStyle(0x7a5234); g.fillTriangle(7, 2, 2, 31, 12, 31);    // mid face
+  g.fillStyle(0x9a6848); g.fillTriangle(7, 4, 4, 22, 10, 22);    // bright highlight
+  g.fillStyle(0x3a2010); g.fillTriangle(7, 0, 0, 35, 3, 22);     // shadow side
+  g.fillStyle(0x4a2e18); g.fillRect(0, 33, 14, 3);               // base
+  g.fillStyle(0x6a4830); g.fillRect(4, 10, 2, 2); g.fillRect(8, 17, 1, 2); // rock detail
+  g.generateTexture('rock_spire', 14, 36);
+
+  // Mangrove root tangle — swamp biome, wide twisted roots (36×18)
+  g.clear();
+  g.fillStyle(0x1e1208); g.fillRect(0, 8, 36, 10);               // root base fill
+  g.fillStyle(0x2e1e10); g.fillRect(0, 10, 36, 5);               // mid tone
+  // Arching root segments
+  g.fillStyle(0x1e1208);
+  g.fillRect(2, 4, 4, 8); g.fillRect(10, 2, 5, 9); g.fillRect(20, 3, 4, 8); g.fillRect(28, 5, 5, 7);
+  // Mossy/wet highlights on root tops
+  g.fillStyle(0x1a3010); g.fillRect(2, 5, 2, 3); g.fillRect(11, 3, 2, 4); g.fillRect(21, 4, 2, 3);
+  g.fillStyle(0x3a2a14); g.fillRect(0, 8, 36, 2);                // top edge
+  g.fillStyle(0x0e0a04); g.fillRect(0, 16, 36, 2);               // base shadow
+  g.generateTexture('mangrove_roots', 36, 18);
+
+  // Spiderweb — ruins biome decoration (24×24)
+  g.clear();
+  g.lineStyle(1, 0xaaaaaa, 0.85);
+  // 8 radial spokes from center
+  for (let i = 0; i < 8; i++) {
+    const a = (i / 8) * Math.PI * 2;
+    g.lineBetween(12, 12, Math.round(12 + Math.cos(a) * 11), Math.round(12 + Math.sin(a) * 11));
+  }
+  // 3 concentric silk rings
+  for (let r = 3; r <= 11; r += 4) {
+    g.beginPath();
+    for (let i = 0; i <= 8; i++) {
+      const a = (i / 8) * Math.PI * 2;
+      const x = 12 + Math.cos(a) * r, y = 12 + Math.sin(a) * r;
+      if (i === 0) g.moveTo(x, y); else g.lineTo(x, y);
+    }
+    g.closePath(); g.strokePath();
+  }
+  g.generateTexture('spiderweb', 24, 24);
 
   // Mountain — large terrain feature (96x80) — visible from across the map
   g.clear();
@@ -3117,7 +3170,15 @@ class GameScene extends Phaser.Scene {
     // Backtick/grave (`) toggles the debug event log
     this.input.keyboard.addKey(192).on('down', () => {
       this._dbgVisible = !this._dbgVisible;
-      if (this._dbgTxt) this._dbgTxt.setVisible(this._dbgVisible);
+      if (this._dbgTxt) {
+        this._dbgTxt.setVisible(this._dbgVisible);
+        if (this._dbgVisible) {
+          const lines = (this._dbgEntries && this._dbgEntries.length > 0)
+            ? ['── debug log ──', ...this._dbgEntries]
+            : ['── debug log (no events yet) ──'];
+          this._dbgTxt.setText(lines.join('\n'));
+        }
+      }
     });
 
     // Barracks navigation keys
@@ -3506,6 +3567,49 @@ class GameScene extends Phaser.Scene {
       r.refreshBody();
     }
 
+    // ── BIOME-SPECIFIC TERRAIN OBSTACLES ────────────────────────
+    // Ice spires — tundra (impassable jagged ice formations)
+    for (let i = 0; i < 35; i++) {
+      const tx = Phaser.Math.Between(2, CFG.MAP_W-2), ty = Phaser.Math.Between(2, CFG.MAP_H-2);
+      if (getBiome(tx, ty) !== 'tundra') continue;
+      if (Math.abs(tx-stx)<SAFE_R+3 && Math.abs(ty-sty)<SAFE_R+3) continue;
+      const sc = Phaser.Math.FloatBetween(1.2, 2.2);
+      const spr = this.obstacles.create(tx*TILE+8, ty*TILE+6, 'ice_spire');
+      spr.setScale(sc).setDepth(5 + ty*0.01).setImmovable(true);
+      spr.body.setSize(6, 8).setOffset(5, 22);
+      spr.refreshBody();
+    }
+    // Rock spires — wasteland (impassable jagged rock pillars)
+    for (let i = 0; i < 35; i++) {
+      const tx = Phaser.Math.Between(2, CFG.MAP_W-2), ty = Phaser.Math.Between(2, CFG.MAP_H-2);
+      if (getBiome(tx, ty) !== 'waste') continue;
+      if (Math.abs(tx-stx)<SAFE_R+3 && Math.abs(ty-sty)<SAFE_R+3) continue;
+      const sc = Phaser.Math.FloatBetween(1.2, 2.0);
+      const spr = this.obstacles.create(tx*TILE+7, ty*TILE+8, 'rock_spire');
+      spr.setScale(sc).setDepth(5 + ty*0.01).setImmovable(true);
+      spr.body.setSize(6, 8).setOffset(4, 26);
+      spr.refreshBody();
+    }
+    // Mangrove root clusters — swamp (impassable tangled roots)
+    for (let i = 0; i < 25; i++) {
+      const tx = Phaser.Math.Between(2, CFG.MAP_W-2), ty = Phaser.Math.Between(2, CFG.MAP_H-2);
+      if (getBiome(tx, ty) !== 'swamp') continue;
+      if (Math.abs(tx-stx)<SAFE_R+4 && Math.abs(ty-sty)<SAFE_R+4) continue;
+      const sc = Phaser.Math.FloatBetween(1.0, 1.8);
+      const spr = this.obstacles.create(tx*TILE+18, ty*TILE+9, 'mangrove_roots');
+      spr.setScale(sc).setDepth(5 + ty*0.01).setImmovable(true);
+      spr.body.setSize(28, 8).setOffset(4, 6);
+      spr.refreshBody();
+    }
+    // Spiderwebs — ruins (decorative, visual only)
+    for (let i = 0; i < 40; i++) {
+      const tx = Phaser.Math.Between(2, CFG.MAP_W-2), ty = Phaser.Math.Between(2, CFG.MAP_H-2);
+      if (getBiome(tx, ty) !== 'ruins') continue;
+      if (Math.abs(tx-stx)<SAFE_R+3 && Math.abs(ty-sty)<SAFE_R+3) continue;
+      const sc = Phaser.Math.FloatBetween(0.9, 2.2);
+      this._w(this.add.image(tx*TILE, ty*TILE, 'spiderweb').setScale(sc).setDepth(3).setAlpha(0.65));
+    }
+
     // Bushes/mushrooms — biome-appropriate decorative
     for (let i = 0; i < 120; i++) {
       const tx = Phaser.Math.Between(2, CFG.MAP_W-3), ty = Phaser.Math.Between(2, CFG.MAP_H-3);
@@ -3710,7 +3814,7 @@ class GameScene extends Phaser.Scene {
     // Mountains excluded — fjord algorithm already handles their entrance gaps.
     if (this._preCacheTiles && this.obstacles) {
       const CLEAR_R = 160;
-      const ROCK_KEYS = new Set(['rock', 'rock2', 'ice_rock']);
+      const ROCK_KEYS = new Set(['rock', 'rock2', 'ice_rock', 'ice_spire', 'rock_spire', 'mangrove_roots']);
       this.obstacles.getChildren().slice().forEach(ob => {
         const k = ob.texture && ob.texture.key;
         if (k === 'mountain' || k === 'mountain2') return;
@@ -5292,7 +5396,7 @@ class GameScene extends Phaser.Scene {
     const p = this.p1;
     if (!p || p.isDowned || p.isSleeping) return;
     const jv = this._joy.vec;
-    const spd = p.charData.speed;
+    const spd = p.charData.speed * (p._speedMult !== undefined ? p._speedMult : 1);
     const vx = jv.x * spd, vy = jv.y * spd;
     p.spr.setVelocity(vx, vy);
 
@@ -5672,6 +5776,11 @@ class GameScene extends Phaser.Scene {
       return;
     }
 
+    // Bog Hydra passive HP regen — 5 HP/s
+    if (b.type === 'boss_hydra' && b.hp < b.maxHp && b.hp > 0) {
+      b.hp = Math.min(b.maxHp, b.hp + 5 * (delta / 1000));
+    }
+
     // Update world-space HP bar above boss
     const bx = b.spr.x, by = b.spr.y;
     const barW = 80, barH = 8;
@@ -5744,6 +5853,37 @@ class GameScene extends Phaser.Scene {
         this._bossTelegraph(b, nearest);
       }
 
+      // Alpha Wolf howl — summon 2 wolves when below 50% HP, every 12s
+      if (b.type === 'boss_wolf' && b.hp < b.maxHp * 0.5) {
+        if (!b._howlTimer) b._howlTimer = 12000;
+        b._howlTimer -= delta;
+        if (b._howlTimer <= 0) {
+          b._howlTimer = 12000;
+          this.hint('\u2620 Alpha Wolf HOWLS! Wolves incoming!', 2000);
+          SFX._play(180, 'sawtooth', 0.2, 0.65, 'drop');
+          this.cameras.main.shake(400, 0.007);
+          const wW = CFG.MAP_W * CFG.TILE, wH = CFG.MAP_H * CFG.TILE;
+          for (let i = 0; i < 2; i++) {
+            const ang = Math.random() * Math.PI * 2;
+            const ex = Phaser.Math.Clamp(b.spr.x + Math.cos(ang) * 90, CFG.TILE*2, wW-CFG.TILE*2);
+            const ey = Phaser.Math.Clamp(b.spr.y + Math.sin(ang) * 90, CFG.TILE*2, wH-CFG.TILE*2);
+            const sizeMult = Phaser.Math.FloatBetween(0.9, 1.15);
+            const sc = 1.9 * sizeMult;
+            const eSpr = this.physics.add.image(ex, ey, 'wolf').setScale(sc).setDepth(9);
+            eSpr.setCollideWorldBounds(true);
+            eSpr.body.setSize(20, 12);
+            if (this.hudCam) this.hudCam.ignore(eSpr);
+            this.physics.add.collider(eSpr, this.obstacles);
+            this.enemies.push({
+              spr: eSpr, hp: Math.floor(75 * sizeMult), maxHp: Math.floor(75 * sizeMult),
+              speed: 105 * sizeMult, dmg: Math.max(1, Math.floor(9 * sizeMult)),
+              type: 'wolf', attackTimer: 0, wanderTimer: 0,
+              aggroRange: 220, attackRange: 48, sizeMult,
+            });
+          }
+        }
+      }
+
       // Melee — swipe nearest raider or player depending on what's in range
       if (foeDist < 70) {
         b.attackTimer -= delta;
@@ -5758,7 +5898,20 @@ class GameScene extends Phaser.Scene {
             SFX.playerHurt();
             nearest.spr.setTint(0xff0000);
             this.cameras.main.shake(300, 0.008);
-            this.time.delayedCall(200, () => { if (nearest.spr.active) nearest.spr.clearTint(); });
+            this.time.delayedCall(200, () => { if (nearest.spr?.active) nearest.spr.clearTint(); });
+            // Frost Troll — apply frost slow on melee hit
+            if (b.type === 'boss_troll' && !nearest._frostSlowed) {
+              nearest._frostSlowed = true;
+              nearest._speedMult = 0.55;
+              this.hint('FROST SLOW! (-45% speed)', 1500);
+              this.time.delayedCall(280, () => { if (nearest.spr?.active && nearest._frostSlowed) nearest.spr.setTint(0x88ccff); });
+              this.time.delayedCall(3000, () => {
+                if (!nearest) return;
+                nearest._frostSlowed = false;
+                nearest._speedMult = 1;
+                if (nearest.spr?.active) nearest.spr.clearTint();
+              });
+            }
             this.checkDeaths();
           }
         }
@@ -5915,7 +6068,20 @@ class GameScene extends Phaser.Scene {
             p.hp = Math.max(0, p.hp - Math.round(b.dmg * 0.75));
             SFX.playerHurt();
             p.spr.setTint(col);
-            this.time.delayedCall(220, () => { if (p.spr.active) p.spr.clearTint(); });
+            // Spider Queen web: root player briefly (1.5s)
+            if (b.type === 'boss_spider' && !p._webbed) {
+              p._webbed = true;
+              p._speedMult = 0;
+              this.hint('WEBBED! Can\'t move!', 1500);
+              this.time.delayedCall(1500, () => {
+                if (!p) return;
+                p._webbed = false;
+                p._speedMult = 1;
+                if (p.spr?.active) p.spr.clearTint();
+              });
+            } else {
+              this.time.delayedCall(220, () => { if (p.spr?.active) p.spr.clearTint(); });
+            }
             this.checkDeaths();
           });
         });
@@ -5956,7 +6122,7 @@ class GameScene extends Phaser.Scene {
   }
 
   movePlayer(player, L, R, U, D) {
-    const spd = player.charData.speed;
+    const spd = player.charData.speed * (player._speedMult !== undefined ? player._speedMult : 1);
     let vx=0, vy=0;
     if (L.isDown) vx=-spd; if (R.isDown) vx=spd;
     if (U.isDown) vy=-spd; if (D.isDown) vy=spd;
@@ -6433,7 +6599,7 @@ class GameScene extends Phaser.Scene {
     const ts = d.getMinutes().toString().padStart(2,'0') + ':' + d.getSeconds().toString().padStart(2,'0');
     this._dbgEntries.push('[' + ts + '] ' + msg);
     if (this._dbgEntries.length > 18) this._dbgEntries.shift();
-    if (this._dbgTxt) this._dbgTxt.setText(this._dbgEntries.join('\n'));
+    if (this._dbgTxt) this._dbgTxt.setText(['── debug log ──', ...this._dbgEntries].join('\n'));
   }
 
   killEnemy(e) {
