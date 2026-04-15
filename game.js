@@ -6,7 +6,7 @@
 
 // ── VERSION ───────────────────────────────────────────────────
 // Update this each commit so the title screen reflects the build date.
-const VERSION = 'Apr 15, 2026  06:40 AM EDT';
+const VERSION = 'Apr 15, 2026  07:03 AM EDT';
 
 // ── CONSTANTS ─────────────────────────────────────────────────
 // Detect mobile/phone: touch device with a small screen.
@@ -1014,6 +1014,13 @@ function buildTextures(scene) {
   g.fillStyle(0x224488, 0.3); g.fillRect(0, 0, 32, 12);
   g.fillStyle(0x3366aa, 0.2); g.fillRect(6, 10, 8, 1); g.fillRect(17, 18, 7, 1);
   g.generateTexture('water_deep', 32, 32);
+
+  // Water submersion overlay (32×18) — used to render over player lower half when wading
+  g.clear();
+  g.fillStyle(0x3366aa, 0.5); g.fillRect(0, 0, 32, 18);
+  g.fillStyle(0x5588cc, 0.2); g.fillRect(0, 0, 32, 5);  // surface highlight band
+  g.fillStyle(0x88bbdd, 0.25); g.fillRect(3, 7, 10, 1); g.fillRect(16, 11, 9, 1); g.fillRect(7, 14, 7, 1); // ripple lines
+  g.generateTexture('water_sub_overlay', 32, 18);
 
   // Ice tile (32×32) — pale cyan, passable, slippery momentum
   g.clear();
@@ -4461,6 +4468,12 @@ class GameScene extends Phaser.Scene {
     }).setOrigin(0.5).setDepth(11));
 
     const hpBar = this._w(this.add.graphics().setDepth(12));
+
+    // Water submersion overlay — rendered above player to simulate wading
+    const waterOverlay = this._w(this.add.image(x, y, 'water_sub_overlay')
+      .setOrigin(0.5, 0).setDepth(11).setAlpha(0).setVisible(false));
+    if (this.hudCam) this.hudCam.ignore(waterOverlay);
+
     return {
       spr, lbl, charData, pNum,
       hp: charData.maxHp, maxHp: charData.maxHp,
@@ -4472,6 +4485,7 @@ class GameScene extends Phaser.Scene {
       rallyCooldown: 0, turretCooldown: 0,
       isSleeping: false, zzzText: null,
       inv: { wood:0, metal:0, fiber:0, food:0 },
+      waterOverlay,
     };
   }
 
@@ -5456,6 +5470,10 @@ class GameScene extends Phaser.Scene {
     this.applyTerrainEffects(this.p1);
     if (this.p2) this.applyTerrainEffects(this.p2);
 
+    // Water submersion visual overlay
+    this._updateWaterSubmersion(this.p1);
+    if (this.p2) this._updateWaterSubmersion(this.p2);
+
     this.syncLabels();
     this.updateCamera();
     this.checkBarrackRange();
@@ -5712,6 +5730,19 @@ class GameScene extends Phaser.Scene {
     if (biome === 'tundra') {
       const vx = player.spr.body.velocity.x, vy = player.spr.body.velocity.y;
       if (vx !== 0 || vy !== 0) player.spr.setVelocity(vx * 0.7, vy * 0.7);
+    }
+  }
+
+  _updateWaterSubmersion(p) {
+    if (!p || !p.waterOverlay || !p.waterOverlay.active) return;
+    if (p._inShallowWater && !p.isDowned && p.spr.visible) {
+      const h = p.spr.displayHeight;
+      // Position overlay so it covers the lower ~50% of the player sprite
+      p.waterOverlay.setPosition(p.spr.x, p.spr.y + h * 0.04);
+      p.waterOverlay.setDisplaySize(p.spr.displayWidth * 1.15, h * 0.52);
+      p.waterOverlay.setVisible(true).setAlpha(0.72);
+    } else {
+      p.waterOverlay.setVisible(false);
     }
   }
 
@@ -7215,28 +7246,32 @@ class GameScene extends Phaser.Scene {
           }
         });
       }
+      // Discard blobs smaller than 12 tiles — prevents isolated puddles
+      if (tileSet.size < 12) continue;
       // Classify and place tiles
       tileSet.forEach(key => {
         const [tx, ty] = key.split(',').map(Number);
         if (tx < 1 || ty < 1 || tx >= CFG.MAP_W - 1 || ty >= CFG.MAP_H - 1) return;
         const x = tx * TILE, y = ty * TILE;
-        const neighborCount = [[tx-1,ty],[tx+1,ty],[tx,ty-1],[tx,ty+1]]
-          .filter(([nx, ny]) => tileSet.has(`${nx},${ny}`)).length;
+        const neighbors = [[tx-1,ty],[tx+1,ty],[tx,ty-1],[tx,ty+1]];
+        const neighborCount = neighbors.filter(([nx, ny]) => tileSet.has(`${nx},${ny}`)).length;
+        // Deep water only when fully surrounded (no dry-ground border)
+        const isDeep = !isIce && neighborCount === 4;
         if (isIce) {
-          const tile = this.physics.add.image(x, y, 'water_ice').setDepth(1).setAlpha(0.75);
+          const tile = this.physics.add.image(x, y, 'water_ice').setDepth(0.6).setAlpha(0.75);
           tile.body.allowGravity = false; tile.body.setImmovable(true);
           tile.body.setSize(30, 30);
           if (this.hudCam) this.hudCam.ignore(tile);
           this._w(tile);
           this.iceTiles.push(tile);
           this._iceTileSet.add(key);
-        } else if (neighborCount >= 3) {
-          const tile = this.obstacles.create(x, y, 'water_deep').setDepth(1).setAlpha(1);
+        } else if (isDeep) {
+          const tile = this.obstacles.create(x, y, 'water_deep').setDepth(0.6).setAlpha(1);
           if (this.hudCam) this.hudCam.ignore(tile);
           tile.refreshBody();
           this.deepWaterTiles.push(tile);
         } else {
-          const tile = this.physics.add.image(x, y, 'water_shallow').setDepth(1).setAlpha(1);
+          const tile = this.physics.add.image(x, y, 'water_shallow').setDepth(0.6).setAlpha(1);
           tile.body.allowGravity = false; tile.body.setImmovable(true);
           tile.body.setSize(30, 30);
           if (this.hudCam) this.hudCam.ignore(tile);
