@@ -7,7 +7,7 @@
 // ── VERSION ───────────────────────────────────────────────────
 // Update this each commit so the title screen reflects the build date.
 // Stored as UTC ISO so it can be displayed in each player's local timezone.
-const VERSION = '2026-04-16T00:00:00Z';
+const VERSION = '2026-04-15T23:30:00Z';
 // Format VERSION into the viewer's local time with abbreviated tz name (EDT, PDT, BST, etc.)
 function _fmtVersion(iso) {
   try {
@@ -8508,8 +8508,8 @@ class GameScene extends Phaser.Scene {
           }
         });
       }
-      // Boss daily check: after day 5, 25% chance each dawn — but not the same dawn a raid respawns
-      else if (!this.bossSpawned && this.dayNum > 5 && Math.random() < 0.25) {
+      // Boss daily check: Day 5 = 75% chance, Day 6 = 75% again if missed, Day 7+ = guaranteed
+      else if (!this.bossSpawned && this.dayNum >= 5 && (this.dayNum >= 7 || Math.random() < 0.75)) {
         this.time.delayedCall(5000, () => {
           if (!this.isOver && !this.bossSpawned) this.spawnBoss();
         });
