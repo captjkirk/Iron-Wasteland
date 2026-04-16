@@ -7,7 +7,7 @@
 // ── VERSION ───────────────────────────────────────────────────
 // Update this each commit so the title screen reflects the build date.
 // Stored as UTC ISO so it can be displayed in each player's local timezone.
-const VERSION = '2026-04-15T16:07:21Z';
+const VERSION = '2026-04-16T00:00:00Z';
 // Format VERSION into the viewer's local time with abbreviated tz name (EDT, PDT, BST, etc.)
 function _fmtVersion(iso) {
   try {
@@ -5122,6 +5122,7 @@ class GameScene extends Phaser.Scene {
         bossDefeated: this.bossDefeated,
         p1Name: this.p1 ? this.p1.charData.player : 'P1',
         p2Name: (this.p2 && !this.p2.isPermanentlyDead) ? this.p2.charData.player : null,
+        dbgEntries: this._dbgEntries,
       });
     });
   }
@@ -9089,6 +9090,7 @@ class GameOverScene extends Phaser.Scene {
     this.bossDefeated  = data.bossDefeated  || false;
     this.p1Name        = data.p1Name        || 'P1';
     this.p2Name        = data.p2Name        || null;
+    this._dbgEntries   = data.dbgEntries    || null;
   }
 
   _calcScore() {
@@ -9110,8 +9112,8 @@ class GameOverScene extends Phaser.Scene {
     this._htmlInp    = null;
     this._defaultName = this.p2Name ? this.p1Name + ' & ' + this.p2Name : this.p1Name;
 
-    // Clean up HTML input if scene is stopped by any means (back button, etc.)
-    this.events.on('shutdown', () => this._cleanupInput());
+    // Clean up HTML inputs if scene is stopped by any means (back button, etc.)
+    this.events.on('shutdown', () => { this._cleanupInput(); this._cleanupFeedback(); });
 
     // Background
     const bg = this.add.graphics();
@@ -9288,12 +9290,140 @@ class GameOverScene extends Phaser.Scene {
     lb.splice(10);
     try { localStorage.setItem('iw_scores', JSON.stringify(lb)); } catch(e) {}
 
-    // After short delay, hide save button and show leaderboard
+    // After short delay, hide save button and show feedback prompt
     this.time.delayedCall(700, () => {
       if (this._saveBg)  this._saveBg.setVisible(false);
       if (this._saveTxt) this._saveTxt.setVisible(false);
-      this._showLeaderboard(isHighScore);
+      this._showFeedback(isHighScore);
     });
+  }
+
+  // Show optional feedback textarea after name is saved.
+  _showFeedback(isHighScore) {
+    const { W } = CFG;
+    let y = this._postSaveY;
+
+    const label = this.add.text(W/2, y, 'HOW WAS YOUR RUN?  (optional)', {
+      fontFamily:'monospace', fontSize:'11px', color:'#556677',
+    }).setOrigin(0.5);
+
+    this._fbInp = this._createFeedbackInput(y + 18);
+
+    // SEND button
+    const sendG = this.add.graphics();
+    const sendT = this.add.text(W/2 - 72, y + 86, 'SEND \u2191 LOG', {
+      fontFamily:'monospace', fontSize:'13px', color:'#aaccff', stroke:'#000', strokeThickness:2,
+    }).setOrigin(0.5);
+    const _drawSend = (hl) => {
+      sendG.clear();
+      sendG.fillStyle(hl ? 0x112233 : 0x0a1520, 0.9);
+      sendG.fillRoundedRect(W/2 - 138, y + 72, 132, 28, 6);
+      sendG.lineStyle(2, hl ? 0x6699cc : 0x3a5a7a, 0.9);
+      sendG.strokeRoundedRect(W/2 - 138, y + 72, 132, 28, 6);
+    };
+    _drawSend(false);
+    const sendZ = this.add.zone(W/2 - 72, y + 86, 132, 28).setInteractive({ useHandCursor: true });
+    sendZ.on('pointerover',  () => { _drawSend(true);  sendT.setColor('#ffffff'); });
+    sendZ.on('pointerout',   () => { _drawSend(false); sendT.setColor('#aaccff'); });
+    sendZ.on('pointerdown',  () => this._submitFeedback(isHighScore, [label, sendG, sendT, sendZ, skipT]));
+
+    // SKIP link
+    const skipT = this.add.text(W/2 + 60, y + 86, 'SKIP \u2192', {
+      fontFamily:'monospace', fontSize:'12px', color:'#445566',
+    }).setOrigin(0.5).setInteractive({ useHandCursor: true });
+    skipT.on('pointerover',  () => skipT.setColor('#778899'));
+    skipT.on('pointerout',   () => skipT.setColor('#445566'));
+    skipT.on('pointerdown',  () => this._submitFeedback(isHighScore, [label, sendG, sendT, sendZ, skipT], true));
+  }
+
+  _createFeedbackInput(gameY) {
+    const canvas = this.game.canvas;
+    const rect   = canvas.getBoundingClientRect();
+    const sx = rect.width  / CFG.W;
+    const sy = rect.height / CFG.H;
+
+    const ta = document.createElement('textarea');
+    ta.placeholder = 'What happened? Any bugs or suggestions? (max 300 chars)';
+    ta.maxLength   = 300;
+    ta.rows        = 3;
+    ta.style.cssText = [
+      'position:fixed',
+      `left:${Math.round(rect.left + (CFG.W / 2 - 170) * sx)}px`,
+      `top:${Math.round(rect.top  + gameY * sy)}px`,
+      `width:${Math.round(340 * sx)}px`,
+      `height:${Math.round(58 * sy)}px`,
+      'background:#0d1a22',
+      'border:2px solid #3a5a7a',
+      'color:#aaccee',
+      'font-family:monospace',
+      `font-size:${Math.round(12 * Math.min(sx, sy))}px`,
+      'padding:4px 8px',
+      'box-sizing:border-box',
+      'z-index:9999',
+      'outline:none',
+      'border-radius:4px',
+      'resize:none',
+    ].join(';');
+
+    ta.addEventListener('keydown', (e) => { e.stopPropagation(); }); // don't let Phaser see keys
+    document.body.appendChild(ta);
+    this.time.delayedCall(120, () => { if (ta.parentNode) ta.focus(); });
+    return ta;
+  }
+
+  _submitFeedback(isHighScore, uiObjs, skip = false) {
+    const text = (!skip && this._fbInp) ? this._fbInp.value.trim() : '';
+    this._cleanupFeedback();
+    uiObjs.forEach(o => { if (o?.destroy) o.destroy(); });
+
+    if (text) {
+      if (this._dbgEntries) this._dbgEntries.push(`[FEEDBK] ${text}`);
+      _qlog(`feedback: ${text.replace(/\n/g, ' ')}  score=${this._score}  day=${this.days}  kills=${this.kills}`, 'feedback');
+      this._downloadFeedbackLog(text);
+    }
+    this._showLeaderboard(isHighScore);
+  }
+
+  _cleanupFeedback() {
+    if (this._fbInp) {
+      try { document.body.removeChild(this._fbInp); } catch(e) {}
+      this._fbInp = null;
+    }
+  }
+
+  // Download a second copy of the log with feedback appended — overwrites the
+  // auto-downloaded copy in ./logs/ since the server key is by filename/timestamp.
+  _downloadFeedbackLog(feedbackText) {
+    if (!this._dbgEntries) return;
+    const t    = Math.floor(this.timeAlive || 0);
+    const mode = `${this.mode === 1 ? 'Solo' : '2P'} ${this.difficulty === 'hardcore' ? 'Hardcore' : 'Survival'}`;
+    const lines = [
+      `IRON WASTELAND SESSION LOG`,
+      `─────────────────────────────────────────`,
+      `Version  : ${_fmtVersion(VERSION)}`,
+      `Exported : ${new Date().toLocaleString()}`,
+      `Mode     : ${mode}`,
+      `Session  : ${Math.floor(t/60)}m ${t%60}s`,
+      `Day      : ${this.days}`,
+      `Kills    : ${this.kills}`,
+      `Feedback : ${feedbackText.replace(/\n/g, ' ')}`,
+      `─────────────────────────────────────────`,
+      `EVENT LOG (${this._dbgEntries.length} entries)`,
+      `─────────────────────────────────────────`,
+      ...this._dbgEntries,
+    ].join('\n');
+    const blob = new Blob([lines], { type: 'text/plain' });
+    const url  = URL.createObjectURL(blob);
+    const ts   = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
+    const fname = `iron-wasteland-${ts}-feedback.txt`;
+    const a = Object.assign(document.createElement('a'), { href: url, download: fname });
+    a.click();
+    URL.revokeObjectURL(url);
+    fetch('http://localhost:8080/save-log', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ filename: fname, content: lines }),
+    }).catch(() => {});
   }
 
   // Render TOP SCORES after save.  Fits between postSaveY (492) and buttons (636).
