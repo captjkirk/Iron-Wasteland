@@ -7,7 +7,7 @@
 // ── VERSION ───────────────────────────────────────────────────
 // Update this each commit so the title screen reflects the build date.
 // Stored as UTC ISO so it can be displayed in each player's local timezone.
-const VERSION = '2026-04-15T23:30:00Z';
+const VERSION = '2026-04-17T01:00:00Z';
 // Format VERSION into the viewer's local time with abbreviated tz name (EDT, PDT, BST, etc.)
 function _fmtVersion(iso) {
   try {
@@ -330,8 +330,8 @@ const Music = {
       }
     });
 
-    // Snare-like noise bursts on beats 2 and 4
-    [b*2, b*6, b*10, b*14].forEach(t => {
+    // Snare-like noise bursts on beats 2 and 4 (reduced from 4 to 2 per loop to prevent audio thread saturation)
+    [b*2, b*10].forEach(t => {
       if (o+t > -0.05) this._noise(0.06, 0.45);
     });
 
@@ -2655,6 +2655,20 @@ function drawRaiderDirectionals(g) {
   g.generateTexture('raider_heavy_bside_step', 26, 30);
 }
 
+// ── KEY BINDING DEFAULTS ─────────────────────────────────────
+const DEFAULT_BINDINGS = {
+  p1up:'W', p1down:'S', p1left:'A', p1right:'D',
+  p1attack:'F', p1alt:'G', p1build:'Q', p1interact:'E',
+  p2up:'UP', p2down:'DOWN', p2left:'LEFT', p2right:'RIGHT',
+  p2attack:'FORWARD_SLASH', p2alt:'PERIOD', p2build:'ZERO', p2interact:'ENTER',
+};
+function keyDisplayName(k) {
+  const m = { FORWARD_SLASH:'/', PERIOD:'.', ZERO:'0', UP:'↑', DOWN:'↓', LEFT:'←', RIGHT:'→',
+               ENTER:'Enter', SPACE:'Space', BACK_SLASH:'\\', COMMA:',', SEMICOLON:';',
+               OPEN_BRACKET:'[', CLOSED_BRACKET:']', QUOTES:"'", BACK_TICK:'`' };
+  return m[k] !== undefined ? m[k] : k;
+}
+
 // ── SETTINGS HELPERS ─────────────────────────────────────────
 function loadSettings() {
   try { return JSON.parse(localStorage.getItem('iw_settings') || '{}'); } catch(e) { return {}; }
@@ -2674,6 +2688,167 @@ function activeInputMode() {
   if (s.inputMode === 'touch')    return 'touch';
   if (s.inputMode === 'keyboard') return 'keyboard';
   return isTouchDevice() ? 'touch' : 'keyboard';  // auto
+}
+
+// ── SCENE: CONTROLS (KEY REBINDING) ──────────────────────────
+class ControlsScene extends Phaser.Scene {
+  constructor() { super('Controls'); }
+
+  init(data) {
+    this._returnTo = (data && data.returnTo) ? data.returnTo : null;
+  }
+
+  create() {
+    const { W, H } = CFG;
+    this.cameras.main.fadeIn(300, 0, 0, 0);
+
+    const bg = this.add.graphics();
+    bg.fillGradientStyle(0x0a0a14, 0x0a0a14, 0x080810, 0x080810, 1);
+    bg.fillRect(0, 0, W, H);
+
+    this.add.text(W/2, 44, 'REBIND CONTROLS', {
+      fontFamily:'monospace', fontSize:'32px', color:'#cc8833',
+      stroke:'#7a4a1a', strokeThickness:4,
+    }).setOrigin(0.5);
+
+    this.add.text(W/2, 82, 'Click any key to rebind it. Press ESC to cancel a rebind.', {
+      fontFamily:'monospace', fontSize:'11px', color:'#445544',
+    }).setOrigin(0.5);
+
+    // Column headers
+    this.add.text(W/2 - 120, 112, 'P1', { fontFamily:'monospace', fontSize:'14px', color:'#88cc44', letterSpacing:2 }).setOrigin(0.5);
+    this.add.text(W/2 + 120, 112, 'P2', { fontFamily:'monospace', fontSize:'14px', color:'#4488cc', letterSpacing:2 }).setOrigin(0.5);
+
+    const ACTIONS = [
+      { label:'Move Up',    p1:'p1up',      p2:'p2up'      },
+      { label:'Move Down',  p1:'p1down',    p2:'p2down'    },
+      { label:'Move Left',  p1:'p1left',    p2:'p2left'    },
+      { label:'Move Right', p1:'p1right',   p2:'p2right'   },
+      { label:'Attack',     p1:'p1attack',  p2:'p2attack'  },
+      { label:'Alt Attack', p1:'p1alt',     p2:'p2alt'     },
+      { label:'Build',      p1:'p1build',   p2:'p2build'   },
+      { label:'Interact',   p1:'p1interact',p2:'p2interact'},
+    ];
+    const ROW_START = 140, ROW_H = 60;
+
+    this._listening = null; // { actionKey, box, lbl }
+    this._keyBoxes = [];
+
+    const getBindings = () => Object.assign({}, DEFAULT_BINDINGS, loadSettings().bindings || {});
+
+    const makeKeyBox = (actionKey, x, y, isP1) => {
+      const B = getBindings();
+      const g = this.add.graphics();
+      const lbl = this.add.text(x, y, keyDisplayName(B[actionKey]), {
+        fontFamily:'monospace', fontSize:'16px', color:'#ffffff', stroke:'#000', strokeThickness:2,
+      }).setOrigin(0.5);
+      const zone = this.add.zone(x, y, 100, 44).setInteractive({ useHandCursor: true });
+      const redraw = (selected, listening) => {
+        g.clear();
+        if (listening) {
+          g.fillStyle(0x2a1a00, 0.95); g.fillRoundedRect(x-46, y-18, 92, 36, 5);
+          g.lineStyle(2, 0xffcc44); g.strokeRoundedRect(x-46, y-18, 92, 36, 5);
+          lbl.setText('...').setColor('#ffcc44');
+        } else {
+          g.fillStyle(selected ? (isP1 ? 0x142014 : 0x0d1420) : 0x0d0d14, 0.95);
+          g.fillRoundedRect(x-46, y-18, 92, 36, 5);
+          g.lineStyle(2, selected ? (isP1 ? 0x88cc44 : 0x4488cc) : 0x222233);
+          g.strokeRoundedRect(x-46, y-18, 92, 36, 5);
+          lbl.setText(keyDisplayName(getBindings()[actionKey])).setColor(selected ? '#ffffff' : '#aaaaaa');
+        }
+      };
+      redraw(false, false);
+      zone.on('pointerover', () => { if (!this._listening) redraw(true, false); });
+      zone.on('pointerout',  () => { if (!this._listening || this._listening.actionKey !== actionKey) redraw(false, false); });
+      zone.on('pointerdown', () => {
+        if (this._listening) {
+          // Cancel previous listening
+          const prev = this._listening;
+          prev.redraw(false, false);
+          this.input.keyboard.off('keydown', prev.handler);
+        }
+        redraw(true, true);
+        const handler = (event) => {
+          this._listening = null;
+          if (event.keyCode === Phaser.Input.Keyboard.KeyCodes.ESC) {
+            redraw(false, false);
+            return;
+          }
+          // Find the key name from keyCode
+          const KC = Phaser.Input.Keyboard.KeyCodes;
+          let keyName = Object.keys(KC).find(k => KC[k] === event.keyCode);
+          if (!keyName) keyName = event.key.toUpperCase();
+          const cur = getBindings();
+          cur[actionKey] = keyName;
+          saveSettings({ bindings: cur });
+          redraw(false, false);
+        };
+        this._listening = { actionKey, redraw, handler };
+        this.input.keyboard.once('keydown', handler);
+      });
+      return { g, lbl, redraw, zone, actionKey };
+    };
+
+    ACTIONS.forEach((row, i) => {
+      const y = ROW_START + i * ROW_H;
+      // Action label
+      this.add.text(W/2 - 280, y, row.label, {
+        fontFamily:'monospace', fontSize:'13px', color:'#667766', letterSpacing:1,
+      }).setOrigin(0, 0.5);
+      // Divider line
+      const div = this.add.graphics();
+      div.lineStyle(1, 0x1a1a2a); div.lineBetween(W/2-350, y+28, W/2+350, y+28);
+      // Key boxes
+      this._keyBoxes.push(makeKeyBox(row.p1, W/2 - 120, y, true));
+      this._keyBoxes.push(makeKeyBox(row.p2, W/2 + 120, y, false));
+    });
+
+    // Reset to defaults button
+    const resetBtn = this.add.text(W/2, ROW_START + ACTIONS.length * ROW_H + 20, '[ RESET TO DEFAULTS ]', {
+      fontFamily:'monospace', fontSize:'14px', color:'#cc4444',
+    }).setOrigin(0.5).setInteractive({ useHandCursor: true });
+    resetBtn.on('pointerover', () => resetBtn.setColor('#ff6666'));
+    resetBtn.on('pointerout',  () => resetBtn.setColor('#cc4444'));
+    resetBtn.on('pointerdown', () => {
+      if (this._listening) {
+        this.input.keyboard.off('keydown', this._listening.handler);
+        this._listening = null;
+      }
+      saveSettings({ bindings: Object.assign({}, DEFAULT_BINDINGS) });
+      this._keyBoxes.forEach(b => b.redraw(false, false));
+    });
+
+    // Back button
+    const backBtn = this.add.text(W/2, H - 22, '[ BACK TO SETTINGS ]', {
+      fontFamily:'monospace', fontSize:'18px', color:'#aaffaa',
+    }).setOrigin(0.5).setInteractive({ useHandCursor: true });
+    backBtn.on('pointerover', () => backBtn.setColor('#ffffff'));
+    backBtn.on('pointerout',  () => backBtn.setColor('#aaffaa'));
+    this.tweens.add({ targets: backBtn, alpha: 0.4, duration: 700, yoyo: true, repeat: -1 });
+
+    const goBack = () => {
+      if (this._listening) {
+        this.input.keyboard.off('keydown', this._listening.handler);
+        this._listening = null;
+      }
+      this.cameras.main.fadeOut(200, 0, 0, 0);
+      this.time.delayedCall(200, () => {
+        this.scene.start('Settings', { returnTo: this._returnTo });
+      });
+    };
+    backBtn.on('pointerdown', goBack);
+    const K = Phaser.Input.Keyboard.KeyCodes;
+    this.input.keyboard.addKey(K.ESC).on('down', () => {
+      if (this._listening) {
+        const prev = this._listening;
+        this._listening = null;
+        prev.redraw(false, false);
+        this.input.keyboard.off('keydown', prev.handler);
+      } else {
+        goBack();
+      }
+    });
+  }
 }
 
 // ── SCENE: BOOT ───────────────────────────────────────────────
@@ -2892,11 +3067,11 @@ class SettingsScene extends Phaser.Scene {
     }).setOrigin(0.5);
 
     // ── Input mode section ──────────────────────────────────
-    this.add.text(W/2, 115, 'INPUT MODE', {
+    this.add.text(W/2, 98, 'INPUT MODE', {
       fontFamily:'monospace', fontSize:'13px', color:'#556655', letterSpacing: 3,
     }).setOrigin(0.5);
 
-    this.add.text(W/2, 140, 'Choose how you control the game. "Auto" detects your device automatically.', {
+    this.add.text(W/2, 120, 'Choose how you control the game. "Auto" detects your device automatically.', {
       fontFamily:'monospace', fontSize:'11px', color:'#445544',
     }).setOrigin(0.5);
 
@@ -2910,7 +3085,7 @@ class SettingsScene extends Phaser.Scene {
     this._inputSel = curMode;
     this._inputBoxes = inputOpts.map((o, i) => {
       const x = W/2 + (i - 1) * 290;
-      const y = 240;
+      const y = 212;
       const box = this.add.graphics();
       const lbl = this.add.text(x, y, o.label, {
         fontFamily:'monospace', fontSize:'22px', color:'#ffffff', stroke:'#000', strokeThickness:2,
@@ -2928,12 +3103,12 @@ class SettingsScene extends Phaser.Scene {
     const deviceNote = isTouchDevice()
       ? '\uD83D\uDCF1  iPad / touch device detected'
       : '\uD83D\uDCBB  Keyboard device detected';
-    this.add.text(W/2, 340, deviceNote, {
+    this.add.text(W/2, 318, deviceNote, {
       fontFamily:'monospace', fontSize:'12px', color:'#4a6a4a',
     }).setOrigin(0.5);
 
     // ── Audio settings ───────────────────────────────────────
-    this.add.text(W/2, 374, 'AUDIO', {
+    this.add.text(W/2, 352, 'AUDIO', {
       fontFamily:'monospace', fontSize:'13px', color:'#556655', letterSpacing: 3,
     }).setOrigin(0.5);
 
@@ -2964,24 +3139,24 @@ class SettingsScene extends Phaser.Scene {
       redraw(initial);
     };
 
-    makeToggle('MUSIC', W/2 - 200, 428, musicOn, (v) => {
+    makeToggle('MUSIC', W/2 - 200, 394, musicOn, (v) => {
       saveSettings({ musicEnabled: v });
       if (Music.gain) Music.gain.gain.value = v ? 0.07 : 0;
     });
-    makeToggle('SFX', W/2, 428, sfxOn, (v) => {
+    makeToggle('SFX', W/2, 394, sfxOn, (v) => {
       saveSettings({ sfxEnabled: v });
       SFX._enabled = v;
     });
 
     // ── Gameplay settings ────────────────────────────────────
-    this.add.text(W/2, 488, 'GAMEPLAY', {
+    this.add.text(W/2, 444, 'GAMEPLAY', {
       fontFamily:'monospace', fontSize:'13px', color:'#556655', letterSpacing: 3,
     }).setOrigin(0.5);
 
-    makeToggle('FOG OF WAR', W/2 - 200, 543, fogOn, (v) => {
+    makeToggle('FOG OF WAR', W/2 - 200, 486, fogOn, (v) => {
       saveSettings({ fogEnabled: v });
     });
-    makeToggle('MINIMAP', W/2, 543, s.minimapEnabled !== false, (v) => {
+    makeToggle('MINIMAP', W/2, 486, s.minimapEnabled !== false, (v) => {
       saveSettings({ minimapEnabled: v });
     });
 
@@ -2994,7 +3169,7 @@ class SettingsScene extends Phaser.Scene {
     });
 
     // ── Tutorial toggle ──────────────────────────────────────
-    this.add.text(W/2, 578, 'TUTORIAL TIPS', {
+    this.add.text(W/2, 536, 'TUTORIAL TIPS', {
       fontFamily:'monospace', fontSize:'11px', color:'#445544', letterSpacing: 3,
     }).setOrigin(0.5);
 
@@ -3005,7 +3180,7 @@ class SettingsScene extends Phaser.Scene {
       { key: false, label: 'OFF', sub: 'No tutorial tips — for experienced players' },
     ];
     this._tutBoxes = tutOpts.map((o, i) => {
-      const x = W/2 + (i === 0 ? -140 : 140), y = 640;
+      const x = W/2 + (i === 0 ? -140 : 140), y = 596;
       const box = this.add.graphics();
       const lbl = this.add.text(x, y, o.label, {
         fontFamily:'monospace', fontSize:'18px', color:'#ffffff', stroke:'#000', strokeThickness:2,
@@ -3017,6 +3192,19 @@ class SettingsScene extends Phaser.Scene {
       zone.on('pointerover', () => this.setTutorial(o.key));
       zone.on('pointerdown', () => { this.setTutorial(o.key); saveSettings({ tutorial: o.key }); });
       return { box, lbl, x, y, key: o.key };
+    });
+
+    // ── Rebind controls link ─────────────────────────────────
+    const rebindBtn = this.add.text(W/2, H - 60, '[ REBIND CONTROLS ]', {
+      fontFamily:'monospace', fontSize:'14px', color:'#8888cc',
+    }).setOrigin(0.5).setInteractive({ useHandCursor: true });
+    rebindBtn.on('pointerover', () => rebindBtn.setColor('#aaaaff'));
+    rebindBtn.on('pointerout',  () => rebindBtn.setColor('#8888cc'));
+    rebindBtn.on('pointerdown', () => {
+      this.cameras.main.fadeOut(200, 0, 0, 0);
+      this.time.delayedCall(200, () => {
+        this.scene.start('Controls', { returnTo: this._returnTo });
+      });
     });
 
     // ── Back button ──────────────────────────────────────────
@@ -3137,9 +3325,10 @@ class CharSelectScene extends Phaser.Scene {
     this._updateTutCheck();
 
     const K = Phaser.Input.Keyboard.KeyCodes;
+    const _CB = Object.assign({}, DEFAULT_BINDINGS, loadSettings().bindings || {});
     this.keys = this.input.keyboard.addKeys({
-      p1L:K.A, p1R:K.D, p1OK:K.F,
-      p2L:K.LEFT, p2R:K.RIGHT, p2OK:K.FORWARD_SLASH,
+      p1L:K[_CB.p1left], p1R:K[_CB.p1right], p1OK:K[_CB.p1attack],
+      p2L:K[_CB.p2left], p2R:K[_CB.p2right], p2OK:K[_CB.p2attack],
     });
     this.keys.p1L.on('down', () => this.nav(1,-1));
     this.keys.p1R.on('down', () => this.nav(1, 1));
@@ -3147,6 +3336,32 @@ class CharSelectScene extends Phaser.Scene {
     this.keys.p2L.on('down', () => this.nav(2,-1));
     this.keys.p2R.on('down', () => this.nav(2, 1));
     this.keys.p2OK.on('down',() => this.confirm(2));
+
+    // Back to main menu — top-left corner
+    const backBtnBg = this.add.graphics();
+    const backBtnPad = { x: 14, y: 10 };
+    const backBtn = this.add.text(backBtnPad.x + 10, backBtnPad.y + 8, '← MAIN MENU', {
+      fontFamily:'monospace', fontSize: Math.max(13, Math.round(17*S)) + 'px', color:'#cc8833',
+      stroke:'#000', strokeThickness:2,
+    }).setOrigin(0, 0).setInteractive({ useHandCursor: true });
+    const drawBackBg = (hover) => {
+      backBtnBg.clear();
+      backBtnBg.fillStyle(hover ? 0x1a1208 : 0x100c06, 0.9);
+      backBtnBg.fillRoundedRect(backBtnPad.x, backBtnPad.y, backBtn.width + 20, backBtn.height + 16, 6);
+      backBtnBg.lineStyle(2, hover ? 0xcc8833 : 0x4a3010);
+      backBtnBg.strokeRoundedRect(backBtnPad.x, backBtnPad.y, backBtn.width + 20, backBtn.height + 16, 6);
+    };
+    drawBackBg(false);
+    backBtn.on('pointerover', () => { backBtn.setColor('#ffcc44'); drawBackBg(true); });
+    backBtn.on('pointerout',  () => { backBtn.setColor('#cc8833'); drawBackBg(false); });
+    backBtn.on('pointerdown', () => goBack());
+    const escKey = this.input.keyboard.addKey(K.ESC);
+    const goBack = () => {
+      this.cameras.main.fadeOut(200, 0, 0, 0);
+      this.time.delayedCall(200, () => this.scene.start('ModeSelect'));
+    };
+    escKey.on('down', goBack);
+
     this.refresh();
   }
 
@@ -3480,11 +3695,12 @@ class GameScene extends Phaser.Scene {
               });
             }
 
-            // Input
+            // Input — load saved bindings (falls back to DEFAULT_BINDINGS)
             const K = Phaser.Input.Keyboard.KeyCodes;
-            this.wasd    = this.input.keyboard.addKeys({ up:K.W, down:K.S, left:K.A, right:K.D });
-            this.cursors = this.input.keyboard.createCursorKeys();
-            this.hotkeys = this.input.keyboard.addKeys({ p1use:K.E, p2use:K.ENTER, tab:K.TAB, esc:K.ESC });
+            const _B = Object.assign({}, DEFAULT_BINDINGS, loadSettings().bindings || {});
+            this.wasd    = this.input.keyboard.addKeys({ up:K[_B.p1up], down:K[_B.p1down], left:K[_B.p1left], right:K[_B.p1right] });
+            this.p2keys  = this.input.keyboard.addKeys({ up:K[_B.p2up], down:K[_B.p2down], left:K[_B.p2left], right:K[_B.p2right] });
+            this.hotkeys = this.input.keyboard.addKeys({ p1use:K[_B.p1interact], p2use:K[_B.p2interact], tab:K.TAB, esc:K.ESC });
 
             this.hotkeys.p1use.on('down', () => { if (!this.barrackOpen && !this.isOver) this.tryInteract(this.p1); });
             if (this.p2) this.hotkeys.p2use.on('down', () => { if (!this.barrackOpen && !this.isOver) this.tryInteract(this.p2); });
@@ -3536,8 +3752,8 @@ class GameScene extends Phaser.Scene {
 
             // Attack keys
             this.atkKeys = this.input.keyboard.addKeys({
-              p1atk: K.F, p1alt: K.G, p1build: K.Q,
-              p2atk: K.FORWARD_SLASH, p2alt: K.PERIOD, p2build: K.ZERO,
+              p1atk: K[_B.p1attack], p1alt: K[_B.p1alt], p1build: K[_B.p1build],
+              p2atk: K[_B.p2attack], p2alt: K[_B.p2alt], p2build: K[_B.p2build],
             });
             this.atkKeys.p1atk.on('down', () => {
               if (!this.barrackOpen && !this.isOver && !this.p1.isDowned && !this.p1.isSleeping) {
@@ -4101,6 +4317,14 @@ class GameScene extends Phaser.Scene {
           if (Math.abs(relAngle) < 0.87) return; // 0.87 rad ≈ 50° each side
         }
       }
+      // All-sides exclusion zone for structures — fjord only protects one direction
+      if (this._preStructureTiles) {
+        for (const structs of Object.values(this._preStructureTiles)) {
+          for (const pos of structs) {
+            if (Math.abs(tx - pos.tx) < 5 && Math.abs(ty - pos.ty) < 5) return;
+          }
+        }
+      }
       const px = tx*TILE+24, py = ty*TILE+20;
       const ob = this.obstacles.create(px, py, key);
       ob.setScale(sc).setDepth(6 + ty*0.01).setImmovable(true);
@@ -4322,11 +4546,23 @@ class GameScene extends Phaser.Scene {
       const lbl = this._w(this.add.text(px, py - 52, 'RADIO TOWER', {
         fontFamily:'monospace', fontSize:'8px', color:'#66aaff', stroke:'#000', strokeThickness:2
       }).setOrigin(0.5).setDepth(7));
-      this.radioTower = { x: px, y: py, tx: pos.tx, ty: pos.ty, used: false, spr, lbl };
-      const prompt = this._w(this.add.text(px, py - 64, 'E / Enter to activate', {
+      this.radioTower = { x: px, y: py, tx: pos.tx, ty: pos.ty, used: false,
+        activating: false, activateProgress: 0, spr, lbl };
+      const prompt = this._w(this.add.text(px, py - 64, 'Hold E / Enter to activate (10s)', {
         fontFamily:'monospace', fontSize:'9px', color:'#ffee44', stroke:'#000', strokeThickness:2
       }).setOrigin(0.5).setDepth(7).setVisible(false));
       this.radioTower.prompt = prompt;
+      // Progress bar rendered on HUD (world-space, but added to HUD group via _wh)
+      const activateBar = this.add.graphics().setDepth(92);
+      if (this.hudCam) this.hudCam.ignore(activateBar);
+      activateBar.setVisible(false);
+      const activateLabel = this.add.text(px, py - 80, '', {
+        fontFamily:'monospace', fontSize:'9px', color:'#ffcc44', stroke:'#000', strokeThickness:2
+      }).setOrigin(0.5).setDepth(93);
+      if (this.hudCam) this.hudCam.ignore(activateLabel);
+      activateLabel.setVisible(false);
+      this.radioTower.activateBar = activateBar;
+      this.radioTower.activateLabel = activateLabel;
       this.pois.push({ type:'tower', tx:pos.tx, ty:pos.ty, spr });
     }
 
@@ -5194,6 +5430,7 @@ class GameScene extends Phaser.Scene {
       this.time.delayedCall(200, () => {
         this.scene.pause();
         this.scene.launch('Settings', { returnTo: 'Game' });
+        this.scene.bringToTop('Settings');
       });
     });
 
@@ -5282,20 +5519,13 @@ class GameScene extends Phaser.Scene {
     const dist = Phaser.Math.Distance.Between(player.spr.x, player.spr.y, this.bPos.x, this.bPos.y);
     if (dist < 110) { this.openBarrack(player); return; }
 
-    // Radio tower interaction
+    // Radio tower interaction — starts 10-second activation (handled in checkRadioTowerRange)
     if (this.radioTower && !this.radioTower.used) {
       const td = Phaser.Math.Distance.Between(player.spr.x, player.spr.y, this.radioTower.x, this.radioTower.y);
-      if (td < 80) {
-        this.radioTower.used = true;
-        this._log(`${player.charData.player} activated Radio Tower  day=${this.dayNum}`, 'world');
-        this.radioTower.spr.setTint(0x66aaff);
-        this.fogRevealMult = 2; // permanently doubles player fog-of-war radius
-        this.hint('Radio Tower online! Vision range doubled permanently!', 5000);
-        SFX._play(800, 'triangle', 0.2, 0.3, 'rise');
-        SFX._play(1200, 'triangle', 0.15, 0.2, 'rise');
-        // Reveal large area around the tower itself
-        this.revealFog(this.radioTower.tx, this.radioTower.ty, 35);
-        if (this.radioTower.prompt) this.radioTower.prompt.setVisible(false);
+      if (td < 80 && !this.radioTower.activating) {
+        this.radioTower.activating = true;
+        this.radioTower.activateProgress = 0;
+        this._log(`${player.charData.player} began activating Radio Tower  day=${this.dayNum}`, 'world');
         return;
       }
     }
@@ -5404,7 +5634,10 @@ class GameScene extends Phaser.Scene {
     if (this._sleepHealAcc >= 2000) {
       this._sleepHealAcc -= 2000;
       sleeping.forEach(p => {
-        if (!p.isDowned) p.hp = Math.min(p.maxHp, p.hp + 8);
+        if (!p.isDowned) {
+          p.hp = Math.min(p.maxHp, p.hp + 8);
+          this._log(`${p.charData.player} sleep heal +8  hp=${p.hp}/${p.maxHp}`, 'player');
+        }
       });
     }
 
@@ -5680,7 +5913,7 @@ class GameScene extends Phaser.Scene {
 
     if (this.p2) {
       const p2CraftHalt = this.craftMenuOpen && this.craftMenuOwner === this.p2;
-      if (!this.p2.isDowned && !this.p2.isSleeping && !p2CraftHalt) this.movePlayer(this.p2, this.cursors.left, this.cursors.right, this.cursors.up, this.cursors.down);
+      if (!this.p2.isDowned && !this.p2.isSleeping && !p2CraftHalt) this.movePlayer(this.p2, this.p2keys.left, this.p2keys.right, this.p2keys.up, this.p2keys.down);
       else this.p2.spr.setVelocity(0,0);
     }
 
@@ -5707,7 +5940,7 @@ class GameScene extends Phaser.Scene {
     this.syncLabels();
     this.updateCamera();
     this.checkBarrackRange();
-    this.checkRadioTowerRange();
+    this.checkRadioTowerRange(delta);
     this.checkRaidCacheRange();
     this.checkDeaths();
     this.updateDowned(delta);
@@ -5990,25 +6223,94 @@ class GameScene extends Phaser.Scene {
 
   _updateWaterSubmersion(p) {
     if (!p || !p.waterOverlay || !p.waterOverlay.active) return;
+    // Restore any previously elevated tiles
+    if (p._waterSubmersionTiles) {
+      p._waterSubmersionTiles.forEach(t => {
+        if (t.active) t.setDepth(0.75).setAlpha(1);
+      });
+      p._waterSubmersionTiles = null;
+    }
+    p.waterOverlay.setVisible(false);
     if (p._inShallowWater && !p.isDowned && p.spr.visible) {
-      const h = p.spr.displayHeight;
-      const w = p.spr.displayWidth;
-      // Anchor at player center+, covers lower ~35% — looks like ankle/shin-deep wading
-      p.waterOverlay.setPosition(p.spr.x, p.spr.y + h * 0.18);
-      p.waterOverlay.setDisplaySize(w * 1.3, h * 0.38);
-      p.waterOverlay.setVisible(true).setAlpha(0.78);
-    } else {
-      p.waterOverlay.setVisible(false);
+      const TILE = CFG.TILE;
+      const px = p.spr.x, py = p.spr.y;
+      // Raise water tiles at/near the player's waist and below to depth 10 (above player ~5–7)
+      const elevated = (this.waterTiles || []).filter(t =>
+        Math.abs(t.x + TILE / 2 - px) < TILE * 1.5 &&
+        t.y <= py + TILE * 0.5 &&
+        t.y >= py - TILE * 1.5
+      );
+      elevated.forEach(t => t.setDepth(10).setAlpha(0.72));
+      p._waterSubmersionTiles = elevated;
     }
   }
 
-  checkRadioTowerRange() {
-    if (!this.radioTower || this.radioTower.used) {
-      if (this.radioTower && this.radioTower.prompt) this.radioTower.prompt.setVisible(false);
+  checkRadioTowerRange(delta) {
+    const tower = this.radioTower;
+    if (!tower || tower.used) {
+      if (tower && tower.prompt) tower.prompt.setVisible(false);
+      if (tower && tower.activateBar)   { tower.activateBar.setVisible(false); }
+      if (tower && tower.activateLabel) { tower.activateLabel.setVisible(false); }
       return;
     }
-    const near = p => p && Phaser.Math.Distance.Between(p.spr.x, p.spr.y, this.radioTower.x, this.radioTower.y) < 80;
-    this.radioTower.prompt.setVisible(near(this.p1) || near(this.p2));
+    const ACTIVATE_DURATION = 10000; // ms
+    const BAR_W = 80, BAR_H = 8;
+    const near = p => p && p.spr && p.spr.active &&
+      Phaser.Math.Distance.Between(p.spr.x, p.spr.y, tower.x, tower.y) < 80;
+    const anyNear = near(this.p1) || near(this.p2);
+
+    if (tower.activating) {
+      if (!anyNear) {
+        // Player walked away — cancel activation
+        tower.activating = false;
+        tower.activateProgress = 0;
+        if (tower.activateBar)   { tower.activateBar.clear(); tower.activateBar.setVisible(false); }
+        if (tower.activateLabel) { tower.activateLabel.setVisible(false); }
+        tower.prompt.setVisible(false);
+        this.hint('Radio Tower activation cancelled.', 2000);
+        return;
+      }
+      tower.activateProgress += (delta || 0);
+      const pct = Math.min(tower.activateProgress / ACTIVATE_DURATION, 1);
+      const remaining = Math.max(0, (ACTIVATE_DURATION - tower.activateProgress) / 1000).toFixed(1);
+
+      // Draw progress bar in world space (follows tower position)
+      if (tower.activateBar) {
+        const bx = tower.x - BAR_W / 2, by = tower.y - 90;
+        tower.activateBar.clear();
+        tower.activateBar.fillStyle(0x111122, 0.85);
+        tower.activateBar.fillRect(bx - 1, by - 1, BAR_W + 2, BAR_H + 2);
+        tower.activateBar.fillStyle(0x44aaff, 1);
+        tower.activateBar.fillRect(bx, by, Math.floor(BAR_W * pct), BAR_H);
+        tower.activateBar.lineStyle(1, 0x4466aa);
+        tower.activateBar.strokeRect(bx - 1, by - 1, BAR_W + 2, BAR_H + 2);
+        tower.activateBar.setVisible(true);
+      }
+      if (tower.activateLabel) {
+        tower.activateLabel.setText(`Activating... ${remaining}s`);
+        tower.activateLabel.setVisible(true);
+      }
+
+      if (tower.activateProgress >= ACTIVATE_DURATION) {
+        // Activation complete — apply fog buff
+        tower.used = true;
+        tower.activating = false;
+        if (tower.activateBar)   { tower.activateBar.clear(); tower.activateBar.setVisible(false); }
+        if (tower.activateLabel) { tower.activateLabel.setVisible(false); }
+        if (tower.prompt) tower.prompt.setVisible(false);
+        this._log(`Radio Tower activated  day=${this.dayNum}`, 'world');
+        tower.spr.setTint(0x66aaff);
+        this.fogRevealMult = 2;
+        this.hint('Radio Tower online! Vision range doubled permanently!', 5000);
+        SFX._play(800, 'triangle', 0.2, 0.3, 'rise');
+        SFX._play(1200, 'triangle', 0.15, 0.2, 'rise');
+        this.revealFog(tower.tx, tower.ty, 35);
+      }
+      return;
+    }
+
+    // Not activating — show/hide approach prompt
+    tower.prompt.setVisible(anyNear);
   }
 
   checkRaidCacheRange() {
@@ -6177,6 +6479,7 @@ class GameScene extends Phaser.Scene {
         const dmg = this._knightShieldBlock(p, bullet.x, bullet.y, baseDmg);
         bullet.destroy();
         p.hp = Math.max(0, p.hp - dmg);
+        this._log(`${p.charData.player} shot by raider  dmg=${Math.round(dmg)}  hp=${p.hp}/${p.maxHp}`, 'combat');
         SFX.playerHurt();
         // Only apply red hurt tint if shield didn't already flash blue
         if (dmg >= baseDmg) {
@@ -6556,7 +6859,9 @@ class GameScene extends Phaser.Scene {
       // Damage
       players.forEach(p => {
         if (Phaser.Math.Distance.Between(b.spr.x, b.spr.y, p.spr.x, p.spr.y) < 130) {
-          p.hp = Math.max(0, p.hp - Math.round(b.dmg * 0.85));
+          const slamDmg = Math.round(b.dmg * 0.85);
+          p.hp = Math.max(0, p.hp - slamDmg);
+          this._log(`${p.charData.player} boss stomp  dmg=${slamDmg}  hp=${p.hp}/${p.maxHp}`, 'combat');
           SFX.playerHurt();
           p.spr.setTint(b.type === 'boss_troll' ? 0x88ccff : 0xff4400);
           this.time.delayedCall(250, () => {
@@ -6578,7 +6883,9 @@ class GameScene extends Phaser.Scene {
         b.spr.setVelocity(0, 0);
         players.forEach(p => {
           if (Phaser.Math.Distance.Between(b.spr.x, b.spr.y, p.spr.x, p.spr.y) < 55) {
-            p.hp = Math.max(0, p.hp - Math.round(b.dmg * 1.3));
+            const chargeDmg = Math.round(b.dmg * 1.3);
+            p.hp = Math.max(0, p.hp - chargeDmg);
+            this._log(`${p.charData.player} troll charge  dmg=${chargeDmg}  hp=${p.hp}/${p.maxHp}`, 'combat');
             SFX.playerHurt();
             p.spr.setTint(0xff8800);
             this.cameras.main.shake(250, 0.01);
@@ -6609,7 +6916,9 @@ class GameScene extends Phaser.Scene {
           this.physics.add.overlap(p.spr, blt, () => {
             if (!blt.active) return;
             blt.destroy();
-            p.hp = Math.max(0, p.hp - Math.round(b.dmg * 0.75));
+            const sprayDmg = Math.round(b.dmg * 0.75);
+            p.hp = Math.max(0, p.hp - sprayDmg);
+            this._log(`${p.charData.player} boss spray  dmg=${sprayDmg}  hp=${p.hp}/${p.maxHp}`, 'combat');
             SFX.playerHurt();
             p.spr.setTint(col);
             // Spider Queen web: root player briefly (1.5s)
@@ -7603,6 +7912,41 @@ class GameScene extends Phaser.Scene {
         }
       }
     }
+
+    // Spawn guards around the Radio Tower (ruins biome spiders, aggressive patrol)
+    if (this.radioTower) {
+      const t = { key:'spider_ruins', hp:55, speed:85, dmg:9, baseScale:1.8, w:18, h:12 };
+      const count = Phaser.Math.Between(4, 6);
+      for (let i = 0; i < count; i++) {
+        const ang = (i / count) * Math.PI * 2;
+        const dist = Phaser.Math.Between(80, 150);
+        const ex = this.radioTower.x + Math.cos(ang) * dist;
+        const ey = this.radioTower.y + Math.sin(ang) * dist;
+        const sizeMult = Phaser.Math.FloatBetween(1.0, 1.4);
+        const sc = t.baseScale * sizeMult;
+        const spr = this.physics.add.image(
+          Phaser.Math.Clamp(ex, CFG.TILE*4, worldW - CFG.TILE*4),
+          Phaser.Math.Clamp(ey, CFG.TILE*4, worldH - CFG.TILE*4), t.key
+        ).setScale(sc).setDepth(8);
+        spr.setCollideWorldBounds(true);
+        spr.body.setSize(t.w, t.h);
+        if (this.hudCam) this.hudCam.ignore(spr);
+        this.physics.add.collider(spr, this.obstacles);
+        const eGuard = {
+          spr, type: t.key,
+          hp: Math.floor(t.hp * sizeMult), maxHp: Math.floor(t.hp * sizeMult),
+          speed: t.speed * sizeMult, dmg: Math.max(1, Math.floor(t.dmg * sizeMult)),
+          attackTimer: 0, wanderTimer: 0,
+          aggroRange: 260, attackRange: 35 * sizeMult,
+          sizeMult, towerGuard: true,
+        };
+        const _ap = [this.p1, this.p2].filter(p => p && p.spr && p.spr.active);
+        const _sd = _ap.length ? Math.min(..._ap.map(p => Phaser.Math.Distance.Between(ex, ey, p.spr.x, p.spr.y))) : Infinity;
+        if (_sd > CFG.DORMANT_RADIUS) { eGuard._dormant = true; spr.setVisible(false); if (spr.body) spr.body.enable = false; }
+        this.enemies.push(eGuard);
+      }
+      this._log(`spawnEnemies: spawned ${count} tower guards around radio tower`, 'world');
+    }
   }
 
   // ── POND GENERATION ──────────────────────────────────────────
@@ -7660,12 +8004,25 @@ class GameScene extends Phaser.Scene {
         visited.add(key);
         if (Math.random() > prob) continue;
         tileSet.add(key);
-        [[tx-1,ty],[tx+1,ty],[tx,ty-1],[tx,ty+1]].forEach(([nx, ny]) => {
-          if (!visited.has(`${nx},${ny}`) && prob * 0.58 > 0.08) {
-            queue.push([nx, ny, prob * 0.58]);
-          }
-        });
+        [[tx-1,ty],[tx+1,ty],[tx,ty-1],[tx,ty+1],
+         [tx-1,ty-1],[tx+1,ty+1],[tx-1,ty+1],[tx+1,ty-1]]
+          .forEach(([nx, ny]) => {
+            const decay = (nx !== tx && ny !== ty) ? 0.65 : 0.70;
+            if (!visited.has(`${nx},${ny}`) && prob * decay > 0.06) {
+              queue.push([nx, ny, prob * decay]);
+            }
+          });
       }
+      // Fill holes: non-water cells with 3+ orthogonal water neighbors get pulled in
+      const toFill = [];
+      visited.forEach(key => {
+        if (tileSet.has(key)) return;
+        const [fx, fy] = key.split(',').map(Number);
+        const wn = [[fx-1,fy],[fx+1,fy],[fx,fy-1],[fx,fy+1]]
+          .filter(([nx,ny]) => tileSet.has(`${nx},${ny}`)).length;
+        if (wn >= 3) toFill.push(key);
+      });
+      toFill.forEach(k => tileSet.add(k));
       // Discard blobs smaller than 12 tiles — prevents isolated puddles
       if (tileSet.size < 12) { _pondSkipBlob++; continue; }
       // Classify and place tiles
@@ -7742,18 +8099,41 @@ class GameScene extends Phaser.Scene {
         visited.add(key);
         if (Math.random() > prob) continue;
         tileSet.add(key);
-        [[tx-1,ty],[tx+1,ty],[tx,ty-1],[tx,ty+1],[tx-1,ty-1],[tx+1,ty+1],[tx-1,ty+1],[tx+1,ty-1]]
-          .forEach(([nx, ny]) => {
-            if (!visited.has(`${nx},${ny}`) && prob * 0.72 > 0.06) {
-              queue.push([nx, ny, prob * 0.72]);
-            }
-          });
+        if (tileSet.has(key)) {
+          [[tx-1,ty],[tx+1,ty],[tx,ty-1],[tx,ty+1],[tx-1,ty-1],[tx+1,ty+1],[tx-1,ty+1],[tx+1,ty-1]]
+            .forEach(([nx, ny]) => {
+              if (!visited.has(`${nx},${ny}`) && prob * 0.82 > 0.05) {
+                queue.push([nx, ny, prob * 0.82]);
+              }
+            });
+        }
       }
+      // Fill holes: non-water cells with 3+ orthogonal water neighbors get pulled in
+      const toFillL = [];
+      visited.forEach(key => {
+        if (tileSet.has(key)) return;
+        const [fx, fy] = key.split(',').map(Number);
+        const wn = [[fx-1,fy],[fx+1,fy],[fx,fy-1],[fx,fy+1]]
+          .filter(([nx,ny]) => tileSet.has(`${nx},${ny}`)).length;
+        if (wn >= 3) toFillL.push(key);
+      });
+      toFillL.forEach(k => tileSet.add(k));
       // Lakes need to be substantial — skip tiny results
-      if (tileSet.size < 40) { _lakeSkipBlob++; this._log(`lake ${biome} blob too small (${tileSet.size}) – skipped`, 'world'); continue; }
+      if (tileSet.size < 25) { _lakeSkipBlob++; this._log(`lake ${biome} blob too small (${tileSet.size}) – skipped`, 'world'); continue; }
 
-      // Place tiles — lakes are all-shallow for wading (no impassable deep center)
-      // so players can walk through them and encounter water_lurkers inside
+      // Classify deep tiles: fully surrounded by water on all 4 orthogonal sides
+      const deepLakeTiles = new Set();
+      if (biome !== 'tundra') {
+        tileSet.forEach(key => {
+          const [tx, ty] = key.split(',').map(Number);
+          if ([[tx-1,ty],[tx+1,ty],[tx,ty-1],[tx,ty+1]]
+              .every(([nx,ny]) => tileSet.has(`${nx},${ny}`))) {
+            deepLakeTiles.add(key);
+          }
+        });
+      }
+
+      // Place tiles — deep center uses water_deep (traversable); shallow edges stay water_shallow
       tileSet.forEach(key => {
         const [tx, ty] = key.split(',').map(Number);
         if (tx < 1 || ty < 1 || tx >= CFG.MAP_W - 1 || ty >= CFG.MAP_H - 1) return;
@@ -7767,6 +8147,12 @@ class GameScene extends Phaser.Scene {
           this._w(tile);
           this.iceTiles.push(tile);
           this._iceTileSet.add(key);
+        } else if (deepLakeTiles.has(key)) {
+          // Deep center — visually dark, traversable (no physics obstacle)
+          const tile = this._w(this.add.image(x, y, 'water_deep').setOrigin(0).setDepth(0.75));
+          if (this.hudCam) this.hudCam.ignore(tile);
+          this.waterTiles.push(tile);
+          this._waterTileSet.add(key);
         } else {
           const tile = this._w(this.add.image(x, y, 'water_shallow').setOrigin(0).setDepth(0.75));
           if (this.hudCam) this.hudCam.ignore(tile);
@@ -7775,9 +8161,18 @@ class GameScene extends Phaser.Scene {
         }
       });
 
-      // Place a water den at the lake center (skip tundra — ice, not water dens)
+      // Place a water den at the deep tile nearest the lake center (skip tundra — ice, not water dens)
       if (biome !== 'tundra') {
-        const denX = cx * TILE, denY = cy * TILE;
+        let denTx = cx, denTy = cy;
+        if (deepLakeTiles.size > 0) {
+          let bestDist = Infinity;
+          deepLakeTiles.forEach(key => {
+            const [dtx, dty] = key.split(',').map(Number);
+            const d = (dtx - cx) ** 2 + (dty - cy) ** 2;
+            if (d < bestDist) { bestDist = d; denTx = dtx; denTy = dty; }
+          });
+        }
+        const denX = denTx * TILE, denY = denTy * TILE;
         const spr = this._w(this.add.image(denX, denY, 'enemy_den')
           .setScale(1.6).setDepth(5).setTint(0x226688));
         const lbl = this._w(this.add.text(denX, denY - 20, 'WATER DEN', {
@@ -7797,7 +8192,7 @@ class GameScene extends Phaser.Scene {
         }
       }
       _lakePlaced++;
-      this._log(`lake ${biome} placed  tiles=${tileSet.size} cx=${cx},cy=${cy}  den=${biome !== 'tundra'}`, 'world');
+      this._log(`lake ${biome} placed  tiles=${tileSet.size} deep=${deepLakeTiles.size} cx=${cx},cy=${cy}  den=${biome !== 'tundra'}`, 'world');
     }
     this._log(`_buildLakes done  placed=${_lakePlaced} skip_center=${_lakeSkipCenter} skip_blob=${_lakeSkipBlob}  water=${this.waterTiles.length} ice=${this.iceTiles.length} dens=${this.waterDens.length}`, 'world');
   }
@@ -8087,6 +8482,7 @@ class GameScene extends Phaser.Scene {
     if (!wall.active) return;
     wall.hp = Math.max(0, (wall.hp || 200) - dmg);
     const pct = wall.hp / (wall.maxHp || 200);
+    this._log(`Wall hit  dmg=${Math.round(dmg)}  hp=${wall.hp}/${wall.maxHp || 200}`, 'combat');
     if (wall.hp <= 0) {
       this.builtWalls = this.builtWalls.filter(w => w !== wall);
       if (wall._hpBg && wall._hpBg.active) wall._hpBg.destroy();
@@ -8706,6 +9102,7 @@ class GameScene extends Phaser.Scene {
             const d = Phaser.Math.Distance.Between(pl.spr.x, pl.spr.y, cf.x, cf.y);
             if (d < 80) {
               pl.hp = Math.min(pl.maxHp, pl.hp + 3);
+              this._log(`${pl.charData.player} campfire heal +3  hp=${pl.hp}/${pl.maxHp}`, 'player');
             }
           });
         }
@@ -9506,7 +9903,7 @@ const _phaserGame = new Phaser.Game({
   // fight the flex layout by setting its own margin offsets on the canvas.
   parent: 'game-container',
   scale: { mode: Phaser.Scale.FIT, autoCenter: Phaser.Scale.NO_CENTER },
-  scene: [BootScene, ModeSelectScene, SettingsScene, CharSelectScene, GameScene, GameOverScene],
+  scene: [BootScene, ModeSelectScene, SettingsScene, ControlsScene, CharSelectScene, GameScene, GameOverScene],
 });
 // iOS PWA standalone mode: viewport layout may settle slightly after JS starts.
 // A deferred refresh ensures the canvas fills the container correctly.
