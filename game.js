@@ -347,6 +347,7 @@ const Music = {
 
 const SFX = {
   _enabled: true,
+  _noiseBuf: null,
   _play(freq, type, dur, vol, shape) {
     if (!this._enabled) return;
     try {
@@ -362,18 +363,26 @@ const SFX = {
       o.start(ctx.currentTime); o.stop(ctx.currentTime+dur+0.01);
     } catch(e) {}
   },
+  _getNoiseBuf(ctx) {
+    if (!this._noiseBuf || this._noiseBuf.sampleRate !== ctx.sampleRate) {
+      // 2-second white-noise buffer reused for all noise events
+      const buf = ctx.createBuffer(1, ctx.sampleRate * 2, ctx.sampleRate);
+      const d = buf.getChannelData(0);
+      for (let i = 0; i < d.length; i++) d[i] = Math.random() * 2 - 1;
+      this._noiseBuf = buf;
+    }
+    return this._noiseBuf;
+  },
   _noise(dur, vol) {
     if (!this._enabled) return;
     try {
       const ctx = Music.ctx; if (!ctx) return;
-      const buf = ctx.createBuffer(1, ctx.sampleRate*dur, ctx.sampleRate);
-      const d = buf.getChannelData(0);
-      for (let i=0;i<d.length;i++) d[i] = (Math.random()*2-1)*vol;
       const src = ctx.createBufferSource(), g = ctx.createGain();
-      src.buffer = buf; src.connect(g); g.connect(Music.gain || ctx.destination);
+      src.buffer = this._getNoiseBuf(ctx);
+      src.connect(g); g.connect(Music.gain || ctx.destination);
       g.gain.setValueAtTime(vol, ctx.currentTime);
-      g.gain.linearRampToValueAtTime(0, ctx.currentTime+dur);
-      src.start(); src.stop(ctx.currentTime+dur+0.01);
+      g.gain.linearRampToValueAtTime(0, ctx.currentTime + dur);
+      src.start(); src.stop(ctx.currentTime + dur + 0.01);
     } catch(e) {}
   },
   bossRoar() {
@@ -3549,6 +3558,7 @@ class GameScene extends Phaser.Scene {
     this.dayNum = 1; this.dayTimer = 0; this.DAY_DUR = 150000; this.isNight = false;
     this.kills = 0;
     this.resourcesGathered = 0;
+    this.teamAmmoPool = 0;
     this.bossSpawned = false;
     this.bossDefeated = false;
     this.boss = null;
@@ -5706,7 +5716,14 @@ class GameScene extends Phaser.Scene {
     player.hp        = Math.max(1, Math.round(newCh.maxHp * hpPct));
     player.spr.setTexture(newCh.id);
     player.lbl.setText(newCh.player);
-    if (newCh.id==='gunslinger') { player.ammo = 8; player.reserveAmmo = 32; }
+    if (newCh.id==='gunslinger') {
+      player.ammo = 8;
+      const maxReserve = 40 - player.ammo;
+      const fromPool = Math.min(this.teamAmmoPool, maxReserve);
+      player.reserveAmmo = Math.min(maxReserve, 32 + fromPool);
+      this.teamAmmoPool = Math.max(0, this.teamAmmoPool - fromPool);
+      if (fromPool > 0) this._log(`Barracks: drained ${fromPool} from team pool → reserveAmmo=${player.reserveAmmo}  pool=${this.teamAmmoPool}`, 'player');
+    }
 
     // Update STATE for consistency
     if (player === this.p1) STATE.p1CharId = newCh.id;
@@ -5777,89 +5794,100 @@ class GameScene extends Phaser.Scene {
   }
 
   // ── TUTORIAL ─────────────────────────────────────────────────
-  // A sequence of non-blocking tip banners at the top of the screen.
-  // Each auto-advances after 5 s; clicking the banner or pressing TAB skips to next;
-  // the SKIP button dismisses all. Disabled if settings.tutorial === false.
+  // Context-triggered tip banners. Only MOVE + ATTACK show at game start;
+  // all other tips fire when the relevant event first occurs.
+  // Each panel auto-advances after 7 s or on click. SKIP dismisses all.
+  // Disabled if settings.tutorial === false.
   startTutorial() {
     if (loadSettings().tutorial === false) return;
-
-    const STEPS = [
-      { title: 'MOVE',          text: 'P1: WASD to move.  P2: Arrow keys.  Explore each biome — grassland, wasteland, swamp, tundra, ruins.' },
-      { title: 'ATTACK',        text: 'P1: F to attack.  P2: / (slash).  In 1-player mode, aim with the mouse and left-click to shoot.' },
-      { title: 'GATHER',        text: 'Hold E (P1) or Enter (P2) near a tree to harvest wood.  Open crates for metal, fiber, ammo, and food.' },
-      { title: 'CRAFT & BUILD', text: 'Press Q (P1) or 0 (P2) to open the Crafting Menu.  Build walls, campfires, spike traps, and more.' },
-      { title: 'SURVIVE NIGHT', text: 'Enemies are stronger after dark.  Build a Bed (needs Craftbench) and sleep to fast-forward the night.' },
-      { title: 'SUPPLY CACHES', text: 'Each biome hides a Supply Cache — rare loot but guarded by enemies.  Check your minimap!' },
-      { title: 'MINIMAP',       text: 'Top-right minimap shows biome edges, enemies (red dots), and points of interest.  Stay aware!' },
-    ];
-
     this._tutActive = true;
-    this._tutStep = 0;
     this._tutObjs = [];
     this._tutTimer = null;
-    this._showTutStep(STEPS);
+    this._tutShown = new Set();
+    this._tutQueue = [];
+    this._tutBusy  = false;
+    // Show controls tips immediately; everything else is context-triggered
+    this._tutTrigger('move');
+    this._tutTrigger('attack');
+    // Minimap tip fires after 20 s — player should have oriented by then
+    this.time.delayedCall(20000, () => this._tutTrigger('minimap'));
   }
 
-  _showTutStep(STEPS) {
-    if (!this._tutActive || this._tutStep >= STEPS.length) { this._endTutorial(); return; }
-    const step = STEPS[this._tutStep];
+  _tutTrigger(key) {
+    if (!this._tutActive || !this._tutShown) return;
+    if (this._tutShown.has(key)) return;
+    this._tutShown.add(key);
+    const TIPS = {
+      move:     { title: 'MOVE',          text: 'P1: WASD · P2: Arrow keys.  Explore each biome — grassland, wasteland, swamp, tundra, ruins.' },
+      attack:   { title: 'ATTACK',        text: 'P1: F to attack · P2: / (slash).  In 1-player mode: aim with the mouse and left-click to shoot.' },
+      gather:   { title: 'GATHER RESOURCES', text: 'Hold E (P1) or Enter (P2) near a tree to harvest wood.  Open crates for metal, fiber, ammo, and food.' },
+      craft:    { title: 'CRAFT & BUILD', text: 'Press Q (P1) or 0 (P2) to open the Crafting Menu.  Build walls, campfires, spike traps, and more.' },
+      nightfall:{ title: 'SURVIVE THE NIGHT', text: 'Enemies are stronger after dark.  Build a Bed (needs Craftbench) and sleep to fast-forward the night.' },
+      caches:   { title: 'SUPPLY CACHES', text: 'Each biome hides a Supply Cache — rare loot but guarded by enemies.  Find them before the boss arrives!' },
+      minimap:  { title: 'MINIMAP',       text: 'Top-right minimap shows biome edges, enemies (red dots), and points of interest.  Stay aware!' },
+    };
+    const step = TIPS[key];
+    if (!step) return;
+    this._tutQueue.push(step);
+    if (!this._tutBusy) this._showNextTutTip();
+  }
+
+  _showNextTutTip() {
+    if (!this._tutActive || !this._tutQueue.length) { this._tutBusy = false; return; }
+    this._tutBusy = true;
+    this._showTutPanel(this._tutQueue.shift());
+  }
+
+  _showTutPanel(step) {
     const { W } = CFG;
-    const PW = 680, PH = 72, PX = (W - PW) / 2, PY = 6;
+    const PW = 580, PH = 100, PX = (W - PW) / 2, PY = 8;
 
     this._clearTutObjs();
 
     const push = o => { this._tutObjs.push(o); this._h(o); return o; };
 
-    // Translucent panel background
+    // Panel background
     const bg = push(this.add.graphics().setDepth(170).setAlpha(0));
-    bg.fillStyle(0x050d05, 0.82);
-    bg.fillRoundedRect(PX, PY, PW, PH, 7);
-    bg.lineStyle(1, 0x3a6630, 0.65);
-    bg.strokeRoundedRect(PX, PY, PW, PH, 7);
-
-    // Step counter
-    push(this.add.text(PX + 14, PY + 7, 'TUTORIAL  ' + (this._tutStep + 1) + ' / ' + STEPS.length, {
-      fontFamily:'monospace', fontSize:'9px', color:'#5a7a4a', stroke:'#000', strokeThickness:1,
-    }).setDepth(171).setAlpha(0));
+    bg.fillStyle(0x050d05, 0.88);
+    bg.fillRoundedRect(PX, PY, PW, PH, 8);
+    bg.lineStyle(2, 0x4a7a38, 0.80);
+    bg.strokeRoundedRect(PX, PY, PW, PH, 8);
 
     // Title
-    push(this.add.text(PX + 14, PY + 20, step.title, {
-      fontFamily:'monospace', fontSize:'13px', color:'#aadd88',
-      stroke:'#000', strokeThickness:2,
+    push(this.add.text(PX + 16, PY + 14, step.title, {
+      fontFamily:'monospace', fontSize:'18px', color:'#aadd88',
+      stroke:'#000', strokeThickness:3,
     }).setDepth(171).setAlpha(0));
 
     // Body text
-    push(this.add.text(PX + 14, PY + 40, step.text, {
-      fontFamily:'monospace', fontSize:'11px', color:'#ccdfc8',
+    push(this.add.text(PX + 16, PY + 46, step.text, {
+      fontFamily:'monospace', fontSize:'14px', color:'#ccdfc8',
       stroke:'#000', strokeThickness:2,
+      wordWrap:{ width: PW - 32 },
     }).setDepth(171).setAlpha(0));
 
-    // Progress dots (bottom-right area of panel)
-    for (let i = 0; i < STEPS.length; i++) {
-      const dx = PX + PW - 14 - (STEPS.length - 1 - i) * 11;
-      const dotG = push(this.add.graphics().setDepth(171).setAlpha(0));
-      dotG.fillStyle(i === this._tutStep ? 0x88cc66 : 0x3a5a2a, i === this._tutStep ? 1 : 0.7);
-      dotG.fillCircle(dx, PY + PH - 11, i === this._tutStep ? 4 : 2.5);
-    }
-
     // SKIP button
-    const skipBtn = push(this.add.text(PX + PW - 10, PY + 7, '[ SKIP ALL ]', {
-      fontFamily:'monospace', fontSize:'9px', color:'#667755', stroke:'#000', strokeThickness:1,
+    const skipBtn = push(this.add.text(PX + PW - 12, PY + 12, '[ SKIP ]', {
+      fontFamily:'monospace', fontSize:'11px', color:'#667755', stroke:'#000', strokeThickness:1,
     }).setOrigin(1, 0).setDepth(172).setAlpha(0).setInteractive({ useHandCursor: true }));
     skipBtn.on('pointerover', () => skipBtn.setStyle({ color:'#aaddaa' }));
     skipBtn.on('pointerout',  () => skipBtn.setStyle({ color:'#667755' }));
     skipBtn.on('pointerdown', (ptr) => { ptr.event.stopPropagation(); this._endTutorial(); });
 
-    // Tap-banner-to-advance (click anywhere on the panel area)
+    // Click panel to advance early
     const hitZone = push(this.add.zone(PX, PY, PW, PH).setOrigin(0).setDepth(173).setInteractive({ useHandCursor: true }));
-    hitZone.on('pointerdown', () => { this._tutStep++; this._showTutStep(STEPS); });
+    hitZone.on('pointerdown', () => {
+      if (this._tutTimer) { this._tutTimer.remove(); this._tutTimer = null; }
+      this._clearTutObjs();
+      this._showNextTutTip();
+    });
 
-    // Fade in all objects
+    // Fade in
     const fadeTargets = this._tutObjs.filter(o => o.setAlpha && o !== hitZone);
     this.tweens.add({ targets: fadeTargets, alpha: 1, duration: 300 });
 
-    // Auto-advance after 5 seconds
-    this._tutTimer = this.time.delayedCall(5000, () => { this._tutStep++; this._showTutStep(STEPS); });
+    // Auto-advance after 7 s
+    this._tutTimer = this.time.delayedCall(7000, () => { this._clearTutObjs(); this._showNextTutTip(); });
   }
 
   _clearTutObjs() {
@@ -5876,6 +5904,8 @@ class GameScene extends Phaser.Scene {
 
   _endTutorial() {
     this._tutActive = false;
+    this._tutQueue = [];
+    this._tutBusy = false;
     this._clearTutObjs();
   }
 
@@ -7822,12 +7852,18 @@ class GameScene extends Phaser.Scene {
         const player = playerSpr === this.p1.spr ? this.p1 : this.p2;
         if (!player) return;
         let label = '';
-        if (item.itemType === 'ammo' && player.charData.id === 'gunslinger') {
-          const maxReserve = 40 - player.ammo;
-          player.reserveAmmo = Math.min(maxReserve, player.reserveAmmo + 3);
+        if (item.itemType === 'ammo') {
+          if (player.charData.id === 'gunslinger') {
+            const maxReserve = 40 - player.ammo;
+            player.reserveAmmo = Math.min(maxReserve, player.reserveAmmo + 3);
+            this._log(`${player.charData.player} picked up ammo  reserve=${player.reserveAmmo}`, 'player');
+            label = '+3 Ammo';
+          } else {
+            this.teamAmmoPool += 3;
+            this._log(`${player.charData.player} picked up ammo → team pool  pool=${this.teamAmmoPool}`, 'player');
+            label = '+3 Ammo (Team)';
+          }
           this.redrawHUD();
-          this._log(`${player.charData.player} picked up ammo  reserve=${player.reserveAmmo}`, 'player');
-          label = '+3 Ammo';
         } else if (item.itemType === 'food') {
           player.hp = Math.min(player.maxHp, player.hp + 15);
           this._log(`${player.charData.player} picked up food  hp=${player.hp}/${player.maxHp}`, 'player');
@@ -8099,14 +8135,12 @@ class GameScene extends Phaser.Scene {
         visited.add(key);
         if (Math.random() > prob) continue;
         tileSet.add(key);
-        if (tileSet.has(key)) {
-          [[tx-1,ty],[tx+1,ty],[tx,ty-1],[tx,ty+1],[tx-1,ty-1],[tx+1,ty+1],[tx-1,ty+1],[tx+1,ty-1]]
-            .forEach(([nx, ny]) => {
-              if (!visited.has(`${nx},${ny}`) && prob * 0.82 > 0.05) {
-                queue.push([nx, ny, prob * 0.82]);
-              }
-            });
-        }
+        [[tx-1,ty],[tx+1,ty],[tx,ty-1],[tx,ty+1],[tx-1,ty-1],[tx+1,ty+1],[tx-1,ty+1],[tx+1,ty-1]]
+          .forEach(([nx, ny]) => {
+            if (!visited.has(`${nx},${ny}`) && prob * 0.82 > 0.05) {
+              queue.push([nx, ny, prob * 0.82]);
+            }
+          });
       }
       // Fill holes: non-water cells with 3+ orthogonal water neighbors get pulled in
       const toFillL = [];
@@ -8454,6 +8488,7 @@ class GameScene extends Phaser.Scene {
               this._floatPickup(item.x, item.y, '+1 Wood');
               if (!this._ctx.firstHarvest) {
                 this._ctx.firstHarvest = true;
+                this._tutTrigger('gather');
                 this.time.delayedCall(800, () => this.hint('Press Q (P1) or 0 (P2) to open the Crafting Menu', 5000));
               }
               item.destroy();
@@ -8882,6 +8917,7 @@ class GameScene extends Phaser.Scene {
       this._log(`Night ${this.dayNum} begins  active_enemies=${(this.enemies||[]).filter(e=>e.spr?.active&&!e._dormant).length}`, 'world');
       if (!this._ctx.firstNight) {
         this._ctx.firstNight = true;
+        this._tutTrigger('nightfall');
         this.hint('Night falls — enemies are faster and more dangerous! Build Walls or sleep in a Bed.', 6000);
       }
     }
@@ -8893,6 +8929,7 @@ class GameScene extends Phaser.Scene {
       Music.switchToDay();
       this._log(`Day ${this.dayNum} begins  diff=${this._diffMult().toFixed(1)}x  kills_so_far=${this.kills||0}  enemies=${(this.enemies||[]).filter(e=>e.spr?.active).length}`, 'world');
       this.hint('Dawn of Day ' + this.dayNum + ' \u2014 enemies grow stronger!', 3000);
+      if (this.dayNum === 2) this._tutTrigger('caches');
       // Raider respawn check
       if (this.raidRespawnDay !== null && this.dayNum >= this.raidRespawnDay) {
         this.raidRespawnDay = null;
@@ -8946,11 +8983,16 @@ class GameScene extends Phaser.Scene {
     this.worldCrates.forEach(crate => {
       const pickupCrate = (player) => {
         if (!crate.active) return;
-        if (crate.itemType === 'ammo' && player.charData.id === 'gunslinger') {
-          const maxReserve = 40 - player.ammo;
-          player.reserveAmmo = Math.min(maxReserve, player.reserveAmmo + 4);
+        if (crate.itemType === 'ammo') {
+          if (player.charData.id === 'gunslinger') {
+            const maxReserve = 40 - player.ammo;
+            player.reserveAmmo = Math.min(maxReserve, player.reserveAmmo + 4);
+            this._log(`${player.charData.player} crate ammo  reserve=${player.reserveAmmo}`, 'player');
+          } else {
+            this.teamAmmoPool += 4;
+            this._log(`${player.charData.player} crate ammo → team pool  pool=${this.teamAmmoPool}`, 'player');
+          }
           this.redrawHUD();
-          this._log(`${player.charData.player} crate ammo  reserve=${player.reserveAmmo}`, 'player');
         } else if (crate.itemType === 'food') {
           player.hp = Math.min(player.maxHp, player.hp + 20);
           this._log(`${player.charData.player} crate food  hp=${player.hp}/${player.maxHp}`, 'player');
@@ -9222,6 +9264,7 @@ class GameScene extends Phaser.Scene {
     // Contextual tip: first time opening crafting menu
     if (!this._ctx.firstCraft) {
       this._ctx.firstCraft = true;
+      this._tutTrigger('craft');
       const craftHint = this._touchActive
         ? 'Tap to select, tap again (or ATK) to craft. Build Walls to protect yourself!'
         : 'Click to select, click again (or Attack) to craft. Build Walls to protect yourself!';
