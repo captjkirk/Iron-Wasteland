@@ -7,7 +7,7 @@
 // ── VERSION ───────────────────────────────────────────────────
 // Update this each commit so the title screen reflects the build date.
 // Stored as UTC ISO so it can be displayed in each player's local timezone.
-const VERSION = '2026-04-19T21:45:00Z';
+const VERSION = '2026-04-19T22:41:37Z';
 // Format VERSION into the viewer's local time with abbreviated tz name (EDT, PDT, BST, etc.)
 function _fmtVersion(iso) {
   try {
@@ -218,10 +218,13 @@ const Music = {
     this._dawnJingle();
   },
   switchToBoss() {
+    console.log('[Music] switchToBoss enter  mode=' + this.mode + '  ctx=' + !!this.ctx + '  playing=' + this.playing);
     if (this.mode === 'boss') return;
     this._preBossMode = this.mode; // remember day/night so we can restore it
     this.mode = 'boss';
+    console.log('[Music] switchToBoss: calling _bossLoop');
     this._bossLoop(this.ctx ? this.ctx.currentTime + 0.15 : 0);
+    console.log('[Music] switchToBoss exit');
   },
   switchFromBoss() {
     if (this.mode !== 'boss') return;
@@ -339,6 +342,7 @@ const Music = {
   // ── BOSS BATTLE LOOP ─────────────────────────────────────────
   // Intense, driving 130 BPM loop — heroic tension, not pure horror.
   _bossLoop(startAt) {
+    console.log('[Music] _bossLoop enter  startAt=' + startAt + '  ctxTime=' + (this.ctx ? this.ctx.currentTime : '?'));
     if (!this.playing || !this.ctx) return;
     if (this.mode !== 'boss') {
       if (this.mode === 'night') this._nightLoop(this.ctx.currentTime);
@@ -1128,11 +1132,11 @@ function buildTextures(scene) {
   g.beginPath(); g.moveTo(5, 18); g.lineTo(15, 18); g.strokePath();
   g.generateTexture('water_sub_overlay', 32, 22);
 
-  // Ice tile (32×32) — pale cyan, passable, slippery momentum
+  // Ice tile (32×32) — light blue, passable, slippery momentum
   g.clear();
-  g.fillStyle(0xbbddee); g.fillRect(0, 0, 32, 32);
-  g.fillStyle(0xddeeff); g.fillRect(1, 1, 30, 30);
-  g.lineStyle(1, 0x99bbcc);
+  g.fillStyle(0x9dc5e8); g.fillRect(0, 0, 32, 32);
+  g.fillStyle(0xb5d8f2); g.fillRect(1, 1, 30, 30);
+  g.lineStyle(1, 0x7aa8c8);
   g.beginPath(); g.moveTo(4, 8); g.lineTo(16, 4); g.strokePath();
   g.beginPath(); g.moveTo(8, 20); g.lineTo(20, 14); g.strokePath();
   g.beginPath(); g.moveTo(20, 26); g.lineTo(28, 20); g.strokePath();
@@ -1493,66 +1497,191 @@ function buildTextures(scene) {
   g.fillStyle(0x334455); g.fillRect(4, 25, 7, 5); g.fillRect(15, 25, 7, 5);
   g.generateTexture('raider_heavy', 26, 30);
 
-  // Boss sprites — one per biome boss type
-  // Iron Golem (wasteland) — large, armored
-  g.clear();
-  g.fillStyle(0x778899); g.fillRect(6, 4, 28, 30); // massive body
-  g.fillStyle(0x667788); g.fillRect(2, 10, 6, 18); g.fillRect(32, 10, 6, 18); // arms
-  g.fillStyle(0x556677); g.fillRect(6, 4, 28, 8);  // shoulder plates
-  g.fillStyle(0x99aaaa); g.fillRect(8, 6, 24, 6);  // chest gleam
-  g.fillStyle(0x889999); g.fillRect(10, 34, 8, 8); g.fillRect(22, 34, 8, 8); // legs
-  g.fillStyle(0xbbccdd); g.fillEllipse(20, 4, 18, 14); // head
-  g.fillStyle(0xff3300); g.fillRect(13, 2, 4, 2); g.fillRect(21, 2, 4, 2); // eye glow
-  g.generateTexture('boss_golem', 40, 44);
+  // Boss sprites — one per biome boss type. All sprites are 56×60 px for
+  // twice the pixel density of the old 40×44; spawn scale is reduced from 4× to
+  // 3× so in-game footprint stays roughly similar. Outline + shading ramps
+  // sharpen the silhouette against busy terrain.
 
-  // Alpha Wolf (grassland) — sleek, large wolf
+  // Iron Golem (wasteland) — hulking armored behemoth
   g.clear();
-  g.fillStyle(0x888855); g.fillEllipse(20, 20, 30, 20); // body
-  g.fillStyle(0x777744); g.fillEllipse(32, 14, 14, 12); // head
-  g.fillStyle(0x999966); g.fillTriangle(36, 8, 32, 16, 40, 14); // ear
-  g.fillStyle(0x888855); g.fillRect(6, 22, 4, 10); g.fillRect(14, 22, 4, 10); // front legs
-  g.fillStyle(0x888855); g.fillRect(24, 22, 4, 10); g.fillRect(32, 22, 4, 10); // back legs
-  g.fillStyle(0x666633); g.fillRect(2, 18, 6, 6); // tail stub
-  g.fillStyle(0xeeeecc); g.fillEllipse(34, 14, 6, 5); // snout
-  g.fillStyle(0xff2200); g.fillRect(34, 16, 4, 2); // fangs hint
-  g.generateTexture('boss_wolf', 40, 36);
+  // legs
+  g.fillStyle(0x556677); g.fillRect(14, 46, 11, 12); g.fillRect(31, 46, 11, 12);
+  g.fillStyle(0x445566); g.fillRect(14, 54, 11, 4); g.fillRect(31, 54, 11, 4); // feet shadow
+  // arms / forearms
+  g.fillStyle(0x667788); g.fillRect(2, 16, 9, 22); g.fillRect(45, 16, 9, 22);
+  g.fillStyle(0x556677); g.fillRect(2, 30, 9, 8);   g.fillRect(45, 30, 9, 8); // forearm shade
+  g.fillStyle(0x445566); g.fillRect(0, 36, 11, 6);  g.fillRect(45, 36, 11, 6); // fists
+  // torso
+  g.fillStyle(0x778899); g.fillRect(10, 12, 36, 36);
+  g.fillStyle(0x99aabb); g.fillRect(12, 14, 32, 10); // upper chest gleam
+  g.fillStyle(0x556677); g.fillRect(10, 10, 36, 6);  // shoulder plate band
+  // rivets
+  g.fillStyle(0x334455);
+  g.fillRect(14, 18, 2, 2); g.fillRect(40, 18, 2, 2);
+  g.fillRect(14, 40, 2, 2); g.fillRect(40, 40, 2, 2);
+  g.fillRect(27, 30, 2, 2);
+  // head (visor)
+  g.fillStyle(0xbbccdd); g.fillEllipse(28, 8, 26, 14);
+  g.fillStyle(0x223344); g.fillRect(16, 6, 24, 4); // dark visor band
+  g.fillStyle(0xff3300); g.fillRect(20, 6, 4, 3); g.fillRect(32, 6, 4, 3); // eye slits
+  g.fillStyle(0xffaa33); g.fillRect(21, 7, 2, 1); g.fillRect(33, 7, 2, 1); // eye highlight
+  // outline
+  g.lineStyle(1, 0x223344);
+  g.strokeRect(10, 12, 36, 36);
+  g.generateTexture('boss_golem', 56, 60);
 
-  // Spider Queen (ruins) — large spider body
+  // Alpha Wolf (grassland) — sleek lupine predator
   g.clear();
-  g.fillStyle(0x442255); g.fillEllipse(20, 22, 24, 18); // abdomen
-  g.fillStyle(0x553366); g.fillEllipse(20, 12, 16, 14); // cephalothorax
-  g.fillStyle(0x332244); // legs — 4 pairs
+  // tail
+  g.fillStyle(0x666633); g.fillRect(2, 26, 8, 8);
+  g.fillStyle(0x555522); g.fillRect(0, 28, 6, 6);
+  // body
+  g.fillStyle(0x888855); g.fillEllipse(28, 32, 40, 22);
+  g.fillStyle(0x999966); g.fillEllipse(28, 28, 36, 14); // back highlight
+  g.fillStyle(0x666633); g.fillEllipse(28, 38, 32, 10); // belly shadow
+  // legs
+  g.fillStyle(0x777744);
+  g.fillRect(10, 36, 6, 16); g.fillRect(20, 36, 6, 16); // front legs
+  g.fillRect(32, 36, 6, 16); g.fillRect(42, 36, 6, 16); // back legs
+  g.fillStyle(0x555522); g.fillRect(10, 48, 6, 4); g.fillRect(20, 48, 6, 4);
+  g.fillRect(32, 48, 6, 4); g.fillRect(42, 48, 6, 4); // paws
+  // head
+  g.fillStyle(0x777744); g.fillEllipse(46, 22, 18, 14);
+  g.fillStyle(0x999966); g.fillTriangle(50, 10, 44, 18, 54, 18); // ear front
+  g.fillStyle(0x777744); g.fillTriangle(40, 10, 38, 18, 44, 18); // ear back
+  g.fillStyle(0xeeeecc); g.fillEllipse(52, 24, 8, 6); // snout
+  g.fillStyle(0x332200); g.fillRect(54, 22, 2, 2); // nose
+  g.fillStyle(0xffee66); g.fillRect(48, 19, 2, 2); // eye
+  g.fillStyle(0xffffff); g.fillRect(51, 26, 1, 2); g.fillRect(53, 26, 1, 2); // fang tips
+  g.fillStyle(0x554422); g.fillRect(44, 20, 6, 1); // muzzle scar
+  // outline
+  g.lineStyle(1, 0x332211);
+  g.strokeEllipse(28, 32, 40, 22);
+  g.generateTexture('boss_wolf', 56, 56);
+
+  // Spider Queen (ruins) — bulbous venomous matriarch
+  g.clear();
+  // 4 pairs of legs — jagged, with knee bends
+  g.fillStyle(0x332244);
   for (let i = 0; i < 4; i++) {
-    g.fillRect(4 - i*1, 10 + i*4, 12, 3);  // left legs
-    g.fillRect(24 + i*1, 10 + i*4, 12, 3); // right legs
+    const y = 18 + i * 7;
+    // left leg: outer foot → knee → body
+    g.fillRect(2, y, 18, 3);
+    g.fillRect(18, y + 2, 8, 3); // knee stub
+    // right leg
+    g.fillRect(36, y, 18, 3);
+    g.fillRect(30, y + 2, 8, 3);
   }
-  g.fillStyle(0xff3333); g.fillRect(16, 8, 3, 3); g.fillRect(21, 8, 3, 3); // eyes
-  g.fillStyle(0x221133); g.fillEllipse(20, 23, 16, 10); // abdomen pattern
-  g.generateTexture('boss_spider', 40, 38);
+  g.fillStyle(0x221133);
+  for (let i = 0; i < 4; i++) { // leg joint highlights
+    g.fillRect(16, 18 + i*7 + 1, 3, 2);
+    g.fillRect(37, 18 + i*7 + 1, 3, 2);
+  }
+  // abdomen
+  g.fillStyle(0x442255); g.fillEllipse(28, 36, 34, 24);
+  g.fillStyle(0x553366); g.fillEllipse(28, 32, 28, 16); // top highlight
+  g.fillStyle(0x221133); g.fillEllipse(28, 40, 22, 10); // dark spot
+  g.fillStyle(0x6644aa); g.fillRect(26, 28, 4, 4); g.fillRect(22, 34, 3, 3); g.fillRect(33, 34, 3, 3); // chitin marks
+  // cephalothorax
+  g.fillStyle(0x553366); g.fillEllipse(28, 18, 22, 18);
+  g.fillStyle(0x442255); g.fillEllipse(28, 22, 18, 8); // underside shade
+  // 6 red eyes in two rows
+  g.fillStyle(0xff3333);
+  g.fillRect(20, 14, 3, 3); g.fillRect(26, 14, 3, 3); g.fillRect(32, 14, 3, 3);
+  g.fillRect(22, 19, 2, 2); g.fillRect(28, 19, 2, 2); g.fillRect(33, 19, 2, 2);
+  g.fillStyle(0xffaaaa); g.fillRect(21, 14, 1, 1); g.fillRect(27, 14, 1, 1); g.fillRect(33, 14, 1, 1);
+  // mandibles / venom drip
+  g.fillStyle(0x221133); g.fillRect(25, 22, 3, 4); g.fillRect(29, 22, 3, 4);
+  g.fillStyle(0x88ff44); g.fillRect(26, 26, 2, 3); // venom drip
+  // outline
+  g.lineStyle(1, 0x110022);
+  g.strokeEllipse(28, 36, 34, 24);
+  g.generateTexture('boss_spider', 56, 52);
 
-  // Frost Troll (tundra) — hulking blue-white giant
+  // Frost Troll (tundra) — hunched ice giant with club
   g.clear();
-  g.fillStyle(0x8899bb); g.fillRect(8, 6, 24, 28); // body
-  g.fillStyle(0x7788aa); g.fillRect(4, 10, 6, 20); g.fillRect(30, 10, 6, 20); // long arms
-  g.fillStyle(0xaabbcc); g.fillRect(8, 6, 24, 10); // upper body highlight
-  g.fillStyle(0xbbccdd); g.fillEllipse(20, 5, 20, 16); // large head
-  g.fillStyle(0x334466); g.fillRect(14, 34, 7, 8); g.fillRect(23, 34, 7, 8); // legs
-  g.fillStyle(0x6688aa); g.fillRect(8, 2, 4, 6); g.fillRect(28, 2, 4, 6); // horns
-  g.generateTexture('boss_troll', 40, 44);
+  // legs
+  g.fillStyle(0x334466); g.fillRect(18, 46, 10, 12); g.fillRect(30, 46, 10, 12);
+  g.fillStyle(0x223355); g.fillRect(18, 54, 10, 4); g.fillRect(30, 54, 10, 4);
+  // club (hint) in right hand
+  g.fillStyle(0xccddee); g.fillRect(44, 32, 10, 14); // ice chunk
+  g.fillStyle(0xaabbdd); g.fillRect(46, 28, 6, 4);
+  g.fillStyle(0x778899); g.fillRect(48, 44, 4, 8); // handle
+  // arms — long, past body midline
+  g.fillStyle(0x7788aa); g.fillRect(4, 14, 8, 30); g.fillRect(46, 14, 8, 20);
+  g.fillStyle(0x556688); g.fillRect(4, 36, 8, 8); g.fillRect(46, 28, 8, 6);
+  g.fillStyle(0x445577); g.fillRect(2, 40, 10, 6); // left fist
+  // torso — hunched
+  g.fillStyle(0x8899bb); g.fillRect(12, 14, 34, 34);
+  g.fillStyle(0xaabbcc); g.fillRect(14, 16, 30, 10); // upper-body highlight
+  g.fillStyle(0xccddee); g.fillRect(16, 18, 8, 3); g.fillRect(32, 22, 10, 2); // cracked-ice highlights
+  g.fillStyle(0x667799); g.fillRect(12, 40, 34, 8); // belly shadow
+  // head
+  g.fillStyle(0xbbccdd); g.fillEllipse(28, 10, 28, 18);
+  g.fillStyle(0xaabbcc); g.fillEllipse(28, 14, 22, 8); // jaw shade
+  // horns (tusk-horns)
+  g.fillStyle(0x6688aa); g.fillRect(12, 2, 5, 9); g.fillRect(39, 2, 5, 9);
+  g.fillStyle(0x445577); g.fillRect(12, 8, 5, 3); g.fillRect(39, 8, 5, 3);
+  // eyes — glowing pale blue
+  g.fillStyle(0xaaddff); g.fillRect(20, 9, 4, 3); g.fillRect(32, 9, 4, 3);
+  g.fillStyle(0xffffff); g.fillRect(21, 9, 2, 1); g.fillRect(33, 9, 2, 1);
+  // mouth / tusks
+  g.fillStyle(0x334466); g.fillRect(24, 15, 8, 2);
+  g.fillStyle(0xeeeeff); g.fillRect(24, 15, 2, 3); g.fillRect(30, 15, 2, 3);
+  // outline
+  g.lineStyle(1, 0x223355);
+  g.strokeRect(12, 14, 34, 34);
+  g.generateTexture('boss_troll', 56, 60);
 
-  // Bog Hydra (swamp) — multi-headed serpent
+  // Bog Hydra (swamp) — three-headed serpent
   g.clear();
-  g.fillStyle(0x334422); g.fillEllipse(20, 28, 28, 20); // main body
-  g.fillStyle(0x445533); g.fillEllipse(20, 26, 22, 14); // body highlight
-  // Three necks/heads
-  g.fillStyle(0x334422); g.fillRect(8, 8, 6, 20); // left neck
-  g.fillStyle(0x334422); g.fillRect(18, 4, 6, 22); // center neck
-  g.fillStyle(0x334422); g.fillRect(28, 9, 6, 19); // right neck
-  g.fillStyle(0x446633); g.fillEllipse(11, 6, 10, 8); // left head
-  g.fillStyle(0x446633); g.fillEllipse(21, 3, 10, 8); // center head
-  g.fillStyle(0x446633); g.fillEllipse(31, 7, 10, 8); // right head
-  g.fillStyle(0xff2200); g.fillRect(9,4,2,2); g.fillRect(19,1,2,2); g.fillRect(29,5,2,2); // eyes
-  g.generateTexture('boss_hydra', 40, 40);
+  // main body
+  g.fillStyle(0x334422); g.fillEllipse(28, 44, 40, 22);
+  g.fillStyle(0x445533); g.fillEllipse(28, 40, 34, 14); // back highlight
+  g.fillStyle(0x223311); g.fillEllipse(28, 50, 28, 8); // belly shadow
+  // back spines
+  g.fillStyle(0x223311);
+  g.fillTriangle(14, 40, 18, 32, 22, 40);
+  g.fillTriangle(24, 40, 28, 30, 32, 40);
+  g.fillTriangle(34, 40, 38, 32, 42, 40);
+  // three necks at different heights
+  g.fillStyle(0x334422);
+  g.fillRect(8, 18, 7, 26);    // left neck (tallest)
+  g.fillRect(24, 10, 7, 32);   // center neck
+  g.fillRect(40, 22, 7, 22);   // right neck
+  g.fillStyle(0x445533);
+  g.fillRect(10, 18, 3, 26); g.fillRect(26, 10, 3, 32); g.fillRect(42, 22, 3, 22); // neck highlight
+  // heads
+  g.fillStyle(0x446633); g.fillEllipse(11, 14, 14, 10);
+  g.fillStyle(0x446633); g.fillEllipse(27, 6, 14, 10);
+  g.fillStyle(0x446633); g.fillEllipse(43, 18, 14, 10);
+  // head shadows
+  g.fillStyle(0x334422);
+  g.fillEllipse(11, 17, 12, 4); g.fillEllipse(27, 9, 12, 4); g.fillEllipse(43, 21, 12, 4);
+  // yellow eyes
+  g.fillStyle(0xffdd22);
+  g.fillRect(13, 12, 3, 3); g.fillRect(29, 4, 3, 3); g.fillRect(45, 16, 3, 3);
+  g.fillStyle(0x221100);
+  g.fillRect(14, 13, 1, 2); g.fillRect(30, 5, 1, 2); g.fillRect(46, 17, 1, 2);
+  // fangs
+  g.fillStyle(0xeeeecc);
+  g.fillRect(9, 16, 1, 2); g.fillRect(13, 16, 1, 2);
+  g.fillRect(25, 8, 1, 2); g.fillRect(29, 8, 1, 2);
+  g.fillRect(41, 20, 1, 2); g.fillRect(45, 20, 1, 2);
+  // moss/algae speckles on body
+  g.fillStyle(0x88bb44);
+  g.fillRect(18, 42, 2, 2); g.fillRect(30, 44, 2, 2); g.fillRect(38, 46, 2, 2);
+  g.fillRect(24, 48, 2, 2); g.fillRect(14, 48, 2, 2);
+  // outline
+  g.lineStyle(1, 0x112200);
+  g.strokeEllipse(28, 44, 40, 22);
+  g.generateTexture('boss_hydra', 56, 60);
+
+  // Boss shadow — dark translucent ellipse that tracks under every boss
+  g.clear();
+  g.fillStyle(0x000000, 0.45); g.fillEllipse(28, 8, 52, 14);
+  g.fillStyle(0x000000, 0.25); g.fillEllipse(28, 8, 56, 16);
+  g.generateTexture('boss_shadow', 56, 16);
 
   // Enemy sprites
   drawWolf(g); drawRat(g); drawBear(g); drawIceCrawler(g); drawSpiderRuins(g); drawBogLurker(g); drawDustHound(g); drawWaterLurker(g);
@@ -3609,6 +3738,8 @@ class GameScene extends Phaser.Scene {
     this.raiders = [];
     this.raidCamp = null;
     this.raidRespawnDay = null;
+    // First hunting party arrives on day 2-3; every 2-3 days after.
+    this.huntNextDay = 2 + Phaser.Math.Between(0, 1);
     this.enemies = [];
 
     // Build system state
@@ -4466,8 +4597,26 @@ class GameScene extends Phaser.Scene {
       }
     }
 
-    // Barracks
-    const bTX = stx+20, bTY = sty-16;
+    // Barracks — random grass-biome placement (outside spawn safe zone).
+    // The old fixed offset (stx+20, sty-16) was hidden behind mountains ~90% of
+    // the time. We search up to 200 random tiles for a grass tile with a 5-tile
+    // grass cross (so the player can walk up to the door) and fall back to the
+    // old offset if nothing qualifies.
+    let bTX = stx + 20, bTY = sty - 16;
+    for (let att = 0; att < 200; att++) {
+      const tx = Phaser.Math.Between(12, CFG.MAP_W - 12);
+      const ty = Phaser.Math.Between(12, CFG.MAP_H - 12);
+      if (getBiome(tx, ty) !== 'grass') continue;
+      if (Math.abs(tx - stx) < SAFE_R + 6 && Math.abs(ty - sty) < SAFE_R + 6) continue;
+      const clear =
+        getBiome(tx + 1, ty) === 'grass' && getBiome(tx - 1, ty) === 'grass' &&
+        getBiome(tx, ty + 1) === 'grass' && getBiome(tx, ty - 1) === 'grass' &&
+        !(this._wallTileSet && this._wallTileSet.has(tx + ',' + ty));
+      if (!clear) continue;
+      bTX = tx; bTY = ty;
+      break;
+    }
+    this._log(`Barracks placed at tile (${bTX},${bTY})`, 'world');
     this.bPos = { x: bTX*TILE+40, y: bTY*TILE+28 };
     this._w(this.add.image(this.bPos.x, this.bPos.y, 'barracks').setDepth(5));
     this._w(this.add.text(this.bPos.x, this.bPos.y-48, 'BARRACKS', {
@@ -6009,6 +6158,13 @@ class GameScene extends Phaser.Scene {
     if (this.isOver) return;
     if (this._paused) return;
 
+    // Heartbeat — wall-clock, so it shows even if the game clock stalls.
+    const _hbNow = Date.now();
+    if (!this._lastHeartbeat || _hbNow - this._lastHeartbeat > 5000) {
+      this._lastHeartbeat = _hbNow;
+      this._log(`update heartbeat  gameT=${(this.timeAlive||0).toFixed(1)}s  day=${this.dayNum}  fps=${Math.round(this.game.loop.actualFps)}  bodies=${this.physics.world.bodies.size}`, 'perf');
+    }
+
     // _onIce, _inShallowWater, and toxic pool detection are now all computed per-frame
     // inside applyTerrainEffects via Uint8Array map lookups — no reset needed here.
 
@@ -6075,15 +6231,20 @@ class GameScene extends Phaser.Scene {
     this.updateBoss(delta);
     this.updateSleep(delta);
     this.updateDayNight(delta);
-    this.updateBuildMode();
-    this.updateCraftMenu(delta);
-    this.updateHarvest(delta);
-    this.updateSpikeTraps();
-    this.updateFog();
-    this.updateMinimap();
-    this.updateTreeSeeds(delta);
-    this.redrawHUD();
-    if (this._touchActive) this._drawTouchHUD();
+    // Post-updateDayNight stages — wrapped so a throw or stall is attributable.
+    // _stageTrace is armed briefly around the Day-5 boss transition to give
+    // per-stage checkpoints; otherwise only errors log.
+    const _stageLog = (name) => { if (this._stageTrace) this._log('stage: ' + name, 'perf'); };
+    const _safe = (name, fn) => { _stageLog(name); try { fn(); } catch (e) { this._log(`${name} ERR: ${e && e.message || e}`, 'error'); } };
+    _safe('updateBuildMode',  () => this.updateBuildMode());
+    _safe('updateCraftMenu',  () => this.updateCraftMenu(delta));
+    _safe('updateHarvest',    () => this.updateHarvest(delta));
+    _safe('updateSpikeTraps', () => this.updateSpikeTraps());
+    _safe('updateFog',        () => this.updateFog());
+    _safe('updateMinimap',    () => this.updateMinimap());
+    _safe('updateTreeSeeds',  () => this.updateTreeSeeds(delta));
+    _safe('redrawHUD',        () => this.redrawHUD());
+    if (this._touchActive) _safe('_drawTouchHUD', () => this._drawTouchHUD());
   }
 
   // ── TOUCH CONTROLS ────────────────────────────────────────────
@@ -6558,6 +6719,66 @@ class GameScene extends Phaser.Scene {
     }
   }
 
+  // Periodic hunting party — spawns at a random map edge and actively seeks the
+  // player across the whole map. Additive to the raid camp respawn system.
+  spawnHuntingParty() {
+    if (this.isOver) return;
+    // Don't pile on during an active boss fight.
+    if (this.bossSpawned && this.boss && this.boss.spr && this.boss.spr.active) return;
+    const { TILE } = CFG;
+    const worldW = CFG.MAP_W * TILE, worldH = CFG.MAP_H * TILE;
+    const count = Phaser.Math.Between(3, 5);
+    // Prefer a player as the approach reference so the party can be seen coming.
+    const anchor = this.p1 && this.p1.spr ? this.p1.spr : (this.p2 && this.p2.spr ? this.p2.spr : null);
+    const axx = anchor ? anchor.x : worldW / 2;
+    const axy = anchor ? anchor.y : worldH / 2;
+    // Pick a map edge far-ish from the player.
+    const side = Phaser.Math.Between(0, 3);
+    let baseX, baseY;
+    if (side === 0)      { baseX = Phaser.Math.Between(TILE*4, worldW-TILE*4); baseY = TILE*6; }
+    else if (side === 1) { baseX = Phaser.Math.Between(TILE*4, worldW-TILE*4); baseY = worldH-TILE*6; }
+    else if (side === 2) { baseX = TILE*6; baseY = Phaser.Math.Between(TILE*4, worldH-TILE*4); }
+    else                 { baseX = worldW-TILE*6; baseY = Phaser.Math.Between(TILE*4, worldH-TILE*4); }
+    // Nudge toward the player so the party heads the right direction immediately.
+    const toPlayer = Phaser.Math.Angle.Between(baseX, baseY, axx, axy);
+    const diffScale = this._diffMult();
+    const types = ['brawler', 'shooter', 'brawler', 'shooter', 'brawler'];
+    const stats = {
+      brawler: { hp: 130, speed: 110, dmg: 20, range: 36, atkInterval: 1100, shootRange: 0 },
+      shooter: { hp: 80,  speed: 90,  dmg: 16, range: 40, atkInterval: 1200, shootRange: 280 },
+    };
+    const huntExpires = this.time.now + 180000; // 3 minutes
+    for (let i = 0; i < count; i++) {
+      const rtype = types[i % types.length];
+      const s = stats[rtype];
+      const offAng = toPlayer + Phaser.Math.FloatBetween(-0.35, 0.35);
+      const rx = Phaser.Math.Clamp(baseX + Math.cos(offAng) * Phaser.Math.Between(20, 70),
+        TILE*3, worldW - TILE*3);
+      const ry = Phaser.Math.Clamp(baseY + Math.sin(offAng) * Phaser.Math.Between(20, 70),
+        TILE*3, worldH - TILE*3);
+      const texKey = 'raider_' + rtype;
+      const spr = this.physics.add.image(rx, ry, texKey).setScale(2.5).setDepth(9);
+      spr.setCollideWorldBounds(true);
+      spr.body.setSize(16, 20);
+      if (this.hudCam) this.hudCam.ignore(spr);
+      this.physics.add.collider(spr, this.obstacles);
+      const raider = {
+        spr, type: rtype, isRaider: true, isHuntParty: true, huntExpires,
+        hp: Math.floor(s.hp * diffScale), maxHp: Math.floor(s.hp * diffScale),
+        speed: s.speed * Math.min(1.6, diffScale) * 1.15,
+        dmg: Math.floor(s.dmg * diffScale),
+        attackRange: s.range, attackTimer: 0, atkInterval: s.atkInterval,
+        shootRange: s.shootRange, rangedTimer: 0,
+        aggroRange: 99999, wanderTimer: 0, sizeMult: 1,
+      };
+      this.raiders.push(raider);
+      this.enemies.push(raider);
+    }
+    this._log(`Hunting party incoming!  count=${count}  day=${this.dayNum}`, 'world');
+    this.hint('\u26a0 A raiding party is on your trail!', 4000);
+    SFX._play(120, 'sawtooth', 0.3, 0.5, 'drop');
+  }
+
   updateRaiders(delta) {
     // Shooters fire projectiles; brawlers get a charge lunge
     if (!this.raiders || this.isOver) return;
@@ -6565,6 +6786,12 @@ class GameScene extends Phaser.Scene {
 
     this.raiders.forEach(raider => {
       if (raider.hp <= 0 || !raider.spr.active) return;
+      // Hunt-party expiration — after 3 minutes the hunter demotes to a normal raider.
+      if (raider.isHuntParty && this.time.now > (raider.huntExpires || 0)) {
+        raider.isHuntParty = false;
+        raider.aggroRange = 320;
+        raider.speed = raider.speed / 1.15; // undo the hunt speed boost
+      }
 
       let nearest = null, nearDist = Infinity;
       players.forEach(p => {
@@ -6663,6 +6890,7 @@ class GameScene extends Phaser.Scene {
   spawnBoss() {
     if (this.bossSpawned) return;
     this.bossSpawned = true;
+    this._stageTrace = false; // we made it — stop per-stage trace
     this._log('spawnBoss: enter', 'world');
 
     const worldW = CFG.MAP_W * CFG.TILE, worldH = CFG.MAP_H * CFG.TILE;
@@ -6687,13 +6915,21 @@ class GameScene extends Phaser.Scene {
     else                 { bx = worldW-TILE*4; by = Phaser.Math.Between(TILE*4, worldH-TILE*4); }
 
     this._log(`spawnBoss: picked ${bt.name} at (${bx|0},${by|0})`, 'world');
-    const spr = this.physics.add.image(bx, by, bt.key).setScale(4).setDepth(12);
+    // Boss sprite: 3× on new 56×60 textures ≈ 168×180 in-game (twice the pixel density of the old 4×40).
+    const BOSS_SCALE = 3;
+    const spr = this.physics.add.image(bx, by, bt.key).setScale(BOSS_SCALE).setDepth(12);
     spr.setCollideWorldBounds(true);
     spr.body.setSize(28, 28);
     if (this.hudCam) this.hudCam.ignore(spr);
     this._log('spawnBoss: sprite created; adding collider', 'world');
     this.physics.add.collider(spr, this.obstacles);
     this._log('spawnBoss: collider added', 'world');
+
+    // Shadow — tracks boss every frame, sits below the sprite so terrain still reads.
+    const shadow = this.add.image(bx, by + 36, 'boss_shadow')
+      .setScale(BOSS_SCALE * 0.9, BOSS_SCALE * 0.8)
+      .setDepth(3).setAlpha(0.75);
+    if (this.hudCam) this.hudCam.ignore(shadow);
 
     // HP bar (world-space, follows boss)
     const hpBg  = this.add.graphics().setDepth(13);
@@ -6707,6 +6943,7 @@ class GameScene extends Phaser.Scene {
       attackTimer: 0, atkInterval: 2200,
       aggroRange: 99999, attackRange: 70, wanderTimer: 0, sizeMult: 1,
       hpBg, hpBar,
+      shadow, baseScale: BOSS_SCALE, _hitTweenUntil: 0,
       specialType: bt.specialType, specialInterval: bt.specialInterval,
       specialTimer: bt.specialInterval * 0.6, // first special fires sooner
       _bossState: 'chase', _telegraphTimer: 0, _telegraphGfx: null,
@@ -6718,43 +6955,59 @@ class GameScene extends Phaser.Scene {
     this._log(`Boss spawned: ${bt.name}  hp=${bt.hp}  day=${this.dayNum}  diff=${this._diffMult().toFixed(1)}x`, 'world');
     this.hint('\u2620 ' + bt.name.toUpperCase() + ' APPROACHES! \u2620', 6000);
     SFX.bossRoar();
-    Music.switchToBoss();
+    this._log('spawnBoss: roar done', 'world');
+    // Defer boss music off the spawn frame. Prior freezes traced here: the first
+    // _bossLoop call synchronously schedules 44+ Web Audio oscillators in one
+    // shot, and Safari's audio thread can wedge the main thread when saturated.
+    // By deferring, spawnBoss completes cleanly and the game stays responsive
+    // even if audio stalls. Wrapped in try/catch as a final safety net.
+    setTimeout(() => {
+      try { Music.switchToBoss(); this._log('spawnBoss: music switched (deferred)', 'world'); }
+      catch (e) { this._log('Music.switchToBoss ERR: ' + (e && e.message || e), 'error'); }
+    }, 100);
+    this._log('spawnBoss: music scheduled', 'world');
 
     // Camera shake
     this.cameras.main.shake(800, 0.012);
+    this._log('spawnBoss: shake scheduled', 'world');
 
-    // Spawn entourage — 4-8 regular enemies nearby
+    // Schedule entourage — 4-8 regular enemies nearby, spaced across frames so the
+    // physics world isn't asked to register N colliders in a single frame (the sync
+    // spawn was a freeze culprit on Day-5 with 400+ bodies already active).
     const entourageCount = Phaser.Math.Between(4, 8);
-    this._log(`spawnBoss: entourage start  count=${entourageCount}`, 'world');
+    this._log(`spawnBoss: entourage scheduled  count=${entourageCount}`, 'world');
+    const typeKey = (bt.biome === 'tundra') ? 'wolf' : (bt.biome === 'swamp') ? 'rat' : 'wolf';
+    const t = typeKey === 'wolf'
+      ? { key:'wolf', hp:60, speed:100, dmg:9, baseScale:1.8, w:20, h:12 }
+      : { key:'rat',  hp:30, speed:140, dmg:6, baseScale:1.4, w:15, h:9  };
+    const baseAggro = { wolf: 190, rat: 110 }[t.key] || 160;
     for (let i = 0; i < entourageCount; i++) {
-      const ang = (i / entourageCount) * Math.PI * 2;
-      const ex = bx + Math.cos(ang) * 100;
-      const ey = by + Math.sin(ang) * 100;
-      const typeKey = (bt.biome === 'tundra') ? 'wolf' : (bt.biome === 'swamp') ? 'rat' : 'wolf';
-      const t = typeKey === 'wolf'
-        ? { key:'wolf', hp:60, speed:100, dmg:9, baseScale:1.8, w:20, h:12 }
-        : { key:'rat',  hp:30, speed:140, dmg:6, baseScale:1.4, w:15, h:9  };
-      const sizeMult = Phaser.Math.FloatBetween(0.9, 1.3);
-      const sc = t.baseScale * sizeMult;
-      const eSpr = this.physics.add.image(
-        Phaser.Math.Clamp(ex, TILE*4, worldW-TILE*4),
-        Phaser.Math.Clamp(ey, TILE*4, worldH-TILE*4), t.key
-      ).setScale(sc).setDepth(9);
-      eSpr.setCollideWorldBounds(true);
-      eSpr.body.setSize(t.w, t.h);
-      if (this.hudCam) this.hudCam.ignore(eSpr);
-      this.physics.add.collider(eSpr, this.obstacles);
-      const baseAggro = { wolf: 190, rat: 110 }[t.key] || 160;
-      this.enemies.push({
-        spr: eSpr, hp: Math.floor(t.hp * sizeMult), maxHp: Math.floor(t.hp * sizeMult),
-        speed: t.speed * sizeMult, dmg: Math.max(1, Math.floor(t.dmg * sizeMult)),
-        type: t.key, attackTimer: 0,
-        wanderTimer: Phaser.Math.Between(0, 1000),
-        aggroRange: baseAggro * 1.4, attackRange: (30 + t.w/2) * sizeMult,
-        sizeMult,
+      this.time.delayedCall(i * 120, () => {
+        if (this.isOver || !this.boss || !this.boss.spr?.active) return;
+        const ang = (i / entourageCount) * Math.PI * 2;
+        const ex = bx + Math.cos(ang) * 100;
+        const ey = by + Math.sin(ang) * 100;
+        const sizeMult = Phaser.Math.FloatBetween(0.9, 1.3);
+        const sc = t.baseScale * sizeMult;
+        const eSpr = this.physics.add.image(
+          Phaser.Math.Clamp(ex, TILE*4, worldW-TILE*4),
+          Phaser.Math.Clamp(ey, TILE*4, worldH-TILE*4), t.key
+        ).setScale(sc).setDepth(9);
+        eSpr.setCollideWorldBounds(true);
+        eSpr.body.setSize(t.w, t.h);
+        if (this.hudCam) this.hudCam.ignore(eSpr);
+        this.physics.add.collider(eSpr, this.obstacles);
+        this.enemies.push({
+          spr: eSpr, hp: Math.floor(t.hp * sizeMult), maxHp: Math.floor(t.hp * sizeMult),
+          speed: t.speed * sizeMult, dmg: Math.max(1, Math.floor(t.dmg * sizeMult)),
+          type: t.key, attackTimer: 0,
+          wanderTimer: Phaser.Math.Between(0, 1000),
+          aggroRange: baseAggro * 1.4, attackRange: (30 + t.w/2) * sizeMult,
+          sizeMult,
+        });
+        this._log(`spawnBoss: entourage spawned  i=${i}`, 'world');
       });
     }
-    this._log('spawnBoss: entourage done', 'world');
   }
 
   updateBoss(delta) {
@@ -6764,6 +7017,7 @@ class GameScene extends Phaser.Scene {
       // Clean up HP bar
       if (b.hpBg && b.hpBg.active) b.hpBg.destroy();
       if (b.hpBar && b.hpBar.active) b.hpBar.destroy();
+      if (b.shadow && b.shadow.active) b.shadow.destroy();
       this.boss = null;
       return;
     }
@@ -6771,6 +7025,32 @@ class GameScene extends Phaser.Scene {
     // Bog Hydra passive HP regen — 5 HP/s
     if (b.type === 'boss_hydra' && b.hp < b.maxHp && b.hp > 0) {
       b.hp = Math.min(b.maxHp, b.hp + 5 * (delta / 1000));
+    }
+
+    // ── Animation: shadow, idle breathing, walk bob ─────────────
+    // Shadow tracks the boss's true world position (not the bobbed sprite y).
+    if (b.shadow && b.shadow.active) {
+      b.shadow.setPosition(b.spr.x, b.spr.y + 36);
+    }
+    // Idle breath — gentle scale pulse. Walk bob — vertical sprite offset when moving.
+    // Skipped while hit-squash tween is overriding scale (b._hitTweenUntil > now).
+    const nowMs = this.time.now;
+    if (b.baseScale && nowMs > (b._hitTweenUntil || 0)) {
+      const breath = 1 + Math.sin(nowMs / 450) * 0.035;
+      b.spr.setScale(b.baseScale * breath, b.baseScale * (2 - breath));
+    }
+    const vx = b.spr.body ? b.spr.body.velocity.x : 0;
+    const vy = b.spr.body ? b.spr.body.velocity.y : 0;
+    // Only bob the visual display via setDisplayOrigin offset won't work cleanly;
+    // instead we leave physics unaffected and let the walk bob ride as the
+    // sprite's natural y while the body continues its motion. Phaser physics
+    // bodies track sprite.y, so we add the bob to a display-only offset field.
+    const movingMag2 = vx*vx + vy*vy;
+    if (movingMag2 > 100) {
+      // Tilt/bob via rotation in radians — cheap and doesn't fight physics.
+      b.spr.setRotation(Math.sin(nowMs / 140) * 0.04);
+    } else {
+      b.spr.setRotation(Phaser.Math.Linear(b.spr.rotation, 0, 0.2));
     }
 
     // Update world-space HP bar above boss
@@ -7615,6 +7895,15 @@ class GameScene extends Phaser.Scene {
     }
     e.spr.setTint(tint);
     this.time.delayedCall(110, () => { if (e.spr && e.spr.active) e.spr.clearTint(); });
+    // Hit squash for bosses — overrides the idle-breath scale briefly.
+    if (e.isBoss && e.baseScale) {
+      e._hitTweenUntil = this.time.now + 170;
+      this.tweens.add({
+        targets: e.spr,
+        scaleX: e.baseScale * 1.15, scaleY: e.baseScale * 0.85,
+        duration: 80, yoyo: true, ease: 'Quad.Out',
+      });
+    }
     SFX.hit();
     this._log(e.type + ' hit  dmg=' + dmg + '  hp=' + e.hp + '/' + (e.maxHp || '?'), 'combat');
     if (e.hp <= 0) this.killEnemy(e);
@@ -7847,7 +8136,9 @@ class GameScene extends Phaser.Scene {
         }
       }
     }
-    // Boss kill
+    // Boss kill — play a full death flourish: shake, scale-up tween, particle
+    // puff matching the boss biome palette, shadow fade. The generic fade-to-0
+    // tween above still runs in parallel, so the sprite destroys itself cleanly.
     if (e.isBoss) {
       if (e.hpBg && e.hpBg.active) e.hpBg.destroy();
       if (e.hpBar && e.hpBar.active) e.hpBar.destroy();
@@ -7861,6 +8152,41 @@ class GameScene extends Phaser.Scene {
       SFX._play(880, 'triangle', 0.3, 0.6, 'rise');
       SFX._play(1100, 'triangle', 0.25, 0.5, 'rise');
       this.cameras.main.shake(600, 0.018);
+      // Scale-up flash on the corpse sprite — tween fights with the fade, but
+      // since it targets scale not alpha, both complete naturally.
+      const bs = e.baseScale || 3;
+      this.tweens.add({ targets: e.spr, scaleX: bs * 1.35, scaleY: bs * 1.35, duration: 500, ease: 'Cubic.Out' });
+      e.spr.setTint(0xffffff);
+      // Shadow fade
+      if (e.shadow && e.shadow.active) {
+        this.tweens.add({
+          targets: e.shadow, alpha: 0, duration: 500,
+          onComplete: () => { if (e.shadow && e.shadow.scene) e.shadow.destroy(); },
+        });
+      }
+      // Debris puff — 12 chunks in boss-biome palette, outward velocity.
+      const biomeCol = {
+        boss_golem:  [0x778899, 0x556677, 0xff3300],
+        boss_wolf:   [0x888855, 0xeeeecc, 0x554422],
+        boss_spider: [0x442255, 0x553366, 0x88ff44],
+        boss_troll:  [0x8899bb, 0xbbccdd, 0xaaddff],
+        boss_hydra:  [0x334422, 0x446633, 0x88bb44],
+      }[e.type] || [0xffffff, 0xcccccc, 0x888888];
+      for (let i = 0; i < 12; i++) {
+        const ang = (i / 12) * Math.PI * 2 + Phaser.Math.FloatBetween(-0.2, 0.2);
+        const sp = Phaser.Math.Between(80, 160);
+        const col = biomeCol[i % biomeCol.length];
+        const dbr = this.add.rectangle(ex, ey, 4, 4, col).setDepth(15);
+        if (this.hudCam) this.hudCam.ignore(dbr);
+        this.tweens.add({
+          targets: dbr,
+          x: ex + Math.cos(ang) * sp * 0.6,
+          y: ey + Math.sin(ang) * sp * 0.6,
+          alpha: 0, scale: 0.4,
+          duration: 600, ease: 'Cubic.Out',
+          onComplete: () => dbr.destroy(),
+        });
+      }
       this.dropResource(ex, ey, 'rare');
     }
     // Dust Hound pack frenzy — surviving packmates speed up for 4s on death
@@ -9118,6 +9444,11 @@ class GameScene extends Phaser.Scene {
       this._log(`Day ${this.dayNum} begins  diff=${this._diffMult().toFixed(1)}x  kills_so_far=${this.kills||0}  enemies=${(this.enemies||[]).filter(e=>e.spr?.active).length}`, 'world');
       this.hint('Dawn of Day ' + this.dayNum + ' \u2014 enemies grow stronger!', 3000);
       if (this.dayNum === 2) this._tutTrigger('caches');
+      // Periodic hunting party — separate cadence from raid camp respawn.
+      if (this.dayNum >= (this.huntNextDay || 0) && this.dayNum >= 2) {
+        this.huntNextDay = this.dayNum + Phaser.Math.Between(2, 3);
+        this.time.delayedCall(6000, () => { if (!this.isOver) this.spawnHuntingParty(); });
+      }
       // Raider respawn check
       if (this.raidRespawnDay !== null && this.dayNum >= this.raidRespawnDay) {
         this.raidRespawnDay = null;
@@ -9136,9 +9467,17 @@ class GameScene extends Phaser.Scene {
         const roll = this._bossChance;
         if (Math.random() < roll) {
           this._log(`Boss check day=${this.dayNum}  chance=${(roll*100)|0}%  -> SPAWN`, 'world');
-          // Flush log BEFORE the 5s delay so freeze-on-spawn still leaves a trace on disk
-          try { this._downloadLog(); } catch (e) {}
           this._bossChance = 0.5; // reset for post-boss hypotheticals
+          // Arm per-stage trace so every update()-stage logs its entry until the
+          // boss spawns — helps locate any freeze that happens on the way.
+          this._stageTrace = true;
+          setTimeout(() => { this._stageTrace = false; }, 10000);
+          // Defer forensic log flush off the current update frame. Synchronous
+          // a.click() inside Phaser's update loop was stalling the Safari
+          // scheduler, so the 5s spawnBoss delayedCall never fired. Using
+          // setTimeout (not Phaser.time) so the flush still fires even if the
+          // game clock stalls.
+          setTimeout(() => { try { this._downloadLog(); } catch (e) {} }, 250);
           this.time.delayedCall(5000, () => {
             if (!this.isOver && !this.bossSpawned) this.spawnBoss();
           });
