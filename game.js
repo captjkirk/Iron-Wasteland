@@ -7,7 +7,7 @@
 // ── VERSION ───────────────────────────────────────────────────
 // Update this each commit so the title screen reflects the build date.
 // Stored as UTC ISO so it can be displayed in each player's local timezone.
-const VERSION = '2026-04-19T01:04:44Z';
+const VERSION = '2026-04-19T20:42:00Z';
 // Format VERSION into the viewer's local time with abbreviated tz name (EDT, PDT, BST, etc.)
 function _fmtVersion(iso) {
   try {
@@ -44,6 +44,7 @@ const CFG = {
   DORMANT_RADIUS: 800,  // px — wildlife enemy goes dormant beyond this from all players
   WAKE_RADIUS:    700,  // px — hysteresis: dormant enemy wakes when closer than this
   MAX_ACTIVE_ENEMIES: 180, // hard cap on simultaneously active (non-dormant) enemies
+  MAX_ENEMIES: 280, // hard cap on this.enemies.length across all spawners (den/wave)
 };
 
 // ── WORLD GEN CONFIG KNOBS ────────────────────────────────────
@@ -3708,49 +3709,12 @@ class GameScene extends Phaser.Scene {
             // Setup crate pickups now that players exist
             this.setupCratePickups();
 
-            // Setup toxic pool damage overlaps
-            if (this.toxicPools) {
-              this.toxicPools.forEach(pool => {
-                this.physics.add.overlap(this.p1.spr, pool, () => {
-                  if (!this._toxicCd1 || this._toxicCd1 <= 0) {
-                    this.p1.hp = Math.max(0, this.p1.hp - 3);
-                    this._toxicCd1 = 500;
-                    this._log(`${this.p1.charData.player} toxic pool dmg=3 hp=${this.p1.hp}/${this.p1.maxHp}`, 'combat');
-                    this.p1.spr.setTint(0x44ff22);
-                    this.time.delayedCall(150, () => {
-                      if (!this.p1.spr?.active) return;
-                      if (this.p1._frostSlowed) this.p1.spr.setTint(0x88ccff);
-                      else this.p1.spr.clearTint();
-                    });
-                  }
-                });
-                if (this.p2) {
-                  this.physics.add.overlap(this.p2.spr, pool, () => {
-                    if (!this._toxicCd2 || this._toxicCd2 <= 0) {
-                      this.p2.hp = Math.max(0, this.p2.hp - 3);
-                      this._toxicCd2 = 500;
-                      this._log(`${this.p2.charData.player} toxic pool dmg=3 hp=${this.p2.hp}/${this.p2.maxHp}`, 'combat');
-                      this.p2.spr.setTint(0x44ff22);
-                      this.time.delayedCall(150, () => {
-                        if (!this.p2.spr?.active) return;
-                        if (this.p2._frostSlowed) this.p2.spr.setTint(0x88ccff);
-                        else this.p2.spr.clearTint();
-                      });
-                    }
-                  });
-                }
-              });
-            }
+            // Toxic pool damage — handled per-frame via _toxicTileIndex in applyTerrainEffects
+            // (physics overlap approach replaced: scaled O(pools * players) every frame)
 
-            // Shallow water wading detection — handled per-frame via _waterMap Uint8Array lookup
-            // (physics overlap approach was broken: callbacks fired before update() reset the flag)
-            // Ice tiles — flags player for slippery momentum physics
-            if (this.iceTiles && this.iceTiles.length) {
-              this.iceTiles.forEach(t => {
-                this.physics.add.overlap(this.p1.spr, t, () => { this.p1._onIce = true; });
-                if (this.p2) this.physics.add.overlap(this.p2.spr, t, () => { this.p2._onIce = true; });
-              });
-            }
+            // Shallow water wading + ice + toxic detection — all handled per-frame via
+            // _waterMap / _iceMap / _toxicMap Uint8Array lookups in applyTerrainEffects.
+            // Physics overlap approach was both buggy (stale flags) and slow (~1000 bodies).
 
             // Input — load saved bindings (falls back to DEFAULT_BINDINGS)
             const K = Phaser.Input.Keyboard.KeyCodes;
@@ -3838,6 +3802,8 @@ class GameScene extends Phaser.Scene {
               this.input.on('pointerdown', (pointer) => {
                 if (activeInputMode() === 'touch') return; // touch mode handles its own attack
                 if (this.barrackOpen || this.isOver || this.p1.isDowned || this.p1.isSleeping) return;
+                // Craft menu consumes click — don't bleed into attack (gunslinger loses ammo otherwise)
+                if (this.craftMenuOpen) return;
                 if (pointer.leftButtonDown()) {
                   if (this.buildMode && this.buildOwner === this.p1) this.placeBuild();
                   else this.doAttack(this.p1);
@@ -4347,14 +4313,30 @@ class GameScene extends Phaser.Scene {
       if (getBiome(tx, ty) !== 'swamp') continue;
       if (Math.abs(tx-stx)<SAFE_R+5 && Math.abs(ty-sty)<SAFE_R+5) continue;
       const sc = Phaser.Math.FloatBetween(0.8, 2.2);
-      const pool = this.physics.add.image(tx*TILE + Phaser.Math.Between(-8,8), ty*TILE + Phaser.Math.Between(-8,8), 'toxic_pool')
-        .setScale(sc).setDepth(2).setAlpha(0.9);
-      pool.body.allowGravity = false; pool.body.setImmovable(true);
-      // Physics body scales with sprite size
-      pool.body.setSize(Math.round(40 * sc), Math.round(28 * sc));
+      const px = tx*TILE + Phaser.Math.Between(-8,8);
+      const py = ty*TILE + Phaser.Math.Between(-8,8);
+      // Visual only — collision detection via _toxicPoolsData + _toxicMap per-frame
+      const pool = this.add.image(px, py, 'toxic_pool').setScale(sc).setDepth(2).setAlpha(0.9);
       if (this.hudCam) this.hudCam.ignore(pool);
       this._w(pool);
       this.toxicPools.push(pool);
+      // Axis-aligned rect for per-frame player collision (half-width/height)
+      const rx = Math.round(20 * sc), ry = Math.round(14 * sc);
+      if (!this._toxicPoolsData) this._toxicPoolsData = [];
+      if (!this._toxicTileIndex) this._toxicTileIndex = new Map();
+      const poolData = { x: px, y: py, rx, ry };
+      this._toxicPoolsData.push(poolData);
+      // Register this pool in every tile its AABB overlaps (for O(1) coarse reject)
+      const tx0 = Math.floor((px - rx) / TILE), tx1 = Math.floor((px + rx) / TILE);
+      const ty0 = Math.floor((py - ry) / TILE), ty1 = Math.floor((py + ry) / TILE);
+      for (let txx = tx0; txx <= tx1; txx++) {
+        for (let tyy = ty0; tyy <= ty1; tyy++) {
+          const key = txx + ',' + tyy;
+          let arr = this._toxicTileIndex.get(key);
+          if (!arr) { arr = []; this._toxicTileIndex.set(key, arr); }
+          arr.push(poolData);
+        }
+      }
     }
 
     // Water ponds — swamp/tundra/fungal/grass (shallow+deep or ice)
@@ -6027,10 +6009,8 @@ class GameScene extends Phaser.Scene {
     if (this.isOver) return;
     if (this._paused) return;
 
-    // Reset per-frame ice flag — overlap callbacks re-set it while active
-    // (water flag is computed directly per-frame in applyTerrainEffects via _waterMap)
-    if (this.p1) { this.p1._onIce = false; }
-    if (this.p2) { this.p2._onIce = false; }
+    // _onIce, _inShallowWater, and toxic pool detection are now all computed per-frame
+    // inside applyTerrainEffects via Uint8Array map lookups — no reset needed here.
 
     if (this.controlsVis || this.barrackOpen) {
       this.p1.spr.setVelocity(0,0);
@@ -6318,16 +6298,50 @@ class GameScene extends Phaser.Scene {
   applyTerrainEffects(player) {
     if (!player || player.isDowned) return;
 
-    // Shallow water: detect via Uint8Array map — no string alloc, O(1) per frame
+    // Shallow water + ice + toxic pools — all computed per-frame via Uint8Array maps
+    const TILE = CFG.TILE, MW = CFG.MAP_W;
+    const ptx = Math.floor(player.spr.x / TILE);
+    const pty = Math.floor(player.spr.y / TILE);
     {
-      const TILE = CFG.TILE, MW = CFG.MAP_W;
-      const ptx = Math.floor(player.spr.x / TILE);
-      const pty = Math.floor(player.spr.y / TILE);
       const wm = this._waterMap;
       player._inShallowWater = !!(wm &&
         (wm[ptx + pty * MW] || wm[(ptx+1) + pty * MW] ||
          wm[ptx + (pty+1) * MW] || wm[(ptx+1) + (pty+1) * MW]));
     }
+    // Ice lookup (tundra lakes + frozen ponds)
+    {
+      const im = this._iceMap;
+      player._onIce = !!(im &&
+        (im[ptx + pty * MW] || im[(ptx+1) + pty * MW] ||
+         im[ptx + (pty+1) * MW] || im[(ptx+1) + (pty+1) * MW]));
+    }
+    // Toxic pool lookup — tile-indexed list of AABBs
+    if (this._toxicTileIndex) {
+      const arr = this._toxicTileIndex.get(ptx + ',' + pty);
+      if (arr) {
+        const px = player.spr.x, py = player.spr.y;
+        for (let i = 0; i < arr.length; i++) {
+          const pool = arr[i];
+          if (Math.abs(px - pool.x) <= pool.rx && Math.abs(py - pool.y) <= pool.ry) {
+            const isP1 = (player === this.p1);
+            const cdKey = isP1 ? '_toxicCd1' : '_toxicCd2';
+            if (!this[cdKey] || this[cdKey] <= 0) {
+              player.hp = Math.max(0, player.hp - 3);
+              this[cdKey] = 500;
+              this._log(`${player.charData.player} toxic pool dmg=3 hp=${player.hp}/${player.maxHp}`, 'combat');
+              player.spr.setTint(0x44ff22);
+              this.time.delayedCall(150, () => {
+                if (!player.spr?.active) return;
+                if (player._frostSlowed) player.spr.setTint(0x88ccff);
+                else player.spr.clearTint();
+              });
+            }
+            break;
+          }
+        }
+      }
+    }
+
     if (player._inShallowWater) {
       const vx = player.spr.body.velocity.x, vy = player.spr.body.velocity.y;
       player.spr.setVelocity(vx * 0.5, vy * 0.5);
@@ -6346,8 +6360,6 @@ class GameScene extends Phaser.Scene {
     player._iceVx = undefined; player._iceVy = undefined;
 
     // Tundra ground slow (non-ice tiles, existing behavior)
-    const TILE = CFG.TILE;
-    const ptx = Math.floor(player.spr.x / TILE), pty = Math.floor(player.spr.y / TILE);
     const biome = getBiome(ptx, pty);
     if (biome === 'tundra') {
       if (!player._inTundra) {
@@ -6651,6 +6663,7 @@ class GameScene extends Phaser.Scene {
   spawnBoss() {
     if (this.bossSpawned) return;
     this.bossSpawned = true;
+    this._log('spawnBoss: enter', 'world');
 
     const worldW = CFG.MAP_W * CFG.TILE, worldH = CFG.MAP_H * CFG.TILE;
     const { TILE } = CFG;
@@ -6673,11 +6686,14 @@ class GameScene extends Phaser.Scene {
     else if (side === 2) { bx = TILE*4; by = Phaser.Math.Between(TILE*4, worldH-TILE*4); }
     else                 { bx = worldW-TILE*4; by = Phaser.Math.Between(TILE*4, worldH-TILE*4); }
 
+    this._log(`spawnBoss: picked ${bt.name} at (${bx|0},${by|0})`, 'world');
     const spr = this.physics.add.image(bx, by, bt.key).setScale(4).setDepth(12);
     spr.setCollideWorldBounds(true);
     spr.body.setSize(28, 28);
     if (this.hudCam) this.hudCam.ignore(spr);
+    this._log('spawnBoss: sprite created; adding collider', 'world');
     this.physics.add.collider(spr, this.obstacles);
+    this._log('spawnBoss: collider added', 'world');
 
     // HP bar (world-space, follows boss)
     const hpBg  = this.add.graphics().setDepth(13);
@@ -6709,6 +6725,7 @@ class GameScene extends Phaser.Scene {
 
     // Spawn entourage — 4-8 regular enemies nearby
     const entourageCount = Phaser.Math.Between(4, 8);
+    this._log(`spawnBoss: entourage start  count=${entourageCount}`, 'world');
     for (let i = 0; i < entourageCount; i++) {
       const ang = (i / entourageCount) * Math.PI * 2;
       const ex = bx + Math.cos(ang) * 100;
@@ -6737,6 +6754,7 @@ class GameScene extends Phaser.Scene {
         sizeMult,
       });
     }
+    this._log('spawnBoss: entourage done', 'world');
   }
 
   updateBoss(delta) {
@@ -7099,6 +7117,7 @@ class GameScene extends Phaser.Scene {
       den.respawnTimer += delta;
       if (den.respawnTimer >= 30000) { // respawn enemies every 30s near dens
         den.respawnTimer = 0;
+        if (this.enemies.length >= CFG.MAX_ENEMIES) return;
         const types = ['wolf','rat','rat'];
         const type = types[Phaser.Math.Between(0, types.length-1)];
         const typeDef = { wolf:{hp:60,speed:75,dmg:6,baseScale:1.8,w:20,h:12}, rat:{hp:30,speed:105,dmg:4,baseScale:1.4,w:15,h:9} };
@@ -7137,6 +7156,7 @@ class GameScene extends Phaser.Scene {
       den.respawnTimer += delta;
       if (den.respawnTimer < 25000) return;  // respawn every 25 seconds
       den.respawnTimer = 0;
+      if (this.enemies.length >= CFG.MAX_ENEMIES) return;
       // Pick a random tile within the lake's tileSet to spawn from
       if (!den.tileSet || den.tileSet.size === 0) return;
       const keys = Array.from(den.tileSet);
@@ -7431,9 +7451,13 @@ class GameScene extends Phaser.Scene {
       });
     } else if (id === 'architect') {
       // ORCHESTRATE — deploy auto-turret for 30 seconds
-      if (player.turretCooldown > 0) return;
+      if (player.turretCooldown > 0) {
+        this.hint('TURRET: ' + Math.ceil(player.turretCooldown / 1000) + 's', 1200);
+        return;
+      }
       player.turretCooldown = 45000;
       this.tickCooldown(player, 'turretCooldown', 45000);
+      this.time.delayedCall(45000, () => { if (!this.isOver) this.hint('TURRET is ready!', 2000); });
       SFX._play(500, 'square', 0.1, 0.3);
       SFX._play(700, 'triangle', 0.08, 0.2);
       this._log(`${player.charData.player} deployed TURRET  pos=(${Math.floor(player.spr.x/CFG.TILE)},${Math.floor(player.spr.y/CFG.TILE)})`, 'player');
@@ -7627,8 +7651,8 @@ class GameScene extends Phaser.Scene {
   }
 
   // Attach a pulsating warm-glow halo to a campfire, campsite, or torch.
-  // baseScale controls the radius: 1.0 = campfire/campsite, 0.45 = torch.
-  _addFireGlow(x, y, baseScale = 1.0) {
+  // baseScale controls the radius: 1.6 = campfire/campsite (expanded), 0.45 = torch.
+  _addFireGlow(x, y, baseScale = 1.6) {
     const glow = this.add.image(x, y, 'fire_glow')
       .setScale(baseScale).setAlpha(0.55).setDepth(3)
       .setBlendMode(Phaser.BlendModes.ADD);
@@ -7636,7 +7660,7 @@ class GameScene extends Phaser.Scene {
     if (this.hudCam) this.hudCam.ignore(glow);
     // Pulse scale
     this.tweens.add({
-      targets: glow, scale: baseScale * 1.28, duration: 1400,
+      targets: glow, scale: baseScale * 1.35, duration: 1400,
       ease: 'Sine.InOut', yoyo: true, loop: -1,
     });
     // Pulse alpha (slightly offset phase for organic feel)
@@ -7746,12 +7770,19 @@ class GameScene extends Phaser.Scene {
     });
     a.click();
     URL.revokeObjectURL(url);
-    // Also save to ./logs/ via dev server when running locally (silent if server not up)
-    fetch('http://localhost:8080/save-log', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ filename: fname, content: lines }),
-    }).catch(() => {}); // no-op if server isn't running
+    // Also save to ./logs/ via dev server — same-origin so it works whether served
+    // as localhost, 127.0.0.1, or LAN IP. No-op if running from file:// (no server).
+    if (location.protocol !== 'file:') {
+      fetch('/save-log', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ filename: fname, content: lines }),
+      })
+      .then(r => { if (!r.ok) console.warn('[save-log] server returned', r.status); })
+      .catch(e => console.warn('[save-log] failed:', e));
+    } else {
+      console.warn('[save-log] skipped — running from file://; run `node server.js` to save logs to disk');
+    }
   }
 
   killEnemy(e) {
@@ -8178,11 +8209,9 @@ class GameScene extends Phaser.Scene {
         // Deep water only when fully surrounded (no dry-ground border)
         const isDeep = !isIce && neighborCount === 4;
         if (isIce) {
-          const tile = this.physics.add.image(x, y, 'water_ice').setDepth(0.6).setAlpha(0.75);
-          tile.body.allowGravity = false; tile.body.setImmovable(true);
-          tile.body.setSize(30, 30);
+          // Visual only — detection via _iceMap per-frame (see applyTerrainEffects)
+          const tile = this._w(this.add.image(x, y, 'water_ice').setOrigin(0.5).setDepth(0.6).setAlpha(0.75));
           if (this.hudCam) this.hudCam.ignore(tile);
-          this._w(tile);
           this.iceTiles.push(tile);
           this._iceMap[tx + ty * CFG.MAP_W] = 1;
         } else if (isDeep) {
@@ -8276,12 +8305,9 @@ class GameScene extends Phaser.Scene {
         if (tx < 1 || ty < 1 || tx >= CFG.MAP_W - 1 || ty >= CFG.MAP_H - 1) return;
         const x = tx * TILE, y = ty * TILE;
         if (biome === 'tundra') {
-          // Tundra lakes become ice
-          const tile = this.physics.add.image(x, y, 'water_ice').setDepth(0.6).setAlpha(0.75);
-          tile.body.allowGravity = false; tile.body.setImmovable(true);
-          tile.body.setSize(30, 30);
+          // Tundra lakes become ice — visual only, detection via _iceMap per-frame
+          const tile = this._w(this.add.image(x, y, 'water_ice').setOrigin(0.5).setDepth(0.6).setAlpha(0.75));
           if (this.hudCam) this.hudCam.ignore(tile);
-          this._w(tile);
           this.iceTiles.push(tile);
           this._iceMap[tx + ty * CFG.MAP_W] = 1;
         } else if (deepLakeTiles.has(key)) {
@@ -8495,6 +8521,10 @@ class GameScene extends Phaser.Scene {
     if (this.waveTimer >= this.WAVE_INTERVAL) {
       this.waveTimer = 0;
       this.waveNum++;
+      if (this.enemies.length >= CFG.MAX_ENEMIES) {
+        this._log('Wave ' + (this.waveNum+1) + ' capped — MAX_ENEMIES reached (' + this.enemies.length + ')', 'world');
+        return;
+      }
       // Escalating counts
       const w = Math.min(6 + this.waveNum * 2, 20);
       const r = Math.min(8 + this.waveNum * 3, 30);
@@ -9054,11 +9084,23 @@ class GameScene extends Phaser.Scene {
           }
         });
       }
-      // Boss daily check: Day 5 = 75% chance, Day 6 = 75% again if missed, Day 7+ = guaranteed
-      else if (!this.bossSpawned && this.dayNum >= 5 && (this.dayNum >= 7 || Math.random() < 0.75)) {
-        this.time.delayedCall(5000, () => {
-          if (!this.isOver && !this.bossSpawned) this.spawnBoss();
-        });
+      // Boss schedule: Day 5 = 100% guaranteed debut.
+      // After that, every 5-day interval rolls at 50% (+10% per missed interval).
+      else if (!this.bossSpawned && this.dayNum >= 5 && this.dayNum % 5 === 0) {
+        if (this._bossChance === undefined) this._bossChance = 1.0; // day-5 guaranteed
+        const roll = this._bossChance;
+        if (Math.random() < roll) {
+          this._log(`Boss check day=${this.dayNum}  chance=${(roll*100)|0}%  -> SPAWN`, 'world');
+          // Flush log BEFORE the 5s delay so freeze-on-spawn still leaves a trace on disk
+          try { this._downloadLog(); } catch (e) {}
+          this._bossChance = 0.5; // reset for post-boss hypotheticals
+          this.time.delayedCall(5000, () => {
+            if (!this.isOver && !this.bossSpawned) this.spawnBoss();
+          });
+        } else {
+          this._bossChance = Math.min(1.0, roll + 0.10);
+          this._log(`Boss check day=${this.dayNum}  chance=${(roll*100)|0}% -> missed  next_chance=${(this._bossChance*100)|0}%`, 'world');
+        }
       }
     }
 
@@ -9972,11 +10014,15 @@ class GameOverScene extends Phaser.Scene {
     const a = Object.assign(document.createElement('a'), { href: url, download: fname });
     a.click();
     URL.revokeObjectURL(url);
-    fetch('http://localhost:8080/save-log', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ filename: fname, content: lines }),
-    }).catch(() => {});
+    if (location.protocol !== 'file:') {
+      fetch('/save-log', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ filename: fname, content: lines }),
+      })
+      .then(r => { if (!r.ok) console.warn('[save-log] server returned', r.status); })
+      .catch(e => console.warn('[save-log] failed:', e));
+    }
   }
 
   // Render TOP SCORES after save.  Fits between postSaveY (492) and buttons (636).

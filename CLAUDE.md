@@ -45,5 +45,10 @@ The live overlay header also shows: FPS, day/phase, difficulty multiplier, activ
 - `SAFE_R` — spawn safe radius in tiles (10)
 - `DORMANT_RADIUS / WAKE_RADIUS` — enemy activation thresholds in px
 
+## Working Directory
+**All edits must target the canonical project folder:** `~/Library/Mobile Documents/com~apple~CloudDocs/Family Sharing/Iron Wasteland/`
+
+Never edit files only inside a worktree. When working in a worktree, always ensure changes are committed/merged back to `main` so the canonical folder stays up to date. If the user asks to update the game, confirm edits land in this folder.
+
 ## Branch
 Active development: `main`
