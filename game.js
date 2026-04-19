@@ -7,7 +7,7 @@
 // ── VERSION ───────────────────────────────────────────────────
 // Update this each commit so the title screen reflects the build date.
 // Stored as UTC ISO so it can be displayed in each player's local timezone.
-const VERSION = '2026-04-16T22:40:00Z';
+const VERSION = '2026-04-19T01:04:44Z';
 // Format VERSION into the viewer's local time with abbreviated tz name (EDT, PDT, BST, etc.)
 function _fmtVersion(iso) {
   try {
@@ -39,11 +39,33 @@ const CFG = {
   DOWN_TIME: 20,     // seconds before a downed player dies permanently
   REVIVE_TIME: 3,    // seconds to hold interact to revive
   REVIVE_RANGE: 80,  // px to be close enough to revive
-  FOG_REVEAL_R: 6,   // tiles radius for fog reveal
+  FOG_REVEAL_R: 8,   // tiles radius for fog reveal
   FOG_UPDATE_INTERVAL: 4, // update fog every N frames
-  DORMANT_RADIUS: 800, // px — wildlife enemy goes dormant beyond this from all players
-  WAKE_RADIUS:    700, // px — hysteresis: dormant enemy wakes when closer than this
+  DORMANT_RADIUS: 800,  // px — wildlife enemy goes dormant beyond this from all players
+  WAKE_RADIUS:    700,  // px — hysteresis: dormant enemy wakes when closer than this
+  MAX_ACTIVE_ENEMIES: 180, // hard cap on simultaneously active (non-dormant) enemies
 };
+
+// ── WORLD GEN CONFIG KNOBS ────────────────────────────────────
+CFG.POND_SPECS    = { swamp:35, tundra:25, fungal:20, grass:16, grass_near:8 };
+CFG.LAKE_SPECS    = ['grass','grass','swamp','swamp','waste','tundra','fungal'];
+CFG.PLACEMENT     = { POND_EXCL:10, LAKE_EXCL:14, CACHE_EXCL:8,
+                      POND_MIN_SIZE:12, LAKE_MIN_SIZE:25, RAIDER_MIN_DIST:60 };
+
+// ── MULBERRY32 SEEDED RNG ─────────────────────────────────────
+// Deterministic, fast, good statistical quality.
+// _worldRng is set in initWorldRng(); call _worldRng() instead of Math.random() in world gen.
+let _worldRng = Math.random; // default to Math.random until seed is set
+function _makeMulberry32(seed) {
+  let s = (seed >>> 0) || 1;
+  return function() {
+    s += 0x6d2b79f5;
+    let t = s;
+    t = Math.imul(t ^ (t >>> 15), t | 1);
+    t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+}
 
 // ── BIOME SYSTEM ──────────────────────────────────────────────
 // Simple seeded hash for value noise
@@ -77,24 +99,45 @@ function _qlog(msg, cat) {
   console.log('[IW]', msg);
 }
 
-function getBiome(tileX, tileY) {
+// Pre-computed biome map — populated once after biome seeds are set.
+// O(1) lookup replaces the per-call Voronoi + noise computation.
+let _biomeMap = null;
+const _BIOME_IDX  = { grass:0, waste:1, swamp:2, tundra:3, ruins:4, fungal:5, desert:6 };
+const _BIOME_NAME = ['grass','waste','swamp','tundra','ruins','fungal','desert'];
+
+function _computeBiomeRaw(tileX, tileY) {
   const cx = CFG.MAP_W / 2, cy = CFG.MAP_H / 2;
   const dist = Math.sqrt((tileX - cx) ** 2 + (tileY - cy) ** 2);
   if (dist < CFG.SAFE_R + 15) return 'grass';
-  if (_biomeSeeds.length === 0) return 'waste'; // fallback before init
-
-  // Domain warp: nudge coordinates with low-freq noise for organic borders
+  if (_biomeSeeds.length === 0) return 'waste';
   const warpX = _biomeNoise(tileX * 0.8, tileY * 0.8, 7) * 18;
   const warpY = _biomeNoise(tileX * 0.8 + 50, tileY * 0.8 + 50, 7) * 18;
   const wtx = tileX + warpX, wty = tileY + warpY;
-
-  // Nearest Voronoi seed wins
   let nearest = null, nearestDist = Infinity;
   for (const seed of _biomeSeeds) {
     const d = (wtx - seed.tx) ** 2 + (wty - seed.ty) ** 2;
     if (d < nearestDist) { nearestDist = d; nearest = seed; }
   }
   return nearest ? nearest.biome : 'waste';
+}
+
+function getBiome(tileX, tileY) {
+  if (_biomeMap) {
+    const tx = Math.max(0, Math.min(CFG.MAP_W - 1, tileX | 0));
+    const ty = Math.max(0, Math.min(CFG.MAP_H - 1, tileY | 0));
+    return _BIOME_NAME[_biomeMap[tx + ty * CFG.MAP_W]] || 'waste';
+  }
+  return _computeBiomeRaw(tileX, tileY);
+}
+
+function _buildBiomeMap() {
+  const { MAP_W, MAP_H } = CFG;
+  _biomeMap = new Uint8Array(MAP_W * MAP_H);
+  for (let ty = 0; ty < MAP_H; ty++) {
+    for (let tx = 0; tx < MAP_W; tx++) {
+      _biomeMap[tx + ty * MAP_W] = _BIOME_IDX[_computeBiomeRaw(tx, ty)] || 0;
+    }
+  }
 }
 
 // Biome color map for minimap
@@ -113,7 +156,7 @@ const CHARS = [
   {
     id: 'knight', player: 'Hudson', title: 'Iron Knight',
     color: 0x4a6d8c, dark: 0x2d4a63,
-    speed: 150, maxHp: 200,
+    speed: 128, maxHp: 200,
     stats: [5, 3, 4, 2],
     desc: ['Highest HP. Sword & Shield.', 'RALLY: boosts partner speed'],
   },
@@ -347,6 +390,7 @@ const Music = {
 
 const SFX = {
   _enabled: true,
+  _noiseBuf: null,
   _play(freq, type, dur, vol, shape) {
     if (!this._enabled) return;
     try {
@@ -362,18 +406,26 @@ const SFX = {
       o.start(ctx.currentTime); o.stop(ctx.currentTime+dur+0.01);
     } catch(e) {}
   },
+  _getNoiseBuf(ctx) {
+    if (!this._noiseBuf || this._noiseBuf.sampleRate !== ctx.sampleRate) {
+      // 2-second white-noise buffer reused for all noise events
+      const buf = ctx.createBuffer(1, ctx.sampleRate * 2, ctx.sampleRate);
+      const d = buf.getChannelData(0);
+      for (let i = 0; i < d.length; i++) d[i] = Math.random() * 2 - 1;
+      this._noiseBuf = buf;
+    }
+    return this._noiseBuf;
+  },
   _noise(dur, vol) {
     if (!this._enabled) return;
     try {
       const ctx = Music.ctx; if (!ctx) return;
-      const buf = ctx.createBuffer(1, ctx.sampleRate*dur, ctx.sampleRate);
-      const d = buf.getChannelData(0);
-      for (let i=0;i<d.length;i++) d[i] = (Math.random()*2-1)*vol;
       const src = ctx.createBufferSource(), g = ctx.createGain();
-      src.buffer = buf; src.connect(g); g.connect(Music.gain || ctx.destination);
+      src.buffer = this._getNoiseBuf(ctx);
+      src.connect(g); g.connect(Music.gain || ctx.destination);
       g.gain.setValueAtTime(vol, ctx.currentTime);
-      g.gain.linearRampToValueAtTime(0, ctx.currentTime+dur);
-      src.start(); src.stop(ctx.currentTime+dur+0.01);
+      g.gain.linearRampToValueAtTime(0, ctx.currentTime + dur);
+      src.start(); src.stop(ctx.currentTime + dur + 0.01);
     } catch(e) {}
   },
   bossRoar() {
@@ -3549,6 +3601,7 @@ class GameScene extends Phaser.Scene {
     this.dayNum = 1; this.dayTimer = 0; this.DAY_DUR = 150000; this.isNight = false;
     this.kills = 0;
     this.resourcesGathered = 0;
+    this.teamAmmoPool = 0;
     this.bossSpawned = false;
     this.bossDefeated = false;
     this.boss = null;
@@ -3616,7 +3669,11 @@ class GameScene extends Phaser.Scene {
     // ── Stage 0 (t≈64 ms): physics bounds + biome seeds ────────
     this.time.delayedCall(64, () => {
       try {
-        this._log(`World init start  run=#${this._runCount}  ${this.solo?'1P':'2P'}  ${this.hardcore?'hardcore':'survival'}`, 'world');
+        // Initialise world seed from URL (?seed=N) or a fresh timestamp value
+        const _urlSeed = (() => { try { return parseInt(new URLSearchParams(location.search).get('seed') || ''); } catch(e) { return NaN; } })();
+        this._worldSeed = isNaN(_urlSeed) ? (Date.now() & 0x7fffffff) : _urlSeed;
+        _worldRng = _makeMulberry32(this._worldSeed);
+        this._log(`World init start  run=#${this._runCount}  ${this.solo?'1P':'2P'}  ${this.hardcore?'hardcore':'survival'}  seed=${this._worldSeed}`, 'world');
         this.physics.world.setBounds(0, 0, worldW, worldH);
         _setProgress(5, 'Seeding biomes...');
         this._log('World init: biome seeds', 'world');
@@ -3685,7 +3742,7 @@ class GameScene extends Phaser.Scene {
               });
             }
 
-            // Shallow water wading detection — handled per-frame via _waterTileSet tile lookup
+            // Shallow water wading detection — handled per-frame via _waterMap Uint8Array lookup
             // (physics overlap approach was broken: callbacks fired before update() reset the flag)
             // Ice tiles — flags player for slippery momentum physics
             if (this.iceTiles && this.iceTiles.length) {
@@ -3960,12 +4017,15 @@ class GameScene extends Phaser.Scene {
   _initBiomeSeeds() {
     const biomes = ['waste', 'swamp', 'tundra', 'ruins', 'fungal', 'desert'];
     const seedsPerBiome = 3; // multiple seeds → more irregular, organic shapes
+    _biomeMap = null; // invalidate cached map; rebuilt below
     _biomeSeeds = [];
     const cx = CFG.MAP_W / 2, cy = CFG.MAP_H / 2;
+    // Use world seed RNG so biome layout is reproducible
+    const _rng = _worldRng;
     biomes.forEach(biome => {
       for (let i = 0; i < seedsPerBiome; i++) {
-        const angle = Math.random() * Math.PI * 2;
-        const dist = CFG.MAP_W * Phaser.Math.FloatBetween(0.25, 0.48);
+        const angle = _rng() * Math.PI * 2;
+        const dist = CFG.MAP_W * (0.25 + _rng() * 0.23); // FloatBetween(0.25, 0.48)
         _biomeSeeds.push({
           biome,
           tx: cx + Math.cos(angle) * dist,
@@ -3973,6 +4033,21 @@ class GameScene extends Phaser.Scene {
         });
       }
     });
+    // Pre-compute biome map once — O(1) getBiome lookups for rest of world gen
+    _buildBiomeMap();
+  }
+
+  // Returns true if (tx,ty) is within the spawn safe zone or overlaps a structure.
+  // Used by pond, lake, cache, and den placement to avoid collisions.
+  _isBlockedForPlacement(tx, ty, excl, stx, sty) {
+    if (Math.abs(tx - stx) < excl && Math.abs(ty - sty) < excl) return true;
+    if (this._structureLocs) {
+      const { TILE } = CFG;
+      for (const s of this._structureLocs) {
+        if (Math.abs(s.x / TILE - tx) < 10 && Math.abs(s.y / TILE - ty) < 10) return true;
+      }
+    }
+    return false;
   }
 
   // ── WORLD ──────────────────────────────────────────────────
@@ -4082,8 +4157,10 @@ class GameScene extends Phaser.Scene {
     this.waterTiles = [];       // shallow water — visual only (no physics body)
     this.deepWaterTiles = [];   // deep water — obstacles (impassable)
     this.iceTiles = [];         // frozen water — overlap (slippery)
-    this._iceTileSet = new Set(); // O(1) lookup for ice_crawler AI
-    this._waterTileSet = new Set(); // O(1) shallow water tile lookup for wading detection
+    // Typed-array terrain maps — numeric index (tx + ty*MAP_W), no string allocations
+    this._waterMap = new Uint8Array(CFG.MAP_W * CFG.MAP_H); // 1=shallow water
+    this._iceMap   = new Uint8Array(CFG.MAP_W * CFG.MAP_H); // 1=ice tile
+    this._wallTileSet = new Set(); // O(1) wall tile lookup for LOS raycasting (sparse)
 
     // Trees — dense forest clusters, biome-appropriate, non-overlapping
     const treesPlaced = [];
@@ -4328,10 +4405,10 @@ class GameScene extends Phaser.Scene {
       const px = tx*TILE+24, py = ty*TILE+20;
       const ob = this.obstacles.create(px, py, key);
       ob.setScale(sc).setDepth(6 + ty*0.01).setImmovable(true);
-      // Scale-compensated circle hitbox: world radius stays ~16px regardless of mountain scale.
+      // Scale-compensated circle hitbox: world radius stays ~13px regardless of mountain scale.
       // StaticBody world radius = r * scale, so divide desired world radius by sc.
       {
-        const R = 16;
+        const R = 13;
         const r = Math.round(R / sc);
         if (key === 'mountain2') {
           // mountain2 (112×88): visual base center at sprite (56, 62)
@@ -4472,7 +4549,8 @@ class GameScene extends Phaser.Scene {
     this.nightOverlay = this._w(this.add.graphics().setDepth(49));
 
     // ── FOG OF WAR ────────────────────────────────────────────
-    this.fogRevealed = new Set();
+    this.fogRevealed = new Set(); // persistent — tiles ever seen (drives fog overlay)
+    this.fogVisible = new Set();  // current-frame LOS — drives enemy visibility
     this.fogGfx = this._w(this.add.graphics().setDepth(48));
     this._fogFrame = 0;
     // Reveal initial spawn area
@@ -4626,6 +4704,7 @@ class GameScene extends Phaser.Scene {
       w.body.setSize(28, 28); // slightly smaller than full tile for passability at seams
       w.refreshBody();
       w.hp = 200; w.maxHp = 200;
+      this._wallTileSet.add(tx + ',' + ty);
     };
 
     for (let col = 0; col < cols; col++) {
@@ -4805,7 +4884,8 @@ class GameScene extends Phaser.Scene {
           if (tx < 2 || tx > MAP_W - 3 || ty < 2 || ty > MAP_H - 3) return;
           const w = this.obstacles.create(tx * TILE + 16, ty * TILE + 16, wallKey);
           w.setDepth(5 + ty * 0.01).setImmovable(true);
-          w.body.setSize(28, 28); w.refreshBody();
+          w.body.setSize(32, 32); w.refreshBody();
+          this._wallTileSet.add(tx + ',' + ty);
         };
 
         // North wall (solid)
@@ -4845,14 +4925,47 @@ class GameScene extends Phaser.Scene {
   }
 
   // ── FOG OF WAR ────────────────────────────────────────────────
+
+  // Returns true if a wall tile lies on the strictly-intermediate steps of the
+  // Bresenham line from (x0,y0) to (x1,y1) — i.e. the target itself is NOT checked.
+  _losBlocked(x0, y0, x1, y1) {
+    let dx = Math.abs(x1 - x0), dy = Math.abs(y1 - y0);
+    let x = x0, y = y0;
+    const sx = x0 < x1 ? 1 : -1, sy = y0 < y1 ? 1 : -1;
+    let err = dx - dy;
+    while (true) {
+      if (x === x1 && y === y1) return false; // reached target without hitting a wall
+      const e2 = 2 * err;
+      if (e2 > -dy) { err -= dy; x += sx; }
+      if (e2 <  dx) { err += dx; y += sy; }
+      if (x === x1 && y === y1) return false; // about to step onto target — still clear
+      if (this._wallTileSet && this._wallTileSet.has(x + ',' + y)) return true;
+    }
+  }
+
   revealFog(centerTX, centerTY, radius) {
     const r = radius || (CFG.FOG_REVEAL_R * (this.fogRevealMult || 1));
+    const cx = Math.floor(centerTX), cy = Math.floor(centerTY);
+    // Clear and rebuild current-frame visible set for this reveal call
+    // (updateFog calls this once per player per tick, so we reset before p1 and union p2)
+    if (!this._fogVisibleBuilding) {
+      this.fogVisible = new Set();
+      this._fogVisibleBuilding = true;
+    }
     for (let dx = -r; dx <= r; dx++) {
       for (let dy = -r; dy <= r; dy++) {
         if (dx*dx + dy*dy > r*r) continue;
-        const tx = Math.floor(centerTX + dx), ty = Math.floor(centerTY + dy);
+        const tx = cx + dx, ty = cy + dy;
         if (tx < 0 || ty < 0 || tx >= CFG.MAP_W || ty >= CFG.MAP_H) continue;
+        // Always reveal adjacent tiles so walls at edge of radius are visible
+        if (Math.abs(dx) <= 1 && Math.abs(dy) <= 1) {
+          this.fogRevealed.add(tx + ',' + ty);
+          this.fogVisible.add(tx + ',' + ty);
+          continue;
+        }
+        if (this._losBlocked(cx, cy, tx, ty)) continue;
         this.fogRevealed.add(tx + ',' + ty);
+        this.fogVisible.add(tx + ',' + ty);
       }
     }
   }
@@ -4866,7 +4979,8 @@ class GameScene extends Phaser.Scene {
     const TILE = CFG.TILE;
     const cam = this.cameras.main;
 
-    // Reveal around players
+    // Reveal around players (radius-bounded, wall-blocked) — reset per-tick visible set
+    this._fogVisibleBuilding = false;
     const revealP = (p) => {
       if (!p || !p.spr.active || p.isDowned) return;
       const ptx = Math.floor(p.spr.x / TILE), pty = Math.floor(p.spr.y / TILE);
@@ -4874,8 +4988,9 @@ class GameScene extends Phaser.Scene {
     };
     revealP(this.p1);
     if (this.p2) revealP(this.p2);
+    this._fogVisibleBuilding = false;
 
-    // Only draw fog tiles visible in camera viewport
+    // Only draw fog tiles in camera viewport
     this.fogGfx.clear();
     const vx = cam.worldView.x, vy = cam.worldView.y;
     const vw = cam.worldView.width, vh = cam.worldView.height;
@@ -4884,10 +4999,17 @@ class GameScene extends Phaser.Scene {
     const endTX = Math.min(CFG.MAP_W - 1, Math.ceil((vx + vw) / TILE) + 1);
     const endTY = Math.min(CFG.MAP_H - 1, Math.ceil((vy + vh) / TILE) + 1);
 
-    this.fogGfx.fillStyle(0x000000, 0.85);
+    // Three-zone fog: unexplored = dark, explored-but-not-in-LOS = dim, in-LOS = clear
+    const DARK_ALPHA = 0.85;
+    const DIM_ALPHA = 0.35;
     for (let tx = startTX; tx <= endTX; tx++) {
       for (let ty = startTY; ty <= endTY; ty++) {
-        if (!this.fogRevealed.has(tx + ',' + ty)) {
+        const key = tx + ',' + ty;
+        if (!this.fogRevealed.has(key)) {
+          this.fogGfx.fillStyle(0x000000, DARK_ALPHA);
+          this.fogGfx.fillRect(tx * TILE, ty * TILE, TILE, TILE);
+        } else if (!this.fogVisible.has(key)) {
+          this.fogGfx.fillStyle(0x000000, DIM_ALPHA);
           this.fogGfx.fillRect(tx * TILE, ty * TILE, TILE, TILE);
         }
       }
@@ -5706,7 +5828,14 @@ class GameScene extends Phaser.Scene {
     player.hp        = Math.max(1, Math.round(newCh.maxHp * hpPct));
     player.spr.setTexture(newCh.id);
     player.lbl.setText(newCh.player);
-    if (newCh.id==='gunslinger') { player.ammo = 8; player.reserveAmmo = 32; }
+    if (newCh.id==='gunslinger') {
+      player.ammo = 8;
+      const maxReserve = 40 - player.ammo;
+      const fromPool = Math.min(this.teamAmmoPool, maxReserve);
+      player.reserveAmmo = Math.min(maxReserve, 32 + fromPool);
+      this.teamAmmoPool = Math.max(0, this.teamAmmoPool - fromPool);
+      if (fromPool > 0) this._log(`Barracks: drained ${fromPool} from team pool → reserveAmmo=${player.reserveAmmo}  pool=${this.teamAmmoPool}`, 'player');
+    }
 
     // Update STATE for consistency
     if (player === this.p1) STATE.p1CharId = newCh.id;
@@ -5777,89 +5906,100 @@ class GameScene extends Phaser.Scene {
   }
 
   // ── TUTORIAL ─────────────────────────────────────────────────
-  // A sequence of non-blocking tip banners at the top of the screen.
-  // Each auto-advances after 5 s; clicking the banner or pressing TAB skips to next;
-  // the SKIP button dismisses all. Disabled if settings.tutorial === false.
+  // Context-triggered tip banners. Only MOVE + ATTACK show at game start;
+  // all other tips fire when the relevant event first occurs.
+  // Each panel auto-advances after 7 s or on click. SKIP dismisses all.
+  // Disabled if settings.tutorial === false.
   startTutorial() {
     if (loadSettings().tutorial === false) return;
-
-    const STEPS = [
-      { title: 'MOVE',          text: 'P1: WASD to move.  P2: Arrow keys.  Explore each biome — grassland, wasteland, swamp, tundra, ruins.' },
-      { title: 'ATTACK',        text: 'P1: F to attack.  P2: / (slash).  In 1-player mode, aim with the mouse and left-click to shoot.' },
-      { title: 'GATHER',        text: 'Hold E (P1) or Enter (P2) near a tree to harvest wood.  Open crates for metal, fiber, ammo, and food.' },
-      { title: 'CRAFT & BUILD', text: 'Press Q (P1) or 0 (P2) to open the Crafting Menu.  Build walls, campfires, spike traps, and more.' },
-      { title: 'SURVIVE NIGHT', text: 'Enemies are stronger after dark.  Build a Bed (needs Craftbench) and sleep to fast-forward the night.' },
-      { title: 'SUPPLY CACHES', text: 'Each biome hides a Supply Cache — rare loot but guarded by enemies.  Check your minimap!' },
-      { title: 'MINIMAP',       text: 'Top-right minimap shows biome edges, enemies (red dots), and points of interest.  Stay aware!' },
-    ];
-
     this._tutActive = true;
-    this._tutStep = 0;
     this._tutObjs = [];
     this._tutTimer = null;
-    this._showTutStep(STEPS);
+    this._tutShown = new Set();
+    this._tutQueue = [];
+    this._tutBusy  = false;
+    // Show controls tips immediately; everything else is context-triggered
+    this._tutTrigger('move');
+    this._tutTrigger('attack');
+    // Minimap tip fires after 20 s — player should have oriented by then
+    this.time.delayedCall(20000, () => this._tutTrigger('minimap'));
   }
 
-  _showTutStep(STEPS) {
-    if (!this._tutActive || this._tutStep >= STEPS.length) { this._endTutorial(); return; }
-    const step = STEPS[this._tutStep];
+  _tutTrigger(key) {
+    if (!this._tutActive || !this._tutShown) return;
+    if (this._tutShown.has(key)) return;
+    this._tutShown.add(key);
+    const TIPS = {
+      move:     { title: 'MOVE',          text: 'P1: WASD · P2: Arrow keys.  Explore each biome — grassland, wasteland, swamp, tundra, ruins.' },
+      attack:   { title: 'ATTACK',        text: 'P1: F to attack · P2: / (slash).  In 1-player mode: aim with the mouse and left-click to shoot.' },
+      gather:   { title: 'GATHER RESOURCES', text: 'Hold E (P1) or Enter (P2) near a tree to harvest wood.  Open crates for metal, fiber, ammo, and food.' },
+      craft:    { title: 'CRAFT & BUILD', text: 'Press Q (P1) or 0 (P2) to open the Crafting Menu.  Build walls, campfires, spike traps, and more.' },
+      nightfall:{ title: 'SURVIVE THE NIGHT', text: 'Enemies are stronger after dark.  Build a Bed (needs Craftbench) and sleep to fast-forward the night.' },
+      caches:   { title: 'SUPPLY CACHES', text: 'Each biome hides a Supply Cache — rare loot but guarded by enemies.  Find them before the boss arrives!' },
+      minimap:  { title: 'MINIMAP',       text: 'Top-right minimap shows biome edges, enemies (red dots), and points of interest.  Stay aware!' },
+    };
+    const step = TIPS[key];
+    if (!step) return;
+    this._tutQueue.push(step);
+    if (!this._tutBusy) this._showNextTutTip();
+  }
+
+  _showNextTutTip() {
+    if (!this._tutActive || !this._tutQueue.length) { this._tutBusy = false; return; }
+    this._tutBusy = true;
+    this._showTutPanel(this._tutQueue.shift());
+  }
+
+  _showTutPanel(step) {
     const { W } = CFG;
-    const PW = 680, PH = 72, PX = (W - PW) / 2, PY = 6;
+    const PW = 580, PH = 100, PX = (W - PW) / 2, PY = 8;
 
     this._clearTutObjs();
 
     const push = o => { this._tutObjs.push(o); this._h(o); return o; };
 
-    // Translucent panel background
+    // Panel background
     const bg = push(this.add.graphics().setDepth(170).setAlpha(0));
-    bg.fillStyle(0x050d05, 0.82);
-    bg.fillRoundedRect(PX, PY, PW, PH, 7);
-    bg.lineStyle(1, 0x3a6630, 0.65);
-    bg.strokeRoundedRect(PX, PY, PW, PH, 7);
-
-    // Step counter
-    push(this.add.text(PX + 14, PY + 7, 'TUTORIAL  ' + (this._tutStep + 1) + ' / ' + STEPS.length, {
-      fontFamily:'monospace', fontSize:'9px', color:'#5a7a4a', stroke:'#000', strokeThickness:1,
-    }).setDepth(171).setAlpha(0));
+    bg.fillStyle(0x050d05, 0.88);
+    bg.fillRoundedRect(PX, PY, PW, PH, 8);
+    bg.lineStyle(2, 0x4a7a38, 0.80);
+    bg.strokeRoundedRect(PX, PY, PW, PH, 8);
 
     // Title
-    push(this.add.text(PX + 14, PY + 20, step.title, {
-      fontFamily:'monospace', fontSize:'13px', color:'#aadd88',
-      stroke:'#000', strokeThickness:2,
+    push(this.add.text(PX + 16, PY + 14, step.title, {
+      fontFamily:'monospace', fontSize:'18px', color:'#aadd88',
+      stroke:'#000', strokeThickness:3,
     }).setDepth(171).setAlpha(0));
 
     // Body text
-    push(this.add.text(PX + 14, PY + 40, step.text, {
-      fontFamily:'monospace', fontSize:'11px', color:'#ccdfc8',
+    push(this.add.text(PX + 16, PY + 46, step.text, {
+      fontFamily:'monospace', fontSize:'14px', color:'#ccdfc8',
       stroke:'#000', strokeThickness:2,
+      wordWrap:{ width: PW - 32 },
     }).setDepth(171).setAlpha(0));
 
-    // Progress dots (bottom-right area of panel)
-    for (let i = 0; i < STEPS.length; i++) {
-      const dx = PX + PW - 14 - (STEPS.length - 1 - i) * 11;
-      const dotG = push(this.add.graphics().setDepth(171).setAlpha(0));
-      dotG.fillStyle(i === this._tutStep ? 0x88cc66 : 0x3a5a2a, i === this._tutStep ? 1 : 0.7);
-      dotG.fillCircle(dx, PY + PH - 11, i === this._tutStep ? 4 : 2.5);
-    }
-
     // SKIP button
-    const skipBtn = push(this.add.text(PX + PW - 10, PY + 7, '[ SKIP ALL ]', {
-      fontFamily:'monospace', fontSize:'9px', color:'#667755', stroke:'#000', strokeThickness:1,
+    const skipBtn = push(this.add.text(PX + PW - 12, PY + 12, '[ SKIP ]', {
+      fontFamily:'monospace', fontSize:'11px', color:'#667755', stroke:'#000', strokeThickness:1,
     }).setOrigin(1, 0).setDepth(172).setAlpha(0).setInteractive({ useHandCursor: true }));
     skipBtn.on('pointerover', () => skipBtn.setStyle({ color:'#aaddaa' }));
     skipBtn.on('pointerout',  () => skipBtn.setStyle({ color:'#667755' }));
     skipBtn.on('pointerdown', (ptr) => { ptr.event.stopPropagation(); this._endTutorial(); });
 
-    // Tap-banner-to-advance (click anywhere on the panel area)
+    // Click panel to advance early
     const hitZone = push(this.add.zone(PX, PY, PW, PH).setOrigin(0).setDepth(173).setInteractive({ useHandCursor: true }));
-    hitZone.on('pointerdown', () => { this._tutStep++; this._showTutStep(STEPS); });
+    hitZone.on('pointerdown', () => {
+      if (this._tutTimer) { this._tutTimer.remove(); this._tutTimer = null; }
+      this._clearTutObjs();
+      this._showNextTutTip();
+    });
 
-    // Fade in all objects
+    // Fade in
     const fadeTargets = this._tutObjs.filter(o => o.setAlpha && o !== hitZone);
     this.tweens.add({ targets: fadeTargets, alpha: 1, duration: 300 });
 
-    // Auto-advance after 5 seconds
-    this._tutTimer = this.time.delayedCall(5000, () => { this._tutStep++; this._showTutStep(STEPS); });
+    // Auto-advance after 7 s
+    this._tutTimer = this.time.delayedCall(7000, () => { this._clearTutObjs(); this._showNextTutTip(); });
   }
 
   _clearTutObjs() {
@@ -5876,6 +6016,8 @@ class GameScene extends Phaser.Scene {
 
   _endTutorial() {
     this._tutActive = false;
+    this._tutQueue = [];
+    this._tutBusy = false;
     this._clearTutObjs();
   }
 
@@ -5886,7 +6028,7 @@ class GameScene extends Phaser.Scene {
     if (this._paused) return;
 
     // Reset per-frame ice flag — overlap callbacks re-set it while active
-    // (water flag is computed directly per-frame in applyTerrainEffects via _waterTileSet)
+    // (water flag is computed directly per-frame in applyTerrainEffects via _waterMap)
     if (this.p1) { this.p1._onIce = false; }
     if (this.p2) { this.p2._onIce = false; }
 
@@ -6176,16 +6318,15 @@ class GameScene extends Phaser.Scene {
   applyTerrainEffects(player) {
     if (!player || player.isDowned) return;
 
-    // Shallow water: detect via tile-set, apply 50% speed cap
+    // Shallow water: detect via Uint8Array map — no string alloc, O(1) per frame
     {
-      const TILE = CFG.TILE;
+      const TILE = CFG.TILE, MW = CFG.MAP_W;
       const ptx = Math.floor(player.spr.x / TILE);
       const pty = Math.floor(player.spr.y / TILE);
-      player._inShallowWater = !!(this._waterTileSet &&
-        (this._waterTileSet.has(`${ptx},${pty}`) ||
-         this._waterTileSet.has(`${ptx+1},${pty}`) ||
-         this._waterTileSet.has(`${ptx},${pty+1}`) ||
-         this._waterTileSet.has(`${ptx+1},${pty+1}`)));
+      const wm = this._waterMap;
+      player._inShallowWater = !!(wm &&
+        (wm[ptx + pty * MW] || wm[(ptx+1) + pty * MW] ||
+         wm[ptx + (pty+1) * MW] || wm[(ptx+1) + (pty+1) * MW]));
     }
     if (player._inShallowWater) {
       const vx = player.spr.body.velocity.x, vy = player.spr.body.velocity.y;
@@ -6336,7 +6477,8 @@ class GameScene extends Phaser.Scene {
       else if (side === 2) { cx = Phaser.Math.Between(edgePad, worldW - edgePad); cy = Phaser.Math.Between(edgePad, worldH * 0.4); }
       else { cx = Phaser.Math.Between(edgePad, worldW - edgePad); cy = Phaser.Math.Between(worldH * 0.6, worldH - edgePad); }
       attempts++;
-    } while (attempts < 20 && Phaser.Math.Distance.Between(cx, cy, worldW/2, worldH/2) < TILE * 40);
+    } while (attempts < 30 && Phaser.Math.Distance.Between(cx, cy, worldW/2, worldH/2) < TILE * 60);
+    this._log(`Raider camp placed  cx=${Math.floor(cx/TILE)},cy=${Math.floor(cy/TILE)}  distTiles=${Math.round(Phaser.Math.Distance.Between(cx,cy,worldW/2,worldH/2)/TILE)}`, 'world');
 
     const campSpr = this.physics.add.image(cx, cy, 'raid_camp').setScale(3).setDepth(6);
     campSpr.body.setImmovable(true);
@@ -7538,8 +7680,11 @@ class GameScene extends Phaser.Scene {
     // Log FPS warnings (throttled: at most once every 10 s)
     if (fps < 30 && (!this._lastFpsWarn || (this.timeAlive||0) - this._lastFpsWarn > 10)) {
       this._lastFpsWarn = this.timeAlive || 0;
+      const _all = this.enemies || [];
+      const _activeCount = _all.filter(e => e.spr?.active && !e._dormant).length;
+      const _bodies = this.physics.world.bodies.size;
       this._dbgEntries && this._dbgEntries.push(
-        `T${Math.floor((this.timeAlive||0)/60).toString().padStart(2,'0')}:${(Math.floor(this.timeAlive||0)%60).toString().padStart(2,'0')} [PERF  ] FPS drop: ${fps}  enemies=${(this.enemies||[]).length}`
+        `T${Math.floor((this.timeAlive||0)/60).toString().padStart(2,'0')}:${(Math.floor(this.timeAlive||0)%60).toString().padStart(2,'0')} [PERF  ] FPS drop: ${fps}  active=${_activeCount}/${_all.length}  bodies=${_bodies}`
       );
     }
     const t      = Math.floor(this.timeAlive || 0);
@@ -7556,7 +7701,7 @@ class GameScene extends Phaser.Scene {
     const diff   = this._diffMult ? this._diffMult().toFixed(1) : '?';
     const header = [
       `── Iron Wasteland Debug Log ──  ${_fmtVersion(VERSION)}`,
-      `FPS:${fps}  ${phase} ${this.dayNum||1}  T:${ts}  Diff:${diff}x`,
+      `FPS:${fps}  ${phase} ${this.dayNum||1}  T:${ts}  Diff:${diff}x  Seed:${this._worldSeed||'?'}`,
       `Enemies: ${active} active / ${total} total  |  Kills: ${this.kills||0}`,
       `${p1s}${p2s}`,
       `[\`] close  [C] copy  [G] download .txt`,
@@ -7584,6 +7729,7 @@ class GameScene extends Phaser.Scene {
       `Session  : ${Math.floor(t/60)}m ${t%60}s`,
       `Day      : ${this.dayNum||1}   Diff: ${this._diffMult ? this._diffMult().toFixed(1) : '?'}x`,
       `Kills    : ${this.kills||0}`,
+      `Seed     : ${this._worldSeed||'?'}`,
       p1s, p2s,
       `─────────────────────────────────────────`,
       `EVENT LOG (${this._dbgEntries.length} entries)`,
@@ -7778,8 +7924,10 @@ class GameScene extends Phaser.Scene {
       drops.push('item_metal');
       drops.push('item_ammo');
     } else {
+      // Food drops scale down each day so mid-game survival stays tense
+      const foodMult = Math.max(0.35, 1 - 0.12 * ((this.dayNum || 1) - 1));
       // All enemies drop food sometimes
-      if (Math.random() < 0.4) drops.push('item_food');
+      if (Math.random() < 0.4 * foodMult) drops.push('item_food');
       // Type-specific drops
       if (enemyType === 'wolf') {
         if (Math.random() < 0.5) drops.push('item_fiber');
@@ -7795,7 +7943,7 @@ class GameScene extends Phaser.Scene {
         // Raiders drop ammo and supplies
         if (Math.random() < 0.6) drops.push('item_ammo');
         if (Math.random() < 0.4) drops.push('item_metal');
-        if (Math.random() < 0.3) drops.push('item_food');
+        if (Math.random() < 0.3 * foodMult) drops.push('item_food');
       } else if (enemyType === 'ice_crawler') {
         if (Math.random() < 0.5) drops.push('item_fiber');
         if (Math.random() < 0.2) drops.push('item_rare');
@@ -7803,10 +7951,10 @@ class GameScene extends Phaser.Scene {
         if (Math.random() < 0.7) drops.push('item_fiber');
         if (Math.random() < 0.25) drops.push('item_metal');
       } else if (enemyType === 'bog_lurker') {
-        if (Math.random() < 0.5) drops.push('item_food');
+        if (Math.random() < 0.5 * foodMult) drops.push('item_food');
         if (Math.random() < 0.3) drops.push('item_fiber');
       } else if (enemyType === 'dust_hound') {
-        if (Math.random() < 0.4) drops.push('item_food');
+        if (Math.random() < 0.4 * foodMult) drops.push('item_food');
         if (Math.random() < 0.35) drops.push('item_fiber');
       }
     }
@@ -7822,12 +7970,18 @@ class GameScene extends Phaser.Scene {
         const player = playerSpr === this.p1.spr ? this.p1 : this.p2;
         if (!player) return;
         let label = '';
-        if (item.itemType === 'ammo' && player.charData.id === 'gunslinger') {
-          const maxReserve = 40 - player.ammo;
-          player.reserveAmmo = Math.min(maxReserve, player.reserveAmmo + 3);
+        if (item.itemType === 'ammo') {
+          if (player.charData.id === 'gunslinger') {
+            const maxReserve = 40 - player.ammo;
+            player.reserveAmmo = Math.min(maxReserve, player.reserveAmmo + 3);
+            this._log(`${player.charData.player} picked up ammo  reserve=${player.reserveAmmo}`, 'player');
+            label = '+3 Ammo';
+          } else {
+            this.teamAmmoPool += 3;
+            this._log(`${player.charData.player} picked up ammo → team pool  pool=${this.teamAmmoPool}`, 'player');
+            label = '+3 Ammo (Team)';
+          }
           this.redrawHUD();
-          this._log(`${player.charData.player} picked up ammo  reserve=${player.reserveAmmo}`, 'player');
-          label = '+3 Ammo';
         } else if (item.itemType === 'food') {
           player.hp = Math.min(player.maxHp, player.hp + 15);
           this._log(`${player.charData.player} picked up food  hp=${player.hp}/${player.maxHp}`, 'player');
@@ -7953,18 +8107,12 @@ class GameScene extends Phaser.Scene {
   // BFS blob growth: organic irregular shapes with deep center + shallow edges.
   // Tundra ponds become ice tiles (passable, slippery); others have deep impassable center.
   _buildPonds(stx, sty) {
-    const { TILE, SAFE_R } = CFG;
-    // Grass ponds near spawn use a tighter exclusion so they appear in the starting area.
-    // Other biomes keep the larger exclusion to avoid cluttering the immediate spawn zone.
+    const { TILE, SAFE_R, MAP_W, MAP_H, POND_SPECS, PLACEMENT } = CFG;
+    const _rng = _worldRng;
+    const _ri = (a, b) => a + Math.floor(_rng() * (b - a + 1)); // seeded randInt
     let _pondPlaced = 0, _pondSkipCenter = 0, _pondSkipBlob = 0;
-    const specs = [
-      ...Array.from({length: 35}, () => 'swamp'),   // 35 swamp ponds
-      ...Array.from({length: 25}, () => 'tundra'),  // 25 tundra ice ponds
-      ...Array.from({length: 20}, () => 'fungal'),  // 20 fungal ponds
-      ...Array.from({length: 16}, () => 'grass'),   // 16 distant grassland ponds
-      // 8 grass ponds guaranteed close to spawn (12–22 tiles out)
-      ...Array.from({length: 8},  () => 'grass_near'),
-    ];
+    // Build spec list from CFG.POND_SPECS — config-driven
+    const specs = Object.entries(POND_SPECS).flatMap(([b, n]) => Array.from({length: n}, () => b));
     for (const biome of specs) {
       const isIce = biome === 'tundra';
       const realBiome = biome === 'grass_near' ? 'grass' : biome;
@@ -7973,23 +8121,18 @@ class GameScene extends Phaser.Scene {
       for (let attempt = 0; attempt < 60; attempt++) {
         let tx, ty;
         if (biome === 'grass_near') {
-          // Place in a ring 12–22 tiles from spawn
-          const angle = Math.random() * Math.PI * 2;
-          const dist  = 12 + Math.random() * 10;
-          tx = Math.round(stx + Math.cos(angle) * dist);
-          ty = Math.round(sty + Math.sin(angle) * dist);
-          tx = Phaser.Math.Clamp(tx, 8, CFG.MAP_W - 8);
-          ty = Phaser.Math.Clamp(ty, 8, CFG.MAP_H - 8);
+          // Place in a ring 12–22 tiles from spawn — use seeded RNG
+          const angle = _rng() * Math.PI * 2;
+          const dist  = 12 + _rng() * 10;
+          tx = Phaser.Math.Clamp(Math.round(stx + Math.cos(angle) * dist), 8, MAP_W - 8);
+          ty = Phaser.Math.Clamp(Math.round(sty + Math.sin(angle) * dist), 8, MAP_H - 8);
         } else {
-          tx = Phaser.Math.Between(8, CFG.MAP_W - 8);
-          ty = Phaser.Math.Between(8, CFG.MAP_H - 8);
+          tx = _ri(8, MAP_W - 8);
+          ty = _ri(8, MAP_H - 8);
         }
         if (getBiome(tx, ty) !== realBiome) continue;
-        // Grass-near only needs a small clear zone (SAFE_R); others stay farther out
-        const excl = biome === 'grass_near' ? SAFE_R : SAFE_R + 10;
-        if (Math.abs(tx - stx) < excl && Math.abs(ty - sty) < excl) continue;
-        if (this._structureLocs && this._structureLocs.some(s =>
-          Math.abs(s.x / TILE - tx) < 10 && Math.abs(s.y / TILE - ty) < 10)) continue;
+        const excl = biome === 'grass_near' ? SAFE_R : SAFE_R + PLACEMENT.POND_EXCL;
+        if (this._isBlockedForPlacement(tx, ty, excl, stx, sty)) continue;
         cx = tx; cy = ty; break;
       }
       if (cx < 0) { _pondSkipCenter++; continue; }
@@ -8002,7 +8145,7 @@ class GameScene extends Phaser.Scene {
         const key = `${tx},${ty}`;
         if (visited.has(key)) continue;
         visited.add(key);
-        if (Math.random() > prob) continue;
+        if (_rng() > prob) continue;
         tileSet.add(key);
         [[tx-1,ty],[tx+1,ty],[tx,ty-1],[tx,ty+1],
          [tx-1,ty-1],[tx+1,ty+1],[tx-1,ty+1],[tx+1,ty-1]]
@@ -8023,8 +8166,8 @@ class GameScene extends Phaser.Scene {
         if (wn >= 3) toFill.push(key);
       });
       toFill.forEach(k => tileSet.add(k));
-      // Discard blobs smaller than 12 tiles — prevents isolated puddles
-      if (tileSet.size < 12) { _pondSkipBlob++; continue; }
+      // Discard blobs smaller than minimum — prevents isolated puddles
+      if (tileSet.size < (PLACEMENT.POND_MIN_SIZE || 12)) { _pondSkipBlob++; continue; }
       // Classify and place tiles
       tileSet.forEach(key => {
         const [tx, ty] = key.split(',').map(Number);
@@ -8041,18 +8184,18 @@ class GameScene extends Phaser.Scene {
           if (this.hudCam) this.hudCam.ignore(tile);
           this._w(tile);
           this.iceTiles.push(tile);
-          this._iceTileSet.add(key);
+          this._iceMap[tx + ty * CFG.MAP_W] = 1;
         } else if (isDeep) {
           const tile = this.obstacles.create(x, y, 'water_deep').setDepth(0.6).setAlpha(1);
           if (this.hudCam) this.hudCam.ignore(tile);
           tile.refreshBody();
           this.deepWaterTiles.push(tile);
         } else {
-          // Pure visual ground tile — no physics body. Detection via _waterTileSet per-frame.
+          // Pure visual ground tile — no physics body. Detection via _waterMap per-frame.
           const tile = this._w(this.add.image(x, y, 'water_shallow').setOrigin(0).setDepth(0.75));
           if (this.hudCam) this.hudCam.ignore(tile);
           this.waterTiles.push(tile);
-          this._waterTileSet.add(key);
+          this._waterMap[tx + ty * CFG.MAP_W] = 1;
         }
       });
       _pondPlaced++;
@@ -8065,30 +8208,26 @@ class GameScene extends Phaser.Scene {
   // Lakes are larger than ponds (60–120 tiles), appear in varied biomes, and
   // each lake hosts a water-den that respawns water_lurker enemies.
   _buildLakes(stx, sty) {
-    const { TILE, SAFE_R } = CFG;
+    const { TILE, SAFE_R, MAP_W, MAP_H, LAKE_SPECS, PLACEMENT } = CFG;
+    const _rng = _worldRng;
+    const _ri = (a, b) => a + Math.floor(_rng() * (b - a + 1));
     this.waterDens = this.waterDens || [];
     this.pois = this.pois || [];
     let _lakePlaced = 0, _lakeSkipCenter = 0, _lakeSkipBlob = 0;
-    // 7 lakes spread across the map; biome variety makes them feel natural
-    const lakeSpecs = ['grass','grass','swamp','swamp','waste','tundra','fungal'];
-    for (const biome of lakeSpecs) {
+    for (const biome of LAKE_SPECS) {
       // Pick a center tile — lakes stay farther from spawn than ponds
       let cx = -1, cy = -1;
       for (let attempt = 0; attempt < 80; attempt++) {
-        const tx = Phaser.Math.Between(12, CFG.MAP_W - 12);
-        const ty = Phaser.Math.Between(12, CFG.MAP_H - 12);
+        const tx = _ri(12, MAP_W - 12);
+        const ty = _ri(12, MAP_H - 12);
         if (getBiome(tx, ty) !== biome) continue;
-        // Keep a safe distance from spawn
-        const spawnExcl = biome === 'grass' ? SAFE_R + 8 : SAFE_R + 14;
-        if (Math.abs(tx - stx) < spawnExcl && Math.abs(ty - sty) < spawnExcl) continue;
-        // Don't overlap existing structures or dens
-        if (this._structureLocs && this._structureLocs.some(s =>
-          Math.abs(s.x / TILE - tx) < 12 && Math.abs(s.y / TILE - ty) < 12)) continue;
+        const spawnExcl = biome === 'grass' ? SAFE_R + 8 : SAFE_R + PLACEMENT.LAKE_EXCL;
+        if (this._isBlockedForPlacement(tx, ty, spawnExcl, stx, sty)) continue;
         cx = tx; cy = ty; break;
       }
       if (cx < 0) { _lakeSkipCenter++; this._log(`lake ${biome} no center found – skipped`, 'world'); continue; }
 
-      // BFS blob — slower decay (0.72) grows larger blobs than ponds (0.58)
+      // BFS blob — slower decay (0.82) grows larger blobs than ponds (0.70)
       const tileSet = new Set();
       const visited = new Set();
       const queue = [[cx, cy, 1.0]];
@@ -8097,16 +8236,14 @@ class GameScene extends Phaser.Scene {
         const key = `${tx},${ty}`;
         if (visited.has(key)) continue;
         visited.add(key);
-        if (Math.random() > prob) continue;
+        if (_rng() > prob) continue;
         tileSet.add(key);
-        if (tileSet.has(key)) {
-          [[tx-1,ty],[tx+1,ty],[tx,ty-1],[tx,ty+1],[tx-1,ty-1],[tx+1,ty+1],[tx-1,ty+1],[tx+1,ty-1]]
-            .forEach(([nx, ny]) => {
-              if (!visited.has(`${nx},${ny}`) && prob * 0.82 > 0.05) {
-                queue.push([nx, ny, prob * 0.82]);
-              }
-            });
-        }
+        [[tx-1,ty],[tx+1,ty],[tx,ty-1],[tx,ty+1],[tx-1,ty-1],[tx+1,ty+1],[tx-1,ty+1],[tx+1,ty-1]]
+          .forEach(([nx, ny]) => {
+            if (!visited.has(`${nx},${ny}`) && prob * 0.82 > 0.05) {
+              queue.push([nx, ny, prob * 0.82]);
+            }
+          });
       }
       // Fill holes: non-water cells with 3+ orthogonal water neighbors get pulled in
       const toFillL = [];
@@ -8119,7 +8256,7 @@ class GameScene extends Phaser.Scene {
       });
       toFillL.forEach(k => tileSet.add(k));
       // Lakes need to be substantial — skip tiny results
-      if (tileSet.size < 25) { _lakeSkipBlob++; this._log(`lake ${biome} blob too small (${tileSet.size}) – skipped`, 'world'); continue; }
+      if (tileSet.size < (PLACEMENT.LAKE_MIN_SIZE || 25)) { _lakeSkipBlob++; this._log(`lake ${biome} blob too small (${tileSet.size}) – skipped`, 'world'); continue; }
 
       // Classify deep tiles: fully surrounded by water on all 4 orthogonal sides
       const deepLakeTiles = new Set();
@@ -8146,18 +8283,18 @@ class GameScene extends Phaser.Scene {
           if (this.hudCam) this.hudCam.ignore(tile);
           this._w(tile);
           this.iceTiles.push(tile);
-          this._iceTileSet.add(key);
+          this._iceMap[tx + ty * CFG.MAP_W] = 1;
         } else if (deepLakeTiles.has(key)) {
           // Deep center — visually dark, traversable (no physics obstacle)
           const tile = this._w(this.add.image(x, y, 'water_deep').setOrigin(0).setDepth(0.75));
           if (this.hudCam) this.hudCam.ignore(tile);
           this.waterTiles.push(tile);
-          this._waterTileSet.add(key);
+          this._waterMap[tx + ty * CFG.MAP_W] = 1;
         } else {
           const tile = this._w(this.add.image(x, y, 'water_shallow').setOrigin(0).setDepth(0.75));
           if (this.hudCam) this.hudCam.ignore(tile);
           this.waterTiles.push(tile);
-          this._waterTileSet.add(key);
+          this._waterMap[tx + ty * CFG.MAP_W] = 1;
         }
       });
 
@@ -8454,6 +8591,7 @@ class GameScene extends Phaser.Scene {
               this._floatPickup(item.x, item.y, '+1 Wood');
               if (!this._ctx.firstHarvest) {
                 this._ctx.firstHarvest = true;
+                this._tutTrigger('gather');
                 this.time.delayedCall(800, () => this.hint('Press Q (P1) or 0 (P2) to open the Crafting Menu', 5000));
               }
               item.destroy();
@@ -8596,6 +8734,9 @@ class GameScene extends Phaser.Scene {
     const _cam = this.cameras.main;
     const _view = _cam.worldView;
     const _VIEW_BUF = 400; // px buffer outside viewport before hiding sprite
+    // Count active enemies once per frame for MAX_ACTIVE_ENEMIES cap
+    let _activeCount = 0;
+    for (const _e of this.enemies) { if (_e.spr?.active && !_e._dormant) _activeCount++; }
 
     this.enemies.forEach(e => {
       if (e.dying || !e.spr.active) return;
@@ -8612,10 +8753,11 @@ class GameScene extends Phaser.Scene {
         }
 
         if (e._dormant) {
-          if (_minDist2 < CFG.WAKE_RADIUS * CFG.WAKE_RADIUS) {
-            // Wake up
+          if (_minDist2 < CFG.WAKE_RADIUS * CFG.WAKE_RADIUS && _activeCount < CFG.MAX_ACTIVE_ENEMIES) {
+            // Wake up (only if under active-enemy cap)
             e._dormant = false;
             if (e.spr.body) e.spr.body.enable = true;
+            _activeCount++;
           } else {
             // Stay dormant — update visibility only, skip all AI
             const _onScr = (e.spr.x > _view.x - _VIEW_BUF && e.spr.x < _view.x + _view.width  + _VIEW_BUF &&
@@ -8639,7 +8781,14 @@ class GameScene extends Phaser.Scene {
       {
         const _onScr = (e.spr.x > _view.x - _VIEW_BUF && e.spr.x < _view.x + _view.width  + _VIEW_BUF &&
                         e.spr.y > _view.y - _VIEW_BUF && e.spr.y < _view.y + _view.height + _VIEW_BUF);
-        e.spr.setVisible(_onScr);
+        if (!_onScr) { e.spr.setVisible(false); }
+        else {
+          // Hide enemies that are on-screen but outside current LOS fog
+          const etx = (e.spr.x / CFG.TILE) | 0;
+          const ety = (e.spr.y / CFG.TILE) | 0;
+          const _inLOS = !this.fogVisible || this.fogVisible.has(etx + ',' + ety);
+          e.spr.setVisible(_inLOS);
+        }
       }
 
       // Flinch stagger — freeze AI and movement briefly after being hit
@@ -8706,9 +8855,8 @@ class GameScene extends Phaser.Scene {
           }
         }
         // Speed burst on ambush; faster in water than on land
-        const onWater = this._waterTileSet && this._waterTileSet.has(
-          `${Math.floor(e.spr.x / CFG.TILE)},${Math.floor(e.spr.y / CFG.TILE)}`
-        );
+        const _wtx = Math.floor(e.spr.x / CFG.TILE), _wty = Math.floor(e.spr.y / CFG.TILE);
+        const onWater = this._waterMap && this._waterMap[_wtx + _wty * CFG.MAP_W];
         const waterMult = onWater ? 2.2 : 1.0;
         if ((e._ambushTimer || 0) > 0) {
           e._ambushTimer -= delta;
@@ -8882,6 +9030,7 @@ class GameScene extends Phaser.Scene {
       this._log(`Night ${this.dayNum} begins  active_enemies=${(this.enemies||[]).filter(e=>e.spr?.active&&!e._dormant).length}`, 'world');
       if (!this._ctx.firstNight) {
         this._ctx.firstNight = true;
+        this._tutTrigger('nightfall');
         this.hint('Night falls — enemies are faster and more dangerous! Build Walls or sleep in a Bed.', 6000);
       }
     }
@@ -8893,6 +9042,7 @@ class GameScene extends Phaser.Scene {
       Music.switchToDay();
       this._log(`Day ${this.dayNum} begins  diff=${this._diffMult().toFixed(1)}x  kills_so_far=${this.kills||0}  enemies=${(this.enemies||[]).filter(e=>e.spr?.active).length}`, 'world');
       this.hint('Dawn of Day ' + this.dayNum + ' \u2014 enemies grow stronger!', 3000);
+      if (this.dayNum === 2) this._tutTrigger('caches');
       // Raider respawn check
       if (this.raidRespawnDay !== null && this.dayNum >= this.raidRespawnDay) {
         this.raidRespawnDay = null;
@@ -8946,11 +9096,16 @@ class GameScene extends Phaser.Scene {
     this.worldCrates.forEach(crate => {
       const pickupCrate = (player) => {
         if (!crate.active) return;
-        if (crate.itemType === 'ammo' && player.charData.id === 'gunslinger') {
-          const maxReserve = 40 - player.ammo;
-          player.reserveAmmo = Math.min(maxReserve, player.reserveAmmo + 4);
+        if (crate.itemType === 'ammo') {
+          if (player.charData.id === 'gunslinger') {
+            const maxReserve = 40 - player.ammo;
+            player.reserveAmmo = Math.min(maxReserve, player.reserveAmmo + 4);
+            this._log(`${player.charData.player} crate ammo  reserve=${player.reserveAmmo}`, 'player');
+          } else {
+            this.teamAmmoPool += 4;
+            this._log(`${player.charData.player} crate ammo → team pool  pool=${this.teamAmmoPool}`, 'player');
+          }
           this.redrawHUD();
-          this._log(`${player.charData.player} crate ammo  reserve=${player.reserveAmmo}`, 'player');
         } else if (crate.itemType === 'food') {
           player.hp = Math.min(player.maxHp, player.hp + 20);
           this._log(`${player.charData.player} crate food  hp=${player.hp}/${player.maxHp}`, 'player');
@@ -9222,6 +9377,7 @@ class GameScene extends Phaser.Scene {
     // Contextual tip: first time opening crafting menu
     if (!this._ctx.firstCraft) {
       this._ctx.firstCraft = true;
+      this._tutTrigger('craft');
       const craftHint = this._touchActive
         ? 'Tap to select, tap again (or ATK) to craft. Build Walls to protect yourself!'
         : 'Click to select, click again (or Attack) to craft. Build Walls to protect yourself!';
