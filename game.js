@@ -7,7 +7,7 @@
 // ── VERSION ───────────────────────────────────────────────────
 // Update this each commit so the title screen reflects the build date.
 // Stored as UTC ISO so it can be displayed in each player's local timezone.
-const VERSION = '2026-04-19T21:30:00Z';
+const VERSION = '2026-04-19T21:45:00Z';
 // Format VERSION into the viewer's local time with abbreviated tz name (EDT, PDT, BST, etc.)
 function _fmtVersion(iso) {
   try {
@@ -4107,9 +4107,9 @@ class GameScene extends Phaser.Scene {
         if (pt) { this._preCampsiteTiles.push(pt); this._preCacheTiles.push(pt); }
       }
 
-      // Biome structures (up to 2 per biome)
+      // Biome structures (up to 2 per biome) — all biomes must be here for fjord + exclusion
       this._preStructureTiles = {};
-      for (const biome of ['grass', 'tundra', 'swamp', 'waste']) {
+      for (const biome of ['grass', 'tundra', 'swamp', 'waste', 'fungal', 'desert']) {
         this._preStructureTiles[biome] = [];
         for (let i = 0; i < 2; i++) {
           const pt = _prePickBiome(biome, SAFE_R + 12, this._preCacheTiles);
@@ -7115,9 +7115,16 @@ class GameScene extends Phaser.Scene {
     if (!this.enemyDens) return;
     this.enemyDens.forEach(den => {
       den.respawnTimer += delta;
-      if (den.respawnTimer >= 30000) { // respawn enemies every 30s near dens
+      if (den.respawnTimer >= 30000) {
         den.respawnTimer = 0;
         if (this.enemies.length >= CFG.MAX_ENEMIES) return;
+        // Only respawn when a player is nearby — prevents offscreen accumulation
+        const _ap = [this.p1, this.p2].filter(p => p && p.spr && p.spr.active);
+        const nearDist = _ap.length ? Math.min(..._ap.map(p => Phaser.Math.Distance.Between(den.x, den.y, p.spr.x, p.spr.y))) : Infinity;
+        if (nearDist > 1200) return;
+        // Cap per-den live population
+        den.liveCount = den.liveCount || 0;
+        if (den.liveCount >= 4) return;
         const types = ['wolf','rat','rat'];
         const type = types[Phaser.Math.Between(0, types.length-1)];
         const typeDef = { wolf:{hp:60,speed:75,dmg:6,baseScale:1.8,w:20,h:12}, rat:{hp:30,speed:105,dmg:4,baseScale:1.4,w:15,h:9} };
@@ -7137,12 +7144,12 @@ class GameScene extends Phaser.Scene {
         const spd = t.speed * D * (sizeMult < 0.85 ? 1.3 : sizeMult > 1.2 ? 0.8 : 1);
         const atkInterval = Math.max(500, Math.round(({ wolf:1600, rat:1200, bear:2400 }[type] || 1400) / D));
         const denBaseAggro = { wolf: 190, rat: 110, bear: 290 }[type] || 160;
-        const e = { spr, hp, maxHp:hp, speed:spd, dmg, atkInterval, type, attackTimer:0, wanderTimer:0, aggroRange:denBaseAggro, attackRange:30*sizeMult, sizeMult };
+        const e = { spr, hp, maxHp:hp, speed:spd, dmg, atkInterval, type, attackTimer:0, wanderTimer:0, aggroRange:denBaseAggro, attackRange:30*sizeMult, sizeMult, _den: den };
+        den.liveCount++;
         // Start dormant if far from all players
         {
-          const _ap = [this.p1, this.p2].filter(p => p && p.spr && p.spr.active);
           const _sd = _ap.length ? Math.min(..._ap.map(p => Phaser.Math.Distance.Between(ex, ey, p.spr.x, p.spr.y))) : Infinity;
-          if (_sd > CFG.DORMANT_RADIUS) { e._dormant = true; spr.setVisible(false); if (spr.body) spr.body.enable = false; }
+          if (_sd > CFG.DORMANT_RADIUS) { e._dormant = true; spr.setVisible(false); if (spr.body) { spr.body.enable = false; this.physics.world.bodies.delete(spr.body); } }
         }
         this._log(`Den respawn: ${type}  total_enemies=${this.enemies.length+1}`, 'world');
         this.enemies.push(e);
@@ -7154,16 +7161,25 @@ class GameScene extends Phaser.Scene {
     if (!this.waterDens) return;
     this.waterDens.forEach(den => {
       den.respawnTimer += delta;
-      if (den.respawnTimer < 25000) return;  // respawn every 25 seconds
+      if (den.respawnTimer < 25000) return;
       den.respawnTimer = 0;
       if (this.enemies.length >= CFG.MAX_ENEMIES) return;
+      // Only respawn when a player is nearby — prevents offscreen accumulation
+      const _ap = [this.p1, this.p2].filter(p => p && p.spr && p.spr.active);
+      const nearDist = _ap.length ? Math.min(..._ap.map(p => Phaser.Math.Distance.Between(den.x, den.y, p.spr.x, p.spr.y))) : Infinity;
+      if (nearDist > 1200) return;
+      // Cap per-den live population
+      den.liveCount = den.liveCount || 0;
+      if (den.liveCount >= 3) return;
       // Pick a random tile within the lake's tileSet to spawn from
       if (!den.tileSet || den.tileSet.size === 0) return;
       const keys = Array.from(den.tileSet);
       const rk = keys[Phaser.Math.Between(0, keys.length - 1)];
       const [ltx, lty] = rk.split(',').map(Number);
       this._log(`Water den respawn: water_lurker  total_enemies=${this.enemies.length+1}`, 'world');
-      this._spawnWaterLurker(ltx * CFG.TILE, lty * CFG.TILE);
+      const e = this._spawnWaterLurker(ltx * CFG.TILE, lty * CFG.TILE);
+      e._den = den;
+      den.liveCount++;
     });
   }
 
@@ -7591,7 +7607,7 @@ class GameScene extends Phaser.Scene {
     if (!e || e.dying) return;
     e.hp -= dmg;
     e._flinchTimer = 220;
-    if (e._dormant) { e._dormant = false; if (e.spr.body) e.spr.body.enable = true; }
+    if (e._dormant) { e._dormant = false; if (e.spr.body) { this.physics.world.bodies.set(e.spr.body); e.spr.body.enable = true; e.spr.body.reset(e.spr.x, e.spr.y); } }
     if (fromX !== undefined && e.spr.body) {
       const ang = Phaser.Math.Angle.Between(fromX, fromY, e.spr.x, e.spr.y);
       e.spr.body.velocity.x += Math.cos(ang) * 90;
@@ -7789,6 +7805,7 @@ class GameScene extends Phaser.Scene {
     if (e.dying) return; // already being killed — prevent double-kill & double-count
     e.dying = true;
     e.hp = 0;
+    if (e._den) e._den.liveCount = Math.max(0, (e._den.liveCount || 0) - 1);
     this.kills++;
     this._log('Enemy killed  type=' + e.type + '  kills=' + this.kills, 'combat');
     // Remove from update loop immediately so dead entries don't accumulate
@@ -8091,7 +8108,7 @@ class GameScene extends Phaser.Scene {
           {
             const _ap = [this.p1, this.p2].filter(p => p && p.spr && p.spr.active);
             const _sd = _ap.length ? Math.min(..._ap.map(p => Phaser.Math.Distance.Between(ex, ey, p.spr.x, p.spr.y))) : Infinity;
-            if (_sd > CFG.DORMANT_RADIUS) { eGuard._dormant = true; spr.setVisible(false); if (spr.body) spr.body.enable = false; }
+            if (_sd > CFG.DORMANT_RADIUS) { eGuard._dormant = true; spr.setVisible(false); if (spr.body) { spr.body.enable = false; this.physics.world.bodies.delete(spr.body); } }
           }
           this.enemies.push(eGuard);
         }
@@ -8127,7 +8144,7 @@ class GameScene extends Phaser.Scene {
         };
         const _ap = [this.p1, this.p2].filter(p => p && p.spr && p.spr.active);
         const _sd = _ap.length ? Math.min(..._ap.map(p => Phaser.Math.Distance.Between(ex, ey, p.spr.x, p.spr.y))) : Infinity;
-        if (_sd > CFG.DORMANT_RADIUS) { eGuard._dormant = true; spr.setVisible(false); if (spr.body) spr.body.enable = false; }
+        if (_sd > CFG.DORMANT_RADIUS) { eGuard._dormant = true; spr.setVisible(false); if (spr.body) { spr.body.enable = false; this.physics.world.bodies.delete(spr.body); } }
         this.enemies.push(eGuard);
       }
       this._log(`spawnEnemies: spawned ${count} tower guards around radio tower`, 'world');
@@ -8197,6 +8214,18 @@ class GameScene extends Phaser.Scene {
         if (wn >= 3) toFill.push(key);
       });
       toFill.forEach(k => tileSet.add(k));
+      // Erosion: strip tiles with <3 orthogonal water neighbors to kill arms/filaments
+      for (let pass = 0; pass < 2; pass++) {
+        const toErode = [];
+        tileSet.forEach(key => {
+          const [ex, ey] = key.split(',').map(Number);
+          const wn = [[ex-1,ey],[ex+1,ey],[ex,ey-1],[ex,ey+1]]
+            .filter(([nx,ny]) => tileSet.has(`${nx},${ny}`)).length;
+          if (wn < 3) toErode.push(key);
+        });
+        toErode.forEach(k => tileSet.delete(k));
+        if (toErode.length === 0) break;
+      }
       // Discard blobs smaller than minimum — prevents isolated puddles
       if (tileSet.size < (PLACEMENT.POND_MIN_SIZE || 12)) { _pondSkipBlob++; continue; }
       // Classify and place tiles
@@ -8284,6 +8313,18 @@ class GameScene extends Phaser.Scene {
         if (wn >= 3) toFillL.push(key);
       });
       toFillL.forEach(k => tileSet.add(k));
+      // Erosion: strip tiles with <3 orthogonal water neighbors to kill arms/filaments
+      for (let pass = 0; pass < 2; pass++) {
+        const toErodeL = [];
+        tileSet.forEach(key => {
+          const [ex, ey] = key.split(',').map(Number);
+          const wn = [[ex-1,ey],[ex+1,ey],[ex,ey-1],[ex,ey+1]]
+            .filter(([nx,ny]) => tileSet.has(`${nx},${ny}`)).length;
+          if (wn < 3) toErodeL.push(key);
+        });
+        toErodeL.forEach(k => tileSet.delete(k));
+        if (toErodeL.length === 0) break;
+      }
       // Lakes need to be substantial — skip tiny results
       if (tileSet.size < (PLACEMENT.LAKE_MIN_SIZE || 25)) { _lakeSkipBlob++; this._log(`lake ${biome} blob too small (${tileSet.size}) – skipped`, 'world'); continue; }
 
@@ -8383,7 +8424,7 @@ class GameScene extends Phaser.Scene {
     const dist = allPlayers.length
       ? Math.min(...allPlayers.map(p => Phaser.Math.Distance.Between(x, y, p.spr.x, p.spr.y)))
       : Infinity;
-    if (dist > CFG.DORMANT_RADIUS) { e._dormant = true; spr.setVisible(false); if (spr.body) spr.body.enable = false; }
+    if (dist > CFG.DORMANT_RADIUS) { e._dormant = true; spr.setVisible(false); if (spr.body) { spr.body.enable = false; this.physics.world.bodies.delete(spr.body); } }
     this.enemies.push(e);
     return e;
   }
@@ -8440,7 +8481,7 @@ class GameScene extends Phaser.Scene {
         {
           const _ap = [this.p1, this.p2].filter(p => p && p.spr && p.spr.active);
           const _sd = _ap.length ? Math.min(..._ap.map(p => Phaser.Math.Distance.Between(ex, ey, p.spr.x, p.spr.y))) : Infinity;
-          if (_sd > CFG.DORMANT_RADIUS) { e._dormant = true; spr.setVisible(false); if (spr.body) spr.body.enable = false; }
+          if (_sd > CFG.DORMANT_RADIUS) { e._dormant = true; spr.setVisible(false); if (spr.body) { spr.body.enable = false; this.physics.world.bodies.delete(spr.body); } }
         }
         this.enemies.push(e);
         placed++;
@@ -8509,7 +8550,7 @@ class GameScene extends Phaser.Scene {
         {
           const _ap = [this.p1, this.p2].filter(p => p && p.spr && p.spr.active);
           const _sd = _ap.length ? Math.min(..._ap.map(p => Phaser.Math.Distance.Between(ex, ey, p.spr.x, p.spr.y))) : Infinity;
-          if (_sd > CFG.DORMANT_RADIUS) { e._dormant = true; spr.setVisible(false); if (spr.body) spr.body.enable = false; }
+          if (_sd > CFG.DORMANT_RADIUS) { e._dormant = true; spr.setVisible(false); if (spr.body) { spr.body.enable = false; this.physics.world.bodies.delete(spr.body); } }
         }
         this.enemies.push(e);
       }
@@ -8786,7 +8827,11 @@ class GameScene extends Phaser.Scene {
           if (_minDist2 < CFG.WAKE_RADIUS * CFG.WAKE_RADIUS && _activeCount < CFG.MAX_ACTIVE_ENEMIES) {
             // Wake up (only if under active-enemy cap)
             e._dormant = false;
-            if (e.spr.body) e.spr.body.enable = true;
+            if (e.spr.body) {
+              this.physics.world.bodies.set(e.spr.body);
+              e.spr.body.enable = true;
+              e.spr.body.reset(e.spr.x, e.spr.y);
+            }
             _activeCount++;
           } else {
             // Stay dormant — update visibility only, skip all AI
@@ -8797,10 +8842,10 @@ class GameScene extends Phaser.Scene {
           }
         } else {
           if (_minDist2 > CFG.DORMANT_RADIUS * CFG.DORMANT_RADIUS) {
-            // Go dormant
+            // Go dormant — remove body from physics world to reduce simulation overhead
             e._dormant = true;
             e.spr.setVelocity(0, 0);
-            if (e.spr.body) e.spr.body.enable = false;
+            if (e.spr.body) { e.spr.body.enable = false; this.physics.world.bodies.delete(e.spr.body); }
             e.spr.setVisible(false);
             return;
           }
