@@ -2912,8 +2912,17 @@ class ControlsScene extends Phaser.Scene {
       stroke:'#7a4a1a', strokeThickness:4,
     }).setOrigin(0.5);
 
-    this.add.text(W/2, 82, 'Click any key to rebind it. Press ESC to cancel a rebind.', {
-      fontFamily:'monospace', fontSize:'11px', color:'#445544',
+    this.add.text(W/2, 76, 'Click a key box, then press the new key on your keyboard.', {
+      fontFamily:'monospace', fontSize:'11px', color:'#556655',
+    }).setOrigin(0.5);
+    this.add.text(W/2, 90, 'Press ESC while a box is highlighted to cancel that rebind.', {
+      fontFamily:'monospace', fontSize:'10px', color:'#445544',
+    }).setOrigin(0.5);
+
+    // Soft warning slot for duplicate key bindings — populated by checkDupes() below.
+    this._warnText = this.add.text(W/2, 106, '', {
+      fontFamily:'monospace', fontSize:'11px', color:'#ffaa44',
+      stroke:'#000', strokeThickness:2,
     }).setOrigin(0.5);
 
     // Column headers
@@ -2936,6 +2945,35 @@ class ControlsScene extends Phaser.Scene {
     this._keyBoxes = [];
 
     const getBindings = () => Object.assign({}, DEFAULT_BINDINGS, loadSettings().bindings || {});
+
+    // Build a lookup of action key → human label for the duplicate-binding warning.
+    const ACTION_LABELS = {};
+    ACTIONS.forEach(row => {
+      ACTION_LABELS[row.p1] = 'P1 ' + row.label;
+      ACTION_LABELS[row.p2] = 'P2 ' + row.label;
+    });
+    const checkDupes = () => {
+      const B = getBindings();
+      const seen = new Map();
+      const conflicts = [];
+      for (const [action, key] of Object.entries(B)) {
+        if (!key) continue;
+        if (seen.has(key)) {
+          conflicts.push({ key, a: seen.get(key), b: action });
+        } else {
+          seen.set(key, action);
+        }
+      }
+      if (!this._warnText) return;
+      if (conflicts.length === 0) {
+        this._warnText.setText('');
+      } else {
+        const c = conflicts[0];
+        const more = conflicts.length > 1 ? ` (+${conflicts.length - 1} more)` : '';
+        this._warnText.setText(`⚠ ${keyDisplayName(c.key)} is bound to ${ACTION_LABELS[c.a]} AND ${ACTION_LABELS[c.b]}${more}`);
+      }
+    };
+    this._checkDupes = checkDupes;
 
     const makeKeyBox = (actionKey, x, y, isP1) => {
       const B = getBindings();
@@ -2983,6 +3021,7 @@ class ControlsScene extends Phaser.Scene {
           cur[actionKey] = keyName;
           saveSettings({ bindings: cur });
           redraw(false, false);
+          checkDupes();
         };
         this._listening = { actionKey, redraw, handler };
         this.input.keyboard.once('keydown', handler);
@@ -3004,6 +3043,9 @@ class ControlsScene extends Phaser.Scene {
       this._keyBoxes.push(makeKeyBox(row.p2, W/2 + 120, y, false));
     });
 
+    // Surface any duplicate bindings the player walked in with.
+    checkDupes();
+
     // Reset to defaults button
     const resetBtn = this.add.text(W/2, ROW_START + ACTIONS.length * ROW_H + 20, '[ RESET TO DEFAULTS ]', {
       fontFamily:'monospace', fontSize:'14px', color:'#cc4444',
@@ -3017,6 +3059,7 @@ class ControlsScene extends Phaser.Scene {
       }
       saveSettings({ bindings: Object.assign({}, DEFAULT_BINDINGS) });
       this._keyBoxes.forEach(b => b.redraw(false, false));
+      checkDupes();
     });
 
     // Back button
