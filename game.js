@@ -2928,8 +2928,17 @@ class ControlsScene extends Phaser.Scene {
       stroke:'#7a4a1a', strokeThickness:4,
     }).setOrigin(0.5);
 
-    this.add.text(W/2, 82, 'Click any key to rebind it. Press ESC to cancel a rebind.', {
-      fontFamily:'monospace', fontSize:'11px', color:'#445544',
+    this.add.text(W/2, 76, 'Click a key box, then press the new key on your keyboard.', {
+      fontFamily:'monospace', fontSize:'11px', color:'#556655',
+    }).setOrigin(0.5);
+    this.add.text(W/2, 90, 'Press ESC while a box is highlighted to cancel that rebind.', {
+      fontFamily:'monospace', fontSize:'10px', color:'#445544',
+    }).setOrigin(0.5);
+
+    // Soft warning slot for duplicate key bindings — populated by checkDupes() below.
+    this._warnText = this.add.text(W/2, 106, '', {
+      fontFamily:'monospace', fontSize:'11px', color:'#ffaa44',
+      stroke:'#000', strokeThickness:2,
     }).setOrigin(0.5);
 
     // Column headers
@@ -2952,6 +2961,35 @@ class ControlsScene extends Phaser.Scene {
     this._keyBoxes = [];
 
     const getBindings = () => Object.assign({}, DEFAULT_BINDINGS, loadSettings().bindings || {});
+
+    // Build a lookup of action key → human label for the duplicate-binding warning.
+    const ACTION_LABELS = {};
+    ACTIONS.forEach(row => {
+      ACTION_LABELS[row.p1] = 'P1 ' + row.label;
+      ACTION_LABELS[row.p2] = 'P2 ' + row.label;
+    });
+    const checkDupes = () => {
+      const B = getBindings();
+      const seen = new Map();
+      const conflicts = [];
+      for (const [action, key] of Object.entries(B)) {
+        if (!key) continue;
+        if (seen.has(key)) {
+          conflicts.push({ key, a: seen.get(key), b: action });
+        } else {
+          seen.set(key, action);
+        }
+      }
+      if (!this._warnText) return;
+      if (conflicts.length === 0) {
+        this._warnText.setText('');
+      } else {
+        const c = conflicts[0];
+        const more = conflicts.length > 1 ? ` (+${conflicts.length - 1} more)` : '';
+        this._warnText.setText(`⚠ ${keyDisplayName(c.key)} is bound to ${ACTION_LABELS[c.a]} AND ${ACTION_LABELS[c.b]}${more}`);
+      }
+    };
+    this._checkDupes = checkDupes;
 
     const makeKeyBox = (actionKey, x, y, isP1) => {
       const B = getBindings();
@@ -2999,6 +3037,7 @@ class ControlsScene extends Phaser.Scene {
           cur[actionKey] = keyName;
           saveSettings({ bindings: cur });
           redraw(false, false);
+          checkDupes();
         };
         this._listening = { actionKey, redraw, handler };
         this.input.keyboard.once('keydown', handler);
@@ -3020,6 +3059,9 @@ class ControlsScene extends Phaser.Scene {
       this._keyBoxes.push(makeKeyBox(row.p2, W/2 + 120, y, false));
     });
 
+    // Surface any duplicate bindings the player walked in with.
+    checkDupes();
+
     // Reset to defaults button
     const resetBtn = this.add.text(W/2, ROW_START + ACTIONS.length * ROW_H + 20, '[ RESET TO DEFAULTS ]', {
       fontFamily:'monospace', fontSize:'14px', color:'#cc4444',
@@ -3033,6 +3075,7 @@ class ControlsScene extends Phaser.Scene {
       }
       saveSettings({ bindings: Object.assign({}, DEFAULT_BINDINGS) });
       this._keyBoxes.forEach(b => b.redraw(false, false));
+      checkDupes();
     });
 
     // Back button
@@ -3071,7 +3114,35 @@ class ControlsScene extends Phaser.Scene {
 // ── SCENE: BOOT ───────────────────────────────────────────────
 class BootScene extends Phaser.Scene {
   constructor() { super('Boot'); }
-  create() { _qlog(`session start  v=${_fmtVersion(VERSION)}  ua=${navigator.userAgent.slice(0,80)}`, 'boot'); buildTextures(this); this.scene.start('ModeSelect'); }
+  create() {
+    _qlog(`session start  v=${_fmtVersion(VERSION)}  ua=${navigator.userAgent.slice(0,80)}`, 'boot');
+
+    // Brief splash so slow mobile loads don't show a blank canvas.
+    // buildTextures() is synchronous and blocks the JS thread for ~50–200 ms
+    // on lower-end devices; running it inside a setTimeout(0) lets the splash
+    // paint first, so the player sees IRON WASTELAND + Loading… right away.
+    const { W, H } = CFG;
+    this.cameras.main.setBackgroundColor('#0a0a14');
+    const title = this.add.text(W/2, H/2 - 24, 'IRON WASTELAND', {
+      fontFamily:'monospace', fontSize:'32px', color:'#cc8833',
+      stroke:'#7a4a1a', strokeThickness:4, letterSpacing: 4,
+    }).setOrigin(0.5).setAlpha(0);
+    const sub = this.add.text(W/2, H/2 + 14, 'Loading…', {
+      fontFamily:'monospace', fontSize:'12px', color:'#556655', letterSpacing: 2,
+    }).setOrigin(0.5).setAlpha(0);
+
+    this.tweens.add({ targets: [title, sub], alpha: 1, duration: 220, ease: 'Sine.Out' });
+
+    // Defer the heavy texture build so the splash actually paints.
+    setTimeout(() => {
+      buildTextures(this);
+      // Hold the splash briefly after textures finish so it doesn't flash.
+      this.time.delayedCall(280, () => {
+        this.cameras.main.fadeOut(220, 0, 0, 0);
+        this.time.delayedCall(220, () => this.scene.start('ModeSelect'));
+      });
+    }, 60);
+  }
 }
 
 // ── SCENE: MODE SELECT ────────────────────────────────────────
@@ -3222,22 +3293,42 @@ class ModeSelectScene extends Phaser.Scene {
   }
 
   setMode(mode) {
+    const changed = this.selMode !== mode;
     this.selMode = mode;
     this.pBoxes.forEach(b => {
-      this.drawBox(b.box, b.x, b.y, b.mode === mode, 0x6699ff, false);
-      b.lbl.setColor(b.mode === mode ? '#88aaff' : '#aaaaaa');
+      const isSel = b.mode === mode;
+      this.drawBox(b.box, b.x, b.y, isSel, 0x6699ff, false);
+      b.lbl.setColor(isSel ? '#88aaff' : '#aaaaaa');
+      // Quick scale punch on the newly-chosen label so selection feels tactile.
+      if (changed && isSel) this._punchLabel(b.lbl);
+      else if (changed && !isSel) b.lbl.setScale(1);
     });
     this.updatePrompt();
   }
 
   setDiff(diff) {
+    const changed = this.selDiff !== diff;
     this.selDiff = diff;
     const cols = { survival: 0x33cc55, hardcore: 0xff4444 };
     this.dBoxes.forEach(b => {
-      this.drawBox(b.box, b.x, b.y, b.diff === diff, cols[b.diff], true);
-      b.lbl.setColor(b.diff === diff ? (diff === 'hardcore' ? '#ff6666' : '#55ee77') : '#aaaaaa');
+      const isSel = b.diff === diff;
+      this.drawBox(b.box, b.x, b.y, isSel, cols[b.diff], true);
+      b.lbl.setColor(isSel ? (diff === 'hardcore' ? '#ff6666' : '#55ee77') : '#aaaaaa');
+      if (changed && isSel) this._punchLabel(b.lbl);
+      else if (changed && !isSel) b.lbl.setScale(1);
     });
     this.updatePrompt();
+  }
+
+  // Brief scale-up tween (1.0 → 1.06 → 1.0) used for selection feedback.
+  _punchLabel(lbl) {
+    if (!lbl || !lbl.active) return;
+    this.tweens.killTweensOf(lbl);
+    lbl.setScale(1);
+    this.tweens.add({
+      targets: lbl, scale: 1.06, duration: 110, ease: 'Quad.Out',
+      yoyo: true,
+    });
   }
 
   updatePrompt() {
@@ -5815,7 +5906,9 @@ class GameScene extends Phaser.Scene {
     const push = o => { this.bObjs.push(o); this._h(o); return o; };
     const t = (x,y,str,sty) => push(this.add.text(x,y,str,sty).setDepth(211));
 
-    push(this.add.graphics().setDepth(210)).fillStyle(0x000000, 0.92).fillRect(0,0,W,H);
+    // 0.70 alpha so the player can still see the world they're stepping
+    // away from — earlier 0.92 felt like a full scene transition.
+    push(this.add.graphics().setDepth(210)).fillStyle(0x000000, 0.70).fillRect(0,0,W,H);
     t(W/2,52,'BARRACKS \u2014 SWAP CHARACTER',{ fontFamily:'monospace', fontSize:'24px', color:'#cc8833', stroke:'#000', strokeThickness:3 }).setOrigin(0.5);
     this.bHintText = t(W/2, 90, '', { fontFamily:'monospace', fontSize:'13px', color:'#666677' }).setOrigin(0.5);
 
@@ -6074,29 +6167,47 @@ class GameScene extends Phaser.Scene {
   }
 
   // ── HINT ─────────────────────────────────────────────────────
+  // Show a contextual tip. Hints are now QUEUED rather than overwriting:
+  // a new call while one is on screen waits in line, so rapid events
+  // (e.g. revive + frost + web in close succession) all get to read.
   hint(text, duration) {
     this._log(`HINT: ${text}`, 'player');
-    // Destroy any existing hint immediately so they never overlap
-    if (this._activeHint && this._activeHint.active) {
-      this.tweens.killTweensOf(this._activeHint);
-      this._activeHint.destroy();
-    }
-    // Cancel orphaned delayedCall from the previous hint (killTweensOf won't reach it)
-    if (this._hintTimer) { this._hintTimer.remove(false); this._hintTimer = null; }
-    const minDur = 3500;
-    duration = Math.max(duration, minDur);
+    duration = Math.max(duration || 0, 3500);
+    this._hintQueue = this._hintQueue || [];
+    // Suppress immediate exact duplicates (the same hint fired twice in a
+    // row is almost always a bug or a per-frame re-trigger; the queue
+    // shouldn't compound it).
+    const last = this._hintQueue[this._hintQueue.length - 1];
+    if (last && last.text === text) return;
+    if (this._activeHint && this._activeHint._hintText === text && this._hintQueue.length === 0) return;
+    // Cap queue length so a chaotic moment doesn't trail tips long after.
+    if (this._hintQueue.length >= 4) this._hintQueue.shift();
+    this._hintQueue.push({ text, duration });
+    this._processHintQueue();
+  }
+
+  _processHintQueue() {
+    if (this._activeHint && this._activeHint.active) return;
+    if (!this._hintQueue || this._hintQueue.length === 0) return;
+    const { text, duration } = this._hintQueue.shift();
     const h = this.add.text(CFG.W/2, 112, text, {
       fontFamily:'monospace', fontSize:'17px', color:'#ffffff',
       stroke:'#000', strokeThickness:4, backgroundColor:'#000000bb', padding:{x:16,y:9},
     }).setOrigin(0.5).setDepth(160).setAlpha(0);
     this.cameras.main.ignore(h);
+    h._hintText = text;
     this._activeHint = h;
     this.tweens.add({ targets:h, alpha:1, duration:280,
       onComplete:() => {
         this._hintTimer = this.time.delayedCall(duration, () => {
           this._hintTimer = null;
           this.tweens.add({ targets:h, alpha:0, duration:450,
-            onComplete:() => { if (h === this._activeHint) this._activeHint = null; h.destroy(); }
+            onComplete:() => {
+              if (h === this._activeHint) this._activeHint = null;
+              h.destroy();
+              // Small gap so consecutive hints don't bleed into each other visually.
+              this.time.delayedCall(150, () => this._processHintQueue());
+            }
           });
         });
       }
