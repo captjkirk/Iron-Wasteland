@@ -3717,10 +3717,6 @@ class GameScene extends Phaser.Scene {
     this._w = o => { this._wo.push(o); return o; };
     this._h = o => { this._ho.push(o); return o; };
 
-    // Pause state
-    this._paused = false;
-    this._pauseOverlay = null;
-
     // Contextual tutorial hint flags (each fires once)
     this._ctx = {
       nearTree: false, firstHarvest: false, firstCraft: false,
@@ -3856,11 +3852,13 @@ class GameScene extends Phaser.Scene {
 
             this.hotkeys.p1use.on('down', () => { if (!this.barrackOpen && !this.isOver) this.tryInteract(this.p1); });
             if (this.p2) this.hotkeys.p2use.on('down', () => { if (!this.barrackOpen && !this.isOver) this.tryInteract(this.p2); });
-            this.hotkeys.tab.on('down', () => { if (!this.barrackOpen && !this.craftMenuOpen && !this.isOver) this.togglePause(); });
+            this.hotkeys.tab.on('down', () => { if (!this.barrackOpen && !this.craftMenuOpen && !this.isOver) this.toggleControls(); });
             this.hotkeys.esc.on('down', () => {
-              this.closeBarrack();
-              if (this._paused) { this.togglePause(); return; }
-              if (this.controlsVis) this.toggleControls();
+              if (this.isOver) return;
+              if (this.barrackOpen)   { this.closeBarrack(); return; }
+              if (this.craftMenuOpen) { this.closeCraftMenu(); return; }
+              if (this.controlsVis)   { this.toggleControls(); return; }
+              this.openPauseSettings();
             });
 
             // Backtick/grave (`) toggles the debug event log
@@ -5715,31 +5713,14 @@ class GameScene extends Phaser.Scene {
     // When hiding: objects stay invisible (default from buildControlsOverlay)
   }
 
-  togglePause() {
-    this._paused = !this._paused;
-    this._log(`game ${this._paused ? 'paused' : 'resumed'}`, 'player');
-    if (this._paused) {
-      this.physics.world.pause();
-      if (!this._pauseOverlay) {
-        const { W, H } = CFG;
-        const g = this.add.graphics().setScrollFactor(0).setDepth(200);
-        g.fillStyle(0x000000, 0.55);
-        g.fillRect(0, 0, W, H);
-        const t = this.add.text(W/2, H/2, 'PAUSED', {
-          fontFamily: 'monospace', fontSize: '36px', color: '#ffffff',
-          stroke: '#000', strokeThickness: 4,
-        }).setOrigin(0.5).setScrollFactor(0).setDepth(201);
-        const sub = this.add.text(W/2, H/2 + 44, 'Press TAB to resume', {
-          fontFamily: 'monospace', fontSize: '14px', color: '#aaaaaa',
-        }).setOrigin(0.5).setScrollFactor(0).setDepth(201);
-        this._pauseOverlay = [g, t, sub];
-        this._pauseOverlay.forEach(o => this._h(o));
-      }
-      this._pauseOverlay.forEach(o => o.setVisible(true));
-    } else {
-      this.physics.world.resume();
-      if (this._pauseOverlay) this._pauseOverlay.forEach(o => o.setVisible(false));
-    }
+  openPauseSettings() {
+    this._log('game paused — settings opened', 'player');
+    this.cameras.main.fadeOut(200, 0, 0, 0);
+    this.time.delayedCall(200, () => {
+      this.scene.pause();
+      this.scene.launch('Settings', { returnTo: 'Game' });
+      this.scene.bringToTop('Settings');
+    });
   }
 
   // ── BARRACKS OVERLAY ─────────────────────────────────────────
@@ -6156,7 +6137,6 @@ class GameScene extends Phaser.Scene {
   update(time, delta) {
     if (!this._worldReady) return; // deferred world init not yet complete
     if (this.isOver) return;
-    if (this._paused) return;
 
     // Heartbeat — wall-clock, so it shows even if the game clock stalls.
     const _hbNow = Date.now();
