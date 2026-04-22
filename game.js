@@ -444,7 +444,16 @@ const SFX = {
   wrench() { this._play(220,'square',0.06,0.35,'drop'); this._play(140,'sawtooth',0.1,0.15); },
   shoot()  { this._noise(0.06,0.6); this._play(800,'square',0.04,0.3,'drop'); },
   reload() { this._play(400,'square',0.03,0.2); this._play(600,'square',0.03,0.15); },
-  hit()    { this._play(160,'sawtooth',0.08,0.5,'drop'); this._noise(0.05,0.3); },
+  hit(type) {
+    // Pitch by enemy mass: heavier = lower thud, lighter = higher yip.
+    // Falls back to the original 160 Hz for anything unrecognised.
+    let f = 160;
+    if (type === 'bear' || type === 'heavy') f = 90;
+    else if (type === 'rat' || type === 'dust_hound' || type === 'ice_crawler') f = 220;
+    else if (typeof type === 'string' && type.startsWith('boss_')) f = 65;
+    this._play(f, 'sawtooth', 0.08, 0.5, 'drop');
+    this._noise(0.05, 0.3);
+  },
   playerHurt() { this._play(200,'sawtooth',0.15,0.6,'drop'); },
   enemyDie()   { this._play(120,'square',0.2,0.5,'drop'); this._noise(0.1,0.25); },
 };
@@ -825,13 +834,18 @@ function buildTextures(scene) {
   g.fillStyle(0xffee44); g.fillEllipse(8, 5, 3, 4);
   g.generateTexture('campfire', 16, 14);
 
-  // Fire glow (radial warm gradient, used for pulsating campfire/campsite glow)
+  // Fire glow — radial warm gradient with softer falloff so it reads as
+  // a real pool of light rather than concentric color rings.  Drawn ADD-blended
+  // above the night overlay by _addFireGlow so it visibly cuts through darkness.
   g.clear();
-  g.fillStyle(0xff7711, 0.12); g.fillCircle(64, 64, 64);
-  g.fillStyle(0xff8822, 0.14); g.fillCircle(64, 64, 50);
-  g.fillStyle(0xffaa33, 0.16); g.fillCircle(64, 64, 36);
-  g.fillStyle(0xffcc55, 0.18); g.fillCircle(64, 64, 22);
-  g.fillStyle(0xffee88, 0.20); g.fillCircle(64, 64, 10);
+  g.fillStyle(0xff6611, 0.08); g.fillCircle(64, 64, 64);
+  g.fillStyle(0xff7722, 0.10); g.fillCircle(64, 64, 56);
+  g.fillStyle(0xff8833, 0.12); g.fillCircle(64, 64, 48);
+  g.fillStyle(0xff9944, 0.14); g.fillCircle(64, 64, 40);
+  g.fillStyle(0xffaa55, 0.16); g.fillCircle(64, 64, 32);
+  g.fillStyle(0xffbb66, 0.18); g.fillCircle(64, 64, 24);
+  g.fillStyle(0xffcc77, 0.20); g.fillCircle(64, 64, 16);
+  g.fillStyle(0xffee99, 0.22); g.fillCircle(64, 64, 8);
   g.generateTexture('fire_glow', 128, 128);
 
   // Torch — wall sconce (bracket + cup + flame, top-down isometric style)
@@ -2859,7 +2873,12 @@ function saveSettings(obj) {
   try {
     const cur = loadSettings();
     localStorage.setItem('iw_settings', JSON.stringify(Object.assign(cur, obj)));
-  } catch(e) {}
+  } catch(e) {
+    // Quota exceeded / storage disabled: no player-facing toast for settings
+    // (they're low-stakes and the in-memory state is still correct for this session).
+    // Surface in the console so a bug report can see it.
+    console.warn('iw_settings save failed:', e && e.message ? e.message : e);
+  }
 }
 function isTouchDevice() {
   return ('ontouchstart' in window) || (navigator.maxTouchPoints > 0);
@@ -3237,11 +3256,27 @@ class SettingsScene extends Phaser.Scene {
 
   create() {
     const { W, H } = CFG;
-    this.cameras.main.fadeIn(300, 0, 0, 0);
+    const fromGame = this._returnTo === 'Game';
+    // Skip the menu fade-in when we're popping over a paused game — the
+    // pause overlay should appear instantly so the player knows the world froze.
+    if (!fromGame) this.cameras.main.fadeIn(300, 0, 0, 0);
 
     const bg = this.add.graphics();
-    bg.fillGradientStyle(0x0a0a14, 0x0a0a14, 0x080810, 0x080810, 1);
-    bg.fillRect(0, 0, W, H);
+    if (fromGame) {
+      // Pause overlay: 65% dim so the frozen world peeks through.
+      bg.fillStyle(0x000000, 0.65).fillRect(0, 0, W, H);
+    } else {
+      bg.fillGradientStyle(0x0a0a14, 0x0a0a14, 0x080810, 0x080810, 1);
+      bg.fillRect(0, 0, W, H);
+    }
+
+    // Discreet PAUSED watermark — only when overlaying gameplay.
+    if (fromGame) {
+      this.add.text(20, 22, '⏸ PAUSED', {
+        fontFamily:'monospace', fontSize:'14px', color:'#88aabb',
+        stroke:'#000', strokeThickness:2, letterSpacing: 3,
+      }).setOrigin(0, 0.5);
+    }
 
     this.add.text(W/2, 44, 'SETTINGS', {
       fontFamily:'monospace', fontSize:'36px', color:'#cc8833',
@@ -3699,6 +3734,27 @@ class GameScene extends Phaser.Scene {
 
     this.solo        = STATE.mode === 1;
     this.hardcore    = STATE.difficulty === 'hardcore';
+    // Difficulty modifier table — Survival uses identity values, Hardcore tightens every axis.
+    // Centralising here so every call-site reads `this.hc.*` instead of a bare constant.
+    this.hc = this.hardcore ? {
+      // Flavor 1 — survivability
+      maxHpMult: 0.9, campfireHeal: 2, bedHealPerTick: 5, foodHealMult: 0.75, medkitHeal: 25,
+      // Flavor 2 — enemy aggression
+      diffBase: 1.15, diffRamp: 0.15, diffCap: 3.5,
+      nightMult: 1.55, waveInterval: 75000,
+      denRespawn: 20000, waterDenRespawn: 18000, huntingPartyStartDay: 1,
+      // Flavor 3 — boss / pressure events
+      bossStartDay: 4, bossHpMult: 1.20, bossDmgMult: 1.15, raidRespawnDays: 7,
+      // Flavor 4 — scarcity / info
+      resourceDropMult: 0.75, rareDropsBossOnly: true, fogRevealMult: 0.8, minimapDefaultOff: true,
+    } : {
+      maxHpMult: 1.0, campfireHeal: 3, bedHealPerTick: 8, foodHealMult: 1.0, medkitHeal: 40,
+      diffBase: 1.0,  diffRamp: 0.10, diffCap: 3.0,
+      nightMult: 1.35, waveInterval: 90000,
+      denRespawn: 30000, waterDenRespawn: 25000, huntingPartyStartDay: 2,
+      bossStartDay: 5, bossHpMult: 1.0, bossDmgMult: 1.0, raidRespawnDays: 10,
+      resourceDropMult: 1.0, rareDropsBossOnly: false, fogRevealMult: 1.0, minimapDefaultOff: false,
+    };
     this.isOver      = false;
     this.timeAlive   = 0;
     this.barrackOpen = false;
@@ -3716,10 +3772,6 @@ class GameScene extends Phaser.Scene {
     this._wo = []; this._ho = [];
     this._w = o => { this._wo.push(o); return o; };
     this._h = o => { this._ho.push(o); return o; };
-
-    // Pause state
-    this._paused = false;
-    this._pauseOverlay = null;
 
     // Contextual tutorial hint flags (each fires once)
     this._ctx = {
@@ -3806,6 +3858,16 @@ class GameScene extends Phaser.Scene {
         this._worldSeed = isNaN(_urlSeed) ? (Date.now() & 0x7fffffff) : _urlSeed;
         _worldRng = _makeMulberry32(this._worldSeed);
         this._log(`World init start  run=#${this._runCount}  ${this.solo?'1P':'2P'}  ${this.hardcore?'hardcore':'survival'}  seed=${this._worldSeed}`, 'world');
+        // Hardcore tuning snapshot — lets session logs show exactly what modifiers were active
+        const _hc = this.hc;
+        this._log(
+          `HC tuning  hp=${_hc.maxHpMult}x  camp=${_hc.campfireHeal}  bed=${_hc.bedHealPerTick}  food=${_hc.foodHealMult}x  med=${_hc.medkitHeal}  ` +
+          `diff=${_hc.diffBase}+${_hc.diffRamp}/day cap=${_hc.diffCap}x  night=${_hc.nightMult}x  wave=${_hc.waveInterval/1000}s  ` +
+          `den=${_hc.denRespawn/1000}/${_hc.waterDenRespawn/1000}s  huntDay=${_hc.huntingPartyStartDay}  ` +
+          `boss=day${_hc.bossStartDay} hp${_hc.bossHpMult}x dmg${_hc.bossDmgMult}x  raidBack=${_hc.raidRespawnDays}d  ` +
+          `loot=${_hc.resourceDropMult}x rareBossOnly=${_hc.rareDropsBossOnly}  fog=${_hc.fogRevealMult}x  mmOff=${_hc.minimapDefaultOff}`,
+          'world'
+        );
         this.physics.world.setBounds(0, 0, worldW, worldH);
         _setProgress(5, 'Seeding biomes...');
         this._log('World init: biome seeds', 'world');
@@ -3856,11 +3918,13 @@ class GameScene extends Phaser.Scene {
 
             this.hotkeys.p1use.on('down', () => { if (!this.barrackOpen && !this.isOver) this.tryInteract(this.p1); });
             if (this.p2) this.hotkeys.p2use.on('down', () => { if (!this.barrackOpen && !this.isOver) this.tryInteract(this.p2); });
-            this.hotkeys.tab.on('down', () => { if (!this.barrackOpen && !this.craftMenuOpen && !this.isOver) this.togglePause(); });
+            this.hotkeys.tab.on('down', () => { if (!this.barrackOpen && !this.craftMenuOpen && !this.isOver) this.toggleControls(); });
             this.hotkeys.esc.on('down', () => {
-              this.closeBarrack();
-              if (this._paused) { this.togglePause(); return; }
-              if (this.controlsVis) this.toggleControls();
+              if (this.isOver) return;
+              if (this.barrackOpen)   { this.closeBarrack(); return; }
+              if (this.craftMenuOpen) { this.closeCraftMenu(); return; }
+              if (this.controlsVis)   { this.toggleControls(); return; }
+              this.openPauseSettings();
             });
 
             // Backtick/grave (`) toggles the debug event log
@@ -4800,7 +4864,7 @@ class GameScene extends Phaser.Scene {
             if (!pl || pl.isDowned || !pl.spr.active) return;
             const d = Phaser.Math.Distance.Between(pl.spr.x, pl.spr.y, cs.x, cs.y);
             if (d < 64) {
-              pl.hp = Math.min(pl.maxHp, pl.hp + 5);
+              pl.hp = Math.min(pl.maxHp, pl.hp + Math.max(1, Math.round(5 * this.hc.foodHealMult)));
             }
           });
         });
@@ -5075,7 +5139,7 @@ class GameScene extends Phaser.Scene {
   }
 
   revealFog(centerTX, centerTY, radius) {
-    const r = radius || (CFG.FOG_REVEAL_R * (this.fogRevealMult || 1));
+    const r = radius || (CFG.FOG_REVEAL_R * (this.fogRevealMult || 1) * this.hc.fogRevealMult);
     const cx = Math.floor(centerTX), cy = Math.floor(centerTY);
     // Clear and rebuild current-frame visible set for this reveal call
     // (updateFog calls this once per player per tick, so we reset before p1 and union p2)
@@ -5165,9 +5229,10 @@ class GameScene extends Phaser.Scene {
       .setOrigin(0.5, 0).setDepth(11).setAlpha(0).setVisible(false));
     if (this.hudCam) this.hudCam.ignore(waterOverlay);
 
+    const _hcMaxHp = Math.max(1, Math.round(charData.maxHp * this.hc.maxHpMult));
     return {
       spr, lbl, charData, pNum,
-      hp: charData.maxHp, maxHp: charData.maxHp,
+      hp: _hcMaxHp, maxHp: _hcMaxHp,
       ammo: charData.id==='gunslinger' ? 8 : Infinity,
       reserveAmmo: charData.id==='gunslinger' ? 32 : 0, // 8 loaded + 32 reserve = 40 max
       isDowned: false, isPermanentlyDead: false, downTimer: 0, downText: null,
@@ -5297,7 +5362,9 @@ class GameScene extends Phaser.Scene {
 
   updateMinimap() {
     if (!this.minimapDots || !this.mmBounds) return;
-    if (loadSettings().minimapEnabled === false) {
+    const _mmSet = loadSettings().minimapEnabled;
+    const _mmOn  = (_mmSet === undefined) ? !this.hc.minimapDefaultOff : (_mmSet !== false);
+    if (!_mmOn) {
       this.minimapGfx && this.minimapGfx.setVisible(false);
       this.minimapDots.setVisible(false);
       return;
@@ -5715,31 +5782,14 @@ class GameScene extends Phaser.Scene {
     // When hiding: objects stay invisible (default from buildControlsOverlay)
   }
 
-  togglePause() {
-    this._paused = !this._paused;
-    this._log(`game ${this._paused ? 'paused' : 'resumed'}`, 'player');
-    if (this._paused) {
-      this.physics.world.pause();
-      if (!this._pauseOverlay) {
-        const { W, H } = CFG;
-        const g = this.add.graphics().setScrollFactor(0).setDepth(200);
-        g.fillStyle(0x000000, 0.55);
-        g.fillRect(0, 0, W, H);
-        const t = this.add.text(W/2, H/2, 'PAUSED', {
-          fontFamily: 'monospace', fontSize: '36px', color: '#ffffff',
-          stroke: '#000', strokeThickness: 4,
-        }).setOrigin(0.5).setScrollFactor(0).setDepth(201);
-        const sub = this.add.text(W/2, H/2 + 44, 'Press TAB to resume', {
-          fontFamily: 'monospace', fontSize: '14px', color: '#aaaaaa',
-        }).setOrigin(0.5).setScrollFactor(0).setDepth(201);
-        this._pauseOverlay = [g, t, sub];
-        this._pauseOverlay.forEach(o => this._h(o));
-      }
-      this._pauseOverlay.forEach(o => o.setVisible(true));
-    } else {
-      this.physics.world.resume();
-      if (this._pauseOverlay) this._pauseOverlay.forEach(o => o.setVisible(false));
-    }
+  openPauseSettings() {
+    this._log('game paused — settings opened', 'player');
+    // Pause immediately so the world freezes mid-frame; Settings overlays on top.
+    // We deliberately do NOT fade the world to black — Settings now uses a
+    // semi-transparent background so the paused world peeks through.
+    this.scene.pause();
+    this.scene.launch('Settings', { returnTo: 'Game' });
+    this.scene.bringToTop('Settings');
   }
 
   // ── BARRACKS OVERLAY ─────────────────────────────────────────
@@ -5888,8 +5938,9 @@ class GameScene extends Phaser.Scene {
       this._sleepHealAcc -= 2000;
       sleeping.forEach(p => {
         if (!p.isDowned) {
-          p.hp = Math.min(p.maxHp, p.hp + 8);
-          this._log(`${p.charData.player} sleep heal +8  hp=${p.hp}/${p.maxHp}`, 'player');
+          const _bedHeal = this.hc.bedHealPerTick;
+          p.hp = Math.min(p.maxHp, p.hp + _bedHeal);
+          this._log(`${p.charData.player} sleep heal +${_bedHeal}  hp=${p.hp}/${p.maxHp}`, 'player');
         }
       });
     }
@@ -5955,8 +6006,8 @@ class GameScene extends Phaser.Scene {
     const _prevChar  = player.charData.id;
     this._log(`Barracks: ${player.charData.player} swapped ${_prevChar} → ${newCh.id}`, 'player');
     player.charData  = newCh;
-    player.maxHp     = newCh.maxHp;
-    player.hp        = Math.max(1, Math.round(newCh.maxHp * hpPct));
+    player.maxHp     = Math.max(1, Math.round(newCh.maxHp * this.hc.maxHpMult));
+    player.hp        = Math.max(1, Math.round(player.maxHp * hpPct));
     player.spr.setTexture(newCh.id);
     player.lbl.setText(newCh.player);
     if (newCh.id==='gunslinger') {
@@ -6156,7 +6207,6 @@ class GameScene extends Phaser.Scene {
   update(time, delta) {
     if (!this._worldReady) return; // deferred world init not yet complete
     if (this.isOver) return;
-    if (this._paused) return;
 
     // Heartbeat — wall-clock, so it shows even if the game clock stalls.
     const _hbNow = Date.now();
@@ -6859,9 +6909,11 @@ class GameScene extends Phaser.Scene {
         const baseDmg = raider.dmg * 0.7;
         const dmg = this._knightShieldBlock(p, bullet.x, bullet.y, baseDmg);
         bullet.destroy();
-        p.hp = Math.max(0, p.hp - dmg);
-        this._log(`${p.charData.player} shot by raider  dmg=${Math.round(dmg)}  hp=${p.hp}/${p.maxHp}`, 'combat');
+        const _rdmg = Math.round(dmg);
+        p.hp = Math.max(0, p.hp - _rdmg);
+        this._log(`${p.charData.player} shot by raider  dmg=${_rdmg}  hp=${p.hp}/${p.maxHp}`, 'combat');
         SFX.playerHurt();
+        this._floatDamage(p.spr.x, p.spr.y - 18, _rdmg);
         // Only apply red hurt tint if shield didn't already flash blue
         if (dmg >= baseDmg) {
           p.spr.setTint(0xff0000);
@@ -6936,9 +6988,11 @@ class GameScene extends Phaser.Scene {
     const hpBar = this.add.graphics().setDepth(14);
     if (this.hudCam) { this.hudCam.ignore(hpBg); this.hudCam.ignore(hpBar); }
 
+    const _bossHp  = Math.max(1, Math.round(bt.hp  * this.hc.bossHpMult));
+    const _bossDmg = Math.max(1, Math.round(bt.dmg * this.hc.bossDmgMult));
     this.boss = {
-      spr, hp: bt.hp, maxHp: bt.hp,
-      speed: bt.speed, dmg: bt.dmg, name: bt.name,
+      spr, hp: _bossHp, maxHp: _bossHp,
+      speed: bt.speed, dmg: _bossDmg, name: bt.name,
       isBoss: true, type: bt.key,
       attackTimer: 0, atkInterval: 2200,
       aggroRange: 99999, attackRange: 70, wanderTimer: 0, sizeMult: 1,
@@ -6952,7 +7006,7 @@ class GameScene extends Phaser.Scene {
     this.enemies.push(this.boss);
 
     // Announce arrival
-    this._log(`Boss spawned: ${bt.name}  hp=${bt.hp}  day=${this.dayNum}  diff=${this._diffMult().toFixed(1)}x`, 'world');
+    this._log(`Boss spawned: ${bt.name}  hp=${_bossHp}  dmg=${_bossDmg}  day=${this.dayNum}  diff=${this._diffMult().toFixed(1)}x`, 'world');
     this.hint('\u2620 ' + bt.name.toUpperCase() + ' APPROACHES! \u2620', 6000);
     SFX.bossRoar();
     this._log('spawnBoss: roar done', 'world');
@@ -7056,6 +7110,9 @@ class GameScene extends Phaser.Scene {
     // Update world-space HP bar above boss
     const bx = b.spr.x, by = b.spr.y;
     const barW = 80, barH = 8;
+    // Defensive: if the HP graphics were destroyed out-of-band (tween or
+    // restart edge case) skip the draw rather than crash on .clear().
+    if (!b.hpBg || !b.hpBg.active || !b.hpBar || !b.hpBar.active) return;
     b.hpBg.clear();
     b.hpBg.fillStyle(0x220000, 0.85);
     b.hpBg.fillRect(bx - barW/2 - 1, by - 90, barW + 2, barH + 2);
@@ -7168,6 +7225,7 @@ class GameScene extends Phaser.Scene {
             nearest.hp = Math.max(0, nearest.hp - b.dmg);
             this._log(nearest.charData.player + ' hit for ' + b.dmg + '  hp=' + nearest.hp + '/' + nearest.maxHp, 'combat');
             SFX.playerHurt();
+            this._floatDamage(nearest.spr.x, nearest.spr.y - 18, b.dmg);
             nearest.spr.setTint(0xff0000);
             this.cameras.main.shake(300, 0.008);
             this.time.delayedCall(200, () => {
@@ -7303,6 +7361,7 @@ class GameScene extends Phaser.Scene {
           p.hp = Math.max(0, p.hp - slamDmg);
           this._log(`${p.charData.player} boss stomp  dmg=${slamDmg}  hp=${p.hp}/${p.maxHp}`, 'combat');
           SFX.playerHurt();
+          this._floatDamage(p.spr.x, p.spr.y - 18, slamDmg);
           p.spr.setTint(b.type === 'boss_troll' ? 0x88ccff : 0xff4400);
           this.time.delayedCall(250, () => {
             if (!p.spr?.active) return;
@@ -7327,6 +7386,7 @@ class GameScene extends Phaser.Scene {
             p.hp = Math.max(0, p.hp - chargeDmg);
             this._log(`${p.charData.player} troll charge  dmg=${chargeDmg}  hp=${p.hp}/${p.maxHp}`, 'combat');
             SFX.playerHurt();
+            this._floatDamage(p.spr.x, p.spr.y - 18, chargeDmg);
             p.spr.setTint(0xff8800);
             this.cameras.main.shake(250, 0.01);
             this.time.delayedCall(200, () => {
@@ -7360,6 +7420,7 @@ class GameScene extends Phaser.Scene {
             p.hp = Math.max(0, p.hp - sprayDmg);
             this._log(`${p.charData.player} boss spray  dmg=${sprayDmg}  hp=${p.hp}/${p.maxHp}`, 'combat');
             SFX.playerHurt();
+            this._floatDamage(p.spr.x, p.spr.y - 18, sprayDmg);
             p.spr.setTint(col);
             // Spider Queen web: root player briefly (1.5s)
             if (b.type === 'boss_spider' && !p._webbed) {
@@ -7395,7 +7456,7 @@ class GameScene extends Phaser.Scene {
     if (!this.enemyDens) return;
     this.enemyDens.forEach(den => {
       den.respawnTimer += delta;
-      if (den.respawnTimer >= 30000) {
+      if (den.respawnTimer >= this.hc.denRespawn) {
         den.respawnTimer = 0;
         if (this.enemies.length >= CFG.MAX_ENEMIES) return;
         // Only respawn when a player is nearby — prevents offscreen accumulation
@@ -7441,7 +7502,7 @@ class GameScene extends Phaser.Scene {
     if (!this.waterDens) return;
     this.waterDens.forEach(den => {
       den.respawnTimer += delta;
-      if (den.respawnTimer < 25000) return;
+      if (den.respawnTimer < this.hc.waterDenRespawn) return;
       den.respawnTimer = 0;
       if (this.enemies.length >= CFG.MAX_ENEMIES) return;
       // Only respawn when a player is nearby — prevents offscreen accumulation
@@ -7904,9 +7965,53 @@ class GameScene extends Phaser.Scene {
         duration: 80, yoyo: true, ease: 'Quad.Out',
       });
     }
-    SFX.hit();
+    SFX.hit(e.type);
+    // Floating damage number — styled by magnitude so big crits pop visually.
+    this._floatDamage(e.spr.x, e.spr.y - (e.isBoss ? 28 : 14), dmg);
+    // Hit-pause: brief physics freeze on impact for weight. Guarded so
+    // multiple hits in the same frame don't stack into a visible stutter.
+    this._hitPause(40);
     this._log(e.type + ' hit  dmg=' + dmg + '  hp=' + e.hp + '/' + (e.maxHp || '?'), 'combat');
     if (e.hp <= 0) this.killEnemy(e);
+  }
+
+  // Brief physics-world freeze (ms) for impact weight. No-op if a prior
+  // pause is still in flight — prevents cumulative stutter on multi-hit frames.
+  _hitPause(ms) {
+    if (this._hitPauseActive || this.isOver || !this.physics || !this.physics.world) return;
+    this._hitPauseActive = true;
+    try { this.physics.world.pause(); } catch(e) {}
+    this.time.delayedCall(ms, () => {
+      this._hitPauseActive = false;
+      try { this.physics.world.resume(); } catch(e) {}
+    });
+  }
+
+  // Floating damage number — reuses the pickup-float pattern but colour-codes
+  // by magnitude so bigger hits feel impactful.
+  //   < 15   off-white (chip)
+  //   15-39  yellow    (solid)
+  //   40+    orange    (heavy / crit)
+  _floatDamage(x, y, dmg) {
+    if (!dmg || dmg < 1) return;
+    const colour = dmg >= 40 ? '#ff8844' : dmg >= 15 ? '#ffee44' : '#e8e8ee';
+    const size   = dmg >= 40 ? '15px'    : dmg >= 15 ? '13px'    : '11px';
+    const t = this.add.text(x, y, '-' + dmg, {
+      fontFamily: 'monospace', fontSize: size, color: colour,
+      stroke: '#000000', strokeThickness: 3,
+    }).setOrigin(0.5, 1).setDepth(150).setAlpha(1);
+    if (this.hudCam) this.hudCam.ignore(t);
+    // Slight horizontal jitter so multi-hits in one frame don't stack perfectly.
+    const jx = (Math.random() - 0.5) * 14;
+    this.tweens.add({
+      targets: t, x: x + jx, y: y - 22, duration: 520, ease: 'Cubic.Out',
+      onComplete: () => {
+        this.tweens.add({
+          targets: t, y: y - 40, alpha: 0, duration: 260,
+          ease: 'Cubic.In', onComplete: () => t.destroy(),
+        });
+      },
+    });
   }
 
   // Floating pickup notification — shows "+N Item" rising from world position
@@ -7957,23 +8062,64 @@ class GameScene extends Phaser.Scene {
 
   // Attach a pulsating warm-glow halo to a campfire, campsite, or torch.
   // baseScale controls the radius: 1.6 = campfire/campsite (expanded), 0.45 = torch.
+  //
+  // The glow is drawn above the night overlay (depth 50 > nightOverlay.depth 49)
+  // with ADD blend, so at night it bites a bright pool of light into the darkness.
+  // Three decoupled modulators drive its alpha each frame (see updateFireGlows):
+  //   g._pulse    0.55–0.80   slow sine breathe (the original warmth pulse)
+  //   g._flicker  0.85–1.15   fast random flicker (the restless-flame feel)
+  //   nightFactor 0–1         time-of-day master (fires dim at noon, bloom at night)
   _addFireGlow(x, y, baseScale = 1.6) {
     const glow = this.add.image(x, y, 'fire_glow')
-      .setScale(baseScale).setAlpha(0.55).setDepth(3)
+      .setScale(baseScale).setAlpha(0)   // real alpha recomputed each frame in updateFireGlows
+      .setDepth(50)
       .setBlendMode(Phaser.BlendModes.ADD);
     this._w(glow);
     if (this.hudCam) this.hudCam.ignore(glow);
-    // Pulse scale
+    // Initial values for the per-frame modulators (tweens own the state from here on).
+    glow._pulse   = 0.68;
+    glow._flicker = 1.0;
+    // Slow scale breathe (unchanged from original behaviour).
     this.tweens.add({
       targets: glow, scale: baseScale * 1.35, duration: 1400,
       ease: 'Sine.InOut', yoyo: true, loop: -1,
     });
-    // Pulse alpha (slightly offset phase for organic feel)
+    // Slow alpha breathe — now drives _pulse (a custom field), not alpha directly.
     this.tweens.add({
-      targets: glow, alpha: 0.80, duration: 1100,
+      targets: glow, _pulse: 0.80, duration: 1100,
       ease: 'Sine.InOut', yoyo: true, loop: -1, delay: 200,
     });
+    // Fast flicker — re-rolls duration + target every hop so it doesn't feel rhythmic.
+    const kickFlicker = () => {
+      if (!glow.active) return;
+      this.tweens.add({
+        targets: glow,
+        _flicker: 0.85 + Math.random() * 0.30,
+        duration: Phaser.Math.Between(70, 140),
+        ease: 'Linear',
+        onComplete: kickFlicker,
+      });
+    };
+    kickFlicker();
+    // Register so updateFireGlows can retune alpha each frame by nightFactor.
+    (this._fireGlows = this._fireGlows || []).push(glow);
     return glow;
+  }
+
+  // Re-alpha every registered fire glow based on the current nightFactor
+  // and the two per-glow modulators. Called once per frame from updateDayNight.
+  _updateFireGlows() {
+    const glows = this._fireGlows;
+    if (!glows || glows.length === 0) return;
+    const nf = this.nightFactor || 0;
+    // Daytime floor 0.15 keeps glows barely visible in sunlight; nighttime
+    // multiplier up to 1.0 so they bloom to full brightness at midnight.
+    const master = 0.15 + 0.85 * nf;
+    for (let i = glows.length - 1; i >= 0; i--) {
+      const g = glows[i];
+      if (!g || !g.active) { glows.splice(i, 1); continue; }
+      g.alpha = master * (g._pulse || 0.68) * (g._flicker || 1.0);
+    }
   }
 
   // Spawn a wall-mounted torch sprite + glow at world position (x, y).
@@ -8120,9 +8266,10 @@ class GameScene extends Phaser.Scene {
     if (e.isRaider) {
       this.raiders = this.raiders.filter(r => r !== e);
       if (this.raiders.length === 0 && this.raidCamp) {
-        this._log(`Raider camp cleared!  day=${this.dayNum}  kills=${this.kills}  raiders_return_day=${this.dayNum+10}`, 'world');
-        this.hint('Raider camp cleared! Loot cache unlocked — raiders return in 10 days…', 4500);
-        this.raidRespawnDay = this.dayNum + 10;
+        const _raidDays = this.hc.raidRespawnDays;
+        this._log(`Raider camp cleared!  day=${this.dayNum}  kills=${this.kills}  raiders_return_day=${this.dayNum+_raidDays}`, 'world');
+        this.hint('Raider camp cleared! Loot cache unlocked — raiders return in ' + _raidDays + ' days…', 4500);
+        this.raidRespawnDay = this.dayNum + _raidDays;
         if (this.raidCamp.spr && this.raidCamp.spr.active) this.raidCamp.spr.setTint(0x555555);
         // Unlock the loot cache
         const cache = this.raidCamp.cache;
@@ -8298,38 +8445,41 @@ class GameScene extends Phaser.Scene {
       drops.push('item_metal');
       drops.push('item_ammo');
     } else {
-      // Food drops scale down each day so mid-game survival stays tense
+      // Food drops scale down each day so mid-game survival stays tense.
+      // Hardcore additionally multiplies every roll by hc.resourceDropMult (0.75).
+      const rdm      = this.hc.resourceDropMult;
       const foodMult = Math.max(0.35, 1 - 0.12 * ((this.dayNum || 1) - 1));
       // All enemies drop food sometimes
-      if (Math.random() < 0.4 * foodMult) drops.push('item_food');
+      if (Math.random() < 0.4 * foodMult * rdm) drops.push('item_food');
       // Type-specific drops
       if (enemyType === 'wolf') {
-        if (Math.random() < 0.5) drops.push('item_fiber');
-        if (Math.random() < 0.3) drops.push('item_metal');
+        if (Math.random() < 0.5  * rdm) drops.push('item_fiber');
+        if (Math.random() < 0.3  * rdm) drops.push('item_metal');
       } else if (enemyType === 'rat') {
-        if (Math.random() < 0.6) drops.push('item_fiber');
-        if (Math.random() < 0.25) drops.push('item_ammo');
+        if (Math.random() < 0.6  * rdm) drops.push('item_fiber');
+        if (Math.random() < 0.25 * rdm) drops.push('item_ammo');
       } else if (enemyType === 'bear') {
         drops.push('item_metal');
-        if (Math.random() < 0.5) drops.push('item_wood');
-        if (Math.random() < 0.4) drops.push('item_fiber');
+        if (Math.random() < 0.5  * rdm) drops.push('item_wood');
+        if (Math.random() < 0.4  * rdm) drops.push('item_fiber');
       } else if (enemyType === 'brawler' || enemyType === 'shooter' || enemyType === 'heavy') {
         // Raiders drop ammo and supplies
-        if (Math.random() < 0.6) drops.push('item_ammo');
-        if (Math.random() < 0.4) drops.push('item_metal');
-        if (Math.random() < 0.3 * foodMult) drops.push('item_food');
+        if (Math.random() < 0.6  * rdm) drops.push('item_ammo');
+        if (Math.random() < 0.4  * rdm) drops.push('item_metal');
+        if (Math.random() < 0.3  * foodMult * rdm) drops.push('item_food');
       } else if (enemyType === 'ice_crawler') {
-        if (Math.random() < 0.5) drops.push('item_fiber');
-        if (Math.random() < 0.2) drops.push('item_rare');
+        if (Math.random() < 0.5  * rdm) drops.push('item_fiber');
+        // Rare from lesser enemies is blocked in Hardcore (bosses + caches only)
+        if (!this.hc.rareDropsBossOnly && Math.random() < 0.2 * rdm) drops.push('item_rare');
       } else if (enemyType === 'spider_ruins') {
-        if (Math.random() < 0.7) drops.push('item_fiber');
-        if (Math.random() < 0.25) drops.push('item_metal');
+        if (Math.random() < 0.7  * rdm) drops.push('item_fiber');
+        if (Math.random() < 0.25 * rdm) drops.push('item_metal');
       } else if (enemyType === 'bog_lurker') {
-        if (Math.random() < 0.5 * foodMult) drops.push('item_food');
-        if (Math.random() < 0.3) drops.push('item_fiber');
+        if (Math.random() < 0.5  * foodMult * rdm) drops.push('item_food');
+        if (Math.random() < 0.3  * rdm) drops.push('item_fiber');
       } else if (enemyType === 'dust_hound') {
-        if (Math.random() < 0.4 * foodMult) drops.push('item_food');
-        if (Math.random() < 0.35) drops.push('item_fiber');
+        if (Math.random() < 0.4  * foodMult * rdm) drops.push('item_food');
+        if (Math.random() < 0.35 * rdm) drops.push('item_fiber');
       }
     }
     drops.forEach((key, i) => {
@@ -8357,9 +8507,10 @@ class GameScene extends Phaser.Scene {
           }
           this.redrawHUD();
         } else if (item.itemType === 'food') {
-          player.hp = Math.min(player.maxHp, player.hp + 15);
+          const _foodHeal = Math.max(1, Math.round(15 * this.hc.foodHealMult));
+          player.hp = Math.min(player.maxHp, player.hp + _foodHeal);
           this._log(`${player.charData.player} picked up food  hp=${player.hp}/${player.maxHp}`, 'player');
-          label = '+15 HP';
+          label = '+' + _foodHeal + ' HP';
         } else {
           player.inv[item.itemType] = (player.inv[item.itemType] || 0) + 1;
           this.resourcesGathered++;
@@ -8383,7 +8534,7 @@ class GameScene extends Phaser.Scene {
     // this.enemies already initialised in create() so water lurkers from _buildLakes are preserved
     this.waveNum = 0;
     this.waveTimer = 0;
-    this.WAVE_INTERVAL = 90000; // 90 seconds between waves
+    this.WAVE_INTERVAL = this.hc.waveInterval; // Survival 90s / Hardcore 75s
     this._spawnGroup(worldW, worldH, cx, cy, { wolf:15, rat:20, bear:6 }, false);
 
     // Initial biome-exclusive enemy spawns
@@ -8595,7 +8746,9 @@ class GameScene extends Phaser.Scene {
     const { TILE, SAFE_R, MAP_W, MAP_H, LAKE_SPECS, PLACEMENT } = CFG;
     const _rng = _worldRng;
     const _ri = (a, b) => a + Math.floor(_rng() * (b - a + 1));
-    this.waterDens = this.waterDens || [];
+    // Rebuilt fresh each run — previously `this.waterDens || []` reused the
+    // prior run's array, leaking stale den references across restarts.
+    this.waterDens = [];
     this.pois = this.pois || [];
     let _lakePlaced = 0, _lakeSkipCenter = 0, _lakeSkipBlob = 0;
     for (const biome of LAKE_SPECS) {
@@ -8818,10 +8971,12 @@ class GameScene extends Phaser.Scene {
   }
 
   // Day-based difficulty multiplier.
-  // Day 1 = 1.0× (base tuned values). Grows 10% per day, caps at 3.0× on day 21+.
+  // Survival: base 1.0, +10% per day, cap 3.0× on day 21+.
+  // Hardcore: base 1.15, +15% per day, cap 3.5× (see this.hc).
   // Applies to enemy HP, damage, speed, and attack rate at spawn time.
   _diffMult() {
-    return Math.min(3.0, 1 + (this.dayNum - 1) * 0.1);
+    const hc = this.hc || { diffBase: 1.0, diffRamp: 0.10, diffCap: 3.0 };
+    return Math.min(hc.diffCap, hc.diffBase + (this.dayNum - 1) * hc.diffRamp);
   }
 
   _spawnGroup(worldW, worldH, cx, cy, counts, fromEdges) {
@@ -9288,7 +9443,7 @@ class GameScene extends Phaser.Scene {
         if (d < nearDist) { nearDist = d; nearest = p; }
       });
       if (!nearest) { e.spr.setVelocity(0,0); return; }
-      const nightMult = (this.isNight) ? 1.35 : 1;
+      const nightMult = (this.isNight) ? this.hc.nightMult : 1;
       const aggroRange = e.aggroRange * nightMult;
 
       if (nearDist < aggroRange) {
@@ -9354,6 +9509,7 @@ class GameScene extends Phaser.Scene {
             nearest.hp = Math.max(0, nearest.hp);
             this._log(`${e.type} hit ${nearest.charData.player} dmg=${dmg} hp=${nearest.hp}/${nearest.maxHp}`, 'combat');
             SFX.playerHurt();
+            this._floatDamage(nearest.spr.x, nearest.spr.y - 18, Math.round(dmg));
             if (nearest.isSleeping) { this.wakePlayer(nearest); this._hideSleepIndicator(); this.hint(nearest.charData.player + ' was woken by an enemy!', 2000); }
             // Only apply red hurt tint if shield didn't already flash blue
             if (dmg >= e.dmg) {
@@ -9424,6 +9580,10 @@ class GameScene extends Phaser.Scene {
       this.nightOverlay.fillStyle(0x000033, nightAlpha);
       this.nightOverlay.fillRect(0, 0, worldW, worldH);
     }
+    // Exposed 0–1 time-of-day factor — fire glows read this every frame so
+    // torches and campfires bloom into real pools of light as night deepens.
+    this.nightFactor = Math.min(1, nightAlpha / 0.6);
+    this._updateFireGlows();
 
     // Music transitions + first-night contextual tip
     if (this.isNight && !wasNight) {
@@ -9445,7 +9605,7 @@ class GameScene extends Phaser.Scene {
       this.hint('Dawn of Day ' + this.dayNum + ' \u2014 enemies grow stronger!', 3000);
       if (this.dayNum === 2) this._tutTrigger('caches');
       // Periodic hunting party — separate cadence from raid camp respawn.
-      if (this.dayNum >= (this.huntNextDay || 0) && this.dayNum >= 2) {
+      if (this.dayNum >= (this.huntNextDay || 0) && this.dayNum >= this.hc.huntingPartyStartDay) {
         this.huntNextDay = this.dayNum + Phaser.Math.Between(2, 3);
         this.time.delayedCall(6000, () => { if (!this.isOver) this.spawnHuntingParty(); });
       }
@@ -9460,9 +9620,10 @@ class GameScene extends Phaser.Scene {
           }
         });
       }
-      // Boss schedule: Day 5 = 100% guaranteed debut.
-      // After that, every 5-day interval rolls at 50% (+10% per missed interval).
-      else if (!this.bossSpawned && this.dayNum >= 5 && this.dayNum % 5 === 0) {
+      // Boss schedule: first boss on hc.bossStartDay (guaranteed), then on every
+      // bossStartDay-multiple interval (Survival: days 5, 10, 15…; Hardcore: 4, 8, 12…).
+      // First check rolls at 100%; subsequent missed rolls grow +10% toward guaranteed.
+      else if (!this.bossSpawned && this.dayNum >= this.hc.bossStartDay && this.dayNum % this.hc.bossStartDay === 0) {
         if (this._bossChance === undefined) this._bossChance = 1.0; // day-5 guaranteed
         const roll = this._bossChance;
         if (Math.random() < roll) {
@@ -9533,8 +9694,9 @@ class GameScene extends Phaser.Scene {
           }
           this.redrawHUD();
         } else if (crate.itemType === 'food') {
-          player.hp = Math.min(player.maxHp, player.hp + 20);
-          this._log(`${player.charData.player} crate food  hp=${player.hp}/${player.maxHp}`, 'player');
+          const _crateFoodHeal = Math.max(1, Math.round(20 * this.hc.foodHealMult));
+          player.hp = Math.min(player.maxHp, player.hp + _crateFoodHeal);
+          this._log(`${player.charData.player} crate food +${_crateFoodHeal}  hp=${player.hp}/${player.maxHp}`, 'player');
         } else {
           player.inv[crate.itemType] = (player.inv[crate.itemType] || 0) + 2;
           this.resourcesGathered += 2;
@@ -9682,8 +9844,9 @@ class GameScene extends Phaser.Scene {
             if (pl.isDowned) return;
             const d = Phaser.Math.Distance.Between(pl.spr.x, pl.spr.y, cf.x, cf.y);
             if (d < 80) {
-              pl.hp = Math.min(pl.maxHp, pl.hp + 3);
-              this._log(`${pl.charData.player} campfire heal +3  hp=${pl.hp}/${pl.maxHp}`, 'player');
+              const _cfHeal = this.hc.campfireHeal;
+              pl.hp = Math.min(pl.maxHp, pl.hp + _cfHeal);
+              this._log(`${pl.charData.player} campfire heal +${_cfHeal}  hp=${pl.hp}/${pl.maxHp}`, 'player');
             }
           });
         }
@@ -10016,16 +10179,17 @@ class GameScene extends Phaser.Scene {
         this.hint('No Gunslinger in play — ammo wasted!', 2000);
       }
     } else if (rec.type === 'instant' && rec.key === 'med_kit') {
-      // D8 — Med Kit: restore 40 HP to the crafting player, green flash
-      player.hp = Math.min(player.maxHp, player.hp + 40);
-      this._log(`${player.charData.player} used Med Kit  hp=${player.hp}/${player.maxHp}`, 'player');
+      // D8 — Med Kit: restore HP (difficulty-scaled) to the crafting player, green flash
+      const _medHeal = this.hc.medkitHeal;
+      player.hp = Math.min(player.maxHp, player.hp + _medHeal);
+      this._log(`${player.charData.player} used Med Kit +${_medHeal}  hp=${player.hp}/${player.maxHp}`, 'player');
       player.spr.setTint(0x44ff44);
       this.time.delayedCall(300, () => {
         if (!player.spr?.active) return;
         if (player._frostSlowed) player.spr.setTint(0x88ccff);
         else player.spr.clearTint();
       });
-      this.hint(player.charData.player + ' used Med Kit: +40 HP!', 2000);
+      this.hint(player.charData.player + ' used Med Kit: +' + _medHeal + ' HP!', 2000);
     } else if (rec.type === 'upgrade') {
       const target = [this.p1, this.p2].filter(Boolean).find(p => p.charData.id === rec.charId);
       if (!target) { this.hint('That character isn\'t in the game!', 2000); return; }
@@ -10450,7 +10614,18 @@ class GameOverScene extends Phaser.Scene {
       lb.push({ name, score: this._score, days: this.days, time: Math.floor(this.timeAlive), date: dateStr });
       lb.sort((a, b) => b.score - a.score);
       lb.splice(10);
-      try { localStorage.setItem('iw_scores', JSON.stringify(lb)); } catch(e) {}
+      try {
+        localStorage.setItem('iw_scores', JSON.stringify(lb));
+      } catch(e) {
+        // Storage full / disabled: tell the player so they know the run
+        // didn't make it onto the leaderboard.
+        console.warn('iw_scores save failed:', e && e.message ? e.message : e);
+        const warn = this.add.text(CFG.W/2, CFG.H - 12, '⚠ Could not save score (storage full?)', {
+          fontFamily: 'monospace', fontSize: '10px', color: '#ff8844',
+          backgroundColor: '#000000cc', padding: { x: 6, y: 3 },
+        }).setOrigin(0.5).setDepth(500);
+        this.time.delayedCall(4500, () => { if (warn && warn.active) warn.destroy(); });
+      }
     }
   }
 
