@@ -4819,7 +4819,7 @@ class GameScene extends Phaser.Scene {
             if (!pl || pl.isDowned || !pl.spr.active) return;
             const d = Phaser.Math.Distance.Between(pl.spr.x, pl.spr.y, cs.x, cs.y);
             if (d < 64) {
-              pl.hp = Math.min(pl.maxHp, pl.hp + 5);
+              pl.hp = Math.min(pl.maxHp, pl.hp + Math.max(1, Math.round(5 * this.hc.foodHealMult)));
             }
           });
         });
@@ -5184,9 +5184,10 @@ class GameScene extends Phaser.Scene {
       .setOrigin(0.5, 0).setDepth(11).setAlpha(0).setVisible(false));
     if (this.hudCam) this.hudCam.ignore(waterOverlay);
 
+    const _hcMaxHp = Math.max(1, Math.round(charData.maxHp * this.hc.maxHpMult));
     return {
       spr, lbl, charData, pNum,
-      hp: charData.maxHp, maxHp: charData.maxHp,
+      hp: _hcMaxHp, maxHp: _hcMaxHp,
       ammo: charData.id==='gunslinger' ? 8 : Infinity,
       reserveAmmo: charData.id==='gunslinger' ? 32 : 0, // 8 loaded + 32 reserve = 40 max
       isDowned: false, isPermanentlyDead: false, downTimer: 0, downText: null,
@@ -5890,8 +5891,9 @@ class GameScene extends Phaser.Scene {
       this._sleepHealAcc -= 2000;
       sleeping.forEach(p => {
         if (!p.isDowned) {
-          p.hp = Math.min(p.maxHp, p.hp + 8);
-          this._log(`${p.charData.player} sleep heal +8  hp=${p.hp}/${p.maxHp}`, 'player');
+          const _bedHeal = this.hc.bedHealPerTick;
+          p.hp = Math.min(p.maxHp, p.hp + _bedHeal);
+          this._log(`${p.charData.player} sleep heal +${_bedHeal}  hp=${p.hp}/${p.maxHp}`, 'player');
         }
       });
     }
@@ -5957,8 +5959,8 @@ class GameScene extends Phaser.Scene {
     const _prevChar  = player.charData.id;
     this._log(`Barracks: ${player.charData.player} swapped ${_prevChar} → ${newCh.id}`, 'player');
     player.charData  = newCh;
-    player.maxHp     = newCh.maxHp;
-    player.hp        = Math.max(1, Math.round(newCh.maxHp * hpPct));
+    player.maxHp     = Math.max(1, Math.round(newCh.maxHp * this.hc.maxHpMult));
+    player.hp        = Math.max(1, Math.round(player.maxHp * hpPct));
     player.spr.setTexture(newCh.id);
     player.lbl.setText(newCh.player);
     if (newCh.id==='gunslinger') {
@@ -8358,9 +8360,10 @@ class GameScene extends Phaser.Scene {
           }
           this.redrawHUD();
         } else if (item.itemType === 'food') {
-          player.hp = Math.min(player.maxHp, player.hp + 15);
+          const _foodHeal = Math.max(1, Math.round(15 * this.hc.foodHealMult));
+          player.hp = Math.min(player.maxHp, player.hp + _foodHeal);
           this._log(`${player.charData.player} picked up food  hp=${player.hp}/${player.maxHp}`, 'player');
-          label = '+15 HP';
+          label = '+' + _foodHeal + ' HP';
         } else {
           player.inv[item.itemType] = (player.inv[item.itemType] || 0) + 1;
           this.resourcesGathered++;
@@ -9534,8 +9537,9 @@ class GameScene extends Phaser.Scene {
           }
           this.redrawHUD();
         } else if (crate.itemType === 'food') {
-          player.hp = Math.min(player.maxHp, player.hp + 20);
-          this._log(`${player.charData.player} crate food  hp=${player.hp}/${player.maxHp}`, 'player');
+          const _crateFoodHeal = Math.max(1, Math.round(20 * this.hc.foodHealMult));
+          player.hp = Math.min(player.maxHp, player.hp + _crateFoodHeal);
+          this._log(`${player.charData.player} crate food +${_crateFoodHeal}  hp=${player.hp}/${player.maxHp}`, 'player');
         } else {
           player.inv[crate.itemType] = (player.inv[crate.itemType] || 0) + 2;
           this.resourcesGathered += 2;
@@ -9683,8 +9687,9 @@ class GameScene extends Phaser.Scene {
             if (pl.isDowned) return;
             const d = Phaser.Math.Distance.Between(pl.spr.x, pl.spr.y, cf.x, cf.y);
             if (d < 80) {
-              pl.hp = Math.min(pl.maxHp, pl.hp + 3);
-              this._log(`${pl.charData.player} campfire heal +3  hp=${pl.hp}/${pl.maxHp}`, 'player');
+              const _cfHeal = this.hc.campfireHeal;
+              pl.hp = Math.min(pl.maxHp, pl.hp + _cfHeal);
+              this._log(`${pl.charData.player} campfire heal +${_cfHeal}  hp=${pl.hp}/${pl.maxHp}`, 'player');
             }
           });
         }
@@ -10017,16 +10022,17 @@ class GameScene extends Phaser.Scene {
         this.hint('No Gunslinger in play — ammo wasted!', 2000);
       }
     } else if (rec.type === 'instant' && rec.key === 'med_kit') {
-      // D8 — Med Kit: restore 40 HP to the crafting player, green flash
-      player.hp = Math.min(player.maxHp, player.hp + 40);
-      this._log(`${player.charData.player} used Med Kit  hp=${player.hp}/${player.maxHp}`, 'player');
+      // D8 — Med Kit: restore HP (difficulty-scaled) to the crafting player, green flash
+      const _medHeal = this.hc.medkitHeal;
+      player.hp = Math.min(player.maxHp, player.hp + _medHeal);
+      this._log(`${player.charData.player} used Med Kit +${_medHeal}  hp=${player.hp}/${player.maxHp}`, 'player');
       player.spr.setTint(0x44ff44);
       this.time.delayedCall(300, () => {
         if (!player.spr?.active) return;
         if (player._frostSlowed) player.spr.setTint(0x88ccff);
         else player.spr.clearTint();
       });
-      this.hint(player.charData.player + ' used Med Kit: +40 HP!', 2000);
+      this.hint(player.charData.player + ' used Med Kit: +' + _medHeal + ' HP!', 2000);
     } else if (rec.type === 'upgrade') {
       const target = [this.p1, this.p2].filter(Boolean).find(p => p.charData.id === rec.charId);
       if (!target) { this.hint('That character isn\'t in the game!', 2000); return; }
