@@ -3098,7 +3098,35 @@ class ControlsScene extends Phaser.Scene {
 // ── SCENE: BOOT ───────────────────────────────────────────────
 class BootScene extends Phaser.Scene {
   constructor() { super('Boot'); }
-  create() { _qlog(`session start  v=${_fmtVersion(VERSION)}  ua=${navigator.userAgent.slice(0,80)}`, 'boot'); buildTextures(this); this.scene.start('ModeSelect'); }
+  create() {
+    _qlog(`session start  v=${_fmtVersion(VERSION)}  ua=${navigator.userAgent.slice(0,80)}`, 'boot');
+
+    // Brief splash so slow mobile loads don't show a blank canvas.
+    // buildTextures() is synchronous and blocks the JS thread for ~50–200 ms
+    // on lower-end devices; running it inside a setTimeout(0) lets the splash
+    // paint first, so the player sees IRON WASTELAND + Loading… right away.
+    const { W, H } = CFG;
+    this.cameras.main.setBackgroundColor('#0a0a14');
+    const title = this.add.text(W/2, H/2 - 24, 'IRON WASTELAND', {
+      fontFamily:'monospace', fontSize:'32px', color:'#cc8833',
+      stroke:'#7a4a1a', strokeThickness:4, letterSpacing: 4,
+    }).setOrigin(0.5).setAlpha(0);
+    const sub = this.add.text(W/2, H/2 + 14, 'Loading…', {
+      fontFamily:'monospace', fontSize:'12px', color:'#556655', letterSpacing: 2,
+    }).setOrigin(0.5).setAlpha(0);
+
+    this.tweens.add({ targets: [title, sub], alpha: 1, duration: 220, ease: 'Sine.Out' });
+
+    // Defer the heavy texture build so the splash actually paints.
+    setTimeout(() => {
+      buildTextures(this);
+      // Hold the splash briefly after textures finish so it doesn't flash.
+      this.time.delayedCall(280, () => {
+        this.cameras.main.fadeOut(220, 0, 0, 0);
+        this.time.delayedCall(220, () => this.scene.start('ModeSelect'));
+      });
+    }, 60);
+  }
 }
 
 // ── SCENE: MODE SELECT ────────────────────────────────────────
