@@ -3699,6 +3699,27 @@ class GameScene extends Phaser.Scene {
 
     this.solo        = STATE.mode === 1;
     this.hardcore    = STATE.difficulty === 'hardcore';
+    // Difficulty modifier table — Survival uses identity values, Hardcore tightens every axis.
+    // Centralising here so every call-site reads `this.hc.*` instead of a bare constant.
+    this.hc = this.hardcore ? {
+      // Flavor 1 — survivability
+      maxHpMult: 0.9, campfireHeal: 2, bedHealPerTick: 5, foodHealMult: 0.75, medkitHeal: 25,
+      // Flavor 2 — enemy aggression
+      diffBase: 1.15, diffRamp: 0.15, diffCap: 3.5,
+      nightMult: 1.55, waveInterval: 75000,
+      denRespawn: 20000, waterDenRespawn: 18000, huntingPartyStartDay: 1,
+      // Flavor 3 — boss / pressure events
+      bossStartDay: 4, bossHpMult: 1.20, bossDmgMult: 1.15, raidRespawnDays: 7,
+      // Flavor 4 — scarcity / info
+      resourceDropMult: 0.75, rareDropsBossOnly: true, fogRevealMult: 0.8, minimapDefaultOff: true,
+    } : {
+      maxHpMult: 1.0, campfireHeal: 3, bedHealPerTick: 8, foodHealMult: 1.0, medkitHeal: 40,
+      diffBase: 1.0,  diffRamp: 0.10, diffCap: 3.0,
+      nightMult: 1.35, waveInterval: 90000,
+      denRespawn: 30000, waterDenRespawn: 25000, huntingPartyStartDay: 2,
+      bossStartDay: 5, bossHpMult: 1.0, bossDmgMult: 1.0, raidRespawnDays: 10,
+      resourceDropMult: 1.0, rareDropsBossOnly: false, fogRevealMult: 1.0, minimapDefaultOff: false,
+    };
     this.isOver      = false;
     this.timeAlive   = 0;
     this.barrackOpen = false;
