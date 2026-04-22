@@ -825,13 +825,18 @@ function buildTextures(scene) {
   g.fillStyle(0xffee44); g.fillEllipse(8, 5, 3, 4);
   g.generateTexture('campfire', 16, 14);
 
-  // Fire glow (radial warm gradient, used for pulsating campfire/campsite glow)
+  // Fire glow — radial warm gradient with softer falloff so it reads as
+  // a real pool of light rather than concentric color rings.  Drawn ADD-blended
+  // above the night overlay by _addFireGlow so it visibly cuts through darkness.
   g.clear();
-  g.fillStyle(0xff7711, 0.12); g.fillCircle(64, 64, 64);
-  g.fillStyle(0xff8822, 0.14); g.fillCircle(64, 64, 50);
-  g.fillStyle(0xffaa33, 0.16); g.fillCircle(64, 64, 36);
-  g.fillStyle(0xffcc55, 0.18); g.fillCircle(64, 64, 22);
-  g.fillStyle(0xffee88, 0.20); g.fillCircle(64, 64, 10);
+  g.fillStyle(0xff6611, 0.08); g.fillCircle(64, 64, 64);
+  g.fillStyle(0xff7722, 0.10); g.fillCircle(64, 64, 56);
+  g.fillStyle(0xff8833, 0.12); g.fillCircle(64, 64, 48);
+  g.fillStyle(0xff9944, 0.14); g.fillCircle(64, 64, 40);
+  g.fillStyle(0xffaa55, 0.16); g.fillCircle(64, 64, 32);
+  g.fillStyle(0xffbb66, 0.18); g.fillCircle(64, 64, 24);
+  g.fillStyle(0xffcc77, 0.20); g.fillCircle(64, 64, 16);
+  g.fillStyle(0xffee99, 0.22); g.fillCircle(64, 64, 8);
   g.generateTexture('fire_glow', 128, 128);
 
   // Torch — wall sconce (bracket + cup + flame, top-down isometric style)
@@ -7974,23 +7979,64 @@ class GameScene extends Phaser.Scene {
 
   // Attach a pulsating warm-glow halo to a campfire, campsite, or torch.
   // baseScale controls the radius: 1.6 = campfire/campsite (expanded), 0.45 = torch.
+  //
+  // The glow is drawn above the night overlay (depth 50 > nightOverlay.depth 49)
+  // with ADD blend, so at night it bites a bright pool of light into the darkness.
+  // Three decoupled modulators drive its alpha each frame (see updateFireGlows):
+  //   g._pulse    0.55–0.80   slow sine breathe (the original warmth pulse)
+  //   g._flicker  0.85–1.15   fast random flicker (the restless-flame feel)
+  //   nightFactor 0–1         time-of-day master (fires dim at noon, bloom at night)
   _addFireGlow(x, y, baseScale = 1.6) {
     const glow = this.add.image(x, y, 'fire_glow')
-      .setScale(baseScale).setAlpha(0.55).setDepth(3)
+      .setScale(baseScale).setAlpha(0)   // real alpha recomputed each frame in updateFireGlows
+      .setDepth(50)
       .setBlendMode(Phaser.BlendModes.ADD);
     this._w(glow);
     if (this.hudCam) this.hudCam.ignore(glow);
-    // Pulse scale
+    // Initial values for the per-frame modulators (tweens own the state from here on).
+    glow._pulse   = 0.68;
+    glow._flicker = 1.0;
+    // Slow scale breathe (unchanged from original behaviour).
     this.tweens.add({
       targets: glow, scale: baseScale * 1.35, duration: 1400,
       ease: 'Sine.InOut', yoyo: true, loop: -1,
     });
-    // Pulse alpha (slightly offset phase for organic feel)
+    // Slow alpha breathe — now drives _pulse (a custom field), not alpha directly.
     this.tweens.add({
-      targets: glow, alpha: 0.80, duration: 1100,
+      targets: glow, _pulse: 0.80, duration: 1100,
       ease: 'Sine.InOut', yoyo: true, loop: -1, delay: 200,
     });
+    // Fast flicker — re-rolls duration + target every hop so it doesn't feel rhythmic.
+    const kickFlicker = () => {
+      if (!glow.active) return;
+      this.tweens.add({
+        targets: glow,
+        _flicker: 0.85 + Math.random() * 0.30,
+        duration: Phaser.Math.Between(70, 140),
+        ease: 'Linear',
+        onComplete: kickFlicker,
+      });
+    };
+    kickFlicker();
+    // Register so updateFireGlows can retune alpha each frame by nightFactor.
+    (this._fireGlows = this._fireGlows || []).push(glow);
     return glow;
+  }
+
+  // Re-alpha every registered fire glow based on the current nightFactor
+  // and the two per-glow modulators. Called once per frame from updateDayNight.
+  _updateFireGlows() {
+    const glows = this._fireGlows;
+    if (!glows || glows.length === 0) return;
+    const nf = this.nightFactor || 0;
+    // Daytime floor 0.15 keeps glows barely visible in sunlight; nighttime
+    // multiplier up to 1.0 so they bloom to full brightness at midnight.
+    const master = 0.15 + 0.85 * nf;
+    for (let i = glows.length - 1; i >= 0; i--) {
+      const g = glows[i];
+      if (!g || !g.active) { glows.splice(i, 1); continue; }
+      g.alpha = master * (g._pulse || 0.68) * (g._flicker || 1.0);
+    }
   }
 
   // Spawn a wall-mounted torch sprite + glow at world position (x, y).
@@ -9448,6 +9494,10 @@ class GameScene extends Phaser.Scene {
       this.nightOverlay.fillStyle(0x000033, nightAlpha);
       this.nightOverlay.fillRect(0, 0, worldW, worldH);
     }
+    // Exposed 0–1 time-of-day factor — fire glows read this every frame so
+    // torches and campfires bloom into real pools of light as night deepens.
+    this.nightFactor = Math.min(1, nightAlpha / 0.6);
+    this._updateFireGlows();
 
     // Music transitions + first-night contextual tip
     if (this.isNight && !wasNight) {
