@@ -6058,29 +6058,47 @@ class GameScene extends Phaser.Scene {
   }
 
   // ── HINT ─────────────────────────────────────────────────────
+  // Show a contextual tip. Hints are now QUEUED rather than overwriting:
+  // a new call while one is on screen waits in line, so rapid events
+  // (e.g. revive + frost + web in close succession) all get to read.
   hint(text, duration) {
     this._log(`HINT: ${text}`, 'player');
-    // Destroy any existing hint immediately so they never overlap
-    if (this._activeHint && this._activeHint.active) {
-      this.tweens.killTweensOf(this._activeHint);
-      this._activeHint.destroy();
-    }
-    // Cancel orphaned delayedCall from the previous hint (killTweensOf won't reach it)
-    if (this._hintTimer) { this._hintTimer.remove(false); this._hintTimer = null; }
-    const minDur = 3500;
-    duration = Math.max(duration, minDur);
+    duration = Math.max(duration || 0, 3500);
+    this._hintQueue = this._hintQueue || [];
+    // Suppress immediate exact duplicates (the same hint fired twice in a
+    // row is almost always a bug or a per-frame re-trigger; the queue
+    // shouldn't compound it).
+    const last = this._hintQueue[this._hintQueue.length - 1];
+    if (last && last.text === text) return;
+    if (this._activeHint && this._activeHint._hintText === text && this._hintQueue.length === 0) return;
+    // Cap queue length so a chaotic moment doesn't trail tips long after.
+    if (this._hintQueue.length >= 4) this._hintQueue.shift();
+    this._hintQueue.push({ text, duration });
+    this._processHintQueue();
+  }
+
+  _processHintQueue() {
+    if (this._activeHint && this._activeHint.active) return;
+    if (!this._hintQueue || this._hintQueue.length === 0) return;
+    const { text, duration } = this._hintQueue.shift();
     const h = this.add.text(CFG.W/2, 112, text, {
       fontFamily:'monospace', fontSize:'17px', color:'#ffffff',
       stroke:'#000', strokeThickness:4, backgroundColor:'#000000bb', padding:{x:16,y:9},
     }).setOrigin(0.5).setDepth(160).setAlpha(0);
     this.cameras.main.ignore(h);
+    h._hintText = text;
     this._activeHint = h;
     this.tweens.add({ targets:h, alpha:1, duration:280,
       onComplete:() => {
         this._hintTimer = this.time.delayedCall(duration, () => {
           this._hintTimer = null;
           this.tweens.add({ targets:h, alpha:0, duration:450,
-            onComplete:() => { if (h === this._activeHint) this._activeHint = null; h.destroy(); }
+            onComplete:() => {
+              if (h === this._activeHint) this._activeHint = null;
+              h.destroy();
+              // Small gap so consecutive hints don't bleed into each other visually.
+              this.time.delayedCall(150, () => this._processHintQueue());
+            }
           });
         });
       }
