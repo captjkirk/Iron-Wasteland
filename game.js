@@ -5094,7 +5094,7 @@ class GameScene extends Phaser.Scene {
   }
 
   revealFog(centerTX, centerTY, radius) {
-    const r = radius || (CFG.FOG_REVEAL_R * (this.fogRevealMult || 1));
+    const r = radius || (CFG.FOG_REVEAL_R * (this.fogRevealMult || 1) * this.hc.fogRevealMult);
     const cx = Math.floor(centerTX), cy = Math.floor(centerTY);
     // Clear and rebuild current-frame visible set for this reveal call
     // (updateFog calls this once per player per tick, so we reset before p1 and union p2)
@@ -5317,7 +5317,9 @@ class GameScene extends Phaser.Scene {
 
   updateMinimap() {
     if (!this.minimapDots || !this.mmBounds) return;
-    if (loadSettings().minimapEnabled === false) {
+    const _mmSet = loadSettings().minimapEnabled;
+    const _mmOn  = (_mmSet === undefined) ? !this.hc.minimapDefaultOff : (_mmSet !== false);
+    if (!_mmOn) {
       this.minimapGfx && this.minimapGfx.setVisible(false);
       this.minimapDots.setVisible(false);
       return;
@@ -8304,38 +8306,41 @@ class GameScene extends Phaser.Scene {
       drops.push('item_metal');
       drops.push('item_ammo');
     } else {
-      // Food drops scale down each day so mid-game survival stays tense
+      // Food drops scale down each day so mid-game survival stays tense.
+      // Hardcore additionally multiplies every roll by hc.resourceDropMult (0.75).
+      const rdm      = this.hc.resourceDropMult;
       const foodMult = Math.max(0.35, 1 - 0.12 * ((this.dayNum || 1) - 1));
       // All enemies drop food sometimes
-      if (Math.random() < 0.4 * foodMult) drops.push('item_food');
+      if (Math.random() < 0.4 * foodMult * rdm) drops.push('item_food');
       // Type-specific drops
       if (enemyType === 'wolf') {
-        if (Math.random() < 0.5) drops.push('item_fiber');
-        if (Math.random() < 0.3) drops.push('item_metal');
+        if (Math.random() < 0.5  * rdm) drops.push('item_fiber');
+        if (Math.random() < 0.3  * rdm) drops.push('item_metal');
       } else if (enemyType === 'rat') {
-        if (Math.random() < 0.6) drops.push('item_fiber');
-        if (Math.random() < 0.25) drops.push('item_ammo');
+        if (Math.random() < 0.6  * rdm) drops.push('item_fiber');
+        if (Math.random() < 0.25 * rdm) drops.push('item_ammo');
       } else if (enemyType === 'bear') {
         drops.push('item_metal');
-        if (Math.random() < 0.5) drops.push('item_wood');
-        if (Math.random() < 0.4) drops.push('item_fiber');
+        if (Math.random() < 0.5  * rdm) drops.push('item_wood');
+        if (Math.random() < 0.4  * rdm) drops.push('item_fiber');
       } else if (enemyType === 'brawler' || enemyType === 'shooter' || enemyType === 'heavy') {
         // Raiders drop ammo and supplies
-        if (Math.random() < 0.6) drops.push('item_ammo');
-        if (Math.random() < 0.4) drops.push('item_metal');
-        if (Math.random() < 0.3 * foodMult) drops.push('item_food');
+        if (Math.random() < 0.6  * rdm) drops.push('item_ammo');
+        if (Math.random() < 0.4  * rdm) drops.push('item_metal');
+        if (Math.random() < 0.3  * foodMult * rdm) drops.push('item_food');
       } else if (enemyType === 'ice_crawler') {
-        if (Math.random() < 0.5) drops.push('item_fiber');
-        if (Math.random() < 0.2) drops.push('item_rare');
+        if (Math.random() < 0.5  * rdm) drops.push('item_fiber');
+        // Rare from lesser enemies is blocked in Hardcore (bosses + caches only)
+        if (!this.hc.rareDropsBossOnly && Math.random() < 0.2 * rdm) drops.push('item_rare');
       } else if (enemyType === 'spider_ruins') {
-        if (Math.random() < 0.7) drops.push('item_fiber');
-        if (Math.random() < 0.25) drops.push('item_metal');
+        if (Math.random() < 0.7  * rdm) drops.push('item_fiber');
+        if (Math.random() < 0.25 * rdm) drops.push('item_metal');
       } else if (enemyType === 'bog_lurker') {
-        if (Math.random() < 0.5 * foodMult) drops.push('item_food');
-        if (Math.random() < 0.3) drops.push('item_fiber');
+        if (Math.random() < 0.5  * foodMult * rdm) drops.push('item_food');
+        if (Math.random() < 0.3  * rdm) drops.push('item_fiber');
       } else if (enemyType === 'dust_hound') {
-        if (Math.random() < 0.4 * foodMult) drops.push('item_food');
-        if (Math.random() < 0.35) drops.push('item_fiber');
+        if (Math.random() < 0.4  * foodMult * rdm) drops.push('item_food');
+        if (Math.random() < 0.35 * rdm) drops.push('item_fiber');
       }
     }
     drops.forEach((key, i) => {
