@@ -2864,7 +2864,12 @@ function saveSettings(obj) {
   try {
     const cur = loadSettings();
     localStorage.setItem('iw_settings', JSON.stringify(Object.assign(cur, obj)));
-  } catch(e) {}
+  } catch(e) {
+    // Quota exceeded / storage disabled: no player-facing toast for settings
+    // (they're low-stakes and the in-memory state is still correct for this session).
+    // Surface in the console so a bug report can see it.
+    console.warn('iw_settings save failed:', e && e.message ? e.message : e);
+  }
 }
 function isTouchDevice() {
   return ('ontouchstart' in window) || (navigator.maxTouchPoints > 0);
@@ -7078,6 +7083,9 @@ class GameScene extends Phaser.Scene {
     // Update world-space HP bar above boss
     const bx = b.spr.x, by = b.spr.y;
     const barW = 80, barH = 8;
+    // Defensive: if the HP graphics were destroyed out-of-band (tween or
+    // restart edge case) skip the draw rather than crash on .clear().
+    if (!b.hpBg || !b.hpBg.active || !b.hpBar || !b.hpBar.active) return;
     b.hpBg.clear();
     b.hpBg.fillStyle(0x220000, 0.85);
     b.hpBg.fillRect(bx - barW/2 - 1, by - 90, barW + 2, barH + 2);
@@ -8663,7 +8671,9 @@ class GameScene extends Phaser.Scene {
     const { TILE, SAFE_R, MAP_W, MAP_H, LAKE_SPECS, PLACEMENT } = CFG;
     const _rng = _worldRng;
     const _ri = (a, b) => a + Math.floor(_rng() * (b - a + 1));
-    this.waterDens = this.waterDens || [];
+    // Rebuilt fresh each run — previously `this.waterDens || []` reused the
+    // prior run's array, leaking stale den references across restarts.
+    this.waterDens = [];
     this.pois = this.pois || [];
     let _lakePlaced = 0, _lakeSkipCenter = 0, _lakeSkipBlob = 0;
     for (const biome of LAKE_SPECS) {
@@ -10528,7 +10538,18 @@ class GameOverScene extends Phaser.Scene {
       lb.push({ name, score: this._score, days: this.days, time: Math.floor(this.timeAlive), date: dateStr });
       lb.sort((a, b) => b.score - a.score);
       lb.splice(10);
-      try { localStorage.setItem('iw_scores', JSON.stringify(lb)); } catch(e) {}
+      try {
+        localStorage.setItem('iw_scores', JSON.stringify(lb));
+      } catch(e) {
+        // Storage full / disabled: tell the player so they know the run
+        // didn't make it onto the leaderboard.
+        console.warn('iw_scores save failed:', e && e.message ? e.message : e);
+        const warn = this.add.text(CFG.W/2, CFG.H - 12, '⚠ Could not save score (storage full?)', {
+          fontFamily: 'monospace', fontSize: '10px', color: '#ff8844',
+          backgroundColor: '#000000cc', padding: { x: 6, y: 3 },
+        }).setOrigin(0.5).setDepth(500);
+        this.time.delayedCall(4500, () => { if (warn && warn.active) warn.destroy(); });
+      }
     }
   }
 
