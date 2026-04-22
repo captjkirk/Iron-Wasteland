@@ -3823,6 +3823,16 @@ class GameScene extends Phaser.Scene {
         this._worldSeed = isNaN(_urlSeed) ? (Date.now() & 0x7fffffff) : _urlSeed;
         _worldRng = _makeMulberry32(this._worldSeed);
         this._log(`World init start  run=#${this._runCount}  ${this.solo?'1P':'2P'}  ${this.hardcore?'hardcore':'survival'}  seed=${this._worldSeed}`, 'world');
+        // Hardcore tuning snapshot — lets session logs show exactly what modifiers were active
+        const _hc = this.hc;
+        this._log(
+          `HC tuning  hp=${_hc.maxHpMult}x  camp=${_hc.campfireHeal}  bed=${_hc.bedHealPerTick}  food=${_hc.foodHealMult}x  med=${_hc.medkitHeal}  ` +
+          `diff=${_hc.diffBase}+${_hc.diffRamp}/day cap=${_hc.diffCap}x  night=${_hc.nightMult}x  wave=${_hc.waveInterval/1000}s  ` +
+          `den=${_hc.denRespawn/1000}/${_hc.waterDenRespawn/1000}s  huntDay=${_hc.huntingPartyStartDay}  ` +
+          `boss=day${_hc.bossStartDay} hp${_hc.bossHpMult}x dmg${_hc.bossDmgMult}x  raidBack=${_hc.raidRespawnDays}d  ` +
+          `loot=${_hc.resourceDropMult}x rareBossOnly=${_hc.rareDropsBossOnly}  fog=${_hc.fogRevealMult}x  mmOff=${_hc.minimapDefaultOff}`,
+          'world'
+        );
         this.physics.world.setBounds(0, 0, worldW, worldH);
         _setProgress(5, 'Seeding biomes...');
         this._log('World init: biome seeds', 'world');
