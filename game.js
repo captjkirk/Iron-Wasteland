@@ -7398,7 +7398,7 @@ class GameScene extends Phaser.Scene {
     if (!this.enemyDens) return;
     this.enemyDens.forEach(den => {
       den.respawnTimer += delta;
-      if (den.respawnTimer >= 30000) {
+      if (den.respawnTimer >= this.hc.denRespawn) {
         den.respawnTimer = 0;
         if (this.enemies.length >= CFG.MAX_ENEMIES) return;
         // Only respawn when a player is nearby — prevents offscreen accumulation
@@ -7444,7 +7444,7 @@ class GameScene extends Phaser.Scene {
     if (!this.waterDens) return;
     this.waterDens.forEach(den => {
       den.respawnTimer += delta;
-      if (den.respawnTimer < 25000) return;
+      if (den.respawnTimer < this.hc.waterDenRespawn) return;
       den.respawnTimer = 0;
       if (this.enemies.length >= CFG.MAX_ENEMIES) return;
       // Only respawn when a player is nearby — prevents offscreen accumulation
@@ -8387,7 +8387,7 @@ class GameScene extends Phaser.Scene {
     // this.enemies already initialised in create() so water lurkers from _buildLakes are preserved
     this.waveNum = 0;
     this.waveTimer = 0;
-    this.WAVE_INTERVAL = 90000; // 90 seconds between waves
+    this.WAVE_INTERVAL = this.hc.waveInterval; // Survival 90s / Hardcore 75s
     this._spawnGroup(worldW, worldH, cx, cy, { wolf:15, rat:20, bear:6 }, false);
 
     // Initial biome-exclusive enemy spawns
@@ -8822,10 +8822,12 @@ class GameScene extends Phaser.Scene {
   }
 
   // Day-based difficulty multiplier.
-  // Day 1 = 1.0× (base tuned values). Grows 10% per day, caps at 3.0× on day 21+.
+  // Survival: base 1.0, +10% per day, cap 3.0× on day 21+.
+  // Hardcore: base 1.15, +15% per day, cap 3.5× (see this.hc).
   // Applies to enemy HP, damage, speed, and attack rate at spawn time.
   _diffMult() {
-    return Math.min(3.0, 1 + (this.dayNum - 1) * 0.1);
+    const hc = this.hc || { diffBase: 1.0, diffRamp: 0.10, diffCap: 3.0 };
+    return Math.min(hc.diffCap, hc.diffBase + (this.dayNum - 1) * hc.diffRamp);
   }
 
   _spawnGroup(worldW, worldH, cx, cy, counts, fromEdges) {
@@ -9292,7 +9294,7 @@ class GameScene extends Phaser.Scene {
         if (d < nearDist) { nearDist = d; nearest = p; }
       });
       if (!nearest) { e.spr.setVelocity(0,0); return; }
-      const nightMult = (this.isNight) ? 1.35 : 1;
+      const nightMult = (this.isNight) ? this.hc.nightMult : 1;
       const aggroRange = e.aggroRange * nightMult;
 
       if (nearDist < aggroRange) {
@@ -9449,7 +9451,7 @@ class GameScene extends Phaser.Scene {
       this.hint('Dawn of Day ' + this.dayNum + ' \u2014 enemies grow stronger!', 3000);
       if (this.dayNum === 2) this._tutTrigger('caches');
       // Periodic hunting party — separate cadence from raid camp respawn.
-      if (this.dayNum >= (this.huntNextDay || 0) && this.dayNum >= 2) {
+      if (this.dayNum >= (this.huntNextDay || 0) && this.dayNum >= this.hc.huntingPartyStartDay) {
         this.huntNextDay = this.dayNum + Phaser.Math.Between(2, 3);
         this.time.delayedCall(6000, () => { if (!this.isOver) this.spawnHuntingParty(); });
       }
