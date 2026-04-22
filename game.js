@@ -5799,7 +5799,9 @@ class GameScene extends Phaser.Scene {
     const push = o => { this.bObjs.push(o); this._h(o); return o; };
     const t = (x,y,str,sty) => push(this.add.text(x,y,str,sty).setDepth(211));
 
-    push(this.add.graphics().setDepth(210)).fillStyle(0x000000, 0.92).fillRect(0,0,W,H);
+    // 0.70 alpha so the player can still see the world they're stepping
+    // away from — earlier 0.92 felt like a full scene transition.
+    push(this.add.graphics().setDepth(210)).fillStyle(0x000000, 0.70).fillRect(0,0,W,H);
     t(W/2,52,'BARRACKS \u2014 SWAP CHARACTER',{ fontFamily:'monospace', fontSize:'24px', color:'#cc8833', stroke:'#000', strokeThickness:3 }).setOrigin(0.5);
     this.bHintText = t(W/2, 90, '', { fontFamily:'monospace', fontSize:'13px', color:'#666677' }).setOrigin(0.5);
 
