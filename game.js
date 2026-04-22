@@ -3256,11 +3256,27 @@ class SettingsScene extends Phaser.Scene {
 
   create() {
     const { W, H } = CFG;
-    this.cameras.main.fadeIn(300, 0, 0, 0);
+    const fromGame = this._returnTo === 'Game';
+    // Skip the menu fade-in when we're popping over a paused game — the
+    // pause overlay should appear instantly so the player knows the world froze.
+    if (!fromGame) this.cameras.main.fadeIn(300, 0, 0, 0);
 
     const bg = this.add.graphics();
-    bg.fillGradientStyle(0x0a0a14, 0x0a0a14, 0x080810, 0x080810, 1);
-    bg.fillRect(0, 0, W, H);
+    if (fromGame) {
+      // Pause overlay: 65% dim so the frozen world peeks through.
+      bg.fillStyle(0x000000, 0.65).fillRect(0, 0, W, H);
+    } else {
+      bg.fillGradientStyle(0x0a0a14, 0x0a0a14, 0x080810, 0x080810, 1);
+      bg.fillRect(0, 0, W, H);
+    }
+
+    // Discreet PAUSED watermark — only when overlaying gameplay.
+    if (fromGame) {
+      this.add.text(20, 22, '⏸ PAUSED', {
+        fontFamily:'monospace', fontSize:'14px', color:'#88aabb',
+        stroke:'#000', strokeThickness:2, letterSpacing: 3,
+      }).setOrigin(0, 0.5);
+    }
 
     this.add.text(W/2, 44, 'SETTINGS', {
       fontFamily:'monospace', fontSize:'36px', color:'#cc8833',
@@ -5768,12 +5784,12 @@ class GameScene extends Phaser.Scene {
 
   openPauseSettings() {
     this._log('game paused — settings opened', 'player');
-    this.cameras.main.fadeOut(200, 0, 0, 0);
-    this.time.delayedCall(200, () => {
-      this.scene.pause();
-      this.scene.launch('Settings', { returnTo: 'Game' });
-      this.scene.bringToTop('Settings');
-    });
+    // Pause immediately so the world freezes mid-frame; Settings overlays on top.
+    // We deliberately do NOT fade the world to black — Settings now uses a
+    // semi-transparent background so the paused world peeks through.
+    this.scene.pause();
+    this.scene.launch('Settings', { returnTo: 'Game' });
+    this.scene.bringToTop('Settings');
   }
 
   // ── BARRACKS OVERLAY ─────────────────────────────────────────
