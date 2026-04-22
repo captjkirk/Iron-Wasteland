@@ -444,7 +444,16 @@ const SFX = {
   wrench() { this._play(220,'square',0.06,0.35,'drop'); this._play(140,'sawtooth',0.1,0.15); },
   shoot()  { this._noise(0.06,0.6); this._play(800,'square',0.04,0.3,'drop'); },
   reload() { this._play(400,'square',0.03,0.2); this._play(600,'square',0.03,0.15); },
-  hit()    { this._play(160,'sawtooth',0.08,0.5,'drop'); this._noise(0.05,0.3); },
+  hit(type) {
+    // Pitch by enemy mass: heavier = lower thud, lighter = higher yip.
+    // Falls back to the original 160 Hz for anything unrecognised.
+    let f = 160;
+    if (type === 'bear' || type === 'heavy') f = 90;
+    else if (type === 'rat' || type === 'dust_hound' || type === 'ice_crawler') f = 220;
+    else if (typeof type === 'string' && type.startsWith('boss_')) f = 65;
+    this._play(f, 'sawtooth', 0.08, 0.5, 'drop');
+    this._noise(0.05, 0.3);
+  },
   playerHurt() { this._play(200,'sawtooth',0.15,0.6,'drop'); },
   enemyDie()   { this._play(120,'square',0.2,0.5,'drop'); this._noise(0.1,0.25); },
 };
@@ -6884,9 +6893,11 @@ class GameScene extends Phaser.Scene {
         const baseDmg = raider.dmg * 0.7;
         const dmg = this._knightShieldBlock(p, bullet.x, bullet.y, baseDmg);
         bullet.destroy();
-        p.hp = Math.max(0, p.hp - dmg);
-        this._log(`${p.charData.player} shot by raider  dmg=${Math.round(dmg)}  hp=${p.hp}/${p.maxHp}`, 'combat');
+        const _rdmg = Math.round(dmg);
+        p.hp = Math.max(0, p.hp - _rdmg);
+        this._log(`${p.charData.player} shot by raider  dmg=${_rdmg}  hp=${p.hp}/${p.maxHp}`, 'combat');
         SFX.playerHurt();
+        this._floatDamage(p.spr.x, p.spr.y - 18, _rdmg);
         // Only apply red hurt tint if shield didn't already flash blue
         if (dmg >= baseDmg) {
           p.spr.setTint(0xff0000);
@@ -7198,6 +7209,7 @@ class GameScene extends Phaser.Scene {
             nearest.hp = Math.max(0, nearest.hp - b.dmg);
             this._log(nearest.charData.player + ' hit for ' + b.dmg + '  hp=' + nearest.hp + '/' + nearest.maxHp, 'combat');
             SFX.playerHurt();
+            this._floatDamage(nearest.spr.x, nearest.spr.y - 18, b.dmg);
             nearest.spr.setTint(0xff0000);
             this.cameras.main.shake(300, 0.008);
             this.time.delayedCall(200, () => {
@@ -7333,6 +7345,7 @@ class GameScene extends Phaser.Scene {
           p.hp = Math.max(0, p.hp - slamDmg);
           this._log(`${p.charData.player} boss stomp  dmg=${slamDmg}  hp=${p.hp}/${p.maxHp}`, 'combat');
           SFX.playerHurt();
+          this._floatDamage(p.spr.x, p.spr.y - 18, slamDmg);
           p.spr.setTint(b.type === 'boss_troll' ? 0x88ccff : 0xff4400);
           this.time.delayedCall(250, () => {
             if (!p.spr?.active) return;
@@ -7357,6 +7370,7 @@ class GameScene extends Phaser.Scene {
             p.hp = Math.max(0, p.hp - chargeDmg);
             this._log(`${p.charData.player} troll charge  dmg=${chargeDmg}  hp=${p.hp}/${p.maxHp}`, 'combat');
             SFX.playerHurt();
+            this._floatDamage(p.spr.x, p.spr.y - 18, chargeDmg);
             p.spr.setTint(0xff8800);
             this.cameras.main.shake(250, 0.01);
             this.time.delayedCall(200, () => {
@@ -7390,6 +7404,7 @@ class GameScene extends Phaser.Scene {
             p.hp = Math.max(0, p.hp - sprayDmg);
             this._log(`${p.charData.player} boss spray  dmg=${sprayDmg}  hp=${p.hp}/${p.maxHp}`, 'combat');
             SFX.playerHurt();
+            this._floatDamage(p.spr.x, p.spr.y - 18, sprayDmg);
             p.spr.setTint(col);
             // Spider Queen web: root player briefly (1.5s)
             if (b.type === 'boss_spider' && !p._webbed) {
@@ -7934,9 +7949,53 @@ class GameScene extends Phaser.Scene {
         duration: 80, yoyo: true, ease: 'Quad.Out',
       });
     }
-    SFX.hit();
+    SFX.hit(e.type);
+    // Floating damage number — styled by magnitude so big crits pop visually.
+    this._floatDamage(e.spr.x, e.spr.y - (e.isBoss ? 28 : 14), dmg);
+    // Hit-pause: brief physics freeze on impact for weight. Guarded so
+    // multiple hits in the same frame don't stack into a visible stutter.
+    this._hitPause(40);
     this._log(e.type + ' hit  dmg=' + dmg + '  hp=' + e.hp + '/' + (e.maxHp || '?'), 'combat');
     if (e.hp <= 0) this.killEnemy(e);
+  }
+
+  // Brief physics-world freeze (ms) for impact weight. No-op if a prior
+  // pause is still in flight — prevents cumulative stutter on multi-hit frames.
+  _hitPause(ms) {
+    if (this._hitPauseActive || this.isOver || !this.physics || !this.physics.world) return;
+    this._hitPauseActive = true;
+    try { this.physics.world.pause(); } catch(e) {}
+    this.time.delayedCall(ms, () => {
+      this._hitPauseActive = false;
+      try { this.physics.world.resume(); } catch(e) {}
+    });
+  }
+
+  // Floating damage number — reuses the pickup-float pattern but colour-codes
+  // by magnitude so bigger hits feel impactful.
+  //   < 15   off-white (chip)
+  //   15-39  yellow    (solid)
+  //   40+    orange    (heavy / crit)
+  _floatDamage(x, y, dmg) {
+    if (!dmg || dmg < 1) return;
+    const colour = dmg >= 40 ? '#ff8844' : dmg >= 15 ? '#ffee44' : '#e8e8ee';
+    const size   = dmg >= 40 ? '15px'    : dmg >= 15 ? '13px'    : '11px';
+    const t = this.add.text(x, y, '-' + dmg, {
+      fontFamily: 'monospace', fontSize: size, color: colour,
+      stroke: '#000000', strokeThickness: 3,
+    }).setOrigin(0.5, 1).setDepth(150).setAlpha(1);
+    if (this.hudCam) this.hudCam.ignore(t);
+    // Slight horizontal jitter so multi-hits in one frame don't stack perfectly.
+    const jx = (Math.random() - 0.5) * 14;
+    this.tweens.add({
+      targets: t, x: x + jx, y: y - 22, duration: 520, ease: 'Cubic.Out',
+      onComplete: () => {
+        this.tweens.add({
+          targets: t, y: y - 40, alpha: 0, duration: 260,
+          ease: 'Cubic.In', onComplete: () => t.destroy(),
+        });
+      },
+    });
   }
 
   // Floating pickup notification — shows "+N Item" rising from world position
@@ -9434,6 +9493,7 @@ class GameScene extends Phaser.Scene {
             nearest.hp = Math.max(0, nearest.hp);
             this._log(`${e.type} hit ${nearest.charData.player} dmg=${dmg} hp=${nearest.hp}/${nearest.maxHp}`, 'combat');
             SFX.playerHurt();
+            this._floatDamage(nearest.spr.x, nearest.spr.y - 18, Math.round(dmg));
             if (nearest.isSleeping) { this.wakePlayer(nearest); this._hideSleepIndicator(); this.hint(nearest.charData.player + ' was woken by an enemy!', 2000); }
             // Only apply red hurt tint if shield didn't already flash blue
             if (dmg >= e.dmg) {
