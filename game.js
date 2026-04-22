@@ -47,6 +47,23 @@ const CFG = {
   MAX_ENEMIES: 280, // hard cap on this.enemies.length across all spawners (den/wave)
 };
 
+// ── ENEMY LOOT TABLES ─────────────────────────────────────────
+// Format: [item_key, base_chance, flags]  flags: 0=plain, 1=multiply by foodMult, 2=rare (skip if hc.rareDropsBossOnly)
+// Chance > 1 = always drops (bears always drop metal regardless of rdm).
+const _RAIDER_LOOT = [['item_ammo', 0.6, 0], ['item_metal', 0.4, 0], ['item_food', 0.3, 1]];
+const ENEMY_LOOT = {
+  wolf:         [['item_fiber', 0.5, 0], ['item_metal', 0.3, 0]],
+  rat:          [['item_fiber', 0.6, 0], ['item_ammo',  0.25, 0]],
+  bear:         [['item_metal', 1e9, 0], ['item_wood',  0.5, 0], ['item_fiber', 0.4, 0]],
+  brawler:      _RAIDER_LOOT,
+  shooter:      _RAIDER_LOOT,
+  heavy:        _RAIDER_LOOT,
+  ice_crawler:  [['item_fiber', 0.5, 0], ['item_rare', 0.2, 2]],
+  spider_ruins: [['item_fiber', 0.7, 0], ['item_metal', 0.25, 0]],
+  bog_lurker:   [['item_food',  0.5, 1], ['item_fiber', 0.3, 0]],
+  dust_hound:   [['item_food',  0.4, 1], ['item_fiber', 0.35, 0]],
+};
+
 // ── WORLD GEN CONFIG KNOBS ────────────────────────────────────
 CFG.POND_SPECS    = { swamp:35, tundra:25, fungal:20, grass:16, grass_near:8 };
 CFG.LAKE_SPECS    = ['grass','grass','swamp','swamp','waste','tundra','fungal'];
@@ -5588,7 +5605,7 @@ class GameScene extends Phaser.Scene {
 
     let anyReviving = false;
     for (const { downed, rescuer } of pairs) {
-      if (!downed || !rescuer || !downed.isDowned || !rescuer.spr.visible) continue;
+      if (!downed || !rescuer || !downed.spr || !rescuer.spr || !downed.isDowned || !rescuer.spr.visible) continue;
       if (downed.hp <= 0 && !downed.isDowned) continue;
 
       const dist = Phaser.Math.Distance.Between(downed.spr.x, downed.spr.y, rescuer.spr.x, rescuer.spr.y);
@@ -6260,6 +6277,9 @@ class GameScene extends Phaser.Scene {
     this.applyTerrainEffects(this.p1);
     if (this.p2) this.applyTerrainEffects(this.p2);
 
+    // Cache active players once per frame — reused by updateEnemyDens, updateWaterDens, etc.
+    this._activePlayers = [this.p1, this.p2].filter(p => p && p.spr && p.spr.active);
+
     // Water submersion visual overlay
     this._updateWaterSubmersion(this.p1);
     if (this.p2) this._updateWaterSubmersion(this.p2);
@@ -6338,11 +6358,15 @@ class GameScene extends Phaser.Scene {
       this._tcLabels[name] = t;
     }
 
-    // Pointer event handlers
-    this.input.on('pointerdown', this._onTouchDown, this);
-    this.input.on('pointermove', this._onTouchMove, this);
-    this.input.on('pointerup',   this._onTouchUp,   this);
-    this.input.on('pointerupoutside', this._onTouchUp, this);
+    // Remove before re-adding to prevent listener accumulation on scene restart
+    this.input.off('pointerdown',       this._onTouchDown, this);
+    this.input.off('pointermove',       this._onTouchMove, this);
+    this.input.off('pointerup',         this._onTouchUp,   this);
+    this.input.off('pointerupoutside',  this._onTouchUp,   this);
+    this.input.on('pointerdown',        this._onTouchDown, this);
+    this.input.on('pointermove',        this._onTouchMove, this);
+    this.input.on('pointerup',          this._onTouchUp,   this);
+    this.input.on('pointerupoutside',   this._onTouchUp,   this);
   }
 
   _onTouchDown(pointer) {
@@ -6831,7 +6855,7 @@ class GameScene extends Phaser.Scene {
   updateRaiders(delta) {
     // Shooters fire projectiles; brawlers get a charge lunge
     if (!this.raiders || this.isOver) return;
-    const players = [this.p1, this.p2].filter(p => p && !p.isDowned && p.hp > 0 && p.spr.visible);
+    const players = [this.p1, this.p2].filter(p => p && p.spr && !p.isDowned && p.hp > 0 && p.spr.visible);
 
     this.raiders.forEach(raider => {
       if (raider.hp <= 0 || !raider.spr.active) return;
@@ -7459,8 +7483,9 @@ class GameScene extends Phaser.Scene {
         den.respawnTimer = 0;
         if (this.enemies.length >= CFG.MAX_ENEMIES) return;
         // Only respawn when a player is nearby — prevents offscreen accumulation
-        const _ap = [this.p1, this.p2].filter(p => p && p.spr && p.spr.active);
-        const nearDist = _ap.length ? Math.min(..._ap.map(p => Phaser.Math.Distance.Between(den.x, den.y, p.spr.x, p.spr.y))) : Infinity;
+        const _ap = this._activePlayers || [];
+        let nearDist = Infinity;
+        for (const p of _ap) { const _d = Phaser.Math.Distance.Between(den.x, den.y, p.spr.x, p.spr.y); if (_d < nearDist) nearDist = _d; }
         if (nearDist > 1200) return;
         // Cap per-den live population
         den.liveCount = den.liveCount || 0;
@@ -7488,7 +7513,8 @@ class GameScene extends Phaser.Scene {
         den.liveCount++;
         // Start dormant if far from all players
         {
-          const _sd = _ap.length ? Math.min(..._ap.map(p => Phaser.Math.Distance.Between(ex, ey, p.spr.x, p.spr.y))) : Infinity;
+          let _sd = Infinity;
+          for (const p of _ap) { const _d = Phaser.Math.Distance.Between(ex, ey, p.spr.x, p.spr.y); if (_d < _sd) _sd = _d; }
           if (_sd > CFG.DORMANT_RADIUS) { e._dormant = true; spr.setVisible(false); if (spr.body) { spr.body.enable = false; this.physics.world.bodies.delete(spr.body); } }
         }
         this._log(`Den respawn: ${type}  total_enemies=${this.enemies.length+1}`, 'world');
@@ -7505,8 +7531,9 @@ class GameScene extends Phaser.Scene {
       den.respawnTimer = 0;
       if (this.enemies.length >= CFG.MAX_ENEMIES) return;
       // Only respawn when a player is nearby — prevents offscreen accumulation
-      const _ap = [this.p1, this.p2].filter(p => p && p.spr && p.spr.active);
-      const nearDist = _ap.length ? Math.min(..._ap.map(p => Phaser.Math.Distance.Between(den.x, den.y, p.spr.x, p.spr.y))) : Infinity;
+      const _ap = this._activePlayers || [];
+      let nearDist = Infinity;
+      for (const p of _ap) { const _d = Phaser.Math.Distance.Between(den.x, den.y, p.spr.x, p.spr.y); if (_d < nearDist) nearDist = _d; }
       if (nearDist > 1200) return;
       // Cap per-den live population
       den.liveCount = den.liveCount || 0;
@@ -7632,7 +7659,7 @@ class GameScene extends Phaser.Scene {
   }
 
   checkBarrackRange() {
-    const near = p => p && Phaser.Math.Distance.Between(p.spr.x, p.spr.y, this.bPos.x, this.bPos.y) < 110;
+    const near = p => p && p.spr && Phaser.Math.Distance.Between(p.spr.x, p.spr.y, this.bPos.x, this.bPos.y) < 110;
     this.bPrompt.setVisible(near(this.p1) || near(this.p2));
   }
 
@@ -8114,7 +8141,7 @@ class GameScene extends Phaser.Scene {
     if (fps < 30 && (!this._lastFpsWarn || (this.timeAlive||0) - this._lastFpsWarn > 10)) {
       this._lastFpsWarn = this.timeAlive || 0;
       const _all = this.enemies || [];
-      const _activeCount = _all.filter(e => e.spr?.active && !e._dormant).length;
+      const _activeCount = this._activeEnemyCount ?? _all.filter(e => e.spr?.active && !e._dormant).length;
       const _bodies = this.physics.world.bodies.size;
       this._dbgEntries && this._dbgEntries.push(
         `T${Math.floor((this.timeAlive||0)/60).toString().padStart(2,'0')}:${(Math.floor(this.timeAlive||0)%60).toString().padStart(2,'0')} [PERF  ] FPS drop: ${fps}  active=${_activeCount}/${_all.length}  bodies=${_bodies}`
@@ -8122,7 +8149,7 @@ class GameScene extends Phaser.Scene {
     }
     const t      = Math.floor(this.timeAlive || 0);
     const ts     = `${Math.floor(t/60).toString().padStart(2,'0')}:${(t%60).toString().padStart(2,'0')}`;
-    const active = (this.enemies || []).filter(e => e.spr?.active && !e._dormant).length;
+    const active = this._activeEnemyCount ?? (this.enemies || []).filter(e => e.spr?.active && !e._dormant).length;
     const total  = (this.enemies || []).length;
     const phase  = this.isNight ? 'NIGHT' : 'DAY';
     const p1s    = this.p1
@@ -8201,8 +8228,9 @@ class GameScene extends Phaser.Scene {
     if (e._den) e._den.liveCount = Math.max(0, (e._den.liveCount || 0) - 1);
     this.kills++;
     this._log('Enemy killed  type=' + e.type + '  kills=' + this.kills, 'combat');
-    // Remove from update loop immediately so dead entries don't accumulate
-    this.enemies = this.enemies.filter(e2 => e2 !== e);
+    // Remove from update loop immediately — splice avoids reallocating the whole array
+    const _ei = this.enemies.indexOf(e);
+    if (_ei !== -1) this.enemies.splice(_ei, 1);
     SFX.enemyDie();
     // Stop movement immediately — prevent corpse from drifting
     if (e.spr.body) { e.spr.body.setVelocity(0, 0); e.spr.body.enable = false; }
@@ -8222,7 +8250,7 @@ class GameScene extends Phaser.Scene {
     });
     // Raider kill — check if camp cleared
     if (e.isRaider) {
-      this.raiders = this.raiders.filter(r => r !== e);
+      const _ri = this.raiders.indexOf(e); if (_ri !== -1) this.raiders.splice(_ri, 1);
       if (this.raiders.length === 0 && this.raidCamp) {
         const _raidDays = this.hc.raidRespawnDays;
         this._log(`Raider camp cleared!  day=${this.dayNum}  kills=${this.kills}  raiders_return_day=${this.dayNum+_raidDays}`, 'world');
@@ -8409,35 +8437,13 @@ class GameScene extends Phaser.Scene {
       const foodMult = Math.max(0.35, 1 - 0.12 * ((this.dayNum || 1) - 1));
       // All enemies drop food sometimes
       if (Math.random() < 0.4 * foodMult * rdm) drops.push('item_food');
-      // Type-specific drops
-      if (enemyType === 'wolf') {
-        if (Math.random() < 0.5  * rdm) drops.push('item_fiber');
-        if (Math.random() < 0.3  * rdm) drops.push('item_metal');
-      } else if (enemyType === 'rat') {
-        if (Math.random() < 0.6  * rdm) drops.push('item_fiber');
-        if (Math.random() < 0.25 * rdm) drops.push('item_ammo');
-      } else if (enemyType === 'bear') {
-        drops.push('item_metal');
-        if (Math.random() < 0.5  * rdm) drops.push('item_wood');
-        if (Math.random() < 0.4  * rdm) drops.push('item_fiber');
-      } else if (enemyType === 'brawler' || enemyType === 'shooter' || enemyType === 'heavy') {
-        // Raiders drop ammo and supplies
-        if (Math.random() < 0.6  * rdm) drops.push('item_ammo');
-        if (Math.random() < 0.4  * rdm) drops.push('item_metal');
-        if (Math.random() < 0.3  * foodMult * rdm) drops.push('item_food');
-      } else if (enemyType === 'ice_crawler') {
-        if (Math.random() < 0.5  * rdm) drops.push('item_fiber');
-        // Rare from lesser enemies is blocked in Hardcore (bosses + caches only)
-        if (!this.hc.rareDropsBossOnly && Math.random() < 0.2 * rdm) drops.push('item_rare');
-      } else if (enemyType === 'spider_ruins') {
-        if (Math.random() < 0.7  * rdm) drops.push('item_fiber');
-        if (Math.random() < 0.25 * rdm) drops.push('item_metal');
-      } else if (enemyType === 'bog_lurker') {
-        if (Math.random() < 0.5  * foodMult * rdm) drops.push('item_food');
-        if (Math.random() < 0.3  * rdm) drops.push('item_fiber');
-      } else if (enemyType === 'dust_hound') {
-        if (Math.random() < 0.4  * foodMult * rdm) drops.push('item_food');
-        if (Math.random() < 0.35 * rdm) drops.push('item_fiber');
+      // Type-specific drops via lookup table (flags: 0=plain rdm, 1=foodMult*rdm, 2=rare/hc-blocked)
+      const _loot = ENEMY_LOOT[enemyType];
+      if (_loot) {
+        for (const [item, chance, flags] of _loot) {
+          if (flags === 2 && this.hc.rareDropsBossOnly) continue;
+          if (Math.random() < chance * (flags === 1 ? foodMult : 1) * rdm) drops.push(item);
+        }
       }
     }
     drops.forEach((key, i) => {
@@ -8987,8 +8993,9 @@ class GameScene extends Phaser.Scene {
         const e = { spr, hp, maxHp:hp, speed:spd, dmg, atkInterval, type:t.key, attackTimer:0, wanderTimer:Phaser.Math.Between(0,2000), aggroRange:aggroR, attackRange:atkR, sizeMult };
         // Start dormant if far from all players
         {
-          const _ap = [this.p1, this.p2].filter(p => p && p.spr && p.spr.active);
-          const _sd = _ap.length ? Math.min(..._ap.map(p => Phaser.Math.Distance.Between(ex, ey, p.spr.x, p.spr.y))) : Infinity;
+          const _ap = this._activePlayers || [this.p1, this.p2].filter(p => p && p.spr && p.spr.active);
+          let _sd = Infinity;
+          for (const p of _ap) { const _d = Phaser.Math.Distance.Between(ex, ey, p.spr.x, p.spr.y); if (_d < _sd) _sd = _d; }
           if (_sd > CFG.DORMANT_RADIUS) { e._dormant = true; spr.setVisible(false); if (spr.body) { spr.body.enable = false; this.physics.world.bodies.delete(spr.body); } }
         }
         this.enemies.push(e);
@@ -9002,7 +9009,7 @@ class GameScene extends Phaser.Scene {
       this.waveTimer = 0;
       this.waveNum++;
       if (this.enemies.length >= CFG.MAX_ENEMIES) {
-        this._log('Wave ' + (this.waveNum+1) + ' capped — MAX_ENEMIES reached (' + this.enemies.length + ')', 'world');
+        this._log('Wave ' + this.waveNum + ' capped — MAX_ENEMIES reached (' + this.enemies.length + ')', 'world');
         return;
       }
       // Escalating counts
@@ -9017,8 +9024,8 @@ class GameScene extends Phaser.Scene {
         this._spawnBiomeEnemy('bog_lurker',   'swamp',  Math.min(1 + wn, 4),  1);
         this._spawnBiomeEnemy('dust_hound',   'waste',  Math.min(3 * wn, 9),  3);
       }
-      this._log('Wave ' + (this.waveNum+1) + ' day=' + this.dayNum + ' diff=' + this._diffMult().toFixed(1) + 'x  w=' + w + ' r=' + r + ' b=' + b, 'world');
-      this.hint('Wave ' + (this.waveNum+1) + '! Enemies approaching from the wastes!', 3000);
+      this._log('Wave ' + this.waveNum + ' day=' + this.dayNum + ' diff=' + this._diffMult().toFixed(1) + 'x  w=' + w + ' r=' + r + ' b=' + b, 'world');
+      this.hint('Wave ' + this.waveNum + '! Enemies approaching from the wastes!', 3000);
       SFX._play(200, 'sawtooth', 0.3, 0.4, 'drop');
     }
   }
@@ -9239,14 +9246,17 @@ class GameScene extends Phaser.Scene {
 
   updateEnemies(delta) {
     if (!this.enemies || this.isOver) return;
-    const players = [this.p1, this.p2].filter(p => p && !p.isDowned && p.hp > 0 && p.spr.visible);
+    const players = [this.p1, this.p2].filter(p => p && p.spr && !p.isDowned && p.hp > 0 && p.spr.visible);
+    // Flat player positions cached once per frame — avoids repeated .spr chain dereference in hot loops
+    const _pPos = players.map(p => ({ x: p.spr.x, y: p.spr.y }));
     // Hoist camera view once per frame for dormancy + culling checks
     const _cam = this.cameras.main;
     const _view = _cam.worldView;
     const _VIEW_BUF = 400; // px buffer outside viewport before hiding sprite
-    // Count active enemies once per frame for MAX_ACTIVE_ENEMIES cap
+    // Count active enemies once per frame for MAX_ACTIVE_ENEMIES cap; cached on scene for _dbgRefresh
     let _activeCount = 0;
     for (const _e of this.enemies) { if (_e.spr?.active && !_e._dormant) _activeCount++; }
+    this._activeEnemyCount = _activeCount;
 
     this.enemies.forEach(e => {
       if (e.dying || !e.spr.active) return;
@@ -9256,8 +9266,8 @@ class GameScene extends Phaser.Scene {
       // Raiders are always aggressive — never dormant. Boss already excluded above.
       if (!e.isRaider) {
         let _minDist2 = Infinity;
-        for (const p of players) {
-          const _dx = e.spr.x - p.spr.x, _dy = e.spr.y - p.spr.y;
+        for (const _pp of _pPos) {
+          const _dx = e.spr.x - _pp.x, _dy = e.spr.y - _pp.y;
           const _d2 = _dx * _dx + _dy * _dy;
           if (_d2 < _minDist2) _minDist2 = _d2;
         }
@@ -9266,7 +9276,7 @@ class GameScene extends Phaser.Scene {
           if (_minDist2 < CFG.WAKE_RADIUS * CFG.WAKE_RADIUS && _activeCount < CFG.MAX_ACTIVE_ENEMIES) {
             // Wake up (only if under active-enemy cap)
             e._dormant = false;
-            if (e.spr.body) {
+            if (e.spr.body && !e.spr.body.destroyed) {
               this.physics.world.bodies.set(e.spr.body);
               e.spr.body.enable = true;
               e.spr.body.reset(e.spr.x, e.spr.y);
@@ -9513,7 +9523,8 @@ class GameScene extends Phaser.Scene {
         }
         if (e.isRaider) {
           const _dirSuffix = _dir === 'side' ? '' : '_' + _dir;
-          e.spr.setTexture('raider_' + e.type + _dirSuffix + (_moving ? _step : ''));
+          const _tex = 'raider_' + e.type + _dirSuffix + (_moving ? _step : '');
+          if (e._lastTexKey !== _tex) { e._lastTexKey = _tex; e.spr.setTexture(_tex); }
         }
       }
     });
