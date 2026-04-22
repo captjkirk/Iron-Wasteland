@@ -3277,22 +3277,42 @@ class ModeSelectScene extends Phaser.Scene {
   }
 
   setMode(mode) {
+    const changed = this.selMode !== mode;
     this.selMode = mode;
     this.pBoxes.forEach(b => {
-      this.drawBox(b.box, b.x, b.y, b.mode === mode, 0x6699ff, false);
-      b.lbl.setColor(b.mode === mode ? '#88aaff' : '#aaaaaa');
+      const isSel = b.mode === mode;
+      this.drawBox(b.box, b.x, b.y, isSel, 0x6699ff, false);
+      b.lbl.setColor(isSel ? '#88aaff' : '#aaaaaa');
+      // Quick scale punch on the newly-chosen label so selection feels tactile.
+      if (changed && isSel) this._punchLabel(b.lbl);
+      else if (changed && !isSel) b.lbl.setScale(1);
     });
     this.updatePrompt();
   }
 
   setDiff(diff) {
+    const changed = this.selDiff !== diff;
     this.selDiff = diff;
     const cols = { survival: 0x33cc55, hardcore: 0xff4444 };
     this.dBoxes.forEach(b => {
-      this.drawBox(b.box, b.x, b.y, b.diff === diff, cols[b.diff], true);
-      b.lbl.setColor(b.diff === diff ? (diff === 'hardcore' ? '#ff6666' : '#55ee77') : '#aaaaaa');
+      const isSel = b.diff === diff;
+      this.drawBox(b.box, b.x, b.y, isSel, cols[b.diff], true);
+      b.lbl.setColor(isSel ? (diff === 'hardcore' ? '#ff6666' : '#55ee77') : '#aaaaaa');
+      if (changed && isSel) this._punchLabel(b.lbl);
+      else if (changed && !isSel) b.lbl.setScale(1);
     });
     this.updatePrompt();
+  }
+
+  // Brief scale-up tween (1.0 → 1.06 → 1.0) used for selection feedback.
+  _punchLabel(lbl) {
+    if (!lbl || !lbl.active) return;
+    this.tweens.killTweensOf(lbl);
+    lbl.setScale(1);
+    this.tweens.add({
+      targets: lbl, scale: 1.06, duration: 110, ease: 'Quad.Out',
+      yoyo: true,
+    });
   }
 
   updatePrompt() {
