@@ -6939,9 +6939,11 @@ class GameScene extends Phaser.Scene {
     const hpBar = this.add.graphics().setDepth(14);
     if (this.hudCam) { this.hudCam.ignore(hpBg); this.hudCam.ignore(hpBar); }
 
+    const _bossHp  = Math.max(1, Math.round(bt.hp  * this.hc.bossHpMult));
+    const _bossDmg = Math.max(1, Math.round(bt.dmg * this.hc.bossDmgMult));
     this.boss = {
-      spr, hp: bt.hp, maxHp: bt.hp,
-      speed: bt.speed, dmg: bt.dmg, name: bt.name,
+      spr, hp: _bossHp, maxHp: _bossHp,
+      speed: bt.speed, dmg: _bossDmg, name: bt.name,
       isBoss: true, type: bt.key,
       attackTimer: 0, atkInterval: 2200,
       aggroRange: 99999, attackRange: 70, wanderTimer: 0, sizeMult: 1,
@@ -6955,7 +6957,7 @@ class GameScene extends Phaser.Scene {
     this.enemies.push(this.boss);
 
     // Announce arrival
-    this._log(`Boss spawned: ${bt.name}  hp=${bt.hp}  day=${this.dayNum}  diff=${this._diffMult().toFixed(1)}x`, 'world');
+    this._log(`Boss spawned: ${bt.name}  hp=${_bossHp}  dmg=${_bossDmg}  day=${this.dayNum}  diff=${this._diffMult().toFixed(1)}x`, 'world');
     this.hint('\u2620 ' + bt.name.toUpperCase() + ' APPROACHES! \u2620', 6000);
     SFX.bossRoar();
     this._log('spawnBoss: roar done', 'world');
@@ -8123,9 +8125,10 @@ class GameScene extends Phaser.Scene {
     if (e.isRaider) {
       this.raiders = this.raiders.filter(r => r !== e);
       if (this.raiders.length === 0 && this.raidCamp) {
-        this._log(`Raider camp cleared!  day=${this.dayNum}  kills=${this.kills}  raiders_return_day=${this.dayNum+10}`, 'world');
-        this.hint('Raider camp cleared! Loot cache unlocked — raiders return in 10 days…', 4500);
-        this.raidRespawnDay = this.dayNum + 10;
+        const _raidDays = this.hc.raidRespawnDays;
+        this._log(`Raider camp cleared!  day=${this.dayNum}  kills=${this.kills}  raiders_return_day=${this.dayNum+_raidDays}`, 'world');
+        this.hint('Raider camp cleared! Loot cache unlocked — raiders return in ' + _raidDays + ' days…', 4500);
+        this.raidRespawnDay = this.dayNum + _raidDays;
         if (this.raidCamp.spr && this.raidCamp.spr.active) this.raidCamp.spr.setTint(0x555555);
         // Unlock the loot cache
         const cache = this.raidCamp.cache;
@@ -9466,9 +9469,10 @@ class GameScene extends Phaser.Scene {
           }
         });
       }
-      // Boss schedule: Day 5 = 100% guaranteed debut.
-      // After that, every 5-day interval rolls at 50% (+10% per missed interval).
-      else if (!this.bossSpawned && this.dayNum >= 5 && this.dayNum % 5 === 0) {
+      // Boss schedule: first boss on hc.bossStartDay (guaranteed), then on every
+      // bossStartDay-multiple interval (Survival: days 5, 10, 15…; Hardcore: 4, 8, 12…).
+      // First check rolls at 100%; subsequent missed rolls grow +10% toward guaranteed.
+      else if (!this.bossSpawned && this.dayNum >= this.hc.bossStartDay && this.dayNum % this.hc.bossStartDay === 0) {
         if (this._bossChance === undefined) this._bossChance = 1.0; // day-5 guaranteed
         const roll = this._bossChance;
         if (Math.random() < roll) {
