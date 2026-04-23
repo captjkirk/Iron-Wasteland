@@ -276,6 +276,7 @@ const Music = {
   },
   _dayLoop(startAt) {
     if (!this.playing || !this.ctx) return;
+    if (this.mode === 'boss')  return; // boss loop runs independently; resume when switchFromBoss fires
     if (this.mode === 'night') { this._nightLoop(this.ctx.currentTime); return; }
     const b = 60/125; // beats at 125 bpm
     const len = b*16;
@@ -315,7 +316,8 @@ const Music = {
   },
   _nightLoop(startAt) {
     if (!this.playing || !this.ctx) return;
-    if (this.mode === 'day') { this._dayLoop(this.ctx.currentTime); return; }
+    if (this.mode === 'boss') return; // boss loop runs independently; resume when switchFromBoss fires
+    if (this.mode === 'day')  { this._dayLoop(this.ctx.currentTime); return; }
     const b = 60/80; // slower tempo — 80 bpm, more menacing
     const len = b*16;
     const now = this.ctx.currentTime;
