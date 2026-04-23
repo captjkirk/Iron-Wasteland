@@ -4342,6 +4342,26 @@ class GameScene extends Phaser.Scene {
       }
     }
 
+    // Ground wave shading — two sine waves at different angles produce broad organic shade bands.
+    // Depth 0.55 sits above biome tiles (0.5) but below all water tiles (0.6+), so the effect
+    // applies only to dry land and is naturally occluded by water.
+    {
+      const wgfx = this.add.graphics().setDepth(0.55);
+      this._w(wgfx);
+      const WSTEP = 3, WSZ = TILE * WSTEP;
+      for (let tx = 0; tx < CFG.MAP_W; tx += WSTEP) {
+        for (let ty = 0; ty < CFG.MAP_H; ty += WSTEP) {
+          // Wave 1: diagonal ~63-tile period; Wave 2: opposite diagonal ~70-tile period
+          const w = Math.sin(tx * 0.10 + ty * 0.06) * 0.55
+                  + Math.sin(tx * 0.04 - ty * 0.09 + 2.3) * 0.45;
+          const a = Math.abs(w) * 0.085;
+          if (a < 0.010) continue;
+          wgfx.fillStyle(w < 0 ? 0x000000 : 0xffffff, a);
+          wgfx.fillRect(tx * TILE, ty * TILE, WSZ, WSZ);
+        }
+      }
+    }
+
     // Grass variants in grassland areas
     for (let i = 0; i < 100; i++) {
       const tx = Phaser.Math.Between(2, CFG.MAP_W-3), ty = Phaser.Math.Between(2, CFG.MAP_H-3);
