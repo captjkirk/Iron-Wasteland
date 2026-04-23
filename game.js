@@ -11294,22 +11294,22 @@ class GameScene extends Phaser.Scene {
   // ── CRAFT MENU ─────────────────────────────────────────────────
   static get RECIPES() {
     return [
-      { label: 'Wall',               key: 'wall',              cost: {wood:3},                  needsBench: false, type: 'build' },
-      { label: 'Gate',               key: 'gate',              cost: {wood:4, metal:2},         needsBench: false, type: 'build' },
-      { label: 'Campfire',           key: 'campfire',          cost: {wood:5},                  needsBench: false, type: 'build' },
-      { label: 'Torch',              key: 'torch',             cost: {wood:2, fiber:1},         needsBench: false, type: 'build' },
-      { label: 'Spike Trap',         key: 'spike_trap',        cost: {wood:2, metal:1},         needsBench: false, type: 'build' },
-      { label: 'Craftbench',         key: 'craftbench',        cost: {wood:5, metal:3},         needsBench: false, type: 'build' },
-      { label: 'Bed',                key: 'bed',               cost: {wood:8, fiber:6, metal:2},needsBench: true,  type: 'build' },
-      { label: 'Reinforced Wall',    key: 'reinforced_wall',   cost: {wood:4, metal:3},         needsBench: true,  type: 'build' },
-      { label: 'Med Kit (+40 HP)',   key: 'med_kit',           cost: {fiber:3, food:2},         needsBench: true,  type: 'instant' },
-      { label: 'Ammo Pack (+8)',     key: 'ammo_pack',         cost: {metal:2},                 needsBench: false, type: 'instant' },
-      { label: 'Knight Upgrade',     key: 'knight_upgrade',    cost: {metal:3, fiber:2},        needsBench: true,  type: 'upgrade', charId: 'knight' },
-      { label: 'Architect Upgrade',  key: 'architect_upgrade', cost: {metal:3, wood:2},         needsBench: true,  type: 'upgrade', charId: 'architect' },
-      { label: 'Gunslinger Upgrade', key: 'gunslinger_upgrade',cost: {metal:2, fiber:1},        needsBench: true,  type: 'upgrade', charId: 'gunslinger' },
-      { label: 'Flower Bouquet (+3)',key: 'flower_bouquet',    cost: {food:2, fiber:1},         needsBench: false, type: 'instant', charId: 'charmer' },
-      { label: 'Lauren Upgrade',     key: 'charmer_upgrade',   cost: {metal:2, fiber:2},        needsBench: true,  type: 'upgrade', charId: 'charmer' },
-      { label: 'Abigail Upgrade',    key: 'ranger_upgrade',    cost: {metal:3, wood:2},         needsBench: true,  type: 'upgrade', charId: 'ranger' },
+      { label: 'Wall',               key: 'wall',              cost: {wood:3},                  needsBench: false, type: 'build',   tooltip: 'Blocks enemies and absorbs damage before collapsing.' },
+      { label: 'Gate',               key: 'gate',              cost: {wood:4, metal:2},         needsBench: false, type: 'build',   tooltip: 'Players pass through freely; blocks all enemies. Toggle with interact.' },
+      { label: 'Campfire',           key: 'campfire',          cost: {wood:5},                  needsBench: false, type: 'build',   tooltip: 'Slowly restores HP for nearby players. Provides light at night.' },
+      { label: 'Torch',              key: 'torch',             cost: {wood:2, fiber:1},         needsBench: false, type: 'build',   tooltip: 'Lights a small area at night. Cheap — place liberally around your base.' },
+      { label: 'Spike Trap',         key: 'spike_trap',        cost: {wood:2, metal:1},         needsBench: false, type: 'build',   tooltip: 'Damages any enemy that steps on it. Stays active indefinitely.' },
+      { label: 'Craftbench',         key: 'craftbench',        cost: {wood:5, metal:3},         needsBench: false, type: 'build',   tooltip: 'Required to unlock advanced recipes, upgrades, and the Bed.' },
+      { label: 'Bed',                key: 'bed',               cost: {wood:8, fiber:6, metal:2},needsBench: true,  type: 'build',   tooltip: 'Sets your respawn point. Sleep in it to greatly reduce down-timer.' },
+      { label: 'Reinforced Wall',    key: 'reinforced_wall',   cost: {wood:4, metal:3},         needsBench: true,  type: 'build',   tooltip: 'Twice as durable as a standard wall. Holds the line against heavy raids.' },
+      { label: 'Med Kit (+40 HP)',   key: 'med_kit',           cost: {fiber:3, food:2},         needsBench: true,  type: 'instant', tooltip: 'Instantly restores 40 HP to the crafter. Use when critically wounded.' },
+      { label: 'Ammo Pack (+8)',     key: 'ammo_pack',         cost: {metal:2},                 needsBench: false, type: 'instant', tooltip: 'Adds 8 rounds to the shared team ammo pool immediately.' },
+      { label: 'Knight Upgrade',     key: 'knight_upgrade',    cost: {metal:3, fiber:2},        needsBench: true,  type: 'upgrade', charId: 'knight',     tooltip: 'Knight: unlocks Shield Throw ability + passive 70% damage block.' },
+      { label: 'Architect Upgrade',  key: 'architect_upgrade', cost: {metal:3, wood:2},         needsBench: true,  type: 'upgrade', charId: 'architect',  tooltip: 'Architect: unlocks Nail Gun secondary attack.' },
+      { label: 'Gunslinger Upgrade', key: 'gunslinger_upgrade',cost: {metal:2, fiber:1},        needsBench: true,  type: 'upgrade', charId: 'gunslinger', tooltip: 'Gunslinger: increases clip size by 4 rounds (8 → 12).' },
+      { label: 'Flower Bouquet (+3)',key: 'flower_bouquet',    cost: {food:2, fiber:1},         needsBench: false, type: 'instant', charId: 'charmer',    tooltip: 'Lauren only: boosts her charm counter by 3 immediately.' },
+      { label: 'Lauren Upgrade',     key: 'charmer_upgrade',   cost: {metal:2, fiber:2},        needsBench: true,  type: 'upgrade', charId: 'charmer',    tooltip: 'Lauren: unlocks Charmer passive buff and special ability.' },
+      { label: 'Abigail Upgrade',    key: 'ranger_upgrade',    cost: {metal:3, wood:2},         needsBench: true,  type: 'upgrade', charId: 'ranger',     tooltip: 'Abigail: unlocks Ranger passive buff and special ability.' },
     ];
   }
 
@@ -11319,6 +11319,7 @@ class GameScene extends Phaser.Scene {
     this._log(`${player.charData.player} opened craft menu`, 'player');
     this.craftMenuOwner = player;
     this.craftMenuSel = 0;
+    this.craftMenuScroll = 0;
     // Contextual tip: first time opening crafting menu
     if (!this._ctx.firstCraft) {
       this._ctx.firstCraft = true;
@@ -11341,25 +11342,39 @@ class GameScene extends Phaser.Scene {
     // Tap / click to select or craft — works for mouse and touch
     this._craftMenuPointerFn = (ptr) => {
       const { W, H } = CFG;
-      const PW = 440, PH = 330, PX = (W - PW) / 2, PY = H - PH - 20;
+      const PW = 440, PH = _isMobile ? 330 : 380;
+      const ROW_H = 25, N_VISIBLE = Math.floor((PH - 94) / ROW_H);
+      const PX = (W - PW) / 2, PY = H - PH - 20;
       const px = ptr.x, py = ptr.y;
       if (px < PX || px > PX + PW || py < PY || py > PY + PH) return;
       const RECIPES = GameScene.RECIPES;
-      for (let idx = 0; idx < RECIPES.length; idx++) {
-        const rowY = PY + 34 + idx * 25;
-        if (py >= rowY - 2 && py < rowY + 20) {
+      const scroll = this.craftMenuScroll || 0;
+      for (let visIdx = 0; visIdx < N_VISIBLE; visIdx++) {
+        const idx = visIdx + scroll;
+        if (idx >= RECIPES.length) break;
+        const rowY = PY + 34 + visIdx * ROW_H;
+        if (py >= rowY - 2 && py < rowY + ROW_H) {
           if (idx === this.craftMenuSel) {
             this._log(`craft click confirm  sel=${idx} (${RECIPES[idx].label})  owner=${this.craftMenuOwner?.charData?.player}`, 'player');
             this.craftSelected();
           } else {
             this._log(`craft click select  sel=${idx} (${RECIPES[idx].label})  owner=${this.craftMenuOwner?.charData?.player}`, 'player');
             this.craftMenuSel = idx;
+            this._craftScrollToSel();
           }
           return;
         }
       }
     };
     this.input.on('pointerdown', this._craftMenuPointerFn);
+  }
+
+  _craftScrollToSel() {
+    const N_VISIBLE = Math.floor(((_isMobile ? 330 : 380) - 94) / 25);
+    let s = this.craftMenuScroll || 0;
+    if (this.craftMenuSel < s) s = this.craftMenuSel;
+    else if (this.craftMenuSel >= s + N_VISIBLE) s = this.craftMenuSel - N_VISIBLE + 1;
+    this.craftMenuScroll = s;
   }
 
   closeCraftMenu() {
@@ -11382,10 +11397,12 @@ class GameScene extends Phaser.Scene {
     // Keyboard navigate up / down
     if (Phaser.Input.Keyboard.JustDown(this._craftNavUp) || Phaser.Input.Keyboard.JustDown(this._craftNavUp2)) {
       this.craftMenuSel = (this.craftMenuSel - 1 + RECIPES.length) % RECIPES.length;
+      this._craftScrollToSel();
       this._log(`craft nav up  sel=${this.craftMenuSel} (${RECIPES[this.craftMenuSel].label})  owner=${this.craftMenuOwner?.charData?.player}`, 'player');
     }
     if (Phaser.Input.Keyboard.JustDown(this._craftNavDn) || Phaser.Input.Keyboard.JustDown(this._craftNavDn2)) {
       this.craftMenuSel = (this.craftMenuSel + 1) % RECIPES.length;
+      this._craftScrollToSel();
       this._log(`craft nav dn  sel=${this.craftMenuSel} (${RECIPES[this.craftMenuSel].label})  owner=${this.craftMenuOwner?.charData?.player}`, 'player');
     }
 
@@ -11395,6 +11412,7 @@ class GameScene extends Phaser.Scene {
       const jy = this._joy.vec.y;
       if (this._craftTouchNavCd <= 0 && Math.abs(jy) > 0.5) {
         this.craftMenuSel = (this.craftMenuSel + (jy > 0 ? 1 : -1) + RECIPES.length) % RECIPES.length;
+        this._craftScrollToSel();
         this._craftTouchNavCd = 350;
         this._log(`craft nav joy  sel=${this.craftMenuSel} (${RECIPES[this.craftMenuSel].label})  owner=${this.craftMenuOwner?.charData?.player}`, 'player');
       }
@@ -11407,7 +11425,10 @@ class GameScene extends Phaser.Scene {
     const RECIPES = GameScene.RECIPES;
     const { W, H } = CFG;
     const team = this.getTeamInv();
-    const PW = 440, PH = 330, PX = (W - PW) / 2, PY = H - PH - 20;
+    const PW = 440, PH = _isMobile ? 330 : 380;
+    const ROW_H = 25, N_VISIBLE = Math.floor((PH - 94) / ROW_H);
+    const PX = (W - PW) / 2, PY = H - PH - 20;
+    const scroll = this.craftMenuScroll || 0;
 
     // Recreate graphics each frame (simple approach)
     if (this.craftMenuGfx) this.craftMenuGfx.destroy();
@@ -11437,17 +11458,36 @@ class GameScene extends Phaser.Scene {
       : 'Click / W/S = select  |  Click again / Attack = craft  |  Q/0 = close';
     addTxt(PX + PW/2, PY + PH - 14, navHint, { fontSize:'9px', color:'#556644' }).setOrigin(0.5);
 
+    // Scroll indicators
+    if (scroll > 0) {
+      addTxt(PX + PW/2, PY + 26, `▲  ${scroll} more above`, { fontSize:'9px', color:'#778866' }).setOrigin(0.5);
+    }
+    const moreBelow = RECIPES.length - (scroll + N_VISIBLE);
+    if (moreBelow > 0) {
+      const arrowY = PY + 34 + N_VISIBLE * ROW_H + 3;
+      addTxt(PX + PW/2, arrowY, `▼  ${moreBelow} more below`, { fontSize:'9px', color:'#778866' }).setOrigin(0.5);
+    }
+
     // Hover detection for mouse (skip on touch)
     const mPtr = this._touchActive ? null : this.input.activePointer;
-    const hoverIdx = mPtr
-      ? RECIPES.findIndex((_, idx) => {
-          const rowY = PY + 34 + idx * 25;
-          return mPtr.x >= PX && mPtr.x <= PX + PW && mPtr.y >= rowY - 2 && mPtr.y < rowY + 20;
-        })
-      : -1;
+    let hoverIdx = -1;
+    if (mPtr) {
+      for (let visIdx = 0; visIdx < N_VISIBLE; visIdx++) {
+        const idx = visIdx + scroll;
+        if (idx >= RECIPES.length) break;
+        const rowY = PY + 34 + visIdx * ROW_H;
+        if (mPtr.x >= PX && mPtr.x <= PX + PW && mPtr.y >= rowY - 2 && mPtr.y < rowY + ROW_H) {
+          hoverIdx = idx; break;
+        }
+      }
+    }
 
-    RECIPES.forEach((rec, idx) => {
-      const rowY = PY + 34 + idx * 25;
+    // Render visible items
+    for (let visIdx = 0; visIdx < N_VISIBLE; visIdx++) {
+      const idx = visIdx + scroll;
+      if (idx >= RECIPES.length) break;
+      const rec = RECIPES[idx];
+      const rowY = PY + 34 + visIdx * ROW_H;
       const isSelected = idx === this.craftMenuSel;
       const isHovered = idx === hoverIdx && !isSelected;
 
@@ -11459,9 +11499,8 @@ class GameScene extends Phaser.Scene {
         g.fillStyle(0x1a2a11, 0.7); g.fillRect(PX + 6, rowY - 2, PW - 12, 22);
       }
 
-      // Bench requirement
+      // Bench requirement and affordability
       const locked = rec.needsBench && !this.craftBenchPlaced;
-      // Can afford?
       const canAfford = !locked && Object.entries(rec.cost).every(([r,a]) => (team[r]||0) >= a);
 
       const nameColor = locked ? '#555544' : isSelected ? '#ffffff' : isHovered ? '#ddeedd' : '#aabbaa';
@@ -11471,7 +11510,18 @@ class GameScene extends Phaser.Scene {
       const suffix  = locked ? ' [bench reqd]' : '';
       addTxt(PX + 18, rowY + 2, rec.label + suffix, { color: nameColor });
       addTxt(PX + PW - 18, rowY + 2, costStr, { color: costColor }).setOrigin(1, 0);
-    });
+    }
+
+    // Tooltip section — shows description for hovered item (mouse) or selected item (keyboard/touch)
+    const tooltipRec = RECIPES[hoverIdx >= 0 ? hoverIdx : this.craftMenuSel];
+    const itemsEnd = PY + 34 + N_VISIBLE * ROW_H;
+    const sepY = itemsEnd + (moreBelow > 0 ? 16 : 6);
+    g.lineStyle(1, 0x334422, 0.8); g.lineBetween(PX + 12, sepY, PX + PW - 12, sepY);
+    if (tooltipRec) {
+      const typeTag = { build: '[BUILD]', instant: '[INSTANT]', upgrade: '[UPGRADE]' }[tooltipRec.type] || '';
+      addTxt(PX + 18, sepY + 6, `${typeTag}  ${tooltipRec.label}`, { fontSize:'10px', color:'#aacc88' });
+      addTxt(PX + 18, sepY + 19, tooltipRec.tooltip || '', { fontSize:'10px', color:'#889977' });
+    }
   }
 
   craftSelected() {
