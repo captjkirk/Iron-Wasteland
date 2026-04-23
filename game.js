@@ -3137,263 +3137,313 @@ function drawLaurenBSideStep(g) {
 function drawAbigail(g) {
   g.clear();
   // boots
-  g.fillStyle(0x222211); g.fillRect(6,52,12,8); g.fillRect(19,52,12,8);
-  g.fillStyle(0x3d3320); g.fillRect(19,52,4,6);
-  // leggings
-  g.fillStyle(0x334422); g.fillRect(6,34,12,18); g.fillRect(19,34,12,18);
-  g.fillStyle(0x446633); g.fillRect(20,34,4,16);
-  // cloak body
-  g.fillStyle(0x446622); g.fillRect(2,14,28,22);
-  g.fillStyle(0x557733); g.fillRect(4,15,22,20);
-  g.fillStyle(0x668844); g.fillRect(6,15,14,6);
-  g.fillStyle(0x334411); g.fillRect(2,14,4,20); g.fillRect(26,14,4,20);
+  g.fillStyle(0x222211); g.fillRect(7,52,11,8); g.fillRect(20,52,11,8);
+  g.fillStyle(0x3d3320); g.fillRect(20,52,4,6);
+  // leggings — narrower
+  g.fillStyle(0x334422); g.fillRect(7,34,11,18); g.fillRect(20,34,11,18);
+  g.fillStyle(0x446633); g.fillRect(21,34,3,16);
+  // cloak body — slimmer (22px vs 28px)
+  g.fillStyle(0x446622); g.fillRect(6,14,22,22);
+  g.fillStyle(0x557733); g.fillRect(8,15,16,20);
+  g.fillStyle(0x668844); g.fillRect(9,15,10,6);
+  g.fillStyle(0x334411); g.fillRect(6,14,3,20); g.fillRect(25,14,3,20);
   // belt
-  g.fillStyle(0x8b5e3c); g.fillRect(2,32,28,4);
+  g.fillStyle(0x8b5e3c); g.fillRect(6,32,22,4);
   g.fillStyle(0x6b3f1e); g.fillRect(14,31,6,5);
   // bow (right side, vertical stave)
   g.fillStyle(0x8b5e3c); g.fillRect(33,4,4,52);
   g.fillStyle(0x7a4a28); g.fillRect(33,4,4,4); g.fillRect(33,52,4,4);
   g.fillStyle(0xddcc99); g.fillRect(35,4,1,52);
   // arms
-  g.fillStyle(0x557733); g.fillRect(0,14,4,22);
-  g.fillStyle(0xffcc99); g.fillRect(0,26,4,8);
-  g.fillStyle(0x557733); g.fillRect(28,18,5,14);
-  g.fillStyle(0xffcc99); g.fillRect(28,28,5,8);
+  g.fillStyle(0x557733); g.fillRect(3,14,4,22);
+  g.fillStyle(0xffcc99); g.fillRect(3,26,4,8);
+  g.fillStyle(0x557733); g.fillRect(27,18,4,14);
+  g.fillStyle(0xffcc99); g.fillRect(27,28,4,8);
+  // long brown hair — flows from hood past shoulder on left side
+  g.fillStyle(0x8b4513); g.fillRect(0,4,5,26);
+  g.fillStyle(0xaa6633); g.fillRect(1,4,3,12);
+  g.fillStyle(0x7a3d10); g.fillRect(0,20,4,10);
   // neck + face
-  g.fillStyle(0xffcc99); g.fillRect(14,10,10,6);
-  g.fillStyle(0xffcc99); g.fillRect(10,4,14,8);
-  // hood
-  g.fillStyle(0x446622); g.fillRect(8,0,20,12);
-  g.fillStyle(0x334411); g.fillRect(8,0,4,10); g.fillRect(24,0,4,10);
-  g.fillStyle(0x557733); g.fillRect(10,0,14,5);
-  g.fillStyle(0x2d1f15); g.fillRect(10,6,10,6);
+  g.fillStyle(0xffcc99); g.fillRect(14,10,8,6);
+  g.fillStyle(0xffcc99); g.fillRect(11,4,12,8);
+  // hood — same width as slimmer body
+  g.fillStyle(0x446622); g.fillRect(9,0,16,12);
+  g.fillStyle(0x334411); g.fillRect(9,0,3,10); g.fillRect(22,0,3,10);
+  g.fillStyle(0x557733); g.fillRect(11,0,12,5);
+  g.fillStyle(0x2d1f15); g.fillRect(11,6,8,5);
   g.generateTexture('ranger', 44, 60);
 }
 
 function drawAbigailStep(g) {
   g.clear();
-  g.fillStyle(0x222211); g.fillRect(6,49,12,11); g.fillRect(19,52,12,8);
-  g.fillStyle(0x3d3320); g.fillRect(19,52,4,6);
-  g.fillStyle(0x334422); g.fillRect(6,32,12,18); g.fillRect(19,34,12,18);
-  g.fillStyle(0x446633); g.fillRect(20,34,4,16);
-  g.fillStyle(0x446622); g.fillRect(2,14,28,22);
-  g.fillStyle(0x557733); g.fillRect(4,15,22,20);
-  g.fillStyle(0x668844); g.fillRect(6,15,14,6);
-  g.fillStyle(0x334411); g.fillRect(2,14,4,20); g.fillRect(26,14,4,20);
-  g.fillStyle(0x8b5e3c); g.fillRect(2,32,28,4);
+  g.fillStyle(0x222211); g.fillRect(7,49,11,11); g.fillRect(20,52,11,8);
+  g.fillStyle(0x3d3320); g.fillRect(20,52,4,6);
+  g.fillStyle(0x334422); g.fillRect(7,32,11,18); g.fillRect(20,34,11,18);
+  g.fillStyle(0x446633); g.fillRect(21,34,3,16);
+  g.fillStyle(0x446622); g.fillRect(6,14,22,22);
+  g.fillStyle(0x557733); g.fillRect(8,15,16,20);
+  g.fillStyle(0x668844); g.fillRect(9,15,10,6);
+  g.fillStyle(0x334411); g.fillRect(6,14,3,20); g.fillRect(25,14,3,20);
+  g.fillStyle(0x8b5e3c); g.fillRect(6,32,22,4);
   g.fillStyle(0x6b3f1e); g.fillRect(14,31,6,5);
   g.fillStyle(0x8b5e3c); g.fillRect(33,4,4,52);
   g.fillStyle(0x7a4a28); g.fillRect(33,4,4,4); g.fillRect(33,52,4,4);
   g.fillStyle(0xddcc99); g.fillRect(35,4,1,52);
-  g.fillStyle(0x557733); g.fillRect(0,18,4,22);
-  g.fillStyle(0xffcc99); g.fillRect(0,28,4,8);
-  g.fillStyle(0x557733); g.fillRect(28,14,5,14);
-  g.fillStyle(0xffcc99); g.fillRect(28,24,5,8);
-  g.fillStyle(0xffcc99); g.fillRect(14,10,10,6);
-  g.fillStyle(0xffcc99); g.fillRect(10,4,14,8);
-  g.fillStyle(0x446622); g.fillRect(8,0,20,12);
-  g.fillStyle(0x334411); g.fillRect(8,0,4,10); g.fillRect(24,0,4,10);
-  g.fillStyle(0x557733); g.fillRect(10,0,14,5);
-  g.fillStyle(0x2d1f15); g.fillRect(10,6,10,6);
+  g.fillStyle(0x557733); g.fillRect(3,18,4,22);
+  g.fillStyle(0xffcc99); g.fillRect(3,28,4,8);
+  g.fillStyle(0x557733); g.fillRect(27,14,4,14);
+  g.fillStyle(0xffcc99); g.fillRect(27,24,4,8);
+  g.fillStyle(0x8b4513); g.fillRect(0,4,5,26);
+  g.fillStyle(0xaa6633); g.fillRect(1,4,3,12);
+  g.fillStyle(0x7a3d10); g.fillRect(0,20,4,10);
+  g.fillStyle(0xffcc99); g.fillRect(14,10,8,6);
+  g.fillStyle(0xffcc99); g.fillRect(11,4,12,8);
+  g.fillStyle(0x446622); g.fillRect(9,0,16,12);
+  g.fillStyle(0x334411); g.fillRect(9,0,3,10); g.fillRect(22,0,3,10);
+  g.fillStyle(0x557733); g.fillRect(11,0,12,5);
+  g.fillStyle(0x2d1f15); g.fillRect(11,6,8,5);
   g.generateTexture('ranger_step', 44, 60);
 }
 
 function drawAbigailFront(g) {
   g.clear();
-  g.fillStyle(0x222211); g.fillRect(8,52,12,8); g.fillRect(24,52,12,8);
-  g.fillStyle(0x334422); g.fillRect(8,34,12,18); g.fillRect(24,34,12,18);
-  g.fillStyle(0x446633); g.fillRect(10,34,4,16); g.fillRect(26,34,4,16);
-  g.fillStyle(0x446622); g.fillRect(4,14,36,22);
-  g.fillStyle(0x557733); g.fillRect(8,15,28,20);
-  g.fillStyle(0x668844); g.fillRect(10,15,20,6);
-  g.fillStyle(0x334411); g.fillRect(4,14,5,20); g.fillRect(35,14,5,20);
-  g.fillStyle(0x8b5e3c); g.fillRect(4,32,36,4);
+  g.fillStyle(0x222211); g.fillRect(9,52,11,8); g.fillRect(24,52,11,8);
+  g.fillStyle(0x334422); g.fillRect(9,34,11,18); g.fillRect(24,34,11,18);
+  g.fillStyle(0x446633); g.fillRect(11,34,3,16); g.fillRect(26,34,3,16);
+  // slimmer body — 26px wide instead of 36px
+  g.fillStyle(0x446622); g.fillRect(9,14,26,22);
+  g.fillStyle(0x557733); g.fillRect(11,15,20,20);
+  g.fillStyle(0x668844); g.fillRect(13,15,16,6);
+  g.fillStyle(0x334411); g.fillRect(9,14,3,20); g.fillRect(32,14,3,20);
+  g.fillStyle(0x8b5e3c); g.fillRect(9,32,26,4);
   g.fillStyle(0x6b3f1e); g.fillRect(19,31,6,5);
+  // bow to the right
   g.fillStyle(0x8b5e3c); g.fillRect(39,4,4,52);
   g.fillStyle(0x7a4a28); g.fillRect(39,4,4,4); g.fillRect(39,52,4,4);
   g.fillStyle(0xddcc99); g.fillRect(41,4,1,52);
-  g.fillStyle(0x557733); g.fillRect(0,16,5,22);
-  g.fillStyle(0xffcc99); g.fillRect(0,28,5,8);
-  g.fillStyle(0x557733); g.fillRect(39,16,5,14);
-  g.fillStyle(0xffcc99); g.fillRect(39,26,5,8);
+  // arms
+  g.fillStyle(0x557733); g.fillRect(5,16,5,22);
+  g.fillStyle(0xffcc99); g.fillRect(5,28,5,8);
+  g.fillStyle(0x557733); g.fillRect(34,16,5,14);
+  g.fillStyle(0xffcc99); g.fillRect(34,26,5,8);
+  // long brown hair — visible on both sides of hood
+  g.fillStyle(0x8b4513); g.fillRect(5,4,5,26);
+  g.fillStyle(0xaa6633); g.fillRect(6,4,3,14);
+  g.fillStyle(0x8b4513); g.fillRect(34,4,5,26);
+  g.fillStyle(0xaa6633); g.fillRect(35,4,3,14);
+  // neck + face
   g.fillStyle(0xffcc99); g.fillRect(18,10,8,6);
-  g.fillStyle(0xffcc99); g.fillRect(14,4,16,8);
-  g.fillStyle(0x446622); g.fillRect(10,0,24,13);
-  g.fillStyle(0x334411); g.fillRect(10,0,5,12); g.fillRect(29,0,5,12);
-  g.fillStyle(0x557733); g.fillRect(13,0,18,5);
+  g.fillStyle(0xffcc99); g.fillRect(15,4,14,8);
+  // hood
+  g.fillStyle(0x446622); g.fillRect(12,0,20,13);
+  g.fillStyle(0x334411); g.fillRect(12,0,4,12); g.fillRect(28,0,4,12);
+  g.fillStyle(0x557733); g.fillRect(14,0,16,5);
   g.fillStyle(0x2d1f15); g.fillRect(15,6,14,6);
   g.generateTexture('ranger_front', 44, 60);
 }
 
 function drawAbigailFrontStep(g) {
   g.clear();
-  g.fillStyle(0x222211); g.fillRect(8,49,12,11); g.fillRect(24,52,12,8);
-  g.fillStyle(0x334422); g.fillRect(8,32,12,18); g.fillRect(24,34,12,18);
-  g.fillStyle(0x446633); g.fillRect(10,32,4,16); g.fillRect(26,34,4,16);
-  g.fillStyle(0x446622); g.fillRect(4,14,36,22);
-  g.fillStyle(0x557733); g.fillRect(8,15,28,20);
-  g.fillStyle(0x668844); g.fillRect(10,15,20,6);
-  g.fillStyle(0x334411); g.fillRect(4,14,5,20); g.fillRect(35,14,5,20);
-  g.fillStyle(0x8b5e3c); g.fillRect(4,32,36,4);
+  g.fillStyle(0x222211); g.fillRect(9,49,11,11); g.fillRect(24,52,11,8);
+  g.fillStyle(0x334422); g.fillRect(9,32,11,18); g.fillRect(24,34,11,18);
+  g.fillStyle(0x446633); g.fillRect(11,32,3,16); g.fillRect(26,34,3,16);
+  g.fillStyle(0x446622); g.fillRect(9,14,26,22);
+  g.fillStyle(0x557733); g.fillRect(11,15,20,20);
+  g.fillStyle(0x668844); g.fillRect(13,15,16,6);
+  g.fillStyle(0x334411); g.fillRect(9,14,3,20); g.fillRect(32,14,3,20);
+  g.fillStyle(0x8b5e3c); g.fillRect(9,32,26,4);
   g.fillStyle(0x6b3f1e); g.fillRect(19,31,6,5);
   g.fillStyle(0x8b5e3c); g.fillRect(39,4,4,52);
   g.fillStyle(0x7a4a28); g.fillRect(39,4,4,4); g.fillRect(39,52,4,4);
   g.fillStyle(0xddcc99); g.fillRect(41,4,1,52);
-  g.fillStyle(0x557733); g.fillRect(0,14,5,22);
-  g.fillStyle(0xffcc99); g.fillRect(0,24,5,8);
-  g.fillStyle(0x557733); g.fillRect(39,18,5,14);
-  g.fillStyle(0xffcc99); g.fillRect(39,28,5,8);
+  g.fillStyle(0x557733); g.fillRect(5,14,5,22);
+  g.fillStyle(0xffcc99); g.fillRect(5,24,5,8);
+  g.fillStyle(0x557733); g.fillRect(34,18,5,14);
+  g.fillStyle(0xffcc99); g.fillRect(34,28,5,8);
+  g.fillStyle(0x8b4513); g.fillRect(5,4,5,26);
+  g.fillStyle(0xaa6633); g.fillRect(6,4,3,14);
+  g.fillStyle(0x8b4513); g.fillRect(34,4,5,26);
+  g.fillStyle(0xaa6633); g.fillRect(35,4,3,14);
   g.fillStyle(0xffcc99); g.fillRect(18,10,8,6);
-  g.fillStyle(0xffcc99); g.fillRect(14,4,16,8);
-  g.fillStyle(0x446622); g.fillRect(10,0,24,13);
-  g.fillStyle(0x334411); g.fillRect(10,0,5,12); g.fillRect(29,0,5,12);
-  g.fillStyle(0x557733); g.fillRect(13,0,18,5);
+  g.fillStyle(0xffcc99); g.fillRect(15,4,14,8);
+  g.fillStyle(0x446622); g.fillRect(12,0,20,13);
+  g.fillStyle(0x334411); g.fillRect(12,0,4,12); g.fillRect(28,0,4,12);
+  g.fillStyle(0x557733); g.fillRect(14,0,16,5);
   g.fillStyle(0x2d1f15); g.fillRect(15,6,14,6);
   g.generateTexture('ranger_front_step', 44, 60);
 }
 
 function drawAbigailBack(g) {
   g.clear();
-  g.fillStyle(0x222211); g.fillRect(8,52,12,8); g.fillRect(24,52,12,8);
-  g.fillStyle(0x334422); g.fillRect(8,34,12,18); g.fillRect(24,34,12,18);
-  g.fillStyle(0x446622); g.fillRect(4,14,36,22);
-  g.fillStyle(0x557733); g.fillRect(8,15,28,20);
-  g.fillStyle(0x334411); g.fillRect(4,14,5,20); g.fillRect(35,14,5,20);
+  g.fillStyle(0x222211); g.fillRect(9,52,11,8); g.fillRect(24,52,11,8);
+  g.fillStyle(0x334422); g.fillRect(9,34,11,18); g.fillRect(24,34,11,18);
+  // slimmer body
+  g.fillStyle(0x446622); g.fillRect(9,14,26,22);
+  g.fillStyle(0x557733); g.fillRect(11,15,20,20);
+  g.fillStyle(0x334411); g.fillRect(9,14,3,20); g.fillRect(32,14,3,20);
   g.fillStyle(0x334411); g.fillRect(20,14,4,20);
-  // quiver on back
-  g.fillStyle(0x8b5e3c); g.fillRect(2,14,6,22);
-  g.fillStyle(0x7a4a28); g.fillRect(2,14,6,4);
-  g.fillStyle(0xddcc99); g.fillRect(3,8,2,10); g.fillRect(6,8,2,10);
-  g.fillStyle(0x8b5e3c); g.fillRect(4,32,36,4);
-  g.fillStyle(0x6b3f1e); g.fillRect(19,31,6,5);
-  g.fillStyle(0x557733); g.fillRect(0,16,5,22);
-  g.fillStyle(0x557733); g.fillRect(39,16,5,22);
-  g.fillStyle(0xffcc99); g.fillRect(18,10,8,6);
-  g.fillStyle(0x446622); g.fillRect(10,0,24,13);
-  g.fillStyle(0x334411); g.fillRect(10,0,5,12); g.fillRect(29,0,5,12);
+  // quiver on back (left side)
+  g.fillStyle(0x8b5e3c); g.fillRect(6,14,5,22);
+  g.fillStyle(0x7a4a28); g.fillRect(6,14,5,4);
+  g.fillStyle(0xddcc99); g.fillRect(7,8,2,10); g.fillRect(10,8,2,10);
+  g.fillStyle(0x8b5e3c); g.fillRect(9,32,26,4);
+  // arms
+  g.fillStyle(0x557733); g.fillRect(5,16,5,22);
+  g.fillStyle(0x557733); g.fillRect(34,16,5,22);
+  // long brown hair — flowing down the back (most visible from this angle)
+  g.fillStyle(0x8b4513); g.fillRect(9,0,26,30);
+  g.fillStyle(0xaa6633); g.fillRect(11,0,14,16);
+  g.fillStyle(0x7a3d10); g.fillRect(9,18,26,12);
+  g.fillStyle(0xcc8844); g.fillRect(13,2,10,8);
+  // hood over hair
+  g.fillStyle(0x446622); g.fillRect(12,0,20,14);
+  g.fillStyle(0x334411); g.fillRect(12,0,4,12); g.fillRect(28,0,4,12);
   g.fillStyle(0x2d1f15); g.fillRect(14,6,16,8);
-  g.fillStyle(0x443322); g.fillRect(16,2,12,6);
   g.generateTexture('ranger_back', 44, 60);
 }
 
 function drawAbigailBackStep(g) {
   g.clear();
-  g.fillStyle(0x222211); g.fillRect(8,52,12,8); g.fillRect(24,49,12,11);
-  g.fillStyle(0x334422); g.fillRect(8,34,12,18); g.fillRect(24,32,12,18);
-  g.fillStyle(0x446622); g.fillRect(4,14,36,22);
-  g.fillStyle(0x557733); g.fillRect(8,15,28,20);
-  g.fillStyle(0x334411); g.fillRect(4,14,5,20); g.fillRect(35,14,5,20);
+  g.fillStyle(0x222211); g.fillRect(9,52,11,8); g.fillRect(24,49,11,11);
+  g.fillStyle(0x334422); g.fillRect(9,34,11,18); g.fillRect(24,32,11,18);
+  g.fillStyle(0x446622); g.fillRect(9,14,26,22);
+  g.fillStyle(0x557733); g.fillRect(11,15,20,20);
+  g.fillStyle(0x334411); g.fillRect(9,14,3,20); g.fillRect(32,14,3,20);
   g.fillStyle(0x334411); g.fillRect(20,14,4,20);
-  g.fillStyle(0x8b5e3c); g.fillRect(2,14,6,22);
-  g.fillStyle(0x7a4a28); g.fillRect(2,14,6,4);
-  g.fillStyle(0xddcc99); g.fillRect(3,8,2,10); g.fillRect(6,8,2,10);
-  g.fillStyle(0x8b5e3c); g.fillRect(4,32,36,4);
-  g.fillStyle(0x6b3f1e); g.fillRect(19,31,6,5);
-  g.fillStyle(0x557733); g.fillRect(0,18,5,22);
-  g.fillStyle(0x557733); g.fillRect(39,14,5,22);
-  g.fillStyle(0xffcc99); g.fillRect(18,10,8,6);
-  g.fillStyle(0x446622); g.fillRect(10,0,24,13);
-  g.fillStyle(0x334411); g.fillRect(10,0,5,12); g.fillRect(29,0,5,12);
+  g.fillStyle(0x8b5e3c); g.fillRect(6,14,5,22);
+  g.fillStyle(0x7a4a28); g.fillRect(6,14,5,4);
+  g.fillStyle(0xddcc99); g.fillRect(7,8,2,10); g.fillRect(10,8,2,10);
+  g.fillStyle(0x8b5e3c); g.fillRect(9,32,26,4);
+  g.fillStyle(0x557733); g.fillRect(5,18,5,22);
+  g.fillStyle(0x557733); g.fillRect(34,14,5,22);
+  g.fillStyle(0x8b4513); g.fillRect(9,0,26,30);
+  g.fillStyle(0xaa6633); g.fillRect(11,0,14,16);
+  g.fillStyle(0x7a3d10); g.fillRect(9,18,26,12);
+  g.fillStyle(0xcc8844); g.fillRect(13,2,10,8);
+  g.fillStyle(0x446622); g.fillRect(12,0,20,14);
+  g.fillStyle(0x334411); g.fillRect(12,0,4,12); g.fillRect(28,0,4,12);
   g.fillStyle(0x2d1f15); g.fillRect(14,6,16,8);
-  g.fillStyle(0x443322); g.fillRect(16,2,12,6);
   g.generateTexture('ranger_back_step', 44, 60);
 }
 
 function drawAbigailFSide(g) {
   g.clear();
-  g.fillStyle(0x222211); g.fillRect(8,52,12,8); g.fillRect(22,53,10,7);
-  g.fillStyle(0x334422); g.fillRect(8,34,12,18); g.fillRect(22,35,10,17);
-  g.fillStyle(0x446633); g.fillRect(10,34,4,16);
-  g.fillStyle(0x446622); g.fillRect(4,14,34,22);
-  g.fillStyle(0x557733); g.fillRect(7,15,26,20);
-  g.fillStyle(0x668844); g.fillRect(9,15,16,6);
-  g.fillStyle(0x334411); g.fillRect(4,14,4,20); g.fillRect(34,14,4,20);
-  g.fillStyle(0x8b5e3c); g.fillRect(4,32,34,4);
-  g.fillStyle(0x6b3f1e); g.fillRect(17,31,6,5);
+  g.fillStyle(0x222211); g.fillRect(8,52,11,8); g.fillRect(22,53,10,7);
+  g.fillStyle(0x334422); g.fillRect(8,34,11,18); g.fillRect(22,35,10,17);
+  g.fillStyle(0x446633); g.fillRect(10,34,3,16);
+  // slimmer diagonal body
+  g.fillStyle(0x446622); g.fillRect(6,14,24,22);
+  g.fillStyle(0x557733); g.fillRect(8,15,18,20);
+  g.fillStyle(0x668844); g.fillRect(10,15,12,6);
+  g.fillStyle(0x334411); g.fillRect(6,14,3,20); g.fillRect(27,14,3,20);
+  g.fillStyle(0x8b5e3c); g.fillRect(6,32,24,4);
+  g.fillStyle(0x6b3f1e); g.fillRect(15,31,6,5);
   g.fillStyle(0x8b5e3c); g.fillRect(37,4,4,52);
   g.fillStyle(0x7a4a28); g.fillRect(37,4,4,4); g.fillRect(37,52,4,4);
   g.fillStyle(0xddcc99); g.fillRect(39,4,1,52);
-  g.fillStyle(0x557733); g.fillRect(0,16,5,22);
-  g.fillStyle(0xffcc99); g.fillRect(0,28,5,8);
-  g.fillStyle(0x557733); g.fillRect(36,18,4,14);
-  g.fillStyle(0xffcc99); g.fillRect(36,28,4,8);
-  g.fillStyle(0xffcc99); g.fillRect(17,10,9,6);
-  g.fillStyle(0xffcc99); g.fillRect(13,4,14,8);
-  g.fillStyle(0x446622); g.fillRect(10,0,22,13);
-  g.fillStyle(0x334411); g.fillRect(10,0,5,12); g.fillRect(28,0,4,12);
-  g.fillStyle(0x557733); g.fillRect(13,0,16,5);
-  g.fillStyle(0x2d1f15); g.fillRect(14,6,12,6);
+  // arms
+  g.fillStyle(0x557733); g.fillRect(3,16,4,22);
+  g.fillStyle(0xffcc99); g.fillRect(3,28,4,8);
+  g.fillStyle(0x557733); g.fillRect(29,18,4,14);
+  g.fillStyle(0xffcc99); g.fillRect(29,28,4,8);
+  // brown hair on left side
+  g.fillStyle(0x8b4513); g.fillRect(0,4,5,26);
+  g.fillStyle(0xaa6633); g.fillRect(1,4,3,12);
+  g.fillStyle(0x7a3d10); g.fillRect(0,20,4,10);
+  // neck + face
+  g.fillStyle(0xffcc99); g.fillRect(15,10,8,6);
+  g.fillStyle(0xffcc99); g.fillRect(12,4,12,8);
+  // hood
+  g.fillStyle(0x446622); g.fillRect(10,0,18,13);
+  g.fillStyle(0x334411); g.fillRect(10,0,3,12); g.fillRect(25,0,3,12);
+  g.fillStyle(0x557733); g.fillRect(12,0,14,5);
+  g.fillStyle(0x2d1f15); g.fillRect(13,6,11,6);
   g.generateTexture('ranger_fside', 44, 60);
 }
 
 function drawAbigailFSideStep(g) {
   g.clear();
-  g.fillStyle(0x222211); g.fillRect(8,49,12,11); g.fillRect(22,53,10,7);
-  g.fillStyle(0x334422); g.fillRect(8,32,12,18); g.fillRect(22,35,10,17);
-  g.fillStyle(0x446633); g.fillRect(10,32,4,16);
-  g.fillStyle(0x446622); g.fillRect(4,14,34,22);
-  g.fillStyle(0x557733); g.fillRect(7,15,26,20);
-  g.fillStyle(0x668844); g.fillRect(9,15,16,6);
-  g.fillStyle(0x334411); g.fillRect(4,14,4,20); g.fillRect(34,14,4,20);
-  g.fillStyle(0x8b5e3c); g.fillRect(4,32,34,4);
-  g.fillStyle(0x6b3f1e); g.fillRect(17,31,6,5);
+  g.fillStyle(0x222211); g.fillRect(8,49,11,11); g.fillRect(22,53,10,7);
+  g.fillStyle(0x334422); g.fillRect(8,32,11,18); g.fillRect(22,35,10,17);
+  g.fillStyle(0x446633); g.fillRect(10,32,3,16);
+  g.fillStyle(0x446622); g.fillRect(6,14,24,22);
+  g.fillStyle(0x557733); g.fillRect(8,15,18,20);
+  g.fillStyle(0x668844); g.fillRect(10,15,12,6);
+  g.fillStyle(0x334411); g.fillRect(6,14,3,20); g.fillRect(27,14,3,20);
+  g.fillStyle(0x8b5e3c); g.fillRect(6,32,24,4);
+  g.fillStyle(0x6b3f1e); g.fillRect(15,31,6,5);
   g.fillStyle(0x8b5e3c); g.fillRect(37,4,4,52);
   g.fillStyle(0x7a4a28); g.fillRect(37,4,4,4); g.fillRect(37,52,4,4);
   g.fillStyle(0xddcc99); g.fillRect(39,4,1,52);
-  g.fillStyle(0x557733); g.fillRect(0,14,5,22);
-  g.fillStyle(0xffcc99); g.fillRect(0,24,5,8);
-  g.fillStyle(0x557733); g.fillRect(36,22,4,14);
-  g.fillStyle(0xffcc99); g.fillRect(36,32,4,8);
-  g.fillStyle(0xffcc99); g.fillRect(17,10,9,6);
-  g.fillStyle(0xffcc99); g.fillRect(13,4,14,8);
-  g.fillStyle(0x446622); g.fillRect(10,0,22,13);
-  g.fillStyle(0x334411); g.fillRect(10,0,5,12); g.fillRect(28,0,4,12);
-  g.fillStyle(0x557733); g.fillRect(13,0,16,5);
-  g.fillStyle(0x2d1f15); g.fillRect(14,6,12,6);
+  g.fillStyle(0x557733); g.fillRect(3,14,4,22);
+  g.fillStyle(0xffcc99); g.fillRect(3,24,4,8);
+  g.fillStyle(0x557733); g.fillRect(29,22,4,14);
+  g.fillStyle(0xffcc99); g.fillRect(29,32,4,8);
+  g.fillStyle(0x8b4513); g.fillRect(0,4,5,26);
+  g.fillStyle(0xaa6633); g.fillRect(1,4,3,12);
+  g.fillStyle(0x7a3d10); g.fillRect(0,20,4,10);
+  g.fillStyle(0xffcc99); g.fillRect(15,10,8,6);
+  g.fillStyle(0xffcc99); g.fillRect(12,4,12,8);
+  g.fillStyle(0x446622); g.fillRect(10,0,18,13);
+  g.fillStyle(0x334411); g.fillRect(10,0,3,12); g.fillRect(25,0,3,12);
+  g.fillStyle(0x557733); g.fillRect(12,0,14,5);
+  g.fillStyle(0x2d1f15); g.fillRect(13,6,11,6);
   g.generateTexture('ranger_fside_step', 44, 60);
 }
 
 function drawAbigailBSide(g) {
   g.clear();
-  g.fillStyle(0x222211); g.fillRect(8,52,12,8); g.fillRect(23,52,10,8);
-  g.fillStyle(0x334422); g.fillRect(8,34,12,18); g.fillRect(23,34,10,18);
-  g.fillStyle(0x446622); g.fillRect(4,14,34,22);
-  g.fillStyle(0x557733); g.fillRect(7,15,24,20);
-  g.fillStyle(0x334411); g.fillRect(4,14,4,20); g.fillRect(34,14,4,20);
+  g.fillStyle(0x222211); g.fillRect(8,52,11,8); g.fillRect(23,52,10,8);
+  g.fillStyle(0x334422); g.fillRect(8,34,11,18); g.fillRect(23,34,10,18);
+  // slimmer diagonal body
+  g.fillStyle(0x446622); g.fillRect(6,14,24,22);
+  g.fillStyle(0x557733); g.fillRect(8,15,18,20);
+  g.fillStyle(0x334411); g.fillRect(6,14,3,20); g.fillRect(27,14,3,20);
   g.fillStyle(0x334411); g.fillRect(18,14,3,20);
-  g.fillStyle(0x8b5e3c); g.fillRect(2,14,5,20);
-  g.fillStyle(0xddcc99); g.fillRect(3,8,2,10); g.fillRect(6,8,2,10);
-  g.fillStyle(0x8b5e3c); g.fillRect(4,32,34,4);
-  g.fillStyle(0x6b3f1e); g.fillRect(17,31,6,5);
-  g.fillStyle(0x557733); g.fillRect(0,16,5,22);
-  g.fillStyle(0x557733); g.fillRect(37,16,5,22);
-  g.fillStyle(0xffcc99); g.fillRect(17,10,9,6);
-  g.fillStyle(0x446622); g.fillRect(10,0,22,13);
-  g.fillStyle(0x334411); g.fillRect(10,0,5,12); g.fillRect(28,0,4,12);
-  g.fillStyle(0x2d1f15); g.fillRect(13,6,14,8);
-  g.fillStyle(0x443322); g.fillRect(15,2,12,6);
+  // quiver visible on left
+  g.fillStyle(0x8b5e3c); g.fillRect(3,14,5,20);
+  g.fillStyle(0xddcc99); g.fillRect(4,8,2,10); g.fillRect(7,8,2,10);
+  g.fillStyle(0x8b5e3c); g.fillRect(6,32,24,4);
+  // arms
+  g.fillStyle(0x557733); g.fillRect(3,16,4,22);
+  g.fillStyle(0x557733); g.fillRect(29,16,5,22);
+  // long brown hair — prominent from back-diagonal
+  g.fillStyle(0x8b4513); g.fillRect(28,4,5,26);
+  g.fillStyle(0xaa6633); g.fillRect(29,4,3,14);
+  g.fillStyle(0x7a3d10); g.fillRect(28,20,5,10);
+  // neck
+  g.fillStyle(0xffcc99); g.fillRect(16,10,8,6);
+  // hood
+  g.fillStyle(0x446622); g.fillRect(10,0,18,13);
+  g.fillStyle(0x334411); g.fillRect(10,0,3,12); g.fillRect(25,0,3,12);
+  g.fillStyle(0x2d1f15); g.fillRect(12,6,14,8);
+  g.fillStyle(0x8b4513); g.fillRect(25,0,6,12);
+  g.fillStyle(0xaa6633); g.fillRect(26,0,4,6);
   g.generateTexture('ranger_bside', 44, 60);
 }
 
 function drawAbigailBSideStep(g) {
   g.clear();
-  g.fillStyle(0x222211); g.fillRect(8,52,12,8); g.fillRect(23,49,10,11);
-  g.fillStyle(0x334422); g.fillRect(8,34,12,18); g.fillRect(23,32,10,18);
-  g.fillStyle(0x446622); g.fillRect(4,14,34,22);
-  g.fillStyle(0x557733); g.fillRect(7,15,24,20);
-  g.fillStyle(0x334411); g.fillRect(4,14,4,20); g.fillRect(34,14,4,20);
+  g.fillStyle(0x222211); g.fillRect(8,52,11,8); g.fillRect(23,49,10,11);
+  g.fillStyle(0x334422); g.fillRect(8,34,11,18); g.fillRect(23,32,10,18);
+  g.fillStyle(0x446622); g.fillRect(6,14,24,22);
+  g.fillStyle(0x557733); g.fillRect(8,15,18,20);
+  g.fillStyle(0x334411); g.fillRect(6,14,3,20); g.fillRect(27,14,3,20);
   g.fillStyle(0x334411); g.fillRect(18,14,3,20);
-  g.fillStyle(0x8b5e3c); g.fillRect(2,14,5,20);
-  g.fillStyle(0xddcc99); g.fillRect(3,8,2,10); g.fillRect(6,8,2,10);
-  g.fillStyle(0x8b5e3c); g.fillRect(4,32,34,4);
-  g.fillStyle(0x6b3f1e); g.fillRect(17,31,6,5);
-  g.fillStyle(0x557733); g.fillRect(0,18,5,22);
-  g.fillStyle(0x557733); g.fillRect(37,14,5,22);
-  g.fillStyle(0xffcc99); g.fillRect(17,10,9,6);
-  g.fillStyle(0x446622); g.fillRect(10,0,22,13);
-  g.fillStyle(0x334411); g.fillRect(10,0,5,12); g.fillRect(28,0,4,12);
-  g.fillStyle(0x2d1f15); g.fillRect(13,6,14,8);
-  g.fillStyle(0x443322); g.fillRect(15,2,12,6);
+  g.fillStyle(0x8b5e3c); g.fillRect(3,14,5,20);
+  g.fillStyle(0xddcc99); g.fillRect(4,8,2,10); g.fillRect(7,8,2,10);
+  g.fillStyle(0x8b5e3c); g.fillRect(6,32,24,4);
+  g.fillStyle(0x557733); g.fillRect(3,18,4,22);
+  g.fillStyle(0x557733); g.fillRect(29,14,5,22);
+  g.fillStyle(0x8b4513); g.fillRect(28,4,5,26);
+  g.fillStyle(0xaa6633); g.fillRect(29,4,3,14);
+  g.fillStyle(0x7a3d10); g.fillRect(28,20,5,10);
+  g.fillStyle(0xffcc99); g.fillRect(16,10,8,6);
+  g.fillStyle(0x446622); g.fillRect(10,0,18,13);
+  g.fillStyle(0x334411); g.fillRect(10,0,3,12); g.fillRect(25,0,3,12);
+  g.fillStyle(0x2d1f15); g.fillRect(12,6,14,8);
+  g.fillStyle(0x8b4513); g.fillRect(25,0,6,12);
+  g.fillStyle(0xaa6633); g.fillRect(26,0,4,6);
   g.generateTexture('ranger_bside_step', 44, 60);
 }
 
