@@ -5382,6 +5382,7 @@ class GameScene extends Phaser.Scene {
       rallyCooldown: 0, turretCooldown: 0,
       isSleeping: false, zzzText: null,
       inv: { wood:0, metal:0, fiber:0, food:0 },
+      kills: 0,
       waterOverlay,
     };
   }
@@ -5937,6 +5938,8 @@ class GameScene extends Phaser.Scene {
         bossDefeated: this.bossDefeated,
         p1Name: this.p1 ? this.p1.charData.player : 'P1',
         p2Name: (this.p2 && !this.p2.isPermanentlyDead) ? this.p2.charData.player : null,
+        p1Kills: this.p1 ? this.p1.kills : 0,
+        p2Kills: this.p2 ? this.p2.kills : 0,
         dbgEntries: this._dbgEntries,
       });
     });
@@ -8053,7 +8056,7 @@ class GameScene extends Phaser.Scene {
           this.physics.add.overlap(blt, e.spr, () => {
             if (!blt.active || e.dying) return; // dying guard: second in-flight bullet can't double-kill
             blt.destroy();
-            this._hurtEnemy(e, 35, blt.x, blt.y);
+            this._hurtEnemy(e, 35, blt.x, blt.y, 0xff6644, player);
           });
         });
       }
@@ -8090,7 +8093,7 @@ class GameScene extends Phaser.Scene {
         this.physics.add.overlap(blt, e.spr, () => {
           if (!blt.active || e.dying) return;
           blt.destroy();
-          this._hurtEnemy(e, 28, blt.x, blt.y, 0x5599ff);
+          this._hurtEnemy(e, 28, blt.x, blt.y, 0x5599ff, player);
         });
       });
     }
@@ -8114,7 +8117,7 @@ class GameScene extends Phaser.Scene {
         this.physics.add.overlap(blt, e.spr, () => {
           if (!blt.active || e.dying) return;
           blt.destroy();
-          this._hurtEnemy(e, 14, blt.x, blt.y, 0xff8833);
+          this._hurtEnemy(e, 14, blt.x, blt.y, 0xff8833, player);
         });
       });
     }
@@ -8203,7 +8206,7 @@ class GameScene extends Phaser.Scene {
       SFX._play(700, 'triangle', 0.08, 0.2);
       this._log(`${player.charData.player} deployed TURRET  pos=(${Math.floor(player.spr.x/CFG.TILE)},${Math.floor(player.spr.y/CFG.TILE)})`, 'player');
       this.hint('Turret deployed!', 2000);
-      this.deployTurret(player.spr.x, player.spr.y);
+      this.deployTurret(player.spr.x, player.spr.y, player);
     }
   }
 
@@ -8214,7 +8217,7 @@ class GameScene extends Phaser.Scene {
     });
   }
 
-  deployTurret(x, y) {
+  deployTurret(x, y, owner) {
     const turret = this.add.graphics().setDepth(15);
     if (this.hudCam) this.hudCam.ignore(turret);
     // Draw turret
@@ -8242,7 +8245,7 @@ class GameScene extends Phaser.Scene {
           bfx.lineStyle(2, 0xddff44, 0.8);
           bfx.lineBetween(x, y-10, nearest.spr.x, nearest.spr.y);
           this.tweens.add({ targets:bfx, alpha:0, duration:150, onComplete:()=>bfx.destroy() });
-          this._hurtEnemy(nearest, 18, x, y);
+          this._hurtEnemy(nearest, 18, x, y, 0xff6644, owner);
         }
       }
     });
@@ -8278,7 +8281,7 @@ class GameScene extends Phaser.Scene {
           const diff = Phaser.Math.Angle.Wrap(angToE - dirAngle);
           if (Math.abs(diff) > Math.PI * 0.65) return;
           const meleeDmg = player.charData.id === 'knight' ? 45 : 30;
-          this._hurtEnemy(e, meleeDmg, player.spr.x, player.spr.y);
+          this._hurtEnemy(e, meleeDmg, player.spr.x, player.spr.y, 0xff6644, player);
           // Extra architect knockback (stacks on top of _hurtEnemy base impulse)
           if (knockback && e.spr.body) {
             e.spr.body.velocity.x += Math.cos(angToE) * knockback;
@@ -8328,7 +8331,7 @@ class GameScene extends Phaser.Scene {
 
   // Central damage handler: applies damage, 220ms flinch stagger, knockback impulse,
   // hit-flash tint, SFX, and kill check. Use instead of inline e.hp -= X everywhere.
-  _hurtEnemy(e, dmg, fromX, fromY, tint = 0xff6644) {
+  _hurtEnemy(e, dmg, fromX, fromY, tint = 0xff6644, owner = null) {
     if (!e || e.dying) return;
     e.hp -= dmg;
     e._flinchTimer = 220;
@@ -8356,7 +8359,7 @@ class GameScene extends Phaser.Scene {
     // multiple hits in the same frame don't stack into a visible stutter.
     this._hitPause(40);
     this._log(e.type + ' hit  dmg=' + dmg + '  hp=' + e.hp + '/' + (e.maxHp || '?'), 'combat');
-    if (e.hp <= 0) this.killEnemy(e);
+    if (e.hp <= 0) this.killEnemy(e, owner);
   }
 
   // Brief physics-world freeze (ms) for impact weight. No-op if a prior
@@ -8548,7 +8551,7 @@ class GameScene extends Phaser.Scene {
       `Mode     : ${mode}`,
       `Session  : ${Math.floor(t/60)}m ${t%60}s`,
       `Day      : ${this.dayNum||1}   Diff: ${this._diffMult ? this._diffMult().toFixed(1) : '?'}x`,
-      `Kills    : ${this.kills||0}`,
+      `Kills    : ${this.kills||0}  (P1:${this.p1?.kills||0}${this.p2 ? '  P2:'+this.p2.kills : ''})`,
       `Seed     : ${this._worldSeed||'?'}`,
       p1s, p2s,
       `─────────────────────────────────────────`,
@@ -8581,12 +8584,13 @@ class GameScene extends Phaser.Scene {
     }
   }
 
-  killEnemy(e) {
+  killEnemy(e, owner = null) {
     if (e.dying) return; // already being killed — prevent double-kill & double-count
     e.dying = true;
     e.hp = 0;
     if (e._den) e._den.liveCount = Math.max(0, (e._den.liveCount || 0) - 1);
     this.kills++;
+    if (owner) owner.kills++;
     this._log('Enemy killed  type=' + e.type + '  kills=' + this.kills, 'combat');
     // Remove from update loop immediately — splice avoids reallocating the whole array
     const _ei = this.enemies.indexOf(e);
@@ -10627,6 +10631,8 @@ class GameOverScene extends Phaser.Scene {
     this.bossDefeated  = data.bossDefeated  || false;
     this.p1Name        = data.p1Name        || 'P1';
     this.p2Name        = data.p2Name        || null;
+    this.p1Kills       = data.p1Kills       ?? 0;
+    this.p2Kills       = data.p2Kills       ?? 0;
     this._dbgEntries   = data.dbgEntries    || null;
   }
 
@@ -10667,7 +10673,7 @@ class GameOverScene extends Phaser.Scene {
     }).setOrigin(0.5);
 
     // ── Score breakdown panel ──────────────────────────────
-    const panelX = W/2 - 220, panelY = 148, panelW = 440, panelH = 210;
+    const panelX = W/2 - 220, panelY = 148, panelW = 440, panelH = this.p2Name ? 236 : 210;
     const panel = this.add.graphics();
     panel.fillStyle(0x110000, 0.85); panel.fillRoundedRect(panelX, panelY, panelW, panelH, 10);
     panel.lineStyle(1, 0x553333, 0.8); panel.strokeRoundedRect(panelX, panelY, panelW, panelH, 10);
@@ -10676,12 +10682,19 @@ class GameOverScene extends Phaser.Scene {
     const timeStr = mins > 0 ? mins + 'm ' + secs + 's' : secs + 's';
     const modeLabel = (this.mode===1?'1P':'2P') + ' ' + (this.difficulty==='hardcore'?'HARDCORE':'SURVIVAL');
 
+    const killRows = this.p2Name
+      ? [
+          [this.p1Name + ' kills', this.p1Kills + ' kills', '#ff8844'],
+          [this.p2Name + ' kills', this.p2Kills + ' kills', '#ff8844'],
+        ]
+      : [['Enemies killed', this.p1Kills + ' kills', '#ff8844']];
+
     const rows = [
       ['Survivors',       this._defaultName,                        '#aabbcc'],
       ['Mode',            modeLabel,                                '#8899aa'],
       ['Days survived',   'Day ' + this.days,                       '#ffee44'],
       ['Time alive',      timeStr,                                  '#cccccc'],
-      ['Enemies killed',  this.kills + ' kills',                    '#ff8844'],
+      ...killRows,
       ['Resources found', this.resources + ' items',                '#88cc66'],
       ['Boss defeated',   this.bossDefeated ? 'YES +500' : 'No',   this.bossDefeated ? '#ffdd44' : '#556666'],
     ];
