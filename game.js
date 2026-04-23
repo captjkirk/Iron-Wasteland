@@ -4814,6 +4814,21 @@ class SettingsScene extends Phaser.Scene {
       return { box, lbl, x, y, key: o.key };
     });
 
+    // ── Reset tutorial ───────────────────────────────────────
+    const resetTutBtn = this.add.text(W/2, H - 88, '[ RESET TUTORIAL ]', {
+      fontFamily:'monospace', fontSize:'11px', color:'#556655',
+    }).setOrigin(0.5).setInteractive({ useHandCursor: true });
+    resetTutBtn.on('pointerover', () => resetTutBtn.setColor('#88cc88'));
+    resetTutBtn.on('pointerout',  () => resetTutBtn.setColor('#556655'));
+    resetTutBtn.on('pointerdown', () => {
+      try { localStorage.removeItem('iw_tutorial_state'); } catch(e) {}
+      saveSettings({ tutorial: true });
+      this.setTutorial(true);
+      this.hint('Tutorial reset — tips will show again next run.', 2500);
+      resetTutBtn.setColor('#aaffaa');
+      this.time.delayedCall(1200, () => resetTutBtn.setColor('#556655'));
+    });
+
     // ── Rebind controls link ─────────────────────────────────
     const rebindBtn = this.add.text(W/2, H - 60, '[ REBIND CONTROLS ]', {
       fontFamily:'monospace', fontSize:'14px', color:'#8888cc',
@@ -7810,7 +7825,9 @@ class GameScene extends Phaser.Scene {
     this._tutActive = true;
     this._tutObjs = [];
     this._tutTimer = null;
-    this._tutShown = new Set();
+    // Seed from localStorage so returning players skip tips they've already seen
+    const _savedTips = (() => { try { return JSON.parse(localStorage.getItem('iw_tutorial_state') || '{}'); } catch(e) { return {}; } })();
+    this._tutShown = new Set(Object.keys(_savedTips).filter(k => _savedTips[k]));
     this._tutQueue = [];
     this._tutBusy  = false;
     // Show controls tips immediately; everything else is context-triggered
@@ -7824,6 +7841,11 @@ class GameScene extends Phaser.Scene {
     if (!this._tutActive || !this._tutShown) return;
     if (this._tutShown.has(key)) return;
     this._tutShown.add(key);
+    try {
+      const _ts = JSON.parse(localStorage.getItem('iw_tutorial_state') || '{}');
+      _ts[key] = true;
+      localStorage.setItem('iw_tutorial_state', JSON.stringify(_ts));
+    } catch(e) {}
     const TIPS = {
       move:     { title: 'MOVE',          text: 'P1: WASD · P2: Arrow keys.  Explore each biome — grassland, wasteland, swamp, tundra, ruins.' },
       attack:   { title: 'ATTACK',        text: 'P1: F to attack · P2: / (slash).  In 1-player mode: aim with the mouse and left-click to shoot.' },
@@ -8046,10 +8068,10 @@ class GameScene extends Phaser.Scene {
     // Layout: ATK bottom-right, ALT above ATK, USE left of ATK, BLD left of ALT, MENU top-right
     this._tcBtns = {
       attack:   { hx: W - 100, hy: H - 100, r: 52, down: false, pid: -1, col: 0xff6644, label: '\u2694 ATK' },
-      alt:      { hx: W - 185, hy: H - 195, r: 38, down: false, pid: -1, col: 0x6699ff, label: '\u2605 ALT' },
-      interact: { hx: W - 195, hy: H - 95,  r: 34, down: false, pid: -1, col: 0x44cc66, label: 'E USE' },
-      build:    { hx: W - 282, hy: H - 195, r: 34, down: false, pid: -1, col: 0xccaa33, label: '\u25a0 BLD' },
-      menu:     { hx: W - 32,  hy: 32,      r: 22, down: false, pid: -1, col: 0x888888, label: '\u2630' },
+      alt:      { hx: W - 185, hy: H - 195, r: 44, down: false, pid: -1, col: 0x6699ff, label: '\u2605 ALT' },
+      interact: { hx: W - 195, hy: H - 95,  r: 40, down: false, pid: -1, col: 0x44cc66, label: 'E USE' },
+      build:    { hx: W - 282, hy: H - 195, r: 40, down: false, pid: -1, col: 0xccaa33, label: '\u25a0 BLD' },
+      menu:     { hx: W - 32,  hy: 32,      r: 28, down: false, pid: -1, col: 0x888888, label: '\u2630' },
     };
 
     // Graphics layer on HUD (single object, redrawn each frame)
@@ -11288,21 +11310,25 @@ class GameScene extends Phaser.Scene {
     const _cam = this.cameras.main;
     const _view = _cam.worldView;
     const _VIEW_BUF = 400; // px buffer outside viewport before hiding sprite
-    // Count active enemies once per frame for MAX_ACTIVE_ENEMIES cap; cached on scene for _dbgRefresh
+    // Single pass: count active enemies AND build pack index (was two separate O(n) loops)
     let _activeCount = 0;
-    for (const _e of this.enemies) { if (_e.spr?.active && !_e._dormant) _activeCount++; }
-    this._activeEnemyCount = _activeCount;
-
-    // Build pack index once per tick so killEnemy() can look up packmates in O(k) instead of O(n)
     const _packIndex = new Map();
     for (const _e of this.enemies) {
+      if (_e.spr?.active && !_e._dormant) _activeCount++;
       if (_e._packId !== undefined && _e.spr?.active) {
         let _arr = _packIndex.get(_e._packId);
         if (!_arr) { _arr = []; _packIndex.set(_e._packId, _arr); }
         _arr.push(_e);
       }
     }
+    this._activeEnemyCount = _activeCount;
     this._packIndex = _packIndex;
+
+    // Hoist per-frame constants outside the per-enemy forEach — these don't change mid-loop
+    const HUMAN_ENEMY_TYPES = ['raider_brawler', 'raider_shooter', 'raider_heavy'];
+    const charmerPlayer = [this.p1, this.p2].find(
+      p => p && p.charData && p.charData.id === 'charmer' && !p.isDowned && p.spr && p.spr.active
+    );
 
     this.enemies.forEach(e => {
       if (e.dying || !e.spr.active) return;
@@ -11385,9 +11411,8 @@ class GameScene extends Phaser.Scene {
         return;
       }
       // Lauren (charmer) passive — human enemies are permanent allies; others charmed within aura
-      const HUMAN_ENEMY_TYPES = ['raider_brawler', 'raider_shooter', 'raider_heavy'];
+      // charmerPlayer + HUMAN_ENEMY_TYPES are hoisted above forEach for performance
       const isHumanEnemy = HUMAN_ENEMY_TYPES.includes(e.type);
-      const charmerPlayer = [this.p1, this.p2].find(p => p && p.charData && p.charData.id === 'charmer' && !p.isDowned && p.spr && p.spr.active);
       if (!e._aggroOverride) {
         if (charmerPlayer) {
           let charmed = false;
@@ -12524,11 +12549,20 @@ class GameOverScene extends Phaser.Scene {
       this.add.text(panelX + panelW - 18, y, val, { fontFamily:'monospace', fontSize:'13px', color: col }).setOrigin(1,0);
     });
 
-    // Total score
-    this.add.text(W/2, panelY + panelH + 18, 'SCORE   ' + this._score.toLocaleString(), {
+    // Total score — animates from 0 to final value over ~900 ms
+    const scoreTxt = this.add.text(W/2, panelY + panelH + 18, 'SCORE   0', {
       fontFamily:'monospace', fontSize:'32px', color:'#ffdd44',
       stroke:'#000', strokeThickness:4,
     }).setOrigin(0.5);
+    const _scoreTarget = this._score;
+    this.time.delayedCall(350, () => {
+      const _counter = { val: 0 };
+      this.tweens.add({
+        targets: _counter, val: _scoreTarget, duration: 900, ease: 'Quad.easeOut',
+        onUpdate: () => { scoreTxt.setText('SCORE   ' + Math.floor(_counter.val).toLocaleString()); },
+        onComplete: () => { scoreTxt.setText('SCORE   ' + _scoreTarget.toLocaleString()); },
+      });
+    });
 
     // ── Name entry section ─────────────────────────────────
     //   Layout (H=720): score total ~376, label ~414, input ~436, save btn ~472,
