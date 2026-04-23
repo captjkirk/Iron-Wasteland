@@ -49,19 +49,64 @@ const CFG = {
 
 // ── ENEMY LOOT TABLES ─────────────────────────────────────────
 // Format: [item_key, base_chance, flags]  flags: 0=plain, 1=multiply by foodMult, 2=rare (skip if hc.rareDropsBossOnly)
-// Chance > 1 = always drops (bears always drop metal regardless of rdm).
+// Chance > 1 = always drops (e.g. bears always drop metal, boss_wolf always drops food).
 const _RAIDER_LOOT = [['item_ammo', 0.6, 0], ['item_metal', 0.4, 0], ['item_food', 0.3, 1]];
 const ENEMY_LOOT = {
-  wolf:         [['item_fiber', 0.5, 0], ['item_metal', 0.3, 0]],
-  rat:          [['item_fiber', 0.6, 0], ['item_ammo',  0.25, 0]],
-  bear:         [['item_metal', 1e9, 0], ['item_wood',  0.5, 0], ['item_fiber', 0.4, 0]],
+  // ── Grass / common wildlife ──────────────────────────────────
+  wolf:         [['item_fiber', 0.6, 0],   // pelt
+                 ['item_food',  0.5, 1],   // meat — wolves are hunted for food
+                 ['item_metal', 0.15, 0]], // canine teeth (small scrap chance)
+
+  rat:          [['item_fiber', 0.6, 0],   // fur
+                 ['item_ammo',  0.3, 0],   // gnaws through ammo boxes
+                 ['item_wood',  0.2, 0]],  // nesting scraps
+
+  bear:         [['item_metal', 1e9, 0],   // claws — always drops metal
+                 ['item_food',  0.85, 1],  // massive animal = big meat haul
+                 ['item_wood',  0.5, 0],   // clawed-up logs
+                 ['item_fiber', 0.4, 0]],  // dense fur
+
+  // ── Raider camps ────────────────────────────────────────────
   brawler:      _RAIDER_LOOT,
   shooter:      _RAIDER_LOOT,
   heavy:        _RAIDER_LOOT,
-  ice_crawler:  [['item_fiber', 0.5, 0], ['item_rare', 0.2, 2]],
-  spider_ruins: [['item_fiber', 0.7, 0], ['item_metal', 0.25, 0]],
-  bog_lurker:   [['item_food',  0.5, 1], ['item_fiber', 0.3, 0]],
-  dust_hound:   [['item_food',  0.4, 1], ['item_fiber', 0.35, 0]],
+
+  // ── Tundra: rare items + ammo from frozen caches ─────────────
+  ice_crawler:  [['item_fiber', 0.55, 0],  // chitinous fibers
+                 ['item_ammo',  0.3,  0],  // frozen military cache
+                 ['item_rare',  0.25, 2]], // tundra ice crystal shard
+
+  // ── Ruins: THE fiber biome; spiders hoard ancient relics ─────
+  spider_ruins: [['item_fiber', 0.8,  0],  // webbing
+                 ['item_metal', 0.3,  0],  // hoarded scrap
+                 ['item_rare',  0.15, 2]], // ancient artifact snagged in web
+
+  // ── Swamp / Fungal: food + bioluminescent rares ──────────────
+  bog_lurker:   [['item_food',  0.65, 1],  // large creature = lots of meat
+                 ['item_fiber', 0.35, 0],  // leathery hide
+                 ['item_rare',  0.12, 2]], // bioluminescent gland
+
+  // ── Waste / Desert: ammo scavenging + food ───────────────────
+  dust_hound:   [['item_food',  0.5,  1],  // pack animal, decent meat
+                 ['item_fiber', 0.4,  0],  // tough wasteland hide
+                 ['item_ammo',  0.3,  0]], // scavenged from ruins
+
+  // ── Lakes: aquatic food + water pearls ───────────────────────
+  water_lurker: [['item_food',  0.7,  1],  // rich aquatic meat
+                 ['item_fiber', 0.45, 0],  // scales/membrane
+                 ['item_rare',  0.15, 2]], // iridescent water pearl
+
+  // ── Biome bosses (on top of the guaranteed rare+metal+ammo) ──
+  boss_golem:   [['item_ammo',  0.9,  0],  // wasteland warlord stockpile
+                 ['item_metal', 0.75, 0]],
+  boss_wolf:    [['item_food',  1e9,  1],  // alpha predator — always drops food
+                 ['item_fiber', 0.8,  0]],
+  boss_spider:  [['item_fiber', 1e9,  0],  // ruins hoard — always drops fiber
+                 ['item_metal', 0.7,  0]],
+  boss_troll:   [['item_wood',  1e9,  0],  // permafrost giant — always drops wood
+                 ['item_food',  0.8,  1]],
+  boss_hydra:   [['item_food',  1e9,  1],  // apex aquatic — always drops food
+                 ['item_rare',  0.5,  2]], // extra rare chance (large specimen)
 };
 
 // ── WORLD GEN CONFIG KNOBS ────────────────────────────────────
