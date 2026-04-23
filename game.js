@@ -192,6 +192,20 @@ const CHARS = [
     stats: [3, 3, 2, 5],
     desc: ['Master builder. Wrench melee.', 'ORCHESTRATE: deploy auto-turret'],
   },
+  {
+    id: 'charmer', player: 'Lauren', title: 'The Charmer',
+    color: 0xd988bb, dark: 0x995577,
+    speed: 175, maxHp: 130,
+    stats: [3, 4, 3, 2],
+    desc: ['Daytime aura charms enemies.', 'FLOWER: charm-on-hit bouquet toss'],
+  },
+  {
+    id: 'ranger', player: 'Abigail', title: 'The Ranger',
+    color: 0x557733, dark: 0x334422,
+    speed: 185, maxHp: 120,
+    stats: [3, 5, 4, 2],
+    desc: ['Bow & knife. Scout panel passive.', 'KNIFE: quick close-range strike'],
+  },
 ];
 
 // Shared state across scenes
