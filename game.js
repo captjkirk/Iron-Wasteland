@@ -432,7 +432,7 @@ const Music = {
       return;
     }
     const b = 60 / 130; // 130 BPM
-    const len = b * 16;  // 4 bars
+    const len = b * 8;  // 2 bars — halved from 4 to keep per-call oscillator count ~23 and prevent audio-thread stall on spawn
     const now = this.ctx.currentTime;
     if (startAt + len < now) {
       const skips = Math.ceil((now - startAt) / len);
@@ -440,33 +440,28 @@ const Music = {
     }
     const o = startAt - now;
 
-    // Driving bass line — low E minor root motion
+    // Driving bass line — low E minor root motion (2-bar pattern)
     [[82.41,0],[82.41,b*2],[98,b*4],[82.41,b*6],
-     [92.5,b*8],[82.41,b*10],[73.42,b*12],[82.41,b*14],
     ].forEach(([f,t]) => { if (o+t > -0.05) this._note(f, o+t, b*1.8, 'sawtooth', 0.5); });
 
-    // Heroic melody stabs — E minor / G major intervals, driving eighth notes
+    // Heroic melody stabs — E minor / G major intervals, driving eighth notes (2 bars)
     [[329.63,0,b*.6],[392,b,b*.5],[440,b*2,b*.6],[392,b*3,b*.5],
      [329.63,b*4,b*.6],[311.13,b*5,b*.5],[349.23,b*6,b*.6],[392,b*7,b*.5],
-     [329.63,b*8,b*.6],[440,b*9,b*.5],[392,b*10,b*.6],[349.23,b*11,b*.5],
-     [329.63,b*12,b*.8],[293.66,b*13,b*.5],[311.13,b*14,b*.6],[349.23,b*15,b*.8],
     ].forEach(([f,t,d]) => { if (o+t > -0.05) this._note(f, o+t, d, 'square', 0.3); });
 
-    // Power chord stabs on every beat (two-note parallel fifths)
-    [0, b*2, b*4, b*6, b*8, b*10, b*12, b*14].forEach(t => {
+    // Power chord stabs on every other beat (two-note parallel fifths)
+    [0, b*2, b*4, b*6].forEach(t => {
       if (o+t > -0.05) {
         this._note(196, o+t, b*0.4, 'sawtooth', 0.22);
         this._note(293.66, o+t, b*0.4, 'sawtooth', 0.18);
       }
     });
 
-    // Snare-like noise bursts on beats 2 and 4 (reduced from 4 to 2 per loop to prevent audio thread saturation)
-    [b*2, b*10].forEach(t => {
-      if (o+t > -0.05) SFX._noise(0.06, 0.45);
-    });
+    // Snare-like noise burst on beat 2
+    if (o + b*2 > -0.05) SFX._noise(0.06, 0.45);
 
     // Sustained pad swells (triangle, lower octave for warmth)
-    [[98,0,b*4,0.15],[110,b*4,b*4,0.15],[98,b*8,b*4,0.15],[87.31,b*12,b*4,0.18],
+    [[98,0,b*4,0.15],[110,b*4,b*4,0.15],
     ].forEach(([f,t,d,v]) => { if (o+t > -0.05) this._note(f, o+t, d, 'triangle', v); });
 
     const nextStart = startAt + len;
@@ -478,13 +473,20 @@ const Music = {
 const SFX = {
   _enabled: true,
   _noiseBuf: null,
+  gain: null,       // separate SFX gain node; initialized lazily on first _play call
+  _sfxVol: 1.0,    // pending volume (0–1); applied to gain node once it's created
   _play(freq, type, dur, vol, shape) {
     if (!this._enabled) return;
     try {
       const ctx = Music.ctx;
       if (!ctx) return;
+      if (!this.gain) {
+        this.gain = ctx.createGain();
+        this.gain.gain.value = this._sfxVol;
+        this.gain.connect(ctx.destination);
+      }
       const o = ctx.createOscillator(), g = ctx.createGain();
-      o.connect(g); g.connect(Music.gain || ctx.destination);
+      o.connect(g); g.connect(this.gain);
       o.type = type; o.frequency.setValueAtTime(freq, ctx.currentTime);
       if (shape === 'drop') o.frequency.linearRampToValueAtTime(freq*0.3, ctx.currentTime+dur);
       if (shape === 'rise') o.frequency.linearRampToValueAtTime(freq*2, ctx.currentTime+dur);
@@ -507,9 +509,14 @@ const SFX = {
     if (!this._enabled) return;
     try {
       const ctx = Music.ctx; if (!ctx) return;
+      if (!this.gain) {
+        this.gain = ctx.createGain();
+        this.gain.gain.value = this._sfxVol;
+        this.gain.connect(ctx.destination);
+      }
       const src = ctx.createBufferSource(), g = ctx.createGain();
       src.buffer = this._getNoiseBuf(ctx);
-      src.connect(g); g.connect(Music.gain || ctx.destination);
+      src.connect(g); g.connect(this.gain);
       g.gain.setValueAtTime(vol, ctx.currentTime);
       g.gain.linearRampToValueAtTime(0, ctx.currentTime + dur);
       src.start(); src.stop(ctx.currentTime + dur + 0.01);
@@ -4585,10 +4592,16 @@ class ModeSelectScene extends Phaser.Scene {
     STATE.difficulty = this.selDiff;
     _qlog(`ModeSelect: confirmed  mode=${this.selMode === 1 ? '1P' : '2P'}  diff=${this.selDiff}`, 'menu');
     Music.start();
-    // Apply saved audio settings
+    // Apply saved audio settings (volume sliders; fall back to legacy on/off booleans)
     const _as = loadSettings();
-    if (_as.musicEnabled === false && Music.gain) Music.gain.gain.value = 0;
-    SFX._enabled = _as.sfxEnabled !== false;
+    if (Music.gain) {
+      const _mv = _as.musicVolume !== undefined ? _as.musicVolume : (_as.musicEnabled !== false ? 50 : 0);
+      Music.gain.gain.value = (_mv / 100) * 0.14;
+    }
+    const _sv = _as.sfxVolume !== undefined ? _as.sfxVolume : (_as.sfxEnabled !== false ? 100 : 0);
+    SFX._sfxVol = _sv / 100;
+    SFX._enabled = _sv > 0;
+    if (SFX.gain) SFX.gain.gain.value = SFX._sfxVol;
     this.cameras.main.fadeOut(300, 0, 0, 0);
     this.time.delayedCall(300, () => this.scene.start('CharSelect'));
   }
@@ -4679,9 +4692,75 @@ class SettingsScene extends Phaser.Scene {
     }).setOrigin(0.5);
 
     const s = loadSettings();
-    const musicOn = s.musicEnabled !== false;
-    const sfxOn   = s.sfxEnabled   !== false;
-    const fogOn   = s.fogEnabled   !== false;
+    const fogOn = s.fogEnabled !== false;
+
+    // ── Volume sliders ───────────────────────────────────────────
+    const musicVol = s.musicVolume !== undefined ? s.musicVolume : (s.musicEnabled !== false ? 50 : 0);
+    const sfxVol   = s.sfxVolume   !== undefined ? s.sfxVolume   : (s.sfxEnabled   !== false ? 100 : 0);
+
+    const makeSlider = (label, cy, initialVal, onChange) => {
+      const trackW = Math.min(300, W * 0.4), trackH = 8, thumbW = 14, thumbH = 26;
+      const cx = W / 2, trackX = cx - trackW / 2;
+
+      this.add.text(cx, cy - 18, label, {
+        fontFamily:'monospace', fontSize:'10px', color:'#445544', letterSpacing:2,
+      }).setOrigin(0.5);
+
+      const trackGfx = this.add.graphics();
+      const fillGfx  = this.add.graphics();
+      const thumbGfx = this.add.graphics();
+      const valTxt   = this.add.text(trackX + trackW + 18, cy, '100%', {
+        fontFamily:'monospace', fontSize:'10px', color:'#aaffaa',
+      }).setOrigin(0, 0.5);
+
+      let val = Phaser.Math.Clamp(initialVal, 0, 100);
+
+      const redraw = () => {
+        const pct   = val / 100;
+        const fillW = Math.max(0, Math.floor(trackW * pct));
+        trackGfx.clear();
+        trackGfx.fillStyle(0x111122, 0.95);
+        trackGfx.fillRoundedRect(trackX, cy - trackH / 2, trackW, trackH, 4);
+        trackGfx.lineStyle(1, 0x334433, 0.8);
+        trackGfx.strokeRoundedRect(trackX, cy - trackH / 2, trackW, trackH, 4);
+        fillGfx.clear();
+        if (fillW > 0) {
+          fillGfx.fillStyle(val > 0 ? 0x44aa44 : 0x333344, 0.9);
+          fillGfx.fillRoundedRect(trackX, cy - trackH / 2, fillW, trackH, 4);
+        }
+        const thumbX = trackX + Math.floor(trackW * pct) - thumbW / 2;
+        thumbGfx.clear();
+        thumbGfx.fillStyle(val > 0 ? 0x88cc88 : 0x556655, 1);
+        thumbGfx.fillRoundedRect(thumbX, cy - thumbH / 2, thumbW, thumbH, 3);
+        thumbGfx.lineStyle(1.5, val > 0 ? 0xaaffaa : 0x445544, 0.9);
+        thumbGfx.strokeRoundedRect(thumbX, cy - thumbH / 2, thumbW, thumbH, 3);
+        valTxt.setText(val + '%').setColor(val > 0 ? '#aaffaa' : '#556655');
+      };
+
+      const applyPtr = (ptr) => {
+        val = Phaser.Math.Clamp(Math.round(((ptr.x - trackX) / trackW) * 100), 0, 100);
+        redraw();
+        onChange(val);
+      };
+
+      const zone = this.add.zone(cx, cy, trackW + thumbW + 20, thumbH + 12)
+        .setInteractive({ useHandCursor: true, draggable: false });
+      zone.on('pointerdown', applyPtr);
+      zone.on('pointermove', (ptr) => { if (ptr.isDown) applyPtr(ptr); });
+
+      redraw();
+    };
+
+    makeSlider('MUSIC', 385, musicVol, (v) => {
+      saveSettings({ musicVolume: v, musicEnabled: v > 0 });
+      if (Music.gain) Music.gain.gain.value = (v / 100) * 0.14;
+    });
+    makeSlider('SFX', 425, sfxVol, (v) => {
+      saveSettings({ sfxVolume: v, sfxEnabled: v > 0 });
+      SFX._sfxVol = v / 100;
+      SFX._enabled = v > 0;
+      if (SFX.gain) SFX.gain.gain.value = SFX._sfxVol;
+    });
 
     const makeToggle = (label, x, y, initial, onToggle) => {
       const opts = [{ key:true, label:'ON' }, { key:false, label:'OFF' }];
@@ -4704,15 +4783,6 @@ class SettingsScene extends Phaser.Scene {
       });
       redraw(initial);
     };
-
-    makeToggle('MUSIC', W/2 - 200, 394, musicOn, (v) => {
-      saveSettings({ musicEnabled: v });
-      if (Music.gain) Music.gain.gain.value = v ? 0.07 : 0;
-    });
-    makeToggle('SFX', W/2, 394, sfxOn, (v) => {
-      saveSettings({ sfxEnabled: v });
-      SFX._enabled = v;
-    });
 
     // ── Gameplay settings ────────────────────────────────────
     this.add.text(W/2, 444, 'GAMEPLAY', {
@@ -4758,6 +4828,21 @@ class SettingsScene extends Phaser.Scene {
       zone.on('pointerover', () => this.setTutorial(o.key));
       zone.on('pointerdown', () => { this.setTutorial(o.key); saveSettings({ tutorial: o.key }); });
       return { box, lbl, x, y, key: o.key };
+    });
+
+    // ── Reset tutorial ───────────────────────────────────────
+    const resetTutBtn = this.add.text(W/2, H - 88, '[ RESET TUTORIAL ]', {
+      fontFamily:'monospace', fontSize:'11px', color:'#556655',
+    }).setOrigin(0.5).setInteractive({ useHandCursor: true });
+    resetTutBtn.on('pointerover', () => resetTutBtn.setColor('#88cc88'));
+    resetTutBtn.on('pointerout',  () => resetTutBtn.setColor('#556655'));
+    resetTutBtn.on('pointerdown', () => {
+      try { localStorage.removeItem('iw_tutorial_state'); } catch(e) {}
+      saveSettings({ tutorial: true });
+      this.setTutorial(true);
+      this.hint('Tutorial reset — tips will show again next run.', 2500);
+      resetTutBtn.setColor('#aaffaa');
+      this.time.delayedCall(1200, () => resetTutBtn.setColor('#556655'));
     });
 
     // ── Rebind controls link ─────────────────────────────────
@@ -7776,7 +7861,9 @@ class GameScene extends Phaser.Scene {
     this._tutActive = true;
     this._tutObjs = [];
     this._tutTimer = null;
-    this._tutShown = new Set();
+    // Seed from localStorage so returning players skip tips they've already seen
+    const _savedTips = (() => { try { return JSON.parse(localStorage.getItem('iw_tutorial_state') || '{}'); } catch(e) { return {}; } })();
+    this._tutShown = new Set(Object.keys(_savedTips).filter(k => _savedTips[k]));
     this._tutQueue = [];
     this._tutBusy  = false;
     // Show controls tips immediately; everything else is context-triggered
@@ -7790,6 +7877,11 @@ class GameScene extends Phaser.Scene {
     if (!this._tutActive || !this._tutShown) return;
     if (this._tutShown.has(key)) return;
     this._tutShown.add(key);
+    try {
+      const _ts = JSON.parse(localStorage.getItem('iw_tutorial_state') || '{}');
+      _ts[key] = true;
+      localStorage.setItem('iw_tutorial_state', JSON.stringify(_ts));
+    } catch(e) {}
     const TIPS = {
       move:     { title: 'MOVE',          text: 'P1: WASD · P2: Arrow keys.  Explore each biome — grassland, wasteland, swamp, tundra, ruins.' },
       attack:   { title: 'ATTACK',        text: 'P1: F to attack · P2: / (slash).  In 1-player mode: aim with the mouse and left-click to shoot.' },
@@ -8012,10 +8104,10 @@ class GameScene extends Phaser.Scene {
     // Layout: ATK bottom-right, ALT above ATK, USE left of ATK, BLD left of ALT, MENU top-right
     this._tcBtns = {
       attack:   { hx: W - 100, hy: H - 100, r: 52, down: false, pid: -1, col: 0xff6644, label: '\u2694 ATK' },
-      alt:      { hx: W - 185, hy: H - 195, r: 38, down: false, pid: -1, col: 0x6699ff, label: '\u2605 ALT' },
-      interact: { hx: W - 195, hy: H - 95,  r: 34, down: false, pid: -1, col: 0x44cc66, label: 'E USE' },
-      build:    { hx: W - 282, hy: H - 195, r: 34, down: false, pid: -1, col: 0xccaa33, label: '\u25a0 BLD' },
-      menu:     { hx: W - 32,  hy: 32,      r: 22, down: false, pid: -1, col: 0x888888, label: '\u2630' },
+      alt:      { hx: W - 185, hy: H - 195, r: 44, down: false, pid: -1, col: 0x6699ff, label: '\u2605 ALT' },
+      interact: { hx: W - 195, hy: H - 95,  r: 40, down: false, pid: -1, col: 0x44cc66, label: 'E USE' },
+      build:    { hx: W - 282, hy: H - 195, r: 40, down: false, pid: -1, col: 0xccaa33, label: '\u25a0 BLD' },
+      menu:     { hx: W - 32,  hy: 32,      r: 28, down: false, pid: -1, col: 0x888888, label: '\u2630' },
     };
 
     // Graphics layer on HUD (single object, redrawn each frame)
@@ -11441,21 +11533,25 @@ class GameScene extends Phaser.Scene {
     const _cam = this.cameras.main;
     const _view = _cam.worldView;
     const _VIEW_BUF = 400; // px buffer outside viewport before hiding sprite
-    // Count active enemies once per frame for MAX_ACTIVE_ENEMIES cap; cached on scene for _dbgRefresh
+    // Single pass: count active enemies AND build pack index (was two separate O(n) loops)
     let _activeCount = 0;
-    for (const _e of this.enemies) { if (_e.spr?.active && !_e._dormant) _activeCount++; }
-    this._activeEnemyCount = _activeCount;
-
-    // Build pack index once per tick so killEnemy() can look up packmates in O(k) instead of O(n)
     const _packIndex = new Map();
     for (const _e of this.enemies) {
+      if (_e.spr?.active && !_e._dormant) _activeCount++;
       if (_e._packId !== undefined && _e.spr?.active) {
         let _arr = _packIndex.get(_e._packId);
         if (!_arr) { _arr = []; _packIndex.set(_e._packId, _arr); }
         _arr.push(_e);
       }
     }
+    this._activeEnemyCount = _activeCount;
     this._packIndex = _packIndex;
+
+    // Hoist per-frame constants outside the per-enemy forEach — these don't change mid-loop
+    const HUMAN_ENEMY_TYPES = ['raider_brawler', 'raider_shooter', 'raider_heavy'];
+    const charmerPlayer = [this.p1, this.p2].find(
+      p => p && p.charData && p.charData.id === 'charmer' && !p.isDowned && p.spr && p.spr.active
+    );
 
     this.enemies.forEach(e => {
       if (e.dying || !e.spr.active) return;
@@ -11538,9 +11634,8 @@ class GameScene extends Phaser.Scene {
         return;
       }
       // Lauren (charmer) passive — human enemies are permanent allies; others charmed within aura
-      const HUMAN_ENEMY_TYPES = ['raider_brawler', 'raider_shooter', 'raider_heavy'];
+      // charmerPlayer + HUMAN_ENEMY_TYPES are hoisted above forEach for performance
       const isHumanEnemy = HUMAN_ENEMY_TYPES.includes(e.type);
-      const charmerPlayer = [this.p1, this.p2].find(p => p && p.charData && p.charData.id === 'charmer' && !p.isDowned && p.spr && p.spr.active);
       if (!e._aggroOverride) {
         if (charmerPlayer) {
           let charmed = false;
@@ -12558,10 +12653,16 @@ class GameScene extends Phaser.Scene {
       const upgradeFlag = '_' + rec.charId + 'Upgraded';
       if (target[upgradeFlag]) { this.hint('Already upgraded!', 1500); return; }
       target[upgradeFlag] = true;
-      this._log(`${target.charData.player} upgrade: ${rec.label}`, 'player');
       if (rec.charId === 'gunslinger') target._gunslingerClip = 12;
       if (rec.charId === 'charmer') target._charmerUpgraded = true;
       if (rec.charId === 'ranger') target._rangerUpgraded = true;
+      const _upgradeEffect = rec.charId === 'knight'     ? 'shield_throw=on  block=70%'
+                           : rec.charId === 'architect'  ? 'nail_gun=on'
+                           : rec.charId === 'gunslinger' ? 'clip=8→12'
+                           : rec.charId === 'charmer'    ? 'aura_expanded=on  night_partial=on'
+                           : rec.charId === 'ranger'     ? 'explosive_arrows=on'
+                           : 'flag_set';
+      this._log(`${target.charData.player} upgrade applied: ${rec.charId}  effect=${_upgradeEffect}  flag=${upgradeFlag}=true`, 'player');
       target.spr.setTint(0xffaa22);
       this.time.delayedCall(400, () => {
         if (!target.spr?.active) return;
@@ -12671,11 +12772,20 @@ class GameOverScene extends Phaser.Scene {
       this.add.text(panelX + panelW - 18, y, val, { fontFamily:'monospace', fontSize:'13px', color: col }).setOrigin(1,0);
     });
 
-    // Total score
-    this.add.text(W/2, panelY + panelH + 18, 'SCORE   ' + this._score.toLocaleString(), {
+    // Total score — animates from 0 to final value over ~900 ms
+    const scoreTxt = this.add.text(W/2, panelY + panelH + 18, 'SCORE   0', {
       fontFamily:'monospace', fontSize:'32px', color:'#ffdd44',
       stroke:'#000', strokeThickness:4,
     }).setOrigin(0.5);
+    const _scoreTarget = this._score;
+    this.time.delayedCall(350, () => {
+      const _counter = { val: 0 };
+      this.tweens.add({
+        targets: _counter, val: _scoreTarget, duration: 900, ease: 'Quad.easeOut',
+        onUpdate: () => { scoreTxt.setText('SCORE   ' + Math.floor(_counter.val).toLocaleString()); },
+        onComplete: () => { scoreTxt.setText('SCORE   ' + _scoreTarget.toLocaleString()); },
+      });
+    });
 
     // ── Name entry section ─────────────────────────────────
     //   Layout (H=720): score total ~376, label ~414, input ~436, save btn ~472,
@@ -12800,8 +12910,11 @@ class GameOverScene extends Phaser.Scene {
 
     // Persist to localStorage
     const lb = this._loadLeaderboard();
-    const isHighScore = lb.length < 5 || this._score > (lb[lb.length - 1]?.score ?? -1);
+    // isHighScore = true only if this score will appear in the visible top-5 after saving.
+    // Compare against lb[4] (5th-best existing entry, 0-indexed) before the current run is added.
+    const isHighScore = lb.length < 5 || this._score > (lb[4]?.score ?? -1);
     const dateStr = new Date().toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+    this._savedName = name; // stash for leaderboard highlight
     lb.push({ name, score: this._score, days: this.days, time: Math.floor(this.timeAlive), date: dateStr });
     lb.sort((a, b) => b.score - a.score);
     lb.splice(10);
@@ -12963,8 +13076,11 @@ class GameOverScene extends Phaser.Scene {
       fontFamily:'monospace', fontSize:'10px', color:'#445566',
     });
     y += 16;
-    this._loadLeaderboard().slice(0, 5).forEach((entry, i) => {
-      const col = i === 0 ? '#ffdd44' : '#778899';
+    const _lb = this._loadLeaderboard(); // includes current run — already saved above
+    const _myRank = _lb.findIndex(e => e.score === this._score && e.name === (this._savedName || this._defaultName));
+    _lb.slice(0, 5).forEach((entry, i) => {
+      const isMe = _myRank >= 0 && i === _myRank;
+      const col = isMe ? '#ffdd44' : '#778899';
       const datePart = entry.date ? '  ' + entry.date : '';
       const txt = (i + 1) + '.  ' + entry.name.padEnd(14) + entry.score.toLocaleString() + '  Day ' + entry.days + datePart;
       this.add.text(W/2 - 200, y + i * 14, txt, { fontFamily:'monospace', fontSize:'10px', color: col });
