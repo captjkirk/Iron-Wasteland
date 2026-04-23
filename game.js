@@ -10340,10 +10340,17 @@ class GameScene extends Phaser.Scene {
           }
           this.redrawHUD();
         } else if (item.itemType === 'food') {
-          const _foodHeal = Math.max(1, Math.round(15 * this.hc.foodHealMult));
-          player.hp = Math.min(player.maxHp, player.hp + _foodHeal);
-          this._log(`${player.charData.player} picked up food  hp=${player.hp}/${player.maxHp}`, 'player');
-          label = '+' + _foodHeal + ' HP';
+          if (player.hp < player.maxHp) {
+            const _foodHeal = Math.max(1, Math.round(15 * this.hc.foodHealMult));
+            player.hp = Math.min(player.maxHp, player.hp + _foodHeal);
+            this._log(`${player.charData.player} picked up food  hp=${player.hp}/${player.maxHp}`, 'player');
+            label = '+' + _foodHeal + ' HP';
+          } else {
+            player.inv.food = (player.inv.food || 0) + 1;
+            this.resourcesGathered++;
+            this._log(`${player.charData.player} stored food (full HP)  inv=${JSON.stringify(player.inv)}`, 'player');
+            label = '+1 Food';
+          }
         } else {
           player.inv[item.itemType] = (player.inv[item.itemType] || 0) + 1;
           this.resourcesGathered++;
@@ -11644,9 +11651,15 @@ class GameScene extends Phaser.Scene {
           }
           this.redrawHUD();
         } else if (crate.itemType === 'food') {
-          const _crateFoodHeal = Math.max(1, Math.round(20 * this.hc.foodHealMult));
-          player.hp = Math.min(player.maxHp, player.hp + _crateFoodHeal);
-          this._log(`${player.charData.player} crate food +${_crateFoodHeal}  hp=${player.hp}/${player.maxHp}`, 'player');
+          if (player.hp < player.maxHp) {
+            const _crateFoodHeal = Math.max(1, Math.round(20 * this.hc.foodHealMult));
+            player.hp = Math.min(player.maxHp, player.hp + _crateFoodHeal);
+            this._log(`${player.charData.player} crate food +${_crateFoodHeal}  hp=${player.hp}/${player.maxHp}`, 'player');
+          } else {
+            player.inv.food = (player.inv.food || 0) + 2;
+            this.resourcesGathered += 2;
+            this._log(`${player.charData.player} crate food stored (full HP)  inv=${JSON.stringify(player.inv)}`, 'player');
+          }
         } else {
           player.inv[crate.itemType] = (player.inv[crate.itemType] || 0) + 2;
           this.resourcesGathered += 2;
