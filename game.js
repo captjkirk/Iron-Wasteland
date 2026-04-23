@@ -6398,20 +6398,34 @@ class GameScene extends Phaser.Scene {
     if (this._activeHint && this._activeHint.active) return;
     if (!this._hintQueue || this._hintQueue.length === 0) return;
     const { text, duration } = this._hintQueue.shift();
-    const h = this.add.text(CFG.W/2, 112, text, {
-      fontFamily:'monospace', fontSize:'17px', color:'#ffffff',
-      stroke:'#000', strokeThickness:4, backgroundColor:'#000000bb', padding:{x:16,y:9},
-    }).setOrigin(0.5).setDepth(160).setAlpha(0);
+    const { W } = CFG;
+    const PW = 560, PH = 46, PX = (W - PW) / 2, PY = 108;
+
+    const bg = this.add.graphics().setDepth(160).setAlpha(0);
+    bg.fillStyle(0x050d05, 0.88);
+    bg.fillRoundedRect(PX, PY, PW, PH, 8);
+    bg.lineStyle(2, 0x4a7a38, 0.80);
+    bg.strokeRoundedRect(PX, PY, PW, PH, 8);
+    this.cameras.main.ignore(bg);
+
+    const h = this.add.text(W / 2, PY + PH / 2, text, {
+      fontFamily:'monospace', fontSize:'15px', color:'#ccdfc8',
+      stroke:'#000', strokeThickness:2,
+      wordWrap:{ width: PW - 32 },
+    }).setOrigin(0.5).setDepth(161).setAlpha(0);
     this.cameras.main.ignore(h);
     h._hintText = text;
     this._activeHint = h;
-    this.tweens.add({ targets:h, alpha:1, duration:280,
+    this._activeHintBg = bg;
+
+    this.tweens.add({ targets:[bg, h], alpha:1, duration:280,
       onComplete:() => {
         this._hintTimer = this.time.delayedCall(duration, () => {
           this._hintTimer = null;
-          this.tweens.add({ targets:h, alpha:0, duration:450,
+          this.tweens.add({ targets:[bg, h], alpha:0, duration:450,
             onComplete:() => {
-              if (h === this._activeHint) this._activeHint = null;
+              if (h === this._activeHint) { this._activeHint = null; this._activeHintBg = null; }
+              bg.destroy();
               h.destroy();
               // Small gap so consecutive hints don't bleed into each other visually.
               this.time.delayedCall(150, () => this._processHintQueue());
