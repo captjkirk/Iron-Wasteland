@@ -5520,10 +5520,21 @@ class GameScene extends Phaser.Scene {
     const { MAP_W, MAP_H } = CFG;
     this._mmColorMap = new Uint32Array(MAP_W * MAP_H);
 
-    // Base layer — biome color for every tile (_biomeMap is pre-computed, getBiome is O(1))
+    // Base layer — biome color for every tile, with same wave shading as the world ground.
+    // Subsequent layers (water, trees, buildings) override these values so the shade only
+    // appears on visible ground tiles, matching the in-world behaviour.
     for (let ty = 0; ty < MAP_H; ty++) {
       for (let tx = 0; tx < MAP_W; tx++) {
-        this._mmColorMap[tx + ty * MAP_W] = BIOME_COLORS[getBiome(tx, ty)] || 0x333333;
+        let col = BIOME_COLORS[getBiome(tx, ty)] || 0x333333;
+        const wx = (_biomeNoise(tx, ty, 40) - 0.5) * 28;
+        const wy = (_biomeNoise(tx + 137, ty + 213, 40) - 0.5) * 28;
+        const w = Math.sin((tx + wx) * 0.10 + (ty + wy) * 0.06) * 0.55
+                + Math.sin((tx + wx) * 0.04 - (ty + wy) * 0.09 + 2.3) * 0.45;
+        const f = 1 + w * 0.14;
+        const r = Math.min(255, Math.max(0, Math.round(((col >> 16) & 0xff) * f)));
+        const g = Math.min(255, Math.max(0, Math.round(((col >>  8) & 0xff) * f)));
+        const b = Math.min(255, Math.max(0, Math.round(( col        & 0xff) * f)));
+        this._mmColorMap[tx + ty * MAP_W] = (r << 16) | (g << 8) | b;
       }
     }
 
