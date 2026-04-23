@@ -6971,7 +6971,7 @@ class GameScene extends Phaser.Scene {
     const _huntDeg = (Math.atan2(baseY - axy, baseX - axx) * 180 / Math.PI + 360) % 360;
     const _huntDir = ['E','SE','S','SW','W','NW','N','NE'][Math.round(_huntDeg / 45) % 8];
     this._log(`Hunting party incoming!  count=${count}  day=${this.dayNum}  from=${_huntDir}  spawn_tile=(${Math.floor(baseX/CFG.TILE)},${Math.floor(baseY/CFG.TILE)})`, 'world');
-    this.hint(`\u26a0 Raiders spotted at the wastes edge! (${_huntDir})`, 4000);
+    this.hint('\u26a0 Raiders spotted at the wastes edge!', 4000);
     this._huntPartyAlertFired = false;
     this._huntDirReminderAt = this.time.now + 45000; // first reminder 45s after spawn
     SFX._play(120, 'sawtooth', 0.3, 0.5, 'drop');
@@ -7045,22 +7045,15 @@ class GameScene extends Phaser.Scene {
       }
     });
 
-    // Periodic reminder while hunt party is still alive and far away
+    // Periodic reminder while hunt party is still alive
     if (this._huntDirReminderAt && this.time.now > this._huntDirReminderAt) {
       const _huntActive = this.raiders.filter(r => r.isHuntParty && r.hp > 0 && r.spr?.active);
       if (_huntActive.length > 0) {
         this._huntDirReminderAt = this.time.now + 45000;
-        const _ref = _huntActive[0].spr;
-        const _p = (this.p1?.spr?.active && !this.p1.isDowned) ? this.p1.spr : this.p2?.spr;
-        if (_p) {
-          const _deg = (Math.atan2(_ref.y - _p.y, _ref.x - _p.x) * 180 / Math.PI + 360) % 360;
-          const _dir = ['E','SE','S','SW','W','NW','N','NE'][Math.round(_deg / 45) % 8];
-          const _dist = Math.round(Phaser.Math.Distance.Between(_ref.x, _ref.y, _p.x, _p.y));
-          this.hint(`⚠ Raiders still hunting you — they're to the ${_dir} (${_dist}px out)`, 4500);
-          this._log(`Hunt party reminder  dir=${_dir}  dist=${_dist}  alive=${_huntActive.length}`, 'world');
-        }
+        this.hint('⚠ Raiders still hunting you...', 4000);
+        this._log(`Hunt party reminder  alive=${_huntActive.length}`, 'world');
       } else {
-        this._huntDirReminderAt = null; // all hunt party gone, stop reminders
+        this._huntDirReminderAt = null;
       }
     }
   }
@@ -7182,18 +7175,14 @@ class GameScene extends Phaser.Scene {
     // Add boss to main enemy array so melee + bullets can hit it
     this.enemies.push(this.boss);
 
+    // Screen-edge indicator \u2014 pulsing arrow visible on HUD when boss is off-screen
+    const _bossInd = this.add.graphics().setDepth(200);
+    this.cameras.main.ignore(_bossInd); // HUD-only: main camera skips it, hudCam renders it
+    this.boss._indicator = _bossInd;
+
     // Announce arrival
     this._log(`Boss spawned: ${bt.name}  hp=${_bossHp}  dmg=${_bossDmg}  day=${this.dayNum}  diff=${this._diffMult().toFixed(1)}x`, 'world');
     this.hint('\u2620 ' + bt.name.toUpperCase() + ' APPROACHES! \u2620', 6000);
-    // Follow-up hint after 7s with compass direction so player knows roughly where to look
-    this.time.delayedCall(7000, () => {
-      if (!this.boss || this.isOver) return;
-      const _px = this.p1?.spr?.x ?? this.p2?.spr?.x ?? 0;
-      const _py = this.p1?.spr?.y ?? this.p2?.spr?.y ?? 0;
-      const _deg = (Math.atan2(this.boss.spr.y - _py, this.boss.spr.x - _px) * 180 / Math.PI + 360) % 360;
-      const _dir = ['E','SE','S','SW','W','NW','N','NE'][Math.round(_deg / 45) % 8];
-      this.hint(`\u2620 ${bt.name} closing in from the ${_dir}!`, 5000);
-    });
     SFX.bossRoar();
     this._log('spawnBoss: roar done', 'world');
     // Defer boss music off the spawn frame. Prior freezes traced here: the first
@@ -7320,6 +7309,42 @@ class GameScene extends Phaser.Scene {
     }
     b.nameLabel.setPosition(bx, by - 103);
 
+    // Screen-edge threat indicator — pulsing arrow at viewport edge when boss is off-screen
+    if (b._indicator && b._indicator.active) {
+      b._indicator.clear();
+      const cam = this.cameras.main;
+      const GW = CFG.W, GH = CFG.H;
+      const pad = 22;
+      const screenX = (bx - cam.scrollX) * cam.zoom;
+      const screenY = (by - cam.scrollY) * cam.zoom;
+      const offScreen = screenX < -40 || screenX > GW + 40 || screenY < -40 || screenY > GH + 40;
+      if (offScreen) {
+        const cx = GW / 2, cy = GH / 2;
+        const ang = Math.atan2(screenY - cy, screenX - cx);
+        const slope = Math.abs((screenY - cy) / (screenX - cx));
+        let ex, ey;
+        if (slope < GH / GW) {
+          ex = screenX > cx ? GW - pad : pad;
+          ey = cy + (ex - cx) * Math.tan(ang);
+        } else {
+          ey = screenY > cy ? GH - pad : pad;
+          ex = cx + (ey - cy) / Math.tan(ang);
+        }
+        ex = Phaser.Math.Clamp(ex, pad, GW - pad);
+        ey = Phaser.Math.Clamp(ey, pad, GH - pad);
+        const pulse = Math.sin(this.time.now / 220) * 0.35 + 0.65;
+        // Filled arrowhead pointing toward boss
+        const tip = { x: ex + Math.cos(ang) * 11, y: ey + Math.sin(ang) * 11 };
+        const l   = { x: ex + Math.cos(ang + 2.3) * 7, y: ey + Math.sin(ang + 2.3) * 7 };
+        const r   = { x: ex + Math.cos(ang - 2.3) * 7, y: ey + Math.sin(ang - 2.3) * 7 };
+        b._indicator.fillStyle(0xff2200, pulse);
+        b._indicator.fillTriangle(tip.x, tip.y, l.x, l.y, r.x, r.y);
+        // Outer glow ring
+        b._indicator.lineStyle(2, 0xff5500, pulse * 0.5);
+        b._indicator.strokeCircle(ex, ey, 10 + Math.sin(this.time.now / 180) * 2.5);
+      }
+    }
+
     // Boss chases nearest player — relentless, no wander
     const players = [this.p1, this.p2].filter(p => p && !p.isDowned && p.hp > 0);
     if (players.length === 0) { b.spr.setVelocity(0, 0); return; }
@@ -7329,14 +7354,6 @@ class GameScene extends Phaser.Scene {
       b._lastPosLog = this.time.now;
       const _p1dist = this.p1?.spr ? Phaser.Math.Distance.Between(bx, by, this.p1.spr.x, this.p1.spr.y) : -1;
       this._log(`boss pos  type=${b.type}  tile=(${Math.floor(bx/CFG.TILE)},${Math.floor(by/CFG.TILE)})  hp=${b.hp}/${b.maxHp}  dist_p1=${Math.round(_p1dist)}  state=${b._bossState}`, 'world');
-    }
-
-    // Direction reminder — if the boss is still far away, nudge the player with a vague compass direction every 30s
-    if (nearDist > 800 && (!b._lastDirHint || this.time.now - b._lastDirHint > 30000)) {
-      b._lastDirHint = this.time.now;
-      const _deg = (Math.atan2(by - nearest.spr.y, bx - nearest.spr.x) * 180 / Math.PI + 360) % 360;
-      const _dir = ['E','SE','S','SW','W','NW','N','NE'][Math.round(_deg / 45) % 8];
-      this.hint(`☠ ${b.name} is out there — check ${_dir}`, 4000);
     }
 
     let nearest = players[0], nearDist = Phaser.Math.Distance.Between(b.spr.x, b.spr.y, players[0].spr.x, players[0].spr.y);
@@ -8472,6 +8489,7 @@ class GameScene extends Phaser.Scene {
       if (e.hpBar && e.hpBar.active) e.hpBar.destroy();
       if (e.nameLabel && e.nameLabel.active) e.nameLabel.destroy();
       if (e._telegraphGfx && e._telegraphGfx.active) e._telegraphGfx.destroy();
+      if (e._indicator && e._indicator.active) e._indicator.destroy();
       this.boss = null;
       this.bossDefeated = true;
       this._log(`Boss defeated: ${e.name||e.type}  day=${this.dayNum}  kills=${this.kills}`, 'world');
