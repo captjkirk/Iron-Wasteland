@@ -7319,7 +7319,8 @@ class GameScene extends Phaser.Scene {
     this.bHintText = t(W/2, 90, '', { fontFamily:'monospace', fontSize:'13px', color:'#666677' }).setOrigin(0.5);
 
     this.bCards = CHARS.map((ch, i) => {
-      const x = W/2 + (i-1)*250, y = H/2-10;
+      const spacing = Math.min(250, Math.floor((W - 240) / (CHARS.length - 1)));
+      const x = W/2 + (i - Math.floor(CHARS.length / 2)) * spacing, y = H/2-10;
       const box    = push(this.add.graphics().setDepth(211));
       const spr    = push(this.add.image(x, y-52, ch.id).setScale(2.5).setDepth(212));
       const nameT  = push(t(x, y+16, ch.player, { fontFamily:'monospace', fontSize:'18px', color:'#'+ch.color.toString(16).padStart(6,'0') }).setOrigin(0.5));
@@ -7505,6 +7506,19 @@ class GameScene extends Phaser.Scene {
     this.bHintText.setText(player===this.p1 ? 'A / D to select   |   F to confirm' : 'Arrow keys   |   / to confirm');
     this.bObjs.forEach(o => o.setVisible(true));
     this.refreshBarrackCards();
+
+    this._barrackPointerFn = (ptr) => {
+      if (!this.barrackOpen) return;
+      for (let i = 0; i < this.bCards.length; i++) {
+        const c = this.bCards[i];
+        if (ptr.x >= c.x - 106 && ptr.x <= c.x + 106 && ptr.y >= c.y - 100 && ptr.y <= c.y + 98) {
+          if (i === this.barrackSel) { this.barrackConfirm(); }
+          else { this.barrackSel = i; this.refreshBarrackCards(); }
+          return;
+        }
+      }
+    };
+    this.input.on('pointerdown', this._barrackPointerFn);
   }
 
   barrackNav(dir) {
@@ -7573,6 +7587,10 @@ class GameScene extends Phaser.Scene {
     this._log(`barracks closed`, 'player');
     this.barrackOpen = false; this.barrackOwner = null;
     this.bObjs.forEach(o => o.setVisible(false));
+    if (this._barrackPointerFn) {
+      this.input.off('pointerdown', this._barrackPointerFn);
+      this._barrackPointerFn = null;
+    }
   }
 
   // ── HINT ─────────────────────────────────────────────────────
@@ -9389,12 +9407,12 @@ class GameScene extends Phaser.Scene {
       player.atkCooldown = 1500;
       this._triggerAtkAnim(player, 675);
       this._log(`${player.charData.player} Pirouette  hp=${player.hp}/${player.maxHp}`, 'player');
-      const pfx = this.add.graphics().setDepth(20);
+      const pfx = this.add.graphics().setDepth(20).setPosition(player.spr.x, player.spr.y);
       if (this.hudCam) this.hudCam.ignore(pfx);
       pfx.lineStyle(5, 0xff88cc, 0.9);
-      pfx.strokeCircle(player.spr.x, player.spr.y, 55);
+      pfx.strokeCircle(0, 0, 55);
       pfx.lineStyle(3, 0xffccee, 0.6);
-      pfx.strokeCircle(player.spr.x, player.spr.y, 38);
+      pfx.strokeCircle(0, 0, 38);
       this.tweens.add({ targets: pfx, alpha: 0, scaleX: 1.4, scaleY: 1.4, duration: 400, onComplete: () => pfx.destroy() });
       const px = player.spr.x, py = player.spr.y;
       this.enemies.forEach(e => {
@@ -12006,6 +12024,15 @@ class GameScene extends Phaser.Scene {
       }
     };
     this.input.on('pointerdown', this._craftMenuPointerFn);
+
+    this._craftMenuWheelFn = (pointer, currentlyOver, deltaX, deltaY) => {
+      if (!this.craftMenuOpen) return;
+      const PH = _isMobile ? 330 : 380;
+      const ROW_H = 25, N_VISIBLE = Math.floor((PH - 94) / ROW_H);
+      const maxScroll = Math.max(0, GameScene.RECIPES.length - N_VISIBLE);
+      this.craftMenuScroll = Phaser.Math.Clamp((this.craftMenuScroll || 0) + (deltaY > 0 ? 1 : -1), 0, maxScroll);
+    };
+    this.input.on('wheel', this._craftMenuWheelFn);
   }
 
   _craftScrollToSel() {
@@ -12023,6 +12050,10 @@ class GameScene extends Phaser.Scene {
     if (this._craftMenuPointerFn) {
       this.input.off('pointerdown', this._craftMenuPointerFn);
       this._craftMenuPointerFn = null;
+    }
+    if (this._craftMenuWheelFn) {
+      this.input.off('wheel', this._craftMenuWheelFn);
+      this._craftMenuWheelFn = null;
     }
     if (this.craftMenuGfx) { this.craftMenuGfx.destroy(); this.craftMenuGfx = null; }
     this._craftMenuText && this._craftMenuText.forEach(t => t.destroy());
