@@ -5415,7 +5415,7 @@ class GameScene extends Phaser.Scene {
     }
 
     // ── MINIMAP ─────────────────────────────────────────────────
-    const mmW = 120, mmH = 120;
+    const mmW = 160, mmH = 160;
     const mmX = W - mmW - 10, mmY = 96; // top-right so it doesn't overlap P2 inventory
     // Background
     const mmBg = this._h(this.add.graphics().setDepth(110));
@@ -5424,8 +5424,8 @@ class GameScene extends Phaser.Scene {
     this.minimapGfx = this._h(this.add.graphics().setDepth(111));
     this.minimapDots = this._h(this.add.graphics().setDepth(112));
     this.mmBounds = { x: mmX, y: mmY, w: mmW, h: mmH };
-    this._h(this.add.text(mmX + mmW/2, mmY - 10, 'MAP', {
-      fontFamily:'monospace', fontSize:'8px', color:'#666677',
+    this._h(this.add.text(mmX + mmW/2, mmY - 10, 'RADAR', {
+      fontFamily:'monospace', fontSize:'8px', color:'#667788',
     }).setOrigin(0.5).setDepth(111));
 
     // Pre-render biome colors on minimap (static, done once)
@@ -5442,31 +5442,8 @@ class GameScene extends Phaser.Scene {
   }
 
   _renderMinimapBase() {
-    if (!this.minimapGfx) return;
-    const mm = this.mmBounds;
-    const scaleX = mm.w / CFG.MAP_W, scaleY = mm.h / CFG.MAP_H;
-    this.minimapGfx.clear();
-    // Draw biome blocks (sample every 4 tiles for perf)
-    const step = 4;
-    for (let tx = 0; tx < CFG.MAP_W; tx += step) {
-      for (let ty = 0; ty < CFG.MAP_H; ty += step) {
-        const biome = getBiome(tx, ty);
-        this.minimapGfx.fillStyle(BIOME_COLORS[biome] || 0x333333, 0.8);
-        this.minimapGfx.fillRect(
-          mm.x + tx * scaleX,
-          mm.y + ty * scaleY,
-          Math.ceil(step * scaleX),
-          Math.ceil(step * scaleY)
-        );
-      }
-    }
-    // Draw mountain markers (small gray dots)
-    if (this.mountainTiles) {
-      this.minimapGfx.fillStyle(0x888899, 0.9);
-      for (const m of this.mountainTiles) {
-        this.minimapGfx.fillRect(mm.x + m.tx * scaleX - 0.5, mm.y + m.ty * scaleY - 0.5, 2, 2);
-      }
-    }
+    // Radar is now fully dynamic (player-centered, fog-aware) — no static pre-render needed.
+    if (this.minimapGfx) this.minimapGfx.clear();
   }
 
   updateMinimap() {
@@ -5480,59 +5457,112 @@ class GameScene extends Phaser.Scene {
     }
     this.minimapGfx && this.minimapGfx.setVisible(true);
     this.minimapDots.setVisible(true);
-    // Only update every 8 frames
-    if (this._fogFrame % 8 !== 0) return;
+    // Update every 5 frames — dynamic view is cheaper per-frame than the old full-map render
+    if (this._fogFrame % 5 !== 0) return;
 
     const mm = this.mmBounds;
-    const scaleX = mm.w / CFG.MAP_W, scaleY = mm.h / CFG.MAP_H;
     const TILE = CFG.TILE;
     this.minimapDots.clear();
 
-    // Draw fog coverage on minimap (sample every 6 tiles)
-    const step = 6;
-    this.minimapDots.fillStyle(0x000000, 0.6);
-    for (let tx = 0; tx < CFG.MAP_W; tx += step) {
-      for (let ty = 0; ty < CFG.MAP_H; ty += step) {
-        if (!this.fogRevealed.has(tx + ',' + ty)) {
-          this.minimapDots.fillRect(
-            mm.x + tx * scaleX,
-            mm.y + ty * scaleY,
-            Math.ceil(step * scaleX),
-            Math.ceil(step * scaleY)
-          );
-        }
+    // Reference player for centering: P1 if active, else P2
+    const refP = (this.p1?.spr?.active && !this.p1.isDowned) ? this.p1
+               : (this.p2?.spr?.active && !this.p2.isDowned) ? this.p2 : null;
+    if (!refP) return;
+
+    // Radar shows a 40-tile radius (1280px world) around the reference player.
+    // scale: minimap pixels per world tile.
+    const VIEW = 40;
+    const scale = mm.w / (VIEW * 2);
+    const centerTX = Math.floor(refP.spr.x / TILE);
+    const centerTY = Math.floor(refP.spr.y / TILE);
+    const minTX = centerTX - VIEW, maxTX = centerTX + VIEW;
+    const minTY = centerTY - VIEW, maxTY = centerTY + VIEW;
+    const tileSize = Math.max(1, scale);
+
+    // Draw revealed biome tiles — unexplored area stays dark (panel background)
+    for (let tx = minTX; tx <= maxTX; tx++) {
+      for (let ty = minTY; ty <= maxTY; ty++) {
+        if (tx < 0 || ty < 0 || tx >= CFG.MAP_W || ty >= CFG.MAP_H) continue;
+        if (!this.fogRevealed.has(tx + ',' + ty)) continue;
+        const biome = getBiome(tx, ty);
+        this.minimapDots.fillStyle(BIOME_COLORS[biome] || 0x333333, 0.9);
+        this.minimapDots.fillRect(
+          mm.x + (tx - minTX) * scale,
+          mm.y + (ty - minTY) * scale,
+          tileSize + 0.5, tileSize + 0.5
+        );
       }
     }
 
-    // POI dots
+    // Mountain tiles in view (if revealed) — drawn on top of biome layer
+    if (this.mountainTiles) {
+      this.minimapDots.fillStyle(0x778899, 1);
+      for (const m of this.mountainTiles) {
+        if (m.tx < minTX || m.tx > maxTX || m.ty < minTY || m.ty > maxTY) continue;
+        if (!this.fogRevealed.has(m.tx + ',' + m.ty)) continue;
+        this.minimapDots.fillRect(
+          mm.x + (m.tx - minTX) * scale,
+          mm.y + (m.ty - minTY) * scale,
+          tileSize + 0.5, tileSize + 0.5
+        );
+      }
+    }
+
+    // POI dots — revealed and within radar range
     if (this.pois) {
       this.pois.forEach(poi => {
+        if (poi.tx < minTX || poi.tx > maxTX || poi.ty < minTY || poi.ty > maxTY) return;
+        if (!this.fogRevealed.has(poi.tx + ',' + poi.ty)) return;
         let col = 0xffffff;
-        if (poi.type === 'cache') col = 0xccaa00;
-        else if (poi.type === 'den') col = 0xcc4444;
-        else if (poi.type === 'tower') col = 0x66aaff;
-        else if (poi.type === 'camp') col = 0x44cc66;
-        else if (poi.type === 'campfire') col = 0xff8833;   // orange — player-built campfire
-        else if (poi.type === 'craftbench') col = 0xddcc44; // yellow — player-built workbench
-        else if (poi.type === 'bed') col = 0xaa88ff;        // purple — player-built bed
-        else if (poi.type === 'raidcamp') col = 0xff2222;   // red — raider camp
-        // Only show if revealed
-        if (this.fogRevealed.has(poi.tx + ',' + poi.ty)) {
-          this.minimapDots.fillStyle(col);
-          this.minimapDots.fillRect(mm.x + poi.tx * scaleX - 1, mm.y + poi.ty * scaleY - 1, 3, 3);
-        }
+        if      (poi.type === 'cache')      col = 0xccaa00;
+        else if (poi.type === 'den')        col = 0xcc4444;
+        else if (poi.type === 'tower')      col = 0x66aaff;
+        else if (poi.type === 'camp')       col = 0x44cc66;
+        else if (poi.type === 'campfire')   col = 0xff8833;
+        else if (poi.type === 'craftbench') col = 0xddcc44;
+        else if (poi.type === 'bed')        col = 0xaa88ff;
+        else if (poi.type === 'raidcamp')   col = 0xff2222;
+        const mx = mm.x + (poi.tx - minTX) * scale;
+        const my = mm.y + (poi.ty - minTY) * scale;
+        this.minimapDots.fillStyle(col, 1);
+        this.minimapDots.fillRect(mx - 1, my - 1, 3, 3);
       });
     }
 
+    // Boss dot — always visible when alive so player knows it exists even off-radar.
+    // Clamped to minimap edge if outside the 40-tile view.
+    if (this.boss && this.boss.spr?.active && this.boss.hp > 0) {
+      const btx = Math.floor(this.boss.spr.x / TILE);
+      const bty = Math.floor(this.boss.spr.y / TILE);
+      const rawMX = mm.x + (btx - minTX) * scale;
+      const rawMY = mm.y + (bty - minTY) * scale;
+      const bmx = Phaser.Math.Clamp(rawMX, mm.x + 3, mm.x + mm.w - 3);
+      const bmy = Phaser.Math.Clamp(rawMY, mm.y + 3, mm.y + mm.h - 3);
+      const pulse = Math.sin(this.time.now / 280) * 0.3 + 0.7;
+      this.minimapDots.fillStyle(0xff2200, pulse);
+      this.minimapDots.fillCircle(bmx, bmy, 3.5);
+      this.minimapDots.lineStyle(1.5, 0xff5500, pulse * 0.6);
+      this.minimapDots.strokeCircle(bmx, bmy, 5.5);
+    }
+
     // Player dots
-    const drawDot = (p, color) => {
-      if (!p || !p.spr.active) return;
-      const ptx = p.spr.x / TILE, pty = p.spr.y / TILE;
-      this.minimapDots.fillStyle(color);
-      this.minimapDots.fillCircle(mm.x + ptx * scaleX, mm.y + pty * scaleY, 2.5);
+    const drawPlayer = (p, color) => {
+      if (!p || !p.spr?.active) return;
+      const pmx = mm.x + (Math.floor(p.spr.x / TILE) - minTX) * scale;
+      const pmy = mm.y + (Math.floor(p.spr.y / TILE) - minTY) * scale;
+      this.minimapDots.fillStyle(color, 1);
+      this.minimapDots.fillCircle(pmx, pmy, 3);
+      this.minimapDots.lineStyle(1, 0xffffff, 0.7);
+      this.minimapDots.strokeCircle(pmx, pmy, 3);
     };
-    drawDot(this.p1, 0x6699ff);
-    if (this.p2) drawDot(this.p2, 0xff9944);
+    drawPlayer(this.p1, 0x6699ff);
+    if (this.p2) drawPlayer(this.p2, 0xff9944);
+
+    // Subtle crosshair at center for orientation
+    const cx = mm.x + mm.w / 2, cy = mm.y + mm.h / 2;
+    this.minimapDots.lineStyle(1, 0x445566, 0.35);
+    this.minimapDots.lineBetween(cx - 5, cy, cx + 5, cy);
+    this.minimapDots.lineBetween(cx, cy - 5, cx, cy + 5);
   }
 
   makeAmmoRow(x, y, tint) {
@@ -8733,7 +8763,7 @@ class GameScene extends Phaser.Scene {
                     rat:       {key:'rat',       hp:38, speed:145,dmg:7, baseScale:1.6,w:15,h:9 },
                     bear:      {key:'bear',      hp:160,speed:58, dmg:20,baseScale:2.4,w:24,h:18},
                     bog_lurker:{key:'bog_lurker',hp:65, speed:60, dmg:14,baseScale:1.8,w:20,h:14},
-                    dust_hound:{key:'dust_hound',hp:35, speed:125,dmg:6, baseScale:1.3,w:18,h:12} }[type];
+                    dust_hound:{key:'dust_hound',hp:35, speed:125,dmg:6, baseScale:1.3,w:18,h:12,atkInterval:1500} }[type];
         const count = Phaser.Math.Between(2, 4);
         for (let i = 0; i < count; i++) {
           const ang = (i / count) * Math.PI * 2;
@@ -9095,7 +9125,7 @@ class GameScene extends Phaser.Scene {
       ice_crawler:  { hp:45,  speed:130, dmg:7,  baseScale:1.6, w:18, h:12, atkInterval:1400 },
       spider_ruins: { hp:40,  speed:70,  dmg:8,  baseScale:1.6, w:16, h:12, atkInterval:1800 },
       bog_lurker:   { hp:55,  speed:55,  dmg:13, baseScale:1.8, w:20, h:14, atkInterval:2000 },
-      dust_hound:   { hp:28,  speed:118, dmg:5,  baseScale:1.3, w:18, h:12, atkInterval:1300 },
+      dust_hound:   { hp:28,  speed:118, dmg:5,  baseScale:1.3, w:18, h:12, atkInterval:1500 },
     };
     const aggros = { ice_crawler:160, spider_ruins:130, bog_lurker:80, dust_hound:200 };
     const t = defs[type];
@@ -9337,7 +9367,7 @@ class GameScene extends Phaser.Scene {
               if (!this._ctx.firstHarvest) {
                 this._ctx.firstHarvest = true;
                 this._tutTrigger('gather');
-                this.time.delayedCall(800, () => this.hint('Press Q (P1) or 0 (P2) to open the Crafting Menu', 5000));
+                this.hint('Resources collected! Press Q to Craft — build Walls and more.', 6000);
               }
               item.destroy();
             };
@@ -9742,7 +9772,7 @@ class GameScene extends Phaser.Scene {
                 else nearest.spr.clearTint();
               });
             }
-            e.attackTimer = e.atkInterval || (e.type==='bear' ? 2400 : e.type==='wolf' ? 1600 : 1200);
+            e.attackTimer = e.atkInterval || (e.type==='bear' ? 2400 : e.type==='wolf' ? 1600 : e.type==='dust_hound' ? 1500 : 1200);
             this.checkDeaths();
           }
         }
