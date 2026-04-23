@@ -1413,6 +1413,25 @@ function buildTextures(scene) {
   g.fillStyle(0xeedd22); g.fillRect(11, 9, 2, 2);
   g.generateTexture('supply_cache', 24, 20);
 
+  // Relic — glowing violet crystal shard
+  g.clear();
+  g.fillStyle(0x110022); g.fillRect(0, 0, 14, 14);
+  g.fillStyle(0x7722bb); g.fillTriangle(7, 1, 2, 11, 12, 11);
+  g.fillStyle(0xaa55ee); g.fillTriangle(7, 3, 4, 10, 10, 10);
+  g.fillStyle(0xddaaff); g.fillRect(6, 2, 2, 2);
+  g.fillStyle(0x44ddff); g.fillRect(5, 9, 4, 2);
+  g.generateTexture('item_relic', 14, 14);
+
+  // Altar — stone pedestal with 5 rune slots
+  g.clear();
+  g.fillStyle(0x333333); g.fillRect(2, 18, 28, 10);
+  g.fillStyle(0x444444); g.fillRect(4, 10, 24, 10);
+  g.fillStyle(0x555555); g.fillRect(6, 4, 20, 8);
+  g.fillStyle(0x777777); g.fillRect(7, 5, 18, 2);
+  g.fillStyle(0x110022);
+  for (let _ri = 0; _ri < 5; _ri++) g.fillRect(8 + _ri * 4, 6, 3, 4);
+  g.generateTexture('altar_struct', 32, 28);
+
   // Raid loot cache — locked military crate (dark green, red lock)
   g.clear();
   g.fillStyle(0x2e3d1e); g.fillRect(2, 4, 22, 14);   // dark military body
@@ -5253,6 +5272,14 @@ class GameScene extends Phaser.Scene {
     this.bossSpawned = false;
     this.bossDefeated = false;
     this.boss = null;
+
+    // Relic / win condition state
+    this.relicsHeld      = 0;
+    this.relicsDeposited = 0;
+    this._relicPOIs      = [];
+    this.altarPos        = null;
+    this.altarDiscovered = false;
+    this._relicHintShown = false;
     this.raiders = [];
     this.raidCamp = null;
     this.raidRespawnDay = null;
@@ -6428,6 +6455,72 @@ class GameScene extends Phaser.Scene {
         });
       }
     });
+
+    // ── ALTAR — random placement far from spawn ──────────────────
+    {
+      const ALTAR_MIN_DIST = 40; // tiles from spawn
+      const ALTAR_BIOMES = ['waste', 'swamp', 'tundra', 'ruins', 'fungal'];
+      let altarPos = null;
+      for (let _ai = 0; _ai < 120 && !altarPos; _ai++) {
+        const tx = Phaser.Math.Between(12, MAP_W - 12);
+        const ty = Phaser.Math.Between(12, MAP_H - 12);
+        const dx = tx - stx, dy = ty - sty;
+        if (dx*dx + dy*dy < ALTAR_MIN_DIST*ALTAR_MIN_DIST) continue;
+        if (ALTAR_BIOMES.includes(getBiome(tx, ty))) altarPos = { tx, ty };
+      }
+      if (!altarPos) altarPos = { tx: Phaser.Math.Clamp(stx + 50, 12, MAP_W-12), ty: Phaser.Math.Clamp(sty + 50, 12, MAP_H-12) };
+      const ax = altarPos.tx * TILE, ay = altarPos.ty * TILE;
+      const altarSpr = this._w(this.add.image(ax, ay, 'altar_struct').setScale(2.5).setDepth(6));
+      // No visible label — player must discover it
+      this.altarPos = { x: ax, y: ay, tx: altarPos.tx, ty: altarPos.ty, spr: altarSpr };
+      this.pois.push({ type: 'altar', tx: altarPos.tx, ty: altarPos.ty, spr: altarSpr });
+      this._log(`Altar placed  tx=${altarPos.tx}  ty=${altarPos.ty}  biome=${getBiome(altarPos.tx, altarPos.ty)}`, 'world');
+    }
+
+    // ── RELICS — one per outer biome, with elite guards ──────────
+    {
+      const RELIC_BIOMES = ['waste', 'swamp', 'tundra', 'ruins', 'fungal'];
+      const D = this._diffMult();
+      this._relicPOIs = [];
+      for (const biome of RELIC_BIOMES) {
+        const pos = findInBiome(biome, 80);
+        const px = pos.tx * TILE, py = pos.ty * TILE;
+        const spr = this._w(this.add.image(px, py, 'item_relic').setScale(3).setDepth(7));
+        this.tweens.add({ targets: spr, alpha: 0.45, duration: 1000, yoyo: true, repeat: -1, ease: 'Sine.easeInOut' });
+        const lbl = this._w(this.add.text(px, py - 22, 'RELIC', {
+          fontFamily: 'monospace', fontSize: '8px', color: '#cc44ff',
+          stroke: '#000', strokeThickness: 2,
+        }).setOrigin(0.5).setDepth(8).setVisible(false));
+        this._relicPOIs.push({ x: px, y: py, tx: pos.tx, ty: pos.ty, spr, lbl, biome });
+        this.pois.push({ type: 'relic', tx: pos.tx, ty: pos.ty, spr });
+
+        // Elite guard bears — 1.4× HP, 1.3× damage, spawn dormant nearby
+        for (let _gi = 0; _gi < 3; _gi++) {
+          const ang = (_gi / 3) * Math.PI * 2;
+          const gx = Phaser.Math.Clamp(px + Math.cos(ang) * 80, TILE * 4, (MAP_W - 4) * TILE);
+          const gy = Phaser.Math.Clamp(py + Math.sin(ang) * 80, TILE * 4, (MAP_H - 4) * TILE);
+          const sizeMult = Phaser.Math.FloatBetween(1.2, 1.6);
+          const guardspr = this.physics.add.image(gx, gy, 'bear').setScale(2.2 * sizeMult).setDepth(8);
+          guardspr.setCollideWorldBounds(true);
+          guardspr.body.setSize(24, 18);
+          if (this.hudCam) this.hudCam.ignore(guardspr);
+          this.physics.add.collider(guardspr, this.obstacles);
+          const eg = {
+            spr: guardspr, type: 'bear',
+            hp: Math.floor(140 * sizeMult * D * 1.4), maxHp: Math.floor(140 * sizeMult * D * 1.4),
+            speed: 50 * D, dmg: Math.max(1, Math.floor(16 * sizeMult * D * 1.3)),
+            atkInterval: Math.max(500, Math.round(2400 / D)), attackTimer: 0,
+            wanderTimer: Phaser.Math.Between(0, 2000),
+            aggroRange: 320, attackRange: (30 + 12) * sizeMult,
+            sizeMult, relicGuard: true, _dormant: true,
+          };
+          guardspr.setVisible(false);
+          if (guardspr.body) { guardspr.body.enable = false; this.physics.world.bodies.delete(guardspr.body); }
+          this.enemies.push(eg);
+        }
+        this._log(`Relic placed  biome=${biome}  tx=${pos.tx}  ty=${pos.ty}`, 'world');
+      }
+    }
   }
 
   // ── RUINS CITY ────────────────────────────────────────────────
@@ -6888,6 +6981,12 @@ class GameScene extends Phaser.Scene {
     this.p1InvText = this._h(this.add.text(12, H-50, '', invStyle).setDepth(101));
     if (this.p2) this.p2InvText = this._h(this.add.text(W-12, H-50, '', invStyle).setOrigin(1,0).setDepth(101));
 
+    // Relic progress tracker — hidden until first relic activity
+    this.hudRelicText = this._h(this.add.text(W/2, 58, '', {
+      fontFamily: 'monospace', fontSize: '10px', color: '#cc44ff',
+      stroke: '#000', strokeThickness: 2,
+    }).setOrigin(0.5, 0).setDepth(101).setVisible(false));
+
     // P1 name badge (top-left)
     this.p1Badge = this._h(this.add.text(12, 10, this.p1.charData.player + ' \u2014 ' + this.p1.charData.title, {
       fontFamily:'monospace', fontSize:'11px', color:'#6699ff',
@@ -7147,6 +7246,8 @@ class GameScene extends Phaser.Scene {
         else if (poi.type === 'craftbench') col = 0xddcc44;
         else if (poi.type === 'bed')        col = 0xaa88ff;
         else if (poi.type === 'raidcamp')   col = 0xff2222;
+        else if (poi.type === 'relic')      col = 0xcc44ff;
+        else if (poi.type === 'altar')      col = 0xffdd44;
         const mx = mm.x + (poi.tx - minTX) * scale;
         const my = mm.y + (poi.ty - minTY) * scale;
         this.minimapDots.fillStyle(col, 1);
@@ -7253,6 +7354,20 @@ class GameScene extends Phaser.Scene {
     };
     if (this.p1InvText) this.p1InvText.setText(invStr(this.p1));
     if (this.p2InvText) this.p2InvText.setText(invStr(this.p2));
+
+    // Relic progress tracker
+    if (this.hudRelicText) {
+      const dep = this.relicsDeposited || 0;
+      const held = this.relicsHeld || 0;
+      const anyActivity = dep > 0 || held > 0;
+      this.hudRelicText.setVisible(anyActivity);
+      if (anyActivity) {
+        const boxes = '◆'.repeat(dep) + '◇'.repeat(5 - dep);
+        const carryStr = held > 0 ? '  ▶ carrying ' + held : '';
+        this.hudRelicText.setText('ALTAR ' + boxes + carryStr);
+        this.hudRelicText.setColor(held > 0 ? '#ff8833' : '#cc44ff');
+      }
+    }
   }
 
   // ── REVIVE BAR (world-space) ──────────────────────────────────
@@ -7478,6 +7593,40 @@ class GameScene extends Phaser.Scene {
     });
   }
 
+  _triggerVictory() {
+    if (this.isOver) return;
+    this.isOver = true;
+    this._log(`VICTORY: all 5 relics deposited  day=${this.dayNum}  kills=${this.kills||0}  T=${Math.floor(this.timeAlive||0)}s`, 'world');
+    this.time.delayedCall(800, () => this._downloadLog());
+    if (this.controlsVis && this.ctrlObjs) {
+      this.ctrlObjs.forEach(o => o.setVisible(false));
+      this.controlsVis = false;
+    }
+    this.p1.spr.setVelocity(0, 0);
+    if (this.p2) this.p2.spr.setVelocity(0, 0);
+    Music.stop();
+    this.cameras.main.fadeOut(800, 0, 0, 0);
+    this.time.delayedCall(900, () => {
+      this.scene.start('GameOver', {
+        won: true,
+        reason: 'All relics returned to the Ancient Altar',
+        relicsDeposited: this.relicsDeposited,
+        timeAlive: this.timeAlive,
+        mode: STATE.mode,
+        difficulty: STATE.difficulty,
+        kills: this.kills,
+        days: this.dayNum,
+        resources: this.resourcesGathered,
+        bossDefeated: this.bossDefeated,
+        p1Name: this.p1 ? this.p1.charData.player : 'P1',
+        p2Name: (this.p2 && !this.p2.isPermanentlyDead) ? this.p2.charData.player : null,
+        p1Kills: this.p1 ? this.p1.kills : 0,
+        p2Kills: this.p2 ? this.p2.kills : 0,
+        dbgEntries: this._dbgEntries,
+      });
+    });
+  }
+
   // ── CONTROLS OVERLAY ─────────────────────────────────────────
   buildControlsOverlay() {
     // Hidden by default — shown only when Tab is pressed
@@ -7654,8 +7803,110 @@ class GameScene extends Phaser.Scene {
       }
     }
 
+    // Relic pickup
+    if (this._relicPOIs && this._relicPOIs.length > 0) {
+      for (let _ri = this._relicPOIs.length - 1; _ri >= 0; _ri--) {
+        const _rel = this._relicPOIs[_ri];
+        if (!_rel.spr || !_rel.spr.active) continue;
+        const _rd = Phaser.Math.Distance.Between(player.spr.x, player.spr.y, _rel.x, _rel.y);
+        if (_rd < 70) {
+          this._pickupRelic(_rel, _ri, player);
+          return;
+        }
+      }
+    }
+
+    // Altar deposit
+    if (this.altarPos && this.relicsHeld > 0) {
+      const _ad = Phaser.Math.Distance.Between(player.spr.x, player.spr.y, this.altarPos.x, this.altarPos.y);
+      if (_ad < 90) {
+        this._depositRelic();
+        return;
+      }
+    }
+
     // Nothing interactable in range — log so we can diagnose "E key not working" reports
     this._log(`${player.charData.player} interact: nothing in range  pos=(${Math.floor(player.spr.x/CFG.TILE)},${Math.floor(player.spr.y/CFG.TILE)})`, 'player');
+  }
+
+  _pickupRelic(rel, idx, player) {
+    this.tweens.killTweensOf(rel.spr);
+    this.tweens.add({
+      targets: rel.spr, scaleX: 0, scaleY: 0, alpha: 0, duration: 220, ease: 'Back.In',
+      onComplete: () => { if (rel.spr?.active) rel.spr.destroy(); if (rel.lbl?.active) rel.lbl.destroy(); },
+    });
+    this._relicPOIs.splice(idx, 1);
+    this.pois = this.pois.filter(p => !(p.type === 'relic' && p.tx === rel.tx && p.ty === rel.ty));
+    this.relicsHeld++;
+
+    this._floatPickup(rel.x, rel.y - 10, 'Relic acquired!');
+    this.hint('⬛ Relic in hand — find the Ancient Altar and deposit it!', 5000);
+    this._log(`${player.charData.player} picked up relic  biome=${rel.biome}  held=${this.relicsHeld}  remaining=${this._relicPOIs.length}`, 'player');
+    this.redrawHUD();
+
+    // 5th relic: all enemies converge — apocalypse
+    if (this._relicPOIs.length === 0) {
+      this._log('RELIC ALERT: final relic collected — all enemies converging!', 'world');
+      const carrier = this._relicCarrier();
+      for (const _e of (this.enemies || [])) {
+        if (!_e.spr?.active) continue;
+        if (_e._dormant) {
+          _e._dormant = false;
+          if (_e.spr.body && !_e.spr.body.destroyed) {
+            this.physics.world.bodies.set(_e.spr.body);
+            _e.spr.body.enable = true;
+            _e.spr.body.reset(_e.spr.x, _e.spr.y);
+          }
+          _e.spr.setVisible(true);
+        }
+        if (carrier) _e.target = carrier;
+      }
+      this.cameras.main.shake(700, 0.015);
+      this._showRelicHint('Every living thing\nknows where you are.\nRun.');
+    }
+  }
+
+  _depositRelic() {
+    this.relicsDeposited += this.relicsHeld;
+    this.relicsHeld = 0;
+    const dep = this.relicsDeposited;
+
+    // Visual: tint altar progressively violet as relics are deposited
+    const tints = [0xffffff, 0xddaaff, 0xbb66ff, 0x9944dd, 0x7722cc, 0x5500aa];
+    if (this.altarPos?.spr?.active) this.altarPos.spr.setTint(tints[Math.min(dep, 5)]);
+
+    this.cameras.main.shake(200 + dep * 40, 0.006 + dep * 0.002);
+    this._floatPickup(this.altarPos.x, this.altarPos.y - 10, dep + '/5 Relics Deposited!');
+    this._log(`Relic deposited  deposited=${dep}/5  diffMult=${this._diffMult().toFixed(2)}x`, 'world');
+    this.redrawHUD();
+
+    if (dep >= 5) {
+      this._triggerVictory();
+    } else {
+      const rem = 5 - dep;
+      this.hint('⚠ ' + dep + '/5 deposited — enemy pressure rising! ' + rem + ' relic' + (rem !== 1 ? 's' : '') + ' remain.', 5000);
+    }
+  }
+
+  _relicCarrier() {
+    if (!this.relicsHeld) return null;
+    const alive = [this.p1, this.p2].filter(p => p && p.spr?.active && !p.isDowned && p.hp > 0);
+    return alive[0] || null;
+  }
+
+  _showRelicHint(msg) {
+    const { W, H } = CFG;
+    const t = this.add.text(W / 2, H * 0.38, msg, {
+      fontFamily: 'monospace', fontSize: '14px', color: '#ccccaa',
+      stroke: '#000', strokeThickness: 3, align: 'center', wordWrap: { width: 340 },
+    }).setOrigin(0.5).setDepth(300).setAlpha(0).setScrollFactor(0);
+    this.tweens.add({
+      targets: t, alpha: 0.9, duration: 1200, ease: 'Sine.In',
+      onComplete: () => this.tweens.add({
+        targets: t, alpha: 0, duration: 2800, delay: 3500, ease: 'Sine.Out',
+        onComplete: () => t.destroy(),
+      }),
+    });
   }
 
   toggleSleep(player, bed) {
@@ -8142,6 +8393,52 @@ class GameScene extends Phaser.Scene {
 
     this.timeAlive += delta / 1000;
     if (this._dbgVisible) this._dbgRefresh(); // throttled live stats refresh
+
+    // ── Relic proximity hints (cheap squared-distance check, runs every frame) ──
+    if (!this.isOver) {
+      const _players = [this.p1, this.p2].filter(p => p && p.spr?.active && !p.isDowned);
+      if (_players.length) {
+        // First-ever relic proximity hint
+        if (!this._relicHintShown && this._relicPOIs?.length) {
+          for (const _rel of this._relicPOIs) {
+            if (!_rel.spr?.active) continue;
+            for (const _p of _players) {
+              const _dx = _p.spr.x - _rel.x, _dy = _p.spr.y - _rel.y;
+              if (_dx*_dx + _dy*_dy < 130*130) {
+                this._relicHintShown = true;
+                this._showRelicHint('...what\'s this?\nSome faint power radiates from it.\nBetter hold onto it for something.');
+                if (_rel.lbl?.active) _rel.lbl.setVisible(true);
+                break;
+              }
+            }
+            if (this._relicHintShown) break;
+          }
+        }
+        // Show relic label when near any relic
+        if (this._relicPOIs) {
+          for (const _rel of this._relicPOIs) {
+            if (!_rel.spr?.active || !_rel.lbl?.active) continue;
+            let _near = false;
+            for (const _p of _players) {
+              const _dx = _p.spr.x - _rel.x, _dy = _p.spr.y - _rel.y;
+              if (_dx*_dx + _dy*_dy < 100*100) { _near = true; break; }
+            }
+            _rel.lbl.setVisible(_near);
+          }
+        }
+        // First-ever altar proximity hint
+        if (!this.altarDiscovered && this.altarPos) {
+          for (const _p of _players) {
+            const _dx = _p.spr.x - this.altarPos.x, _dy = _p.spr.y - this.altarPos.y;
+            if (_dx*_dx + _dy*_dy < 150*150) {
+              this.altarDiscovered = true;
+              this._showRelicHint('There\'s something about this place.\nRemember it.');
+              break;
+            }
+          }
+        }
+      }
+    }
 
     // Movement — skip if downed, sleeping, or owns the open craft menu
     const p1CraftHalt = this.craftMenuOpen && this.craftMenuOwner === this.p1;
@@ -11375,7 +11672,18 @@ class GameScene extends Phaser.Scene {
   // Applies to enemy HP, damage, speed, and attack rate at spawn time.
   _diffMult() {
     const hc = this.hc || { diffBase: 1.0, diffRamp: 0.10, diffCap: 3.0 };
-    return Math.min(hc.diffCap, hc.diffBase + (this.dayNum - 1) * hc.diffRamp);
+    const dayScale = hc.diffBase + (this.dayNum - 1) * hc.diffRamp;
+    const relicScale = 1 + (this.relicsDeposited || 0) * 0.2;
+    return Math.min(hc.diffCap, dayScale * relicScale);
+  }
+
+  _relicPressure() {
+    const d = this.relicsDeposited || 0;
+    return {
+      speedMult: 1 + d * 0.18,
+      dmgMult:   1 + d * 0.15,
+      aggroMult: 1 + d * 0.25,
+    };
   }
 
   _spawnGroup(worldW, worldH, cx, cy, counts, fromEdges) {
@@ -11814,6 +12122,12 @@ class GameScene extends Phaser.Scene {
     }
     this._activeEnemyCount = _activeCount;
 
+    // Relic carrier beacon — cached once per frame for use in per-enemy loop
+    const _relicCarrier = (this.relicsHeld > 0) ? this._relicCarrier() : null;
+    const _carrierX = _relicCarrier?.spr.x, _carrierY = _relicCarrier?.spr.y;
+    const _AURA_R2 = 700 * 700;
+    const _rp = this._relicPressure();
+
     // HUMAN_ENEMY_TYPES hoisted to module scope so we don't reallocate per frame.
     const charmerPlayer = [this.p1, this.p2].find(
       p => p && p.charData && p.charData.id === 'charmer' && !p.isDowned && p.spr && p.spr.active
@@ -11862,6 +12176,24 @@ class GameScene extends Phaser.Scene {
             e.spr.setVisible(false);
             return;
           }
+        }
+      }
+
+      // ── Relic carrier beacon — override target + wake dormant enemies nearby ──
+      if (_relicCarrier && !e.isRaider) {
+        const _cdx = e.spr.x - _carrierX, _cdy = e.spr.y - _carrierY;
+        const _cd2 = _cdx * _cdx + _cdy * _cdy;
+        if (_cd2 < _AURA_R2 && e._dormant && _activeCount < CFG.MAX_ACTIVE_ENEMIES) {
+          e._dormant = false;
+          if (e.spr.body && !e.spr.body.destroyed) {
+            this.physics.world.bodies.set(e.spr.body);
+            e.spr.body.enable = true;
+            e.spr.body.reset(e.spr.x, e.spr.y);
+          }
+          _activeCount++;
+        }
+        if (!e._dormant && _cd2 < Math.pow((e.aggroRange || 180) * 3.5, 2)) {
+          e.target = _relicCarrier;
         }
       }
 
@@ -12061,10 +12393,10 @@ class GameScene extends Phaser.Scene {
       });
       if (!nearest) { e.spr.setVelocity(0,0); return; }
       const nightMult = (this.isNight) ? this.hc.nightMult : 1;
-      const aggroRange = e.aggroRange * nightMult;
+      const aggroRange = e.aggroRange * nightMult * _rp.aggroMult;
 
       if (nearDist < aggroRange) {
-        const spd = (e._effectiveSpeed !== undefined ? e._effectiveSpeed : e.speed) * nightMult;
+        const spd = (e._effectiveSpeed !== undefined ? e._effectiveSpeed : e.speed) * nightMult * _rp.speedMult;
 
         // LOS check — can the enemy see the player through mountains/walls?
         const canSee = this._hasLOS(e.spr.x, e.spr.y, nearest.spr.x, nearest.spr.y);
@@ -12136,7 +12468,7 @@ class GameScene extends Phaser.Scene {
         if (nearDist < e.attackRange) {
           e.attackTimer -= delta;
           if (e.attackTimer <= 0) {
-            const dmg = this._knightShieldBlock(nearest, e.spr.x, e.spr.y, e.dmg);
+            const dmg = this._knightShieldBlock(nearest, e.spr.x, e.spr.y, Math.round(e.dmg * _rp.dmgMult));
             nearest.hp -= dmg;
             nearest.hp = Math.max(0, nearest.hp);
             this._log(`${e.type} hit ${nearest.charData.player} dmg=${dmg} hp=${nearest.hp}/${nearest.maxHp}`, 'combat');
@@ -13013,6 +13345,8 @@ class GameOverScene extends Phaser.Scene {
     this.p1Kills       = data.p1Kills       ?? 0;
     this.p2Kills       = data.p2Kills       ?? 0;
     this._dbgEntries   = data.dbgEntries    || null;
+    this.won           = data.won           || false;
+    this.relicsDeposited = data.relicsDeposited ?? 0;
   }
 
   _calcScore() {
@@ -13022,6 +13356,7 @@ class GameOverScene extends Phaser.Scene {
     s += this.resources * 5;
     s += Math.floor(this.timeAlive) * 2;
     if (this.bossDefeated) s += 500;
+    if (this.won) s += 2000 + this.relicsDeposited * 400;
     if (this.difficulty === 'hardcore') s = Math.floor(s * 1.5);
     return s;
   }
@@ -13049,23 +13384,32 @@ class GameOverScene extends Phaser.Scene {
 
     // Background
     const bg = this.add.graphics();
-    bg.fillGradientStyle(0x1a0000, 0x1a0000, 0x000000, 0x000000, 1);
+    if (this.won) {
+      bg.fillGradientStyle(0x001a1a, 0x001a1a, 0x000a0a, 0x000a0a, 1);
+    } else {
+      bg.fillGradientStyle(0x1a0000, 0x1a0000, 0x000000, 0x000000, 1);
+    }
     bg.fillRect(0, 0, W, H);
 
-    this.add.text(W/2, 46, 'GAME OVER', {
-      fontFamily:'monospace', fontSize:'64px', color:'#cc2222',
-      stroke:'#440000', strokeThickness:8,
+    this.add.text(W/2, 46, this.won ? 'VICTORY!' : 'GAME OVER', {
+      fontFamily:'monospace', fontSize:'64px',
+      color: this.won ? '#ffdd44' : '#cc2222',
+      stroke: this.won ? '#886600' : '#440000', strokeThickness:8,
     }).setOrigin(0.5);
 
     this.add.text(W/2, 116, this.reason, {
-      fontFamily:'monospace', fontSize:'18px', color:'#cc8855', stroke:'#000', strokeThickness:3,
+      fontFamily:'monospace', fontSize:'18px',
+      color: this.won ? '#ffcc44' : '#cc8855', stroke:'#000', strokeThickness:3,
     }).setOrigin(0.5);
 
     // ── Score breakdown panel ──────────────────────────────
-    const panelX = W/2 - 220, panelY = 148, panelW = 440, panelH = this.p2Name ? 236 : 210;
+    const panelX = W/2 - 220, panelY = 148, panelW = 440;
+    const panelH = (this.p2Name ? 262 : 236) + (this.won ? 26 : 0);
     const panel = this.add.graphics();
-    panel.fillStyle(0x110000, 0.85); panel.fillRoundedRect(panelX, panelY, panelW, panelH, 10);
-    panel.lineStyle(1, 0x553333, 0.8); panel.strokeRoundedRect(panelX, panelY, panelW, panelH, 10);
+    const _panelFill = this.won ? 0x001111 : 0x110000;
+    const _panelBorder = this.won ? 0x336655 : 0x553333;
+    panel.fillStyle(_panelFill, 0.85); panel.fillRoundedRect(panelX, panelY, panelW, panelH, 10);
+    panel.lineStyle(1, _panelBorder, 0.8); panel.strokeRoundedRect(panelX, panelY, panelW, panelH, 10);
 
     const mins = Math.floor(this.timeAlive / 60), secs = Math.floor(this.timeAlive % 60);
     const timeStr = mins > 0 ? mins + 'm ' + secs + 's' : secs + 's';
@@ -13086,6 +13430,7 @@ class GameOverScene extends Phaser.Scene {
       ...killRows,
       ['Resources found', this.resources + ' items',                '#88cc66'],
       ['Boss defeated',   this.bossDefeated ? 'YES +500' : 'No',   this.bossDefeated ? '#ffdd44' : '#556666'],
+      ...(this.won ? [['Relics deposited', this.relicsDeposited + ' / 5  +' + (2000 + this.relicsDeposited * 400), '#cc88ff']] : []),
     ];
     rows.forEach(([label, val, col], i) => {
       const y = panelY + 18 + i * 26;
