@@ -4770,6 +4770,34 @@ class GameScene extends Phaser.Scene {
       }
     }
 
+    // ── TERRAIN OVERLAP CLEANUP ───────────────────────────────────────────────
+    // Sweep every tree, rock, and biome spire placed earlier in buildWorld and
+    // destroy any that landed on a water tile or inside a mountain collision zone.
+    // Both _waterMap and _solidTileSet are fully built by this point.
+    {
+      const _overlapKeys = new Set(['rock', 'rock2', 'ice_rock', 'rock_desert', 'ice_spire', 'rock_spire', 'mangrove_roots']);
+      let _overlapRemoved = 0;
+      this.obstacles.getChildren().slice().forEach(ob => {
+        const k = ob.texture && ob.texture.key;
+        if (k === 'mountain' || k === 'mountain2') return; // never cull mountains
+        if (!ob.isTree && !_overlapKeys.has(k)) return;   // keep walls, ruin blocks
+        const tx = Math.floor(ob.x / TILE), ty = Math.floor(ob.y / TILE);
+        if (this._waterMap[tx + ty * CFG.MAP_W] || this._solidTileSet.has(tx + ',' + ty)) {
+          ob.destroy();
+          _overlapRemoved++;
+        }
+      });
+      this._log(`terrain overlap cleanup  removed=${_overlapRemoved}`, 'world');
+    }
+
+    // Unified impassable tile set — mountains + deep water.
+    // River routing and future path-validation use this to stay on walkable ground.
+    this._impassableTileSet = new Set(this._solidTileSet);
+    for (const dt of this.deepWaterTiles) {
+      const _itx = Math.floor(dt.x / TILE), _ity = Math.floor(dt.y / TILE);
+      this._impassableTileSet.add(_itx + ',' + _ity);
+    }
+
     // Barracks — random grass-biome placement (outside spawn safe zone).
     // The old fixed offset (stx+20, sty-16) was hidden behind mountains ~90% of
     // the time. We search up to 200 random tiles for a grass tile with a 5-tile
@@ -6391,7 +6419,14 @@ class GameScene extends Phaser.Scene {
     if (!this._lastHeartbeat || _hbNow - this._lastHeartbeat > 5000) {
       this._lastHeartbeat = _hbNow;
       this._log(`update heartbeat  gameT=${(this.timeAlive||0).toFixed(1)}s  day=${this.dayNum}  fps=${Math.round(this.game.loop.actualFps)}  bodies=${this.physics.world.bodies.size}`, 'perf');
+      if (this._perfBudget && this._perfBudget.n > 0) {
+        const _n = this._perfBudget.n;
+        const _av = k => (this._perfBudget[k] / _n).toFixed(2);
+        this._log(`frame budget (${_n}fr avg)  terrain=${_av('terrain')}ms  enemies=${_av('enemies')}ms  waves=${_av('waves')}ms  dens=${_av('dens')}ms  raiders=${_av('raiders')}ms  boss=${_av('boss')}ms  daynight=${_av('daynight')}ms`, 'perf');
+        this._perfBudget = null;
+      }
     }
+    if (!this._perfBudget) this._perfBudget = { terrain: 0, enemies: 0, waves: 0, dens: 0, raiders: 0, boss: 0, daynight: 0, n: 0 };
 
     // _onIce, _inShallowWater, and toxic pool detection are now all computed per-frame
     // inside applyTerrainEffects via Uint8Array map lookups — no reset needed here.
@@ -6436,8 +6471,7 @@ class GameScene extends Phaser.Scene {
     if (this.p2 && (this.p2._webSlowCd || 0) > 0) this.p2._webSlowCd = Math.max(0, this.p2._webSlowCd - delta);
 
     // Tundra slowdown effect
-    this.applyTerrainEffects(this.p1);
-    if (this.p2) this.applyTerrainEffects(this.p2);
+    { const _t = performance.now(); this.applyTerrainEffects(this.p1); if (this.p2) this.applyTerrainEffects(this.p2); this._perfBudget.terrain += performance.now() - _t; }
 
     // Cache active players once per frame — reused by updateEnemyDens, updateWaterDens, etc.
     this._activePlayers = [this.p1, this.p2].filter(p => p && p.spr && p.spr.active);
@@ -6454,14 +6488,14 @@ class GameScene extends Phaser.Scene {
     this.checkDeaths();
     this.updateDowned(delta);
     this.updateRevive(delta);
-    this.updateEnemies(delta);
-    this.updateWaves(delta);
-    this.updateEnemyDens(delta);
-    this.updateWaterDens(delta);
-    this.updateRaiders(delta);
-    this.updateBoss(delta);
+    { const _t = performance.now(); this.updateEnemies(delta); this._perfBudget.enemies += performance.now() - _t; }
+    { const _t = performance.now(); this.updateWaves(delta); this._perfBudget.waves += performance.now() - _t; }
+    { const _t = performance.now(); this.updateEnemyDens(delta); this.updateWaterDens(delta); this._perfBudget.dens += performance.now() - _t; }
+    { const _t = performance.now(); this.updateRaiders(delta); this._perfBudget.raiders += performance.now() - _t; }
+    { const _t = performance.now(); this.updateBoss(delta); this._perfBudget.boss += performance.now() - _t; }
     this.updateSleep(delta);
-    this.updateDayNight(delta);
+    { const _t = performance.now(); this.updateDayNight(delta); this._perfBudget.daynight += performance.now() - _t; }
+    this._perfBudget.n++;
     // Post-updateDayNight stages — wrapped so a throw or stall is attributable.
     // _stageTrace is armed briefly around the Day-5 boss transition to give
     // per-stage checkpoints; otherwise only errors log.
@@ -10037,6 +10071,26 @@ class GameScene extends Phaser.Scene {
     if (!this.buildMode || !this.buildGhost) return;
     const p = this.buildOwner;
     const x = this.buildGhost.x, y = this.buildGhost.y;
+
+    // Terrain validation — reject placement on water, ice, mountain, toxic, or occupied tiles
+    {
+      const tx = Math.floor(x / CFG.TILE), ty = Math.floor(y / CFG.TILE);
+      if (this._waterMap && this._waterMap[tx + ty * CFG.MAP_W]) {
+        this.hint("Can't build on water!", 2000); return;
+      }
+      if (this._iceMap && this._iceMap[tx + ty * CFG.MAP_W]) {
+        this.hint("Can't build on ice!", 2000); return;
+      }
+      if (this._solidTileSet && this._solidTileSet.has(tx + ',' + ty)) {
+        this.hint("Can't build on a mountain!", 2000); return;
+      }
+      if (this._toxicTileIndex && this._toxicTileIndex.has(tx + ',' + ty)) {
+        this.hint("Can't build on toxic ground!", 2000); return;
+      }
+      if (this.builtWalls && this.builtWalls.some(w => w.active && Phaser.Math.Distance.Between(w.x, w.y, x, y) < 24)) {
+        this.hint("Too close to existing structure!", 2000); return;
+      }
+    }
 
     // Bed requires craftbench to be built first
     if (this.buildType === 'bed' && !this.craftBenchPlaced) {
