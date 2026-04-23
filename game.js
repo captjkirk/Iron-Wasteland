@@ -5417,16 +5417,25 @@ class GameScene extends Phaser.Scene {
     // ── MINIMAP ─────────────────────────────────────────────────
     const mmW = 160, mmH = 160;
     const mmX = W - mmW - 10, mmY = 96; // top-right so it doesn't overlap P2 inventory
-    // Background
+    const mmCX = mmX + mmW / 2, mmCY = mmY + mmH / 2, mmR = mmW / 2;
+    // Circular background
     const mmBg = this._h(this.add.graphics().setDepth(110));
-    mmBg.fillStyle(0x000000, 0.7); mmBg.fillRoundedRect(mmX - 2, mmY - 2, mmW + 4, mmH + 4, 4);
-    mmBg.lineStyle(1, 0x555566); mmBg.strokeRoundedRect(mmX - 2, mmY - 2, mmW + 4, mmH + 4, 4);
+    mmBg.fillStyle(0x000000, 0.75); mmBg.fillCircle(mmCX, mmCY, mmR + 3);
+    mmBg.lineStyle(1.5, 0x445566, 0.9); mmBg.strokeCircle(mmCX, mmCY, mmR + 3);
     this.minimapGfx = this._h(this.add.graphics().setDepth(111));
     this.minimapDots = this._h(this.add.graphics().setDepth(112));
     this.mmBounds = { x: mmX, y: mmY, w: mmW, h: mmH };
-    this._h(this.add.text(mmX + mmW/2, mmY - 10, 'RADAR', {
+    // Store radar geometry for boss indicator positioning
+    this.radarCenter = { x: mmCX, y: mmCY, r: mmR };
+    this._h(this.add.text(mmCX, mmY - 11, 'RADAR', {
       fontFamily:'monospace', fontSize:'8px', color:'#667788',
     }).setOrigin(0.5).setDepth(111));
+
+    // Circular clip mask — tiles drawn outside the circle are hidden
+    const _mmMaskGfx = this._h(this.add.graphics());
+    _mmMaskGfx.fillStyle(0xffffff, 1);
+    _mmMaskGfx.fillCircle(mmCX, mmCY, mmR);
+    this.minimapDots.setMask(_mmMaskGfx.createGeometryMask());
 
     // Pre-render biome colors on minimap (static, done once)
     this._renderMinimapBase();
@@ -5529,15 +5538,22 @@ class GameScene extends Phaser.Scene {
       });
     }
 
-    // Boss dot — always visible when alive so player knows it exists even off-radar.
-    // Clamped to minimap edge if outside the 40-tile view.
+    // Boss dot — always visible when alive; projected to the circle edge if outside radar range.
     if (this.boss && this.boss.spr?.active && this.boss.hp > 0) {
       const btx = Math.floor(this.boss.spr.x / TILE);
       const bty = Math.floor(this.boss.spr.y / TILE);
       const rawMX = mm.x + (btx - minTX) * scale;
       const rawMY = mm.y + (bty - minTY) * scale;
-      const bmx = Phaser.Math.Clamp(rawMX, mm.x + 3, mm.x + mm.w - 3);
-      const bmy = Phaser.Math.Clamp(rawMY, mm.y + 3, mm.y + mm.h - 3);
+      // Project to circle perimeter if boss is outside the radar view
+      const rcx = mm.x + mm.w / 2, rcy = mm.y + mm.h / 2;
+      const dx = rawMX - rcx, dy = rawMY - rcy;
+      const edgeDist = Math.sqrt(dx * dx + dy * dy);
+      const innerR = mm.w / 2 - 5;
+      let bmx = rawMX, bmy = rawMY;
+      if (edgeDist > innerR) {
+        bmx = rcx + (dx / edgeDist) * innerR;
+        bmy = rcy + (dy / edgeDist) * innerR;
+      }
       const pulse = Math.sin(this.time.now / 280) * 0.3 + 0.7;
       this.minimapDots.fillStyle(0xff2200, pulse);
       this.minimapDots.fillCircle(bmx, bmy, 3.5);
@@ -7339,39 +7355,31 @@ class GameScene extends Phaser.Scene {
     }
     b.nameLabel.setPosition(bx, by - 103);
 
-    // Screen-edge threat indicator — pulsing arrow at viewport edge when boss is off-screen
+    // Radar-edge threat indicator — pulsing arrow just outside the radar circle when boss is off-screen
     if (b._indicator && b._indicator.active) {
       b._indicator.clear();
-      const cam = this.cameras.main;
-      const GW = CFG.W, GH = CFG.H;
-      const pad = 22;
-      const screenX = (bx - cam.scrollX) * cam.zoom;
-      const screenY = (by - cam.scrollY) * cam.zoom;
-      const offScreen = screenX < -40 || screenX > GW + 40 || screenY < -40 || screenY > GH + 40;
-      if (offScreen) {
-        const cx = GW / 2, cy = GH / 2;
-        const ang = Math.atan2(screenY - cy, screenX - cx);
-        const slope = Math.abs((screenY - cy) / (screenX - cx));
-        let ex, ey;
-        if (slope < GH / GW) {
-          ex = screenX > cx ? GW - pad : pad;
-          ey = cy + (ex - cx) * Math.tan(ang);
-        } else {
-          ey = screenY > cy ? GH - pad : pad;
-          ex = cx + (ey - cy) / Math.tan(ang);
+      const rc = this.radarCenter;
+      if (rc) {
+        const cam = this.cameras.main;
+        const GW = CFG.W, GH = CFG.H;
+        const screenX = (bx - cam.scrollX) * cam.zoom;
+        const screenY = (by - cam.scrollY) * cam.zoom;
+        const offScreen = screenX < -40 || screenX > GW + 40 || screenY < -40 || screenY > GH + 40;
+        if (offScreen) {
+          // Angle from viewport center (≈ player) to boss, same compass as the radar dot
+          const ang = Math.atan2(by - cam.worldView.centerY, bx - cam.worldView.centerX);
+          // Place arrow just outside the radar circle perimeter
+          const ex = rc.x + Math.cos(ang) * (rc.r + 9);
+          const ey = rc.y + Math.sin(ang) * (rc.r + 9);
+          const pulse = Math.sin(this.time.now / 220) * 0.35 + 0.65;
+          const tip = { x: ex + Math.cos(ang) * 9,   y: ey + Math.sin(ang) * 9 };
+          const l   = { x: ex + Math.cos(ang + 2.3) * 6, y: ey + Math.sin(ang + 2.3) * 6 };
+          const r   = { x: ex + Math.cos(ang - 2.3) * 6, y: ey + Math.sin(ang - 2.3) * 6 };
+          b._indicator.fillStyle(0xff2200, pulse);
+          b._indicator.fillTriangle(tip.x, tip.y, l.x, l.y, r.x, r.y);
+          b._indicator.lineStyle(1.5, 0xff5500, pulse * 0.45);
+          b._indicator.strokeCircle(ex, ey, 7 + Math.sin(this.time.now / 180) * 2);
         }
-        ex = Phaser.Math.Clamp(ex, pad, GW - pad);
-        ey = Phaser.Math.Clamp(ey, pad, GH - pad);
-        const pulse = Math.sin(this.time.now / 220) * 0.35 + 0.65;
-        // Filled arrowhead pointing toward boss
-        const tip = { x: ex + Math.cos(ang) * 11, y: ey + Math.sin(ang) * 11 };
-        const l   = { x: ex + Math.cos(ang + 2.3) * 7, y: ey + Math.sin(ang + 2.3) * 7 };
-        const r   = { x: ex + Math.cos(ang - 2.3) * 7, y: ey + Math.sin(ang - 2.3) * 7 };
-        b._indicator.fillStyle(0xff2200, pulse);
-        b._indicator.fillTriangle(tip.x, tip.y, l.x, l.y, r.x, r.y);
-        // Outer glow ring
-        b._indicator.lineStyle(2, 0xff5500, pulse * 0.5);
-        b._indicator.strokeCircle(ex, ey, 10 + Math.sin(this.time.now / 180) * 2.5);
       }
     }
 
