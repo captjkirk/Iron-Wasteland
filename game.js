@@ -4153,8 +4153,10 @@ class CharSelectScene extends Phaser.Scene {
       fontFamily:'monospace', fontSize: Math.max(9, Math.round(13*S)) + 'px', color:'#555566',
     }).setOrigin(0.5);
 
-    const cardW = Math.round(252 * S), cardH = Math.round(370 * S);
-    const gap = Math.round(18 * S);
+    const gap = Math.round(14 * S);
+    const maxCardW = Math.round(252 * S);
+    const cardW = Math.min(maxCardW, Math.floor((W - Math.round(40*S) - gap * (CHARS.length - 1)) / CHARS.length));
+    const cardH = Math.round(cardW * (370/252));
     const startX = W/2 - (CHARS.length-1) * ((cardW+gap)/2);
     this.cards = CHARS.map((ch, i) => this.buildCard(ch, startX + i*(cardW+gap), H/2+Math.round(28*S), cardW, cardH, S));
 
