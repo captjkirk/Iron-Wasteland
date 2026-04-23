@@ -9407,22 +9407,26 @@ class GameScene extends Phaser.Scene {
       player.atkCooldown = 1500;
       this._triggerAtkAnim(player, 675);
       this._log(`${player.charData.player} Pirouette  hp=${player.hp}/${player.maxHp}`, 'player');
+      // Visual circle radius 50 expands to 50*1.4=70 — hit radius matches final visual
+      const PIRO_R = 70;
       const pfx = this.add.graphics().setDepth(20).setPosition(player.spr.x, player.spr.y);
       if (this.hudCam) this.hudCam.ignore(pfx);
       pfx.lineStyle(5, 0xff88cc, 0.9);
-      pfx.strokeCircle(0, 0, 55);
+      pfx.strokeCircle(0, 0, 50);
       pfx.lineStyle(3, 0xffccee, 0.6);
-      pfx.strokeCircle(0, 0, 38);
+      pfx.strokeCircle(0, 0, 34);
       this.tweens.add({ targets: pfx, alpha: 0, scaleX: 1.4, scaleY: 1.4, duration: 400, onComplete: () => pfx.destroy() });
       const px = player.spr.x, py = player.spr.y;
       this.enemies.forEach(e => {
         if (e.dying) return;
         const d = Phaser.Math.Distance.Between(px, py, e.spr.x, e.spr.y);
-        if (d < 75) {
+        if (d < PIRO_R) {
           e._aggroOverride = true;
           e._charmTinted = false;
           if (e.spr?.active) e.spr.clearTint();
-          this._hurtEnemy(e, 35, px, py, 0xff88cc, player);
+          // Falloff: 35 dmg at center, 15 dmg at edge
+          const dmg = Math.round(Phaser.Math.Linear(35, 15, d / PIRO_R));
+          this._hurtEnemy(e, dmg, px, py, 0xff88cc, player);
         }
       });
     } else if (id === 'ranger') {
