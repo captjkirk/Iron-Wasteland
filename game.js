@@ -6219,22 +6219,27 @@ class GameScene extends Phaser.Scene {
   }
 
   // ── RUINS CITY ────────────────────────────────────────────────
-  // Procedural navigable city grid in the ruins biome (NE quadrant)
+  // Procedural navigable city grid placed at a random location each session
   buildRuinsCity(stx, sty, TILE) {
     const blockW = 9, blockH = 8;    // block size in tiles (walls inclusive)
     const streetW = 4, streetH = 4;  // street width in tiles
     const cols = 5, rows = 4;
-
-    // Place city in ruins biome (NE quadrant: right + up from center)
-    const cityTX = Math.round(stx + CFG.MAP_W * 0.21);
-    const cityTY = Math.round(sty - CFG.MAP_H * 0.21);
     const totalW = cols * blockW + (cols - 1) * streetW;
     const totalH = rows * blockH + (rows - 1) * streetH;
+
+    // Random angle and distance from spawn, kept within map and away from safe zone
+    const minDist = CFG.SAFE_R + 35;
+    const maxDist = CFG.MAP_W * 0.30;
+    const angle = Math.random() * Math.PI * 2;
+    const dist  = minDist + Math.random() * (maxDist - minDist);
+    const cityTX = Math.round(stx + Math.cos(angle) * dist);
+    const cityTY = Math.round(sty + Math.sin(angle) * dist);
     const cityLeft = cityTX - Math.floor(totalW / 2);
     const cityTop  = cityTY - Math.floor(totalH / 2);
 
-    // Clamp to map bounds
-    const cl = Math.max(3, cityLeft), ct = Math.max(3, cityTop);
+    // Clamp so the entire city fits within map bounds
+    const cl = Math.max(3, Math.min(cityLeft, CFG.MAP_W - totalW - 3));
+    const ct = Math.max(3, Math.min(cityTop,  CFG.MAP_H - totalH - 3));
 
     // Helper — place one wall segment (obstacle with tight hitbox)
     const placeWall = (tx, ty) => {
