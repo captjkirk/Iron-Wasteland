@@ -12687,8 +12687,11 @@ class GameOverScene extends Phaser.Scene {
 
     // Persist to localStorage
     const lb = this._loadLeaderboard();
-    const isHighScore = lb.length < 5 || this._score > (lb[lb.length - 1]?.score ?? -1);
+    // isHighScore = true only if this score will appear in the visible top-5 after saving.
+    // Compare against lb[4] (5th-best existing entry, 0-indexed) before the current run is added.
+    const isHighScore = lb.length < 5 || this._score > (lb[4]?.score ?? -1);
     const dateStr = new Date().toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+    this._savedName = name; // stash for leaderboard highlight
     lb.push({ name, score: this._score, days: this.days, time: Math.floor(this.timeAlive), date: dateStr });
     lb.sort((a, b) => b.score - a.score);
     lb.splice(10);
@@ -12850,8 +12853,11 @@ class GameOverScene extends Phaser.Scene {
       fontFamily:'monospace', fontSize:'10px', color:'#445566',
     });
     y += 16;
-    this._loadLeaderboard().slice(0, 5).forEach((entry, i) => {
-      const col = i === 0 ? '#ffdd44' : '#778899';
+    const _lb = this._loadLeaderboard(); // includes current run — already saved above
+    const _myRank = _lb.findIndex(e => e.score === this._score && e.name === (this._savedName || this._defaultName));
+    _lb.slice(0, 5).forEach((entry, i) => {
+      const isMe = _myRank >= 0 && i === _myRank;
+      const col = isMe ? '#ffdd44' : '#778899';
       const datePart = entry.date ? '  ' + entry.date : '';
       const txt = (i + 1) + '.  ' + entry.name.padEnd(14) + entry.score.toLocaleString() + '  Day ' + entry.days + datePart;
       this.add.text(W/2 - 200, y + i * 14, txt, { fontFamily:'monospace', fontSize:'10px', color: col });
