@@ -6436,6 +6436,32 @@ class GameScene extends Phaser.Scene {
     });
   }
 
+  // ── STATUS ───────────────────────────────────────────────────
+  // Immediate, non-queued status line for rapid-fire reactive feedback
+  // (cooldown counters, per-hit status effects, per-attack warnings).
+  // Always replaces whatever was showing — no queue, no lag.
+  _showStatus(text, duration) {
+    if (this._statusTimer) { this._statusTimer.remove(); this._statusTimer = null; }
+    if (this._statusTxt?.active) {
+      this.tweens.killTweensOf(this._statusTxt);
+      this._statusTxt.setText(text).setAlpha(1);
+    } else {
+      this._statusTxt = this.add.text(CFG.W / 2, 162, text, {
+        fontFamily:'monospace', fontSize:'15px', color:'#ffffff',
+        stroke:'#000', strokeThickness:3, backgroundColor:'#000000bb', padding:{x:14,y:7},
+      }).setOrigin(0.5).setDepth(158).setAlpha(1);
+      this.cameras.main.ignore(this._statusTxt);
+    }
+    this._statusTimer = this.time.delayedCall(duration || 1500, () => {
+      this._statusTimer = null;
+      if (this._statusTxt?.active) {
+        this.tweens.add({ targets:this._statusTxt, alpha:0, duration:300,
+          onComplete:() => { if (this._statusTxt?.active) { this._statusTxt.destroy(); this._statusTxt = null; } }
+        });
+      }
+    });
+  }
+
   // ── TUTORIAL ─────────────────────────────────────────────────
   // Context-triggered tip banners. Only MOVE + ATTACK show at game start;
   // all other tips fire when the relevant event first occurs.
@@ -7686,7 +7712,7 @@ class GameScene extends Phaser.Scene {
               nearest._frostSlowed = true;
               nearest._speedMult = 0.55;
               this._log(`${nearest.charData.player} frost slowed  hp=${nearest.hp}/${nearest.maxHp}`, 'combat');
-              this.hint('FROST SLOW! (-45% speed)', 1500);
+              this._showStatus('FROST SLOW! (-45% speed)', 1500);
               this.time.delayedCall(280, () => { if (nearest.spr?.active && nearest._frostSlowed) nearest.spr.setTint(0x88ccff); });
               this.time.delayedCall(3000, () => {
                 if (!nearest) return;
@@ -7875,7 +7901,7 @@ class GameScene extends Phaser.Scene {
               p._webbed = true;
               p._speedMult = 0;
               this._log(`${p.charData.player} webbed by boss_spider – immobilised 1.5s hp=${p.hp}/${p.maxHp}`, 'combat');
-              this.hint('WEBBED! Can\'t move!', 1500);
+              this._showStatus('WEBBED! Can\'t move!', 1500);
               this.time.delayedCall(1500, () => {
                 if (!p) return;
                 p._webbed = false;
@@ -8098,7 +8124,7 @@ class GameScene extends Phaser.Scene {
         SFX.wrench();
         player.atkCooldown = 500;
         this.meleeSwing(player, 38, 0xcc8833, 0.22, 0);
-        this.hint('Out of ammo! Pistol whip!', 1200);
+        this._showStatus('Out of ammo! Pistol whip!', 1200);
         return;
       }
       player.ammo--;
@@ -8211,7 +8237,7 @@ class GameScene extends Phaser.Scene {
     } else if (id === 'knight') {
       // RALLY — war cry boosts speed + frightens nearby enemies (30s cooldown)
       if (player.rallyCooldown > 0) {
-        this.hint('RALLY: ' + Math.ceil(player.rallyCooldown / 1000) + 's', 1200);
+        this._showStatus('RALLY: ' + Math.ceil(player.rallyCooldown / 1000) + 's', 1200);
         return;
       }
       player.rallyCooldown = 30000;
@@ -8260,7 +8286,7 @@ class GameScene extends Phaser.Scene {
     } else if (id === 'architect') {
       // ORCHESTRATE — deploy auto-turret for 30 seconds
       if (player.turretCooldown > 0) {
-        this.hint('TURRET: ' + Math.ceil(player.turretCooldown / 1000) + 's', 1200);
+        this._showStatus('TURRET: ' + Math.ceil(player.turretCooldown / 1000) + 's', 1200);
         return;
       }
       player.turretCooldown = 45000;
@@ -8499,7 +8525,7 @@ class GameScene extends Phaser.Scene {
         p._webSlowCd = 2500;
         p._speedMult = 0.4;
         this._log(`${p.charData.player} caught in spider web  hp=${p.hp}/${p.maxHp}`, 'combat');
-        this.hint('Caught in a web!', 1500);
+        this._showStatus('Caught in a web!', 1500);
         this.time.delayedCall(2500, () => {
           if (p && p.spr?.active) { p._speedMult = 1; p._webSlowCd = 0; }
         });
