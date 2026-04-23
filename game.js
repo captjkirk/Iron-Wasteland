@@ -428,7 +428,7 @@ const Music = {
       return;
     }
     const b = 60 / 130; // 130 BPM
-    const len = b * 16;  // 4 bars
+    const len = b * 8;  // 2 bars — halved from 4 to keep per-call oscillator count ~23 and prevent audio-thread stall on spawn
     const now = this.ctx.currentTime;
     if (startAt + len < now) {
       const skips = Math.ceil((now - startAt) / len);
@@ -436,33 +436,28 @@ const Music = {
     }
     const o = startAt - now;
 
-    // Driving bass line — low E minor root motion
+    // Driving bass line — low E minor root motion (2-bar pattern)
     [[82.41,0],[82.41,b*2],[98,b*4],[82.41,b*6],
-     [92.5,b*8],[82.41,b*10],[73.42,b*12],[82.41,b*14],
     ].forEach(([f,t]) => { if (o+t > -0.05) this._note(f, o+t, b*1.8, 'sawtooth', 0.5); });
 
-    // Heroic melody stabs — E minor / G major intervals, driving eighth notes
+    // Heroic melody stabs — E minor / G major intervals, driving eighth notes (2 bars)
     [[329.63,0,b*.6],[392,b,b*.5],[440,b*2,b*.6],[392,b*3,b*.5],
      [329.63,b*4,b*.6],[311.13,b*5,b*.5],[349.23,b*6,b*.6],[392,b*7,b*.5],
-     [329.63,b*8,b*.6],[440,b*9,b*.5],[392,b*10,b*.6],[349.23,b*11,b*.5],
-     [329.63,b*12,b*.8],[293.66,b*13,b*.5],[311.13,b*14,b*.6],[349.23,b*15,b*.8],
     ].forEach(([f,t,d]) => { if (o+t > -0.05) this._note(f, o+t, d, 'square', 0.3); });
 
-    // Power chord stabs on every beat (two-note parallel fifths)
-    [0, b*2, b*4, b*6, b*8, b*10, b*12, b*14].forEach(t => {
+    // Power chord stabs on every other beat (two-note parallel fifths)
+    [0, b*2, b*4, b*6].forEach(t => {
       if (o+t > -0.05) {
         this._note(196, o+t, b*0.4, 'sawtooth', 0.22);
         this._note(293.66, o+t, b*0.4, 'sawtooth', 0.18);
       }
     });
 
-    // Snare-like noise bursts on beats 2 and 4 (reduced from 4 to 2 per loop to prevent audio thread saturation)
-    [b*2, b*10].forEach(t => {
-      if (o+t > -0.05) SFX._noise(0.06, 0.45);
-    });
+    // Snare-like noise burst on beat 2
+    if (o + b*2 > -0.05) SFX._noise(0.06, 0.45);
 
     // Sustained pad swells (triangle, lower octave for warmth)
-    [[98,0,b*4,0.15],[110,b*4,b*4,0.15],[98,b*8,b*4,0.15],[87.31,b*12,b*4,0.18],
+    [[98,0,b*4,0.15],[110,b*4,b*4,0.15],
     ].forEach(([f,t,d,v]) => { if (o+t > -0.05) this._note(f, o+t, d, 'triangle', v); });
 
     const nextStart = startAt + len;
@@ -474,13 +469,20 @@ const Music = {
 const SFX = {
   _enabled: true,
   _noiseBuf: null,
+  gain: null,       // separate SFX gain node; initialized lazily on first _play call
+  _sfxVol: 1.0,    // pending volume (0–1); applied to gain node once it's created
   _play(freq, type, dur, vol, shape) {
     if (!this._enabled) return;
     try {
       const ctx = Music.ctx;
       if (!ctx) return;
+      if (!this.gain) {
+        this.gain = ctx.createGain();
+        this.gain.gain.value = this._sfxVol;
+        this.gain.connect(ctx.destination);
+      }
       const o = ctx.createOscillator(), g = ctx.createGain();
-      o.connect(g); g.connect(Music.gain || ctx.destination);
+      o.connect(g); g.connect(this.gain);
       o.type = type; o.frequency.setValueAtTime(freq, ctx.currentTime);
       if (shape === 'drop') o.frequency.linearRampToValueAtTime(freq*0.3, ctx.currentTime+dur);
       if (shape === 'rise') o.frequency.linearRampToValueAtTime(freq*2, ctx.currentTime+dur);
@@ -503,9 +505,14 @@ const SFX = {
     if (!this._enabled) return;
     try {
       const ctx = Music.ctx; if (!ctx) return;
+      if (!this.gain) {
+        this.gain = ctx.createGain();
+        this.gain.gain.value = this._sfxVol;
+        this.gain.connect(ctx.destination);
+      }
       const src = ctx.createBufferSource(), g = ctx.createGain();
       src.buffer = this._getNoiseBuf(ctx);
-      src.connect(g); g.connect(Music.gain || ctx.destination);
+      src.connect(g); g.connect(this.gain);
       g.gain.setValueAtTime(vol, ctx.currentTime);
       g.gain.linearRampToValueAtTime(0, ctx.currentTime + dur);
       src.start(); src.stop(ctx.currentTime + dur + 0.01);
@@ -4569,10 +4576,16 @@ class ModeSelectScene extends Phaser.Scene {
     STATE.difficulty = this.selDiff;
     _qlog(`ModeSelect: confirmed  mode=${this.selMode === 1 ? '1P' : '2P'}  diff=${this.selDiff}`, 'menu');
     Music.start();
-    // Apply saved audio settings
+    // Apply saved audio settings (volume sliders; fall back to legacy on/off booleans)
     const _as = loadSettings();
-    if (_as.musicEnabled === false && Music.gain) Music.gain.gain.value = 0;
-    SFX._enabled = _as.sfxEnabled !== false;
+    if (Music.gain) {
+      const _mv = _as.musicVolume !== undefined ? _as.musicVolume : (_as.musicEnabled !== false ? 50 : 0);
+      Music.gain.gain.value = (_mv / 100) * 0.14;
+    }
+    const _sv = _as.sfxVolume !== undefined ? _as.sfxVolume : (_as.sfxEnabled !== false ? 100 : 0);
+    SFX._sfxVol = _sv / 100;
+    SFX._enabled = _sv > 0;
+    if (SFX.gain) SFX.gain.gain.value = SFX._sfxVol;
     this.cameras.main.fadeOut(300, 0, 0, 0);
     this.time.delayedCall(300, () => this.scene.start('CharSelect'));
   }
@@ -4663,9 +4676,75 @@ class SettingsScene extends Phaser.Scene {
     }).setOrigin(0.5);
 
     const s = loadSettings();
-    const musicOn = s.musicEnabled !== false;
-    const sfxOn   = s.sfxEnabled   !== false;
-    const fogOn   = s.fogEnabled   !== false;
+    const fogOn = s.fogEnabled !== false;
+
+    // ── Volume sliders ───────────────────────────────────────────
+    const musicVol = s.musicVolume !== undefined ? s.musicVolume : (s.musicEnabled !== false ? 50 : 0);
+    const sfxVol   = s.sfxVolume   !== undefined ? s.sfxVolume   : (s.sfxEnabled   !== false ? 100 : 0);
+
+    const makeSlider = (label, cy, initialVal, onChange) => {
+      const trackW = Math.min(300, W * 0.4), trackH = 8, thumbW = 14, thumbH = 26;
+      const cx = W / 2, trackX = cx - trackW / 2;
+
+      this.add.text(cx, cy - 18, label, {
+        fontFamily:'monospace', fontSize:'10px', color:'#445544', letterSpacing:2,
+      }).setOrigin(0.5);
+
+      const trackGfx = this.add.graphics();
+      const fillGfx  = this.add.graphics();
+      const thumbGfx = this.add.graphics();
+      const valTxt   = this.add.text(trackX + trackW + 18, cy, '100%', {
+        fontFamily:'monospace', fontSize:'10px', color:'#aaffaa',
+      }).setOrigin(0, 0.5);
+
+      let val = Phaser.Math.Clamp(initialVal, 0, 100);
+
+      const redraw = () => {
+        const pct   = val / 100;
+        const fillW = Math.max(0, Math.floor(trackW * pct));
+        trackGfx.clear();
+        trackGfx.fillStyle(0x111122, 0.95);
+        trackGfx.fillRoundedRect(trackX, cy - trackH / 2, trackW, trackH, 4);
+        trackGfx.lineStyle(1, 0x334433, 0.8);
+        trackGfx.strokeRoundedRect(trackX, cy - trackH / 2, trackW, trackH, 4);
+        fillGfx.clear();
+        if (fillW > 0) {
+          fillGfx.fillStyle(val > 0 ? 0x44aa44 : 0x333344, 0.9);
+          fillGfx.fillRoundedRect(trackX, cy - trackH / 2, fillW, trackH, 4);
+        }
+        const thumbX = trackX + Math.floor(trackW * pct) - thumbW / 2;
+        thumbGfx.clear();
+        thumbGfx.fillStyle(val > 0 ? 0x88cc88 : 0x556655, 1);
+        thumbGfx.fillRoundedRect(thumbX, cy - thumbH / 2, thumbW, thumbH, 3);
+        thumbGfx.lineStyle(1.5, val > 0 ? 0xaaffaa : 0x445544, 0.9);
+        thumbGfx.strokeRoundedRect(thumbX, cy - thumbH / 2, thumbW, thumbH, 3);
+        valTxt.setText(val + '%').setColor(val > 0 ? '#aaffaa' : '#556655');
+      };
+
+      const applyPtr = (ptr) => {
+        val = Phaser.Math.Clamp(Math.round(((ptr.x - trackX) / trackW) * 100), 0, 100);
+        redraw();
+        onChange(val);
+      };
+
+      const zone = this.add.zone(cx, cy, trackW + thumbW + 20, thumbH + 12)
+        .setInteractive({ useHandCursor: true, draggable: false });
+      zone.on('pointerdown', applyPtr);
+      zone.on('pointermove', (ptr) => { if (ptr.isDown) applyPtr(ptr); });
+
+      redraw();
+    };
+
+    makeSlider('MUSIC', 385, musicVol, (v) => {
+      saveSettings({ musicVolume: v, musicEnabled: v > 0 });
+      if (Music.gain) Music.gain.gain.value = (v / 100) * 0.14;
+    });
+    makeSlider('SFX', 425, sfxVol, (v) => {
+      saveSettings({ sfxVolume: v, sfxEnabled: v > 0 });
+      SFX._sfxVol = v / 100;
+      SFX._enabled = v > 0;
+      if (SFX.gain) SFX.gain.gain.value = SFX._sfxVol;
+    });
 
     const makeToggle = (label, x, y, initial, onToggle) => {
       const opts = [{ key:true, label:'ON' }, { key:false, label:'OFF' }];
@@ -4688,15 +4767,6 @@ class SettingsScene extends Phaser.Scene {
       });
       redraw(initial);
     };
-
-    makeToggle('MUSIC', W/2 - 200, 394, musicOn, (v) => {
-      saveSettings({ musicEnabled: v });
-      if (Music.gain) Music.gain.gain.value = v ? 0.07 : 0;
-    });
-    makeToggle('SFX', W/2, 394, sfxOn, (v) => {
-      saveSettings({ sfxEnabled: v });
-      SFX._enabled = v;
-    });
 
     // ── Gameplay settings ────────────────────────────────────
     this.add.text(W/2, 444, 'GAMEPLAY', {
@@ -12335,10 +12405,16 @@ class GameScene extends Phaser.Scene {
       const upgradeFlag = '_' + rec.charId + 'Upgraded';
       if (target[upgradeFlag]) { this.hint('Already upgraded!', 1500); return; }
       target[upgradeFlag] = true;
-      this._log(`${target.charData.player} upgrade: ${rec.label}`, 'player');
       if (rec.charId === 'gunslinger') target._gunslingerClip = 12;
       if (rec.charId === 'charmer') target._charmerUpgraded = true;
       if (rec.charId === 'ranger') target._rangerUpgraded = true;
+      const _upgradeEffect = rec.charId === 'knight'     ? 'shield_throw=on  block=70%'
+                           : rec.charId === 'architect'  ? 'nail_gun=on'
+                           : rec.charId === 'gunslinger' ? 'clip=8→12'
+                           : rec.charId === 'charmer'    ? 'aura_expanded=on  night_partial=on'
+                           : rec.charId === 'ranger'     ? 'explosive_arrows=on'
+                           : 'flag_set';
+      this._log(`${target.charData.player} upgrade applied: ${rec.charId}  effect=${_upgradeEffect}  flag=${upgradeFlag}=true`, 'player');
       target.spr.setTint(0xffaa22);
       this.time.delayedCall(400, () => {
         if (!target.spr?.active) return;
