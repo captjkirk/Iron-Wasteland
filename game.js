@@ -611,6 +611,8 @@ function getControls(playerNum, charId, isSolo) {
       knight:     ['WASD — Move', 'Mouse — Aim', 'LClick — Sword', 'RClick — Rally', 'Q — Build', 'E — Interact', 'R — Rotate build'],
       gunslinger: ['WASD — Move', 'Mouse — Aim', 'LClick — Shoot', 'RClick — Reload', 'Q — Build', 'E — Interact', 'R — Rotate build'],
       architect:  ['WASD — Move', 'Mouse — Aim', 'LClick — Wrench', 'RClick — Turret', 'Q — Build', 'E — Interact', 'R — Rotate build'],
+      charmer:    ['WASD — Move', 'Mouse — Aim', 'LClick — Pirouette (360° AoE)', 'RClick — Flower Toss', 'Q — Build', 'E — Interact', 'Passive: Raiders are allies; charm aura near enemies'],
+      ranger:     ['WASD — Move', 'Mouse — Aim', 'LClick — Bow Shot', 'RClick — Knife Strike', 'Q — Build', 'E — Interact', 'Passive: Scout panel on nearby enemies'],
     };
     return map[charId] || ['WASD — Move'];
   }
@@ -623,6 +625,8 @@ function getControls(playerNum, charId, isSolo) {
     knight:     [move, atk+' — Sword', atk2+' — Rally', build+' — Build', inter+' — Interact'],
     gunslinger: [move, atk+' — Shoot', atk2+' — Reload', build+' — Build', inter+' — Interact'],
     architect:  [move, atk+' — Wrench', atk2+' — Turret', build+' — Build', inter+' — Interact'],
+    charmer:    [move, atk+' — Pirouette (360° AoE)', atk2+' — Flower Toss', build+' — Build', inter+' — Interact', 'Passive: Raiders are allies; charm aura'],
+    ranger:     [move, atk+' — Bow Shot', atk2+' — Knife Strike', build+' — Build', inter+' — Interact', 'Passive: Scout panel on nearby enemies'],
   };
   return map[charId] || [move];
 }
@@ -10607,24 +10611,66 @@ class GameScene extends Phaser.Scene {
         }
         return;
       }
-      // Lauren (charmer) daytime aura — suppress enemy aggro within radius
+      // Lauren (charmer) passive — human enemies are permanent allies; others charmed within aura
+      const HUMAN_ENEMY_TYPES = ['raider_brawler', 'raider_shooter', 'raider_heavy'];
+      const isHumanEnemy = HUMAN_ENEMY_TYPES.includes(e.type);
+      const charmerPlayer = [this.p1, this.p2].find(p => p && p.charData && p.charData.id === 'charmer' && !p.isDowned && p.spr && p.spr.active);
       if (!e._aggroOverride) {
-        const charmer = [this.p1, this.p2].find(p => p && p.charData && p.charData.id === 'charmer' && !p.isDowned && p.spr && p.spr.active);
-        if (charmer) {
-          const auraR = charmer._charmerUpgraded ? 280 : 200;
-          const effectiveR = this.isNight ? (charmer._charmerUpgraded ? 140 : 0) : auraR;
-          if (effectiveR > 0) {
-            const d = Phaser.Math.Distance.Between(e.spr.x, e.spr.y, charmer.spr.x, charmer.spr.y);
-            if (d < effectiveR) {
+        if (charmerPlayer) {
+          let charmed = false;
+          if (isHumanEnemy) {
+            // Human enemies are always Lauren's allies — no range or day/night restriction
+            charmed = true;
+          } else {
+            // Non-human enemies: charm within aura radius (day always, night only if upgraded)
+            const auraR = charmerPlayer._charmerUpgraded ? 280 : 200;
+            const effectiveR = this.isNight ? (charmerPlayer._charmerUpgraded ? 140 : 0) : auraR;
+            if (effectiveR > 0) {
+              const d = Phaser.Math.Distance.Between(e.spr.x, e.spr.y, charmerPlayer.spr.x, charmerPlayer.spr.y);
+              if (d < effectiveR) charmed = true;
+            }
+          }
+          if (charmed) {
+            if (!e._charmTinted) { e._charmTinted = true; e.spr.setTint(0xffaacc); }
+            if (isHumanEnemy) {
+              // Ally AI: protect Lauren — find nearest non-human enemy and attack it
+              const allyTarget = this.enemies.find(t =>
+                t !== e && !t.dying && t.spr && t.spr.active &&
+                !HUMAN_ENEMY_TYPES.includes(t.type) &&
+                Phaser.Math.Distance.Between(e.spr.x, e.spr.y, t.spr.x, t.spr.y) < 350
+              );
+              if (allyTarget) {
+                const spd = e.speed * 0.85;
+                const vel = this._steerToward(e, allyTarget.spr.x, allyTarget.spr.y, spd);
+                e.spr.setVelocity(vel.x, vel.y);
+                const allyDist = Phaser.Math.Distance.Between(e.spr.x, e.spr.y, allyTarget.spr.x, allyTarget.spr.y);
+                if (allyDist < e.attackRange) {
+                  e.attackTimer = (e.attackTimer || 0) - delta;
+                  if (e.attackTimer <= 0) {
+                    this._hurtEnemy(allyTarget, e.dmg, e.spr.x, e.spr.y, 0xff88cc, null);
+                    e.attackTimer = e.atkInterval || 1200;
+                  }
+                }
+              } else {
+                // No nearby threat — escort Lauren
+                const d = Phaser.Math.Distance.Between(e.spr.x, e.spr.y, charmerPlayer.spr.x, charmerPlayer.spr.y);
+                if (d > 80) {
+                  const vel = this._steerToward(e, charmerPlayer.spr.x, charmerPlayer.spr.y, e.speed * 0.6);
+                  e.spr.setVelocity(vel.x, vel.y);
+                } else {
+                  e.spr.setVelocity(0, 0);
+                }
+              }
+              return;
+            } else {
               e.spr.setVelocity(0, 0);
-              if (!e._charmTinted) { e._charmTinted = true; e.spr.setTint(0xffaacc); }
               return;
             }
           }
         }
       }
-      // Clear charm tint when out of range or night
-      if (e._charmTinted && (e._aggroOverride || !([this.p1, this.p2].find(p => p && p.charData && p.charData.id === 'charmer' && !p.isDowned)))) {
+      // Clear charm tint when conditions no longer apply
+      if (e._charmTinted && (e._aggroOverride || !charmerPlayer || (isHumanEnemy && e._aggroOverride))) {
         e._charmTinted = false;
         if (e.spr?.active) e.spr.clearTint();
       }
