@@ -11964,7 +11964,7 @@ class GameScene extends Phaser.Scene {
       { label: 'Knight Upgrade',     key: 'knight_upgrade',    cost: {metal:3, fiber:2},        needsBench: true,  type: 'upgrade', charId: 'knight',     tooltip: 'Knight: unlocks Shield Throw ability + passive 70% damage block.' },
       { label: 'Architect Upgrade',  key: 'architect_upgrade', cost: {metal:3, wood:2},         needsBench: true,  type: 'upgrade', charId: 'architect',  tooltip: 'Architect: unlocks Nail Gun secondary attack.' },
       { label: 'Gunslinger Upgrade', key: 'gunslinger_upgrade',cost: {metal:2, fiber:1},        needsBench: true,  type: 'upgrade', charId: 'gunslinger', tooltip: 'Gunslinger: increases clip size by 4 rounds (8 → 12).' },
-      { label: 'Flower Bouquet (+3)',key: 'flower_bouquet',    cost: {food:2, fiber:1},         needsBench: false, type: 'instant', charId: 'charmer',    tooltip: 'Lauren only: boosts her charm counter by 3 immediately.' },
+      { label: 'Flower Bouquet (+8)',key: 'flower_bouquet',    cost: {wood:1, fiber:1},         needsBench: false, type: 'instant', charId: 'charmer',    tooltip: 'Lauren only: gives her 8 flower tosses immediately.' },
       { label: 'Lauren Upgrade',     key: 'charmer_upgrade',   cost: {metal:2, fiber:2},        needsBench: true,  type: 'upgrade', charId: 'charmer',    tooltip: 'Lauren: unlocks Charmer passive buff and special ability.' },
       { label: 'Abigail Upgrade',    key: 'ranger_upgrade',    cost: {metal:3, wood:2},         needsBench: true,  type: 'upgrade', charId: 'ranger',     tooltip: 'Abigail: unlocks Ranger passive buff and special ability.' },
     ];
@@ -12243,12 +12243,12 @@ class GameScene extends Phaser.Scene {
     }
 
     if (rec.type === 'instant' && rec.key === 'flower_bouquet') {
-      // Flower Bouquet: +3 flowers for Lauren; hint if Lauren not in game
+      // Flower Bouquet: +8 flowers for Lauren; hint if Lauren not in game
       const charmer = [this.p1, this.p2].filter(Boolean).find(p => p.charData.id === 'charmer');
       if (charmer) {
-        charmer.flowerAmmo = (charmer.flowerAmmo || 0) + 3;
-        this._log(`${charmer.charData.player} got +3 flowers  flowers=${charmer.flowerAmmo}`, 'player');
-        this.hint('+3 Flowers for Lauren! (' + charmer.flowerAmmo + ' total)', 2000);
+        charmer.flowerAmmo = (charmer.flowerAmmo || 0) + 8;
+        this._log(`${charmer.charData.player} got +8 flowers  flowers=${charmer.flowerAmmo}`, 'player');
+        this.hint('+8 Flowers for Lauren! (' + charmer.flowerAmmo + ' total)', 2000);
       } else {
         this.hint('Lauren isn\'t in play — flowers wasted!', 2000);
       }
