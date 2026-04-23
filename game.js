@@ -4357,8 +4357,8 @@ class GameScene extends Phaser.Scene {
           const wy = (_biomeNoise(tx + 137, ty + 213, 40) - 0.5) * 28;
           const w = Math.sin((tx + wx) * 0.10 + (ty + wy) * 0.06) * 0.55
                   + Math.sin((tx + wx) * 0.04 - (ty + wy) * 0.09 + 2.3) * 0.45;
-          const a = Math.abs(w) * 0.085;
-          if (a < 0.010) continue;
+          const a = Math.abs(w) * 0.18;
+          if (a < 0.008) continue;
           wgfx.fillStyle(w < 0 ? 0x000000 : 0xffffff, a);
           wgfx.fillRect(tx * TILE, ty * TILE, WSZ, WSZ);
         }
