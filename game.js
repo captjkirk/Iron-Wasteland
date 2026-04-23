@@ -114,6 +114,10 @@ CFG.POND_SPECS    = { swamp:35, tundra:25, fungal:20, grass:16, grass_near:8 };
 CFG.LAKE_SPECS    = ['grass','grass','swamp','swamp','waste','tundra','fungal'];
 CFG.PLACEMENT     = { POND_EXCL:10, LAKE_EXCL:14, CACHE_EXCL:8,
                       POND_MIN_SIZE:12, LAKE_MIN_SIZE:25, RAIDER_MIN_DIST:60 };
+CFG.RIVER_COUNT      = 4;    // rivers per map
+CFG.RIVER_WANDER     = 0.50; // per-step chance of perpendicular jitter (higher = more organic)
+CFG.RIVER_WIDTH_MIN  = 1;    // BFS spread radius min (1 → ~3-tile channel)
+CFG.RIVER_WIDTH_MAX  = 3;    // BFS spread radius max (3 → ~7-tile channel)
 
 // ── MULBERRY32 SEEDED RNG ─────────────────────────────────────
 // Deterministic, fast, good statistical quality.
@@ -1231,6 +1235,18 @@ function buildTextures(scene) {
   g.beginPath(); g.moveTo(5,  23); g.lineTo(17, 23); g.strokePath();
   g.fillStyle(0xaadeee, 0.18); g.fillRect(5, 3, 9, 2); g.fillRect(20, 10, 5, 1);
   g.generateTexture('water_shallow', 32, 32);
+
+  // River tile (32×32) — brighter flowing blue with diagonal ripple lines suggesting current
+  g.clear();
+  g.fillStyle(0x1a5a7a); g.fillRect(0, 0, 32, 32);
+  g.fillStyle(0x2277aa); g.fillRect(1, 1, 30, 30);
+  g.fillStyle(0x44aacc, 0.30); g.fillRect(0, 0, 32, 9);   // surface glint
+  g.lineStyle(1, 0x55ccee, 0.9);
+  g.beginPath(); g.moveTo(2,  14); g.lineTo(11,  5); g.strokePath();
+  g.beginPath(); g.moveTo(11, 22); g.lineTo(22, 11); g.strokePath();
+  g.beginPath(); g.moveTo(19, 29); g.lineTo(30, 18); g.strokePath();
+  g.fillStyle(0xaaeeff, 0.18); g.fillRect(4, 2, 8, 2); g.fillRect(19, 8, 5, 1);
+  g.generateTexture('water_river', 32, 32);
 
   // Deep water (32×32) — darker, impassable
   g.clear();
@@ -5676,6 +5692,7 @@ class GameScene extends Phaser.Scene {
     this.waterTiles = [];       // shallow water — visual only (no physics body)
     this.deepWaterTiles = [];   // deep water — obstacles (impassable)
     this.iceTiles = [];         // frozen water — overlap (slippery)
+    this.rivers = [];           // river metadata — rebuilt each run by _buildRivers
     // Typed-array terrain maps — numeric index (tx + ty*MAP_W), no string allocations
     this._waterMap = new Uint8Array(CFG.MAP_W * CFG.MAP_H); // 1=shallow water
     this._iceMap   = new Uint8Array(CFG.MAP_W * CFG.MAP_H); // 1=ice tile
@@ -6019,6 +6036,12 @@ class GameScene extends Phaser.Scene {
         }
       }
     }
+
+    // Rivers — organic shallow-water channels connecting lakes and map edges.
+    // Runs after _solidTileSet is ready (mountain avoidance) and before terrain
+    // overlap cleanup (so trees/rocks on river tiles are auto-culled below).
+    this._log('buildWorld: _buildRivers start', 'WORLD ');
+    this._buildRivers(stx, sty);
 
     // ── TERRAIN OVERLAP CLEANUP ───────────────────────────────────────────────
     // Sweep every tree, rock, and biome spire placed earlier in buildWorld and
@@ -6790,6 +6813,19 @@ class GameScene extends Phaser.Scene {
         const tx = Math.floor(dt.x / TILE), ty = Math.floor(dt.y / TILE);
         if (tx >= 0 && tx < MAP_W && ty >= 0 && ty < MAP_H)
           this._mmColorMap[tx + ty * MAP_W] = 0x112277;
+      }
+    }
+
+    // Rivers — brighter flowing blue (0x1a88dd), distinct from still-water colors:
+    // shallow pond = 0x2255aa, deep lake = 0x112277, ice = 0x88aadd
+    if (this.rivers) {
+      for (const river of this.rivers) {
+        for (const key of river.tiles) {
+          const sep = key.indexOf(',');
+          const tx = parseInt(key, 10), ty = parseInt(key.slice(sep + 1), 10);
+          if (tx >= 0 && tx < MAP_W && ty >= 0 && ty < MAP_H)
+            this._mmColorMap[tx + ty * MAP_W] = 0x1a88dd;
+        }
       }
     }
 
@@ -10664,6 +10700,7 @@ class GameScene extends Phaser.Scene {
     // Rebuilt fresh each run — previously `this.waterDens || []` reused the
     // prior run's array, leaking stale den references across restarts.
     this.waterDens = [];
+    this.lakeCenters = []; // river endpoint pool — populated as lakes succeed
     this.pois = this.pois || [];
     let _lakePlaced = 0, _lakeSkipCenter = 0, _lakeSkipBlob = 0;
     for (const biome of LAKE_SPECS) {
@@ -10789,10 +10826,196 @@ class GameScene extends Phaser.Scene {
           this._spawnWaterLurker(ltx * TILE, lty * TILE);
         }
       }
+      this.lakeCenters.push({ tx: cx, ty: cy });
       _lakePlaced++;
       this._log(`lake ${biome} placed  tiles=${tileSet.size} deep=${deepLakeTiles.size} cx=${cx},cy=${cy}  den=${biome !== 'tundra'}`, 'world');
     }
     this._log(`_buildLakes done  placed=${_lakePlaced} skip_center=${_lakeSkipCenter} skip_blob=${_lakeSkipBlob}  water=${this.waterTiles.length} ice=${this.iceTiles.length} dens=${this.waterDens.length}`, 'world');
+  }
+
+  // ── RIVER GENERATION ─────────────────────────────────────────────────────
+  // Places 3–5 organic rivers per map. Each river connects two endpoints (lake
+  // centers or map-edge entry points) via a jittered waypoint path, then BFS-
+  // widens it to 3–7 tiles. All river tiles are shallow water — passable but
+  // slow — and are automatically excluded from the terrain overlap cleanup pass
+  // (which reads _waterMap) so trees/rocks on river tiles are culled for free.
+  _buildRivers(stx, sty) {
+    const { TILE, SAFE_R, MAP_W, MAP_H } = CFG;
+    const RIVER_COUNT     = CFG.RIVER_COUNT     ?? 4;
+    const RIVER_WANDER    = CFG.RIVER_WANDER    ?? 0.50;
+    const RIVER_WIDTH_MIN = CFG.RIVER_WIDTH_MIN ?? 1;
+    const RIVER_WIDTH_MAX = CFG.RIVER_WIDTH_MAX ?? 3;
+    const _rng = _worldRng;
+    const _ri  = (a, b) => a + Math.floor(_rng() * (b - a + 1));
+    const _rf  = (a, b) => a + _rng() * (b - a);
+
+    this.rivers = [];
+
+    // ── ENDPOINT POOL ───────────────────────────────────────────────────────
+    // Lake centers (populated by _buildLakes above)
+    const lakePts = (this.lakeCenters || []).map(lc => ({ tx: lc.tx, ty: lc.ty, isEdge: false }));
+
+    // Map-edge entry points — 4 per side, seeded positions for variety.
+    // Rivers that start/end here look like they flow in from off-screen.
+    const MARGIN = 4;
+    const edgePts = [];
+    for (let i = 0; i < 4; i++) {
+      edgePts.push({ tx: _ri(MARGIN, MAP_W - MARGIN), ty: MARGIN,         isEdge: true }); // north
+      edgePts.push({ tx: _ri(MARGIN, MAP_W - MARGIN), ty: MAP_H - MARGIN, isEdge: true }); // south
+      edgePts.push({ tx: MARGIN,                      ty: _ri(MARGIN, MAP_H - MARGIN), isEdge: true }); // west
+      edgePts.push({ tx: MAP_W - MARGIN,              ty: _ri(MARGIN, MAP_H - MARGIN), isEdge: true }); // east
+    }
+
+    const allPts = [...lakePts, ...edgePts];
+    if (allPts.length < 2) {
+      this._log('_buildRivers skipped — not enough endpoints', 'WORLD ');
+      return;
+    }
+
+    let _placed = 0, _skipped = 0;
+    const usedPairs = new Set();
+
+    for (let attempt = 0; attempt < RIVER_COUNT * 6 && _placed < RIVER_COUNT; attempt++) {
+      // ── PICK TWO ENDPOINTS ───────────────────────────────────────────────
+      const fromIdx = _ri(0, allPts.length - 1);
+      const fromPt  = allPts[fromIdx];
+
+      const candidates = [];
+      for (let i = 0; i < allPts.length; i++) {
+        if (i === fromIdx) continue;
+        const tp = allPts[i];
+        const dx = tp.tx - fromPt.tx, dy = tp.ty - fromPt.ty;
+        if (dx*dx + dy*dy < 20*20) continue; // must be ≥20 tiles apart
+        const pairKey = Math.min(fromIdx, i) + ':' + Math.max(fromIdx, i);
+        if (usedPairs.has(pairKey)) continue;
+        candidates.push({ idx: i, pt: tp });
+      }
+      if (candidates.length === 0) { _skipped++; continue; }
+
+      const pick    = candidates[_ri(0, candidates.length - 1)];
+      const toIdx   = pick.idx;
+      const toPt    = pick.pt;
+      usedPairs.add(Math.min(fromIdx, toIdx) + ':' + Math.max(fromIdx, toIdx));
+
+      // ── FIND ACTUAL START/END TILES ──────────────────────────────────────
+      // For lake endpoints, walk outward from the center until we exit the water.
+      // Edge endpoints are already at the map border — use as-is.
+      const findEdgeTile = (pt, targetPt) => {
+        if (pt.isEdge) return { tx: pt.tx, ty: pt.ty };
+        const dx = Math.sign(targetPt.tx - pt.tx), dy = Math.sign(targetPt.ty - pt.ty);
+        for (let step = 1; step < 30; step++) {
+          const ex = pt.tx + dx * step, ey = pt.ty + dy * step;
+          if (ex < 1 || ey < 1 || ex >= MAP_W - 1 || ey >= MAP_H - 1) break;
+          if (!this._waterMap[ex + ey * MAP_W]) return { tx: ex, ty: ey };
+        }
+        return { tx: pt.tx, ty: pt.ty };
+      };
+
+      const startTile = findEdgeTile(fromPt, toPt);
+      const endTile   = findEdgeTile(toPt, fromPt);
+
+      if (Math.abs(startTile.tx - stx) < SAFE_R + 2 && Math.abs(startTile.ty - sty) < SAFE_R + 2) {
+        _skipped++; continue;
+      }
+
+      // ── JITTERED WAYPOINTS ───────────────────────────────────────────────
+      // Divide the path into segments; jitter each intermediate waypoint
+      // perpendicularly for an organic meander.
+      const sx0 = startTile.tx, sy0 = startTile.ty;
+      const ex0 = endTile.tx,   ey0 = endTile.ty;
+      const totalDist = Math.sqrt((ex0 - sx0) ** 2 + (ey0 - sy0) ** 2);
+      const numSeg    = Math.max(3, Math.floor(totalDist / 10));
+
+      const mainDx  = ex0 - sx0, mainDy = ey0 - sy0;
+      const mainLen = Math.sqrt(mainDx * mainDx + mainDy * mainDy) || 1;
+      const perpX   = -mainDy / mainLen; // unit perpendicular vector
+      const perpY   =  mainDx / mainLen;
+
+      const waypoints = [{ tx: sx0, ty: sy0 }];
+      for (let w = 1; w < numSeg; w++) {
+        const t   = w / numSeg;
+        const bx  = sx0 + mainDx * t;
+        const by  = sy0 + mainDy * t;
+        const amp = (totalDist / numSeg) * 0.7;
+        const jit = _rf(-amp, amp);
+        waypoints.push({
+          tx: Phaser.Math.Clamp(Math.round(bx + perpX * jit), 2, MAP_W - 3),
+          ty: Phaser.Math.Clamp(Math.round(by + perpY * jit), 2, MAP_H - 3),
+        });
+      }
+      waypoints.push({ tx: ex0, ty: ey0 });
+
+      // ── WALK CENTERLINE ──────────────────────────────────────────────────
+      // Step tile-by-tile between waypoints; RIVER_WANDER adds diagonal steps
+      // for extra wobble. Mountain tiles (_solidTileSet) are simply skipped so
+      // the river visually gaps at rock faces — it doesn't tunnel through them.
+      const centerline = new Set();
+      for (let wi = 0; wi < waypoints.length - 1; wi++) {
+        let cx = waypoints[wi].tx, cy = waypoints[wi].ty;
+        const nx = waypoints[wi + 1].tx, ny = waypoints[wi + 1].ty;
+        let safety = 0;
+        while ((cx !== nx || cy !== ny) && ++safety < 1200) {
+          const key = cx + ',' + cy;
+          if (!this._solidTileSet || !this._solidTileSet.has(key)) centerline.add(key);
+          const remX = nx - cx, remY = ny - cy;
+          let stepX = 0, stepY = 0;
+          if (Math.abs(remX) >= Math.abs(remY)) {
+            stepX = Math.sign(remX);
+            if (_rng() < RIVER_WANDER && remY !== 0) stepY = Math.sign(remY);
+          } else {
+            stepY = Math.sign(remY);
+            if (_rng() < RIVER_WANDER && remX !== 0) stepX = Math.sign(remX);
+          }
+          if (stepX === 0 && stepY === 0) break;
+          cx = Phaser.Math.Clamp(cx + stepX, 1, MAP_W - 2);
+          cy = Phaser.Math.Clamp(cy + stepY, 1, MAP_H - 2);
+        }
+      }
+
+      if (centerline.size < 10) { _skipped++; continue; }
+
+      // ── BFS SPREAD ───────────────────────────────────────────────────────
+      // Widen the centerline by `width` tiles using a circular spread.
+      // Mountain tiles are never included — the river stops at rock faces.
+      const width = _ri(RIVER_WIDTH_MIN, RIVER_WIDTH_MAX);
+      const riverTiles = new Set(centerline);
+      const r2 = (width + 0.5) * (width + 0.5); // circular radius check
+      for (const key of centerline) {
+        const [ctxN, ctyN] = key.split(',').map(Number);
+        for (let dx = -width; dx <= width; dx++) {
+          for (let dy = -width; dy <= width; dy++) {
+            if (dx === 0 && dy === 0) continue;
+            if (dx * dx + dy * dy > r2) continue; // circular cross-section
+            const nx = ctxN + dx, ny = ctyN + dy;
+            if (nx < 1 || ny < 1 || nx >= MAP_W - 1 || ny >= MAP_H - 1) continue;
+            const nk = nx + ',' + ny;
+            if (riverTiles.has(nk)) continue;
+            if (this._solidTileSet && this._solidTileSet.has(nk)) continue;
+            riverTiles.add(nk);
+          }
+        }
+      }
+
+      // ── PLACE TILES ──────────────────────────────────────────────────────
+      let tilesPlaced = 0;
+      riverTiles.forEach(key => {
+        const [rtx, rty] = key.split(',').map(Number);
+        if (rtx < 1 || rty < 1 || rtx >= MAP_W - 1 || rty >= MAP_H - 1) return;
+        if (Math.abs(rtx - stx) < SAFE_R && Math.abs(rty - sty) < SAFE_R) return;
+        if (this._waterMap[rtx + rty * MAP_W]) return; // already water — skip
+        const tile = this._w(this.add.image(rtx * TILE, rty * TILE, 'water_river').setOrigin(0).setDepth(0.75));
+        if (this.hudCam) this.hudCam.ignore(tile);
+        this.waterTiles.push(tile);
+        this._waterMap[rtx + rty * MAP_W] = 1;
+        tilesPlaced++;
+      });
+
+      this.rivers.push({ tiles: riverTiles, from: fromPt, to: toPt, length: centerline.size, width });
+      _placed++;
+      this._log(`river placed  tiles=${tilesPlaced}  from=(${fromPt.tx},${fromPt.ty})  to=(${toPt.tx},${toPt.ty})  width=${width * 2 + 1}  centerline=${centerline.size}`, 'WORLD ');
+    }
+
+    this._log(`_buildRivers done  placed=${_placed}  skipped=${_skipped}  total_water=${this.waterTiles.length}`, 'WORLD ');
   }
 
   _spawnWaterLurker(x, y) {
