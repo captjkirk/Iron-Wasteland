@@ -4798,6 +4798,10 @@ class GameScene extends Phaser.Scene {
       this._impassableTileSet.add(_itx + ',' + _ity);
     }
 
+    // Pre-build minimap terrain color map — makes trees, water, rocks, and buildings
+    // visible on the radar without any per-frame cost.
+    this._buildMinimapColorMap(TILE);
+
     // Barracks — random grass-biome placement (outside spawn safe zone).
     // The old fixed offset (stx+20, sty-16) was hidden behind mountains ~90% of
     // the time. We search up to 200 random tiles for a grass tile with a 5-tile
@@ -5483,6 +5487,73 @@ class GameScene extends Phaser.Scene {
     if (this.minimapGfx) this.minimapGfx.clear();
   }
 
+  // Build a full-map color lookup (Uint32Array, one entry per tile).
+  // Called once at end of world-gen; each updateMinimap() call reads it in O(1).
+  // Layer order: biome base → water → ice → deep water → trees → rocks → walls → mountains.
+  _buildMinimapColorMap(TILE) {
+    const { MAP_W, MAP_H } = CFG;
+    this._mmColorMap = new Uint32Array(MAP_W * MAP_H);
+
+    // Base layer — biome color for every tile (_biomeMap is pre-computed, getBiome is O(1))
+    for (let ty = 0; ty < MAP_H; ty++) {
+      for (let tx = 0; tx < MAP_W; tx++) {
+        this._mmColorMap[tx + ty * MAP_W] = BIOME_COLORS[getBiome(tx, ty)] || 0x333333;
+      }
+    }
+
+    // Water (shallow)
+    if (this._waterMap) {
+      for (let i = 0; i < this._waterMap.length; i++) {
+        if (this._waterMap[i]) this._mmColorMap[i] = 0x2255aa;
+      }
+    }
+    // Ice
+    if (this._iceMap) {
+      for (let i = 0; i < this._iceMap.length; i++) {
+        if (this._iceMap[i]) this._mmColorMap[i] = 0x88aadd;
+      }
+    }
+    // Deep water (overrides shallow)
+    if (this.deepWaterTiles) {
+      for (const dt of this.deepWaterTiles) {
+        const tx = Math.floor(dt.x / TILE), ty = Math.floor(dt.y / TILE);
+        if (tx >= 0 && tx < MAP_W && ty >= 0 && ty < MAP_H)
+          this._mmColorMap[tx + ty * MAP_W] = 0x112277;
+      }
+    }
+
+    // Obstacle features — trees, rocks, biome spires, mangroves
+    const _ROCK_KEYS = new Set(['rock','rock2','ice_rock','rock_desert','ice_spire','rock_spire','mangrove_roots']);
+    if (this.obstacles) {
+      for (const ob of this.obstacles.getChildren()) {
+        const k = ob.texture?.key;
+        if (!k) continue;
+        const tx = Math.floor(ob.x / TILE), ty = Math.floor(ob.y / TILE);
+        if (tx < 0 || tx >= MAP_W || ty < 0 || ty >= MAP_H) continue;
+        if (ob.isTree)          this._mmColorMap[tx + ty * MAP_W] = 0x1a4a10; // dark green
+        else if (_ROCK_KEYS.has(k)) this._mmColorMap[tx + ty * MAP_W] = 0x776655; // warm gray
+      }
+    }
+
+    // Ruins + biome structure walls — makes buildings show on radar
+    if (this._wallTileSet) {
+      for (const key of this._wallTileSet) {
+        const sep = key.indexOf(',');
+        const tx = parseInt(key, 10), ty = parseInt(key.slice(sep + 1), 10);
+        if (tx >= 0 && tx < MAP_W && ty >= 0 && ty < MAP_H)
+          this._mmColorMap[tx + ty * MAP_W] = 0x9988bb; // purple-gray, pops on ruins bg
+      }
+    }
+
+    // Mountains (topmost override)
+    if (this.mountainTiles) {
+      for (const m of this.mountainTiles) {
+        if (m.tx >= 0 && m.tx < MAP_W && m.ty >= 0 && m.ty < MAP_H)
+          this._mmColorMap[m.tx + m.ty * MAP_W] = 0x778899;
+      }
+    }
+  }
+
   updateMinimap() {
     if (!this.minimapDots || !this.mmBounds) return;
     const _mmSet = loadSettings().minimapEnabled;
@@ -5516,30 +5587,20 @@ class GameScene extends Phaser.Scene {
     const minTY = centerTY - VIEW, maxTY = centerTY + VIEW;
     const tileSize = Math.max(1, scale);
 
-    // Draw revealed biome tiles — unexplored area stays dark (panel background)
+    // Single unified terrain pass — color map encodes biome, water, ice, trees,
+    // rocks, ruins/structure walls, and mountains all at O(1) per tile.
+    // Falls back to live getBiome lookup if color map wasn't built yet.
     for (let tx = minTX; tx <= maxTX; tx++) {
       for (let ty = minTY; ty <= maxTY; ty++) {
         if (tx < 0 || ty < 0 || tx >= CFG.MAP_W || ty >= CFG.MAP_H) continue;
         if (!this.fogRevealed.has(tx + ',' + ty)) continue;
-        const biome = getBiome(tx, ty);
-        this.minimapDots.fillStyle(BIOME_COLORS[biome] || 0x333333, 0.9);
+        const color = this._mmColorMap
+          ? this._mmColorMap[tx + ty * CFG.MAP_W]
+          : (BIOME_COLORS[getBiome(tx, ty)] || 0x333333);
+        this.minimapDots.fillStyle(color, 0.9);
         this.minimapDots.fillRect(
           mm.x + (tx - minTX) * scale,
           mm.y + (ty - minTY) * scale,
-          tileSize + 0.5, tileSize + 0.5
-        );
-      }
-    }
-
-    // Mountain tiles in view (if revealed) — drawn on top of biome layer
-    if (this.mountainTiles) {
-      this.minimapDots.fillStyle(0x778899, 1);
-      for (const m of this.mountainTiles) {
-        if (m.tx < minTX || m.tx > maxTX || m.ty < minTY || m.ty > maxTY) continue;
-        if (!this.fogRevealed.has(m.tx + ',' + m.ty)) continue;
-        this.minimapDots.fillRect(
-          mm.x + (m.tx - minTX) * scale,
-          mm.y + (m.ty - minTY) * scale,
           tileSize + 0.5, tileSize + 0.5
         );
       }
@@ -5564,6 +5625,21 @@ class GameScene extends Phaser.Scene {
         this.minimapDots.fillStyle(col, 1);
         this.minimapDots.fillRect(mx - 1, my - 1, 3, 3);
       });
+    }
+
+    // Player-built walls — dynamic overlay (not in the static color map)
+    if (this.builtWalls && this.builtWalls.length) {
+      this.minimapDots.fillStyle(0xaaccff, 0.85);
+      for (const w of this.builtWalls) {
+        if (!w.active) continue;
+        const wtx = Math.floor(w.x / TILE), wty = Math.floor(w.y / TILE);
+        if (wtx < minTX || wtx > maxTX || wty < minTY || wty > maxTY) continue;
+        this.minimapDots.fillRect(
+          mm.x + (wtx - minTX) * scale,
+          mm.y + (wty - minTY) * scale,
+          tileSize + 0.5, tileSize + 0.5
+        );
+      }
     }
 
     // Boss dot — always visible when alive; projected to the circle edge if outside radar range.
@@ -9409,7 +9485,7 @@ class GameScene extends Phaser.Scene {
               if (!this._ctx.firstHarvest) {
                 this._ctx.firstHarvest = true;
                 this._tutTrigger('gather');
-                this.hint('Resources collected! Press Q to Craft — build Walls and more.', 6000);
+                if (this._tutShown?.has('gather')) this.hint('Resources collected! Press Q to Craft — build Walls and more.', 6000);
               }
               item.destroy();
             };
@@ -9886,7 +9962,7 @@ class GameScene extends Phaser.Scene {
       if (!this._ctx.firstNight) {
         this._ctx.firstNight = true;
         this._tutTrigger('nightfall');
-        this.hint('Night falls — enemies are faster and more dangerous! Build Walls or sleep in a Bed.', 6000);
+        if (this._tutShown?.has('nightfall')) this.hint('Night falls — enemies are faster and more dangerous! Build Walls or sleep in a Bed.', 6000);
       }
     }
 
