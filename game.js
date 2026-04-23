@@ -6395,6 +6395,7 @@ class GameScene extends Phaser.Scene {
   }
 
   _processHintQueue() {
+    if (this._tutBusy) return; // wait until tutorial panel is gone
     if (this._activeHint && this._activeHint.active) return;
     if (!this._hintQueue || this._hintQueue.length === 0) return;
     const { text, duration } = this._hintQueue.shift();
@@ -6502,7 +6503,11 @@ class GameScene extends Phaser.Scene {
   }
 
   _showNextTutTip() {
-    if (!this._tutActive || !this._tutQueue.length) { this._tutBusy = false; return; }
+    if (!this._tutActive || !this._tutQueue.length) {
+      this._tutBusy = false;
+      this._processHintQueue(); // release any hints that were waiting
+      return;
+    }
     this._tutBusy = true;
     this._showTutPanel(this._tutQueue.shift());
   }
