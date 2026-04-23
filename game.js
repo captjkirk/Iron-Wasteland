@@ -789,6 +789,16 @@ function buildTextures(scene) {
   drawArchitectBack(g);   drawArchitectBackStep(g);
   drawArchitectFSide(g);  drawArchitectFSideStep(g);
   drawArchitectBSide(g);  drawArchitectBSideStep(g);
+  drawLauren(g);       drawLaurenStep(g);
+  drawLaurenFront(g);  drawLaurenFrontStep(g);
+  drawLaurenBack(g);   drawLaurenBackStep(g);
+  drawLaurenFSide(g);  drawLaurenFSideStep(g);
+  drawLaurenBSide(g);  drawLaurenBSideStep(g);
+  drawAbigail(g);       drawAbigailStep(g);
+  drawAbigailFront(g);  drawAbigailFrontStep(g);
+  drawAbigailBack(g);   drawAbigailBackStep(g);
+  drawAbigailFSide(g);  drawAbigailFSideStep(g);
+  drawAbigailBSide(g);  drawAbigailBSideStep(g);
   // Enemy raider directional sprites
   drawRaiderDirectionals(g);
 
@@ -804,6 +814,14 @@ function buildTextures(scene) {
   g.fillStyle(0xffcc00); g.fillRect(2, 0, 6, 4);
   g.fillStyle(0x777700); g.fillRect(3, 12, 4, 2);
   g.generateTexture('ammo_icon', 10, 14);
+
+  // Flower projectile (Lauren's toss)
+  g.clear();
+  g.fillStyle(0xff99bb); g.fillCircle(6, 6, 5);
+  g.fillStyle(0xffccdd); g.fillCircle(6, 6, 3);
+  g.fillStyle(0xffee44); g.fillCircle(6, 6, 2);
+  g.fillStyle(0x44aa22); g.fillRect(5, 9, 2, 5);
+  g.generateTexture('item_flower', 12, 14);
 
   // Resource items
   // Wood
@@ -2881,6 +2899,502 @@ function drawRaiderDirectionals(g) {
   g.fillStyle(0xaa9977); g.fillEllipse(12, 5, 13, 8);
   g.fillStyle(0x334455); g.fillRect(4, 24, 7, 5); g.fillRect(15, 26, 7, 4);
   g.generateTexture('raider_heavy_bside_step', 26, 30);
+}
+
+// ── LAUREN (The Charmer) sprites ─────────────────────────────
+function drawLauren(g) {
+  g.clear();
+  // shoe (side view)
+  g.fillStyle(0x774455); g.fillRect(8,52,14,8);
+  // lower skirt (wide fan)
+  g.fillStyle(0xbb6699); g.fillRect(0,42,36,10);
+  g.fillStyle(0xd988bb); g.fillRect(2,36,34,14);
+  g.fillStyle(0xeeccdd); g.fillRect(4,34,22,4);
+  g.fillStyle(0xcc77aa); g.fillRect(2,50,34,2);
+  // waist ribbon
+  g.fillStyle(0xff99bb); g.fillRect(14,32,10,4);
+  g.fillStyle(0xff77aa); g.fillRect(17,29,4,6);
+  // bodice
+  g.fillStyle(0x9966aa); g.fillRect(10,14,18,20);
+  g.fillStyle(0x775588); g.fillRect(10,14,4,18);
+  g.fillStyle(0xbb88cc); g.fillRect(14,14,6,6);
+  // arms
+  g.fillStyle(0xffcc99); g.fillRect(28,16,8,12);
+  g.fillStyle(0xffcc99); g.fillRect(4,16,6,12);
+  // neck
+  g.fillStyle(0xffcc99); g.fillRect(15,10,10,6);
+  // face
+  g.fillStyle(0xffcc99); g.fillRect(11,4,16,8);
+  // hair
+  g.fillStyle(0xcc8844); g.fillRect(10,0,18,8);
+  g.fillStyle(0xdd9955); g.fillRect(10,0,18,3);
+  g.fillStyle(0xcc8844); g.fillRect(6,4,6,10);
+  g.fillStyle(0xaa6622); g.fillRect(24,6,6,8);
+  g.generateTexture('charmer', 44, 60);
+}
+
+function drawLaurenStep(g) {
+  g.clear();
+  g.fillStyle(0x774455); g.fillRect(8,49,14,11);
+  g.fillStyle(0xbb6699); g.fillRect(0,42,36,10);
+  g.fillStyle(0xd988bb); g.fillRect(2,36,34,14);
+  g.fillStyle(0xeeccdd); g.fillRect(4,34,22,4);
+  g.fillStyle(0xcc77aa); g.fillRect(2,50,34,2);
+  g.fillStyle(0xff99bb); g.fillRect(14,32,10,4);
+  g.fillStyle(0xff77aa); g.fillRect(17,29,4,6);
+  g.fillStyle(0x9966aa); g.fillRect(10,14,18,20);
+  g.fillStyle(0x775588); g.fillRect(10,14,4,18);
+  g.fillStyle(0xbb88cc); g.fillRect(14,14,6,6);
+  g.fillStyle(0xffcc99); g.fillRect(28,14,8,12);
+  g.fillStyle(0xffcc99); g.fillRect(4,18,6,12);
+  g.fillStyle(0xffcc99); g.fillRect(15,10,10,6);
+  g.fillStyle(0xffcc99); g.fillRect(11,4,16,8);
+  g.fillStyle(0xcc8844); g.fillRect(10,0,18,8);
+  g.fillStyle(0xdd9955); g.fillRect(10,0,18,3);
+  g.fillStyle(0xcc8844); g.fillRect(6,4,6,10);
+  g.fillStyle(0xaa6622); g.fillRect(24,6,6,8);
+  g.generateTexture('charmer_step', 44, 60);
+}
+
+function drawLaurenFront(g) {
+  g.clear();
+  g.fillStyle(0x774455); g.fillRect(9,52,10,8); g.fillRect(25,52,10,8);
+  g.fillStyle(0xbb6699); g.fillRect(1,44,42,8);
+  g.fillStyle(0xd988bb); g.fillRect(3,36,38,14);
+  g.fillStyle(0xeeccdd); g.fillRect(7,34,30,6);
+  g.fillStyle(0xcc77aa); g.fillRect(3,50,38,2);
+  g.fillStyle(0xff99bb); g.fillRect(16,32,12,5);
+  g.fillStyle(0xff77aa); g.fillRect(20,28,4,6);
+  g.fillStyle(0x9966aa); g.fillRect(12,14,20,20);
+  g.fillStyle(0x775588); g.fillRect(12,14,4,18);
+  g.fillStyle(0xbb88cc); g.fillRect(16,14,10,6);
+  g.fillStyle(0xffcc99); g.fillRect(4,16,8,14);
+  g.fillStyle(0xffcc99); g.fillRect(32,16,8,14);
+  g.fillStyle(0xffcc99); g.fillRect(18,10,8,6);
+  g.fillStyle(0xffcc99); g.fillRect(14,4,16,8);
+  g.fillStyle(0xcc8844); g.fillRect(12,0,20,8);
+  g.fillStyle(0xdd9955); g.fillRect(12,0,20,3);
+  g.fillStyle(0xcc8844); g.fillRect(8,4,6,10);
+  g.fillStyle(0xcc8844); g.fillRect(30,4,6,10);
+  g.generateTexture('charmer_front', 44, 60);
+}
+
+function drawLaurenFrontStep(g) {
+  g.clear();
+  g.fillStyle(0x774455); g.fillRect(9,49,10,11); g.fillRect(25,52,10,8);
+  g.fillStyle(0xbb6699); g.fillRect(1,44,42,8);
+  g.fillStyle(0xd988bb); g.fillRect(3,36,38,14);
+  g.fillStyle(0xeeccdd); g.fillRect(7,34,30,6);
+  g.fillStyle(0xcc77aa); g.fillRect(3,50,38,2);
+  g.fillStyle(0xff99bb); g.fillRect(16,32,12,5);
+  g.fillStyle(0xff77aa); g.fillRect(20,28,4,6);
+  g.fillStyle(0x9966aa); g.fillRect(12,14,20,20);
+  g.fillStyle(0x775588); g.fillRect(12,14,4,18);
+  g.fillStyle(0xbb88cc); g.fillRect(16,14,10,6);
+  g.fillStyle(0xffcc99); g.fillRect(4,14,8,14);
+  g.fillStyle(0xffcc99); g.fillRect(32,18,8,14);
+  g.fillStyle(0xffcc99); g.fillRect(18,10,8,6);
+  g.fillStyle(0xffcc99); g.fillRect(14,4,16,8);
+  g.fillStyle(0xcc8844); g.fillRect(12,0,20,8);
+  g.fillStyle(0xdd9955); g.fillRect(12,0,20,3);
+  g.fillStyle(0xcc8844); g.fillRect(8,4,6,10);
+  g.fillStyle(0xcc8844); g.fillRect(30,4,6,10);
+  g.generateTexture('charmer_front_step', 44, 60);
+}
+
+function drawLaurenBack(g) {
+  g.clear();
+  g.fillStyle(0x774455); g.fillRect(9,52,10,8); g.fillRect(25,52,10,8);
+  g.fillStyle(0xbb6699); g.fillRect(1,44,42,8);
+  g.fillStyle(0xd988bb); g.fillRect(3,36,38,14);
+  g.fillStyle(0xcc77aa); g.fillRect(3,50,38,2);
+  g.fillStyle(0xff99bb); g.fillRect(17,32,10,4);
+  g.fillStyle(0x775588); g.fillRect(12,14,20,20);
+  g.fillStyle(0x9966aa); g.fillRect(16,14,12,18);
+  g.fillStyle(0x553366); g.fillRect(20,14,4,18);
+  g.fillStyle(0xffcc99); g.fillRect(4,16,8,14);
+  g.fillStyle(0xffcc99); g.fillRect(32,16,8,14);
+  g.fillStyle(0xffcc99); g.fillRect(18,10,8,6);
+  // hair bun (back view)
+  g.fillStyle(0xcc8844); g.fillRect(12,0,20,12);
+  g.fillStyle(0xdd9955); g.fillRect(12,0,20,4);
+  g.fillStyle(0xcc8844); g.fillRect(8,4,6,10);
+  g.fillStyle(0xcc8844); g.fillRect(30,4,6,10);
+  g.fillStyle(0xaa6622); g.fillEllipse(22,10,12,8);
+  g.generateTexture('charmer_back', 44, 60);
+}
+
+function drawLaurenBackStep(g) {
+  g.clear();
+  g.fillStyle(0x774455); g.fillRect(9,52,10,8); g.fillRect(25,49,10,11);
+  g.fillStyle(0xbb6699); g.fillRect(1,44,42,8);
+  g.fillStyle(0xd988bb); g.fillRect(3,36,38,14);
+  g.fillStyle(0xcc77aa); g.fillRect(3,50,38,2);
+  g.fillStyle(0xff99bb); g.fillRect(17,32,10,4);
+  g.fillStyle(0x775588); g.fillRect(12,14,20,20);
+  g.fillStyle(0x9966aa); g.fillRect(16,14,12,18);
+  g.fillStyle(0x553366); g.fillRect(20,14,4,18);
+  g.fillStyle(0xffcc99); g.fillRect(4,18,8,14);
+  g.fillStyle(0xffcc99); g.fillRect(32,14,8,14);
+  g.fillStyle(0xffcc99); g.fillRect(18,10,8,6);
+  g.fillStyle(0xcc8844); g.fillRect(12,0,20,12);
+  g.fillStyle(0xdd9955); g.fillRect(12,0,20,4);
+  g.fillStyle(0xcc8844); g.fillRect(8,4,6,10);
+  g.fillStyle(0xcc8844); g.fillRect(30,4,6,10);
+  g.fillStyle(0xaa6622); g.fillEllipse(22,10,12,8);
+  g.generateTexture('charmer_back_step', 44, 60);
+}
+
+function drawLaurenFSide(g) {
+  g.clear();
+  g.fillStyle(0x774455); g.fillRect(9,52,12,8); g.fillRect(22,53,10,7);
+  g.fillStyle(0xbb6699); g.fillRect(1,43,40,9);
+  g.fillStyle(0xd988bb); g.fillRect(3,36,36,14);
+  g.fillStyle(0xeeccdd); g.fillRect(6,34,24,5);
+  g.fillStyle(0xcc77aa); g.fillRect(3,50,36,2);
+  g.fillStyle(0xff99bb); g.fillRect(15,32,12,4);
+  g.fillStyle(0xff77aa); g.fillRect(19,29,4,5);
+  g.fillStyle(0x9966aa); g.fillRect(11,14,20,20);
+  g.fillStyle(0x775588); g.fillRect(11,14,5,18);
+  g.fillStyle(0xbb88cc); g.fillRect(16,14,8,6);
+  g.fillStyle(0xffcc99); g.fillRect(4,16,7,14);
+  g.fillStyle(0xffcc99); g.fillRect(30,16,8,14);
+  g.fillStyle(0xffcc99); g.fillRect(17,10,9,6);
+  g.fillStyle(0xffcc99); g.fillRect(13,4,16,8);
+  g.fillStyle(0xcc8844); g.fillRect(11,0,20,8);
+  g.fillStyle(0xdd9955); g.fillRect(11,0,20,3);
+  g.fillStyle(0xcc8844); g.fillRect(7,4,6,10);
+  g.fillStyle(0xcc8844); g.fillRect(29,4,6,10);
+  g.generateTexture('charmer_fside', 44, 60);
+}
+
+function drawLaurenFSideStep(g) {
+  g.clear();
+  g.fillStyle(0x774455); g.fillRect(9,49,12,11); g.fillRect(22,53,10,7);
+  g.fillStyle(0xbb6699); g.fillRect(1,43,40,9);
+  g.fillStyle(0xd988bb); g.fillRect(3,36,36,14);
+  g.fillStyle(0xeeccdd); g.fillRect(6,34,24,5);
+  g.fillStyle(0xcc77aa); g.fillRect(3,50,36,2);
+  g.fillStyle(0xff99bb); g.fillRect(15,32,12,4);
+  g.fillStyle(0xff77aa); g.fillRect(19,29,4,5);
+  g.fillStyle(0x9966aa); g.fillRect(11,14,20,20);
+  g.fillStyle(0x775588); g.fillRect(11,14,5,18);
+  g.fillStyle(0xbb88cc); g.fillRect(16,14,8,6);
+  g.fillStyle(0xffcc99); g.fillRect(4,14,7,14);
+  g.fillStyle(0xffcc99); g.fillRect(30,18,8,14);
+  g.fillStyle(0xffcc99); g.fillRect(17,10,9,6);
+  g.fillStyle(0xffcc99); g.fillRect(13,4,16,8);
+  g.fillStyle(0xcc8844); g.fillRect(11,0,20,8);
+  g.fillStyle(0xdd9955); g.fillRect(11,0,20,3);
+  g.fillStyle(0xcc8844); g.fillRect(7,4,6,10);
+  g.fillStyle(0xcc8844); g.fillRect(29,4,6,10);
+  g.generateTexture('charmer_fside_step', 44, 60);
+}
+
+function drawLaurenBSide(g) {
+  g.clear();
+  g.fillStyle(0x774455); g.fillRect(9,52,12,8); g.fillRect(23,52,10,8);
+  g.fillStyle(0xbb6699); g.fillRect(1,44,40,8);
+  g.fillStyle(0xd988bb); g.fillRect(3,36,36,14);
+  g.fillStyle(0xcc77aa); g.fillRect(3,50,36,2);
+  g.fillStyle(0xff99bb); g.fillRect(16,32,10,4);
+  g.fillStyle(0x775588); g.fillRect(11,14,20,20);
+  g.fillStyle(0x9966aa); g.fillRect(15,14,12,18);
+  g.fillStyle(0x553366); g.fillRect(20,14,3,18);
+  g.fillStyle(0xffcc99); g.fillRect(4,16,7,14);
+  g.fillStyle(0xffcc99); g.fillRect(31,16,8,14);
+  g.fillStyle(0xffcc99); g.fillRect(17,10,9,6);
+  g.fillStyle(0xcc8844); g.fillRect(11,0,20,10);
+  g.fillStyle(0xdd9955); g.fillRect(11,0,20,3);
+  g.fillStyle(0xcc8844); g.fillRect(7,4,6,10);
+  g.fillStyle(0xcc8844); g.fillRect(29,4,6,10);
+  g.fillStyle(0xaa6622); g.fillEllipse(23,9,10,7);
+  g.generateTexture('charmer_bside', 44, 60);
+}
+
+function drawLaurenBSideStep(g) {
+  g.clear();
+  g.fillStyle(0x774455); g.fillRect(9,52,12,8); g.fillRect(23,49,10,11);
+  g.fillStyle(0xbb6699); g.fillRect(1,44,40,8);
+  g.fillStyle(0xd988bb); g.fillRect(3,36,36,14);
+  g.fillStyle(0xcc77aa); g.fillRect(3,50,36,2);
+  g.fillStyle(0xff99bb); g.fillRect(16,32,10,4);
+  g.fillStyle(0x775588); g.fillRect(11,14,20,20);
+  g.fillStyle(0x9966aa); g.fillRect(15,14,12,18);
+  g.fillStyle(0x553366); g.fillRect(20,14,3,18);
+  g.fillStyle(0xffcc99); g.fillRect(4,18,7,14);
+  g.fillStyle(0xffcc99); g.fillRect(31,14,8,14);
+  g.fillStyle(0xffcc99); g.fillRect(17,10,9,6);
+  g.fillStyle(0xcc8844); g.fillRect(11,0,20,10);
+  g.fillStyle(0xdd9955); g.fillRect(11,0,20,3);
+  g.fillStyle(0xcc8844); g.fillRect(7,4,6,10);
+  g.fillStyle(0xcc8844); g.fillRect(29,4,6,10);
+  g.fillStyle(0xaa6622); g.fillEllipse(23,9,10,7);
+  g.generateTexture('charmer_bside_step', 44, 60);
+}
+
+// ── ABIGAIL (The Ranger) sprites ─────────────────────────────
+function drawAbigail(g) {
+  g.clear();
+  // boots
+  g.fillStyle(0x222211); g.fillRect(6,52,12,8); g.fillRect(19,52,12,8);
+  g.fillStyle(0x3d3320); g.fillRect(19,52,4,6);
+  // leggings
+  g.fillStyle(0x334422); g.fillRect(6,34,12,18); g.fillRect(19,34,12,18);
+  g.fillStyle(0x446633); g.fillRect(20,34,4,16);
+  // cloak body
+  g.fillStyle(0x446622); g.fillRect(2,14,28,22);
+  g.fillStyle(0x557733); g.fillRect(4,15,22,20);
+  g.fillStyle(0x668844); g.fillRect(6,15,14,6);
+  g.fillStyle(0x334411); g.fillRect(2,14,4,20); g.fillRect(26,14,4,20);
+  // belt
+  g.fillStyle(0x8b5e3c); g.fillRect(2,32,28,4);
+  g.fillStyle(0x6b3f1e); g.fillRect(14,31,6,5);
+  // bow (right side, vertical stave)
+  g.fillStyle(0x8b5e3c); g.fillRect(33,4,4,52);
+  g.fillStyle(0x7a4a28); g.fillRect(33,4,4,4); g.fillRect(33,52,4,4);
+  g.fillStyle(0xddcc99); g.fillRect(35,4,1,52);
+  // arms
+  g.fillStyle(0x557733); g.fillRect(0,14,4,22);
+  g.fillStyle(0xffcc99); g.fillRect(0,26,4,8);
+  g.fillStyle(0x557733); g.fillRect(28,18,5,14);
+  g.fillStyle(0xffcc99); g.fillRect(28,28,5,8);
+  // neck + face
+  g.fillStyle(0xffcc99); g.fillRect(14,10,10,6);
+  g.fillStyle(0xffcc99); g.fillRect(10,4,14,8);
+  // hood
+  g.fillStyle(0x446622); g.fillRect(8,0,20,12);
+  g.fillStyle(0x334411); g.fillRect(8,0,4,10); g.fillRect(24,0,4,10);
+  g.fillStyle(0x557733); g.fillRect(10,0,14,5);
+  g.fillStyle(0x2d1f15); g.fillRect(10,6,10,6);
+  g.generateTexture('ranger', 44, 60);
+}
+
+function drawAbigailStep(g) {
+  g.clear();
+  g.fillStyle(0x222211); g.fillRect(6,49,12,11); g.fillRect(19,52,12,8);
+  g.fillStyle(0x3d3320); g.fillRect(19,52,4,6);
+  g.fillStyle(0x334422); g.fillRect(6,32,12,18); g.fillRect(19,34,12,18);
+  g.fillStyle(0x446633); g.fillRect(20,34,4,16);
+  g.fillStyle(0x446622); g.fillRect(2,14,28,22);
+  g.fillStyle(0x557733); g.fillRect(4,15,22,20);
+  g.fillStyle(0x668844); g.fillRect(6,15,14,6);
+  g.fillStyle(0x334411); g.fillRect(2,14,4,20); g.fillRect(26,14,4,20);
+  g.fillStyle(0x8b5e3c); g.fillRect(2,32,28,4);
+  g.fillStyle(0x6b3f1e); g.fillRect(14,31,6,5);
+  g.fillStyle(0x8b5e3c); g.fillRect(33,4,4,52);
+  g.fillStyle(0x7a4a28); g.fillRect(33,4,4,4); g.fillRect(33,52,4,4);
+  g.fillStyle(0xddcc99); g.fillRect(35,4,1,52);
+  g.fillStyle(0x557733); g.fillRect(0,18,4,22);
+  g.fillStyle(0xffcc99); g.fillRect(0,28,4,8);
+  g.fillStyle(0x557733); g.fillRect(28,14,5,14);
+  g.fillStyle(0xffcc99); g.fillRect(28,24,5,8);
+  g.fillStyle(0xffcc99); g.fillRect(14,10,10,6);
+  g.fillStyle(0xffcc99); g.fillRect(10,4,14,8);
+  g.fillStyle(0x446622); g.fillRect(8,0,20,12);
+  g.fillStyle(0x334411); g.fillRect(8,0,4,10); g.fillRect(24,0,4,10);
+  g.fillStyle(0x557733); g.fillRect(10,0,14,5);
+  g.fillStyle(0x2d1f15); g.fillRect(10,6,10,6);
+  g.generateTexture('ranger_step', 44, 60);
+}
+
+function drawAbigailFront(g) {
+  g.clear();
+  g.fillStyle(0x222211); g.fillRect(8,52,12,8); g.fillRect(24,52,12,8);
+  g.fillStyle(0x334422); g.fillRect(8,34,12,18); g.fillRect(24,34,12,18);
+  g.fillStyle(0x446633); g.fillRect(10,34,4,16); g.fillRect(26,34,4,16);
+  g.fillStyle(0x446622); g.fillRect(4,14,36,22);
+  g.fillStyle(0x557733); g.fillRect(8,15,28,20);
+  g.fillStyle(0x668844); g.fillRect(10,15,20,6);
+  g.fillStyle(0x334411); g.fillRect(4,14,5,20); g.fillRect(35,14,5,20);
+  g.fillStyle(0x8b5e3c); g.fillRect(4,32,36,4);
+  g.fillStyle(0x6b3f1e); g.fillRect(19,31,6,5);
+  g.fillStyle(0x8b5e3c); g.fillRect(39,4,4,52);
+  g.fillStyle(0x7a4a28); g.fillRect(39,4,4,4); g.fillRect(39,52,4,4);
+  g.fillStyle(0xddcc99); g.fillRect(41,4,1,52);
+  g.fillStyle(0x557733); g.fillRect(0,16,5,22);
+  g.fillStyle(0xffcc99); g.fillRect(0,28,5,8);
+  g.fillStyle(0x557733); g.fillRect(39,16,5,14);
+  g.fillStyle(0xffcc99); g.fillRect(39,26,5,8);
+  g.fillStyle(0xffcc99); g.fillRect(18,10,8,6);
+  g.fillStyle(0xffcc99); g.fillRect(14,4,16,8);
+  g.fillStyle(0x446622); g.fillRect(10,0,24,13);
+  g.fillStyle(0x334411); g.fillRect(10,0,5,12); g.fillRect(29,0,5,12);
+  g.fillStyle(0x557733); g.fillRect(13,0,18,5);
+  g.fillStyle(0x2d1f15); g.fillRect(15,6,14,6);
+  g.generateTexture('ranger_front', 44, 60);
+}
+
+function drawAbigailFrontStep(g) {
+  g.clear();
+  g.fillStyle(0x222211); g.fillRect(8,49,12,11); g.fillRect(24,52,12,8);
+  g.fillStyle(0x334422); g.fillRect(8,32,12,18); g.fillRect(24,34,12,18);
+  g.fillStyle(0x446633); g.fillRect(10,32,4,16); g.fillRect(26,34,4,16);
+  g.fillStyle(0x446622); g.fillRect(4,14,36,22);
+  g.fillStyle(0x557733); g.fillRect(8,15,28,20);
+  g.fillStyle(0x668844); g.fillRect(10,15,20,6);
+  g.fillStyle(0x334411); g.fillRect(4,14,5,20); g.fillRect(35,14,5,20);
+  g.fillStyle(0x8b5e3c); g.fillRect(4,32,36,4);
+  g.fillStyle(0x6b3f1e); g.fillRect(19,31,6,5);
+  g.fillStyle(0x8b5e3c); g.fillRect(39,4,4,52);
+  g.fillStyle(0x7a4a28); g.fillRect(39,4,4,4); g.fillRect(39,52,4,4);
+  g.fillStyle(0xddcc99); g.fillRect(41,4,1,52);
+  g.fillStyle(0x557733); g.fillRect(0,14,5,22);
+  g.fillStyle(0xffcc99); g.fillRect(0,24,5,8);
+  g.fillStyle(0x557733); g.fillRect(39,18,5,14);
+  g.fillStyle(0xffcc99); g.fillRect(39,28,5,8);
+  g.fillStyle(0xffcc99); g.fillRect(18,10,8,6);
+  g.fillStyle(0xffcc99); g.fillRect(14,4,16,8);
+  g.fillStyle(0x446622); g.fillRect(10,0,24,13);
+  g.fillStyle(0x334411); g.fillRect(10,0,5,12); g.fillRect(29,0,5,12);
+  g.fillStyle(0x557733); g.fillRect(13,0,18,5);
+  g.fillStyle(0x2d1f15); g.fillRect(15,6,14,6);
+  g.generateTexture('ranger_front_step', 44, 60);
+}
+
+function drawAbigailBack(g) {
+  g.clear();
+  g.fillStyle(0x222211); g.fillRect(8,52,12,8); g.fillRect(24,52,12,8);
+  g.fillStyle(0x334422); g.fillRect(8,34,12,18); g.fillRect(24,34,12,18);
+  g.fillStyle(0x446622); g.fillRect(4,14,36,22);
+  g.fillStyle(0x557733); g.fillRect(8,15,28,20);
+  g.fillStyle(0x334411); g.fillRect(4,14,5,20); g.fillRect(35,14,5,20);
+  g.fillStyle(0x334411); g.fillRect(20,14,4,20);
+  // quiver on back
+  g.fillStyle(0x8b5e3c); g.fillRect(2,14,6,22);
+  g.fillStyle(0x7a4a28); g.fillRect(2,14,6,4);
+  g.fillStyle(0xddcc99); g.fillRect(3,8,2,10); g.fillRect(6,8,2,10);
+  g.fillStyle(0x8b5e3c); g.fillRect(4,32,36,4);
+  g.fillStyle(0x6b3f1e); g.fillRect(19,31,6,5);
+  g.fillStyle(0x557733); g.fillRect(0,16,5,22);
+  g.fillStyle(0x557733); g.fillRect(39,16,5,22);
+  g.fillStyle(0xffcc99); g.fillRect(18,10,8,6);
+  g.fillStyle(0x446622); g.fillRect(10,0,24,13);
+  g.fillStyle(0x334411); g.fillRect(10,0,5,12); g.fillRect(29,0,5,12);
+  g.fillStyle(0x2d1f15); g.fillRect(14,6,16,8);
+  g.fillStyle(0x443322); g.fillRect(16,2,12,6);
+  g.generateTexture('ranger_back', 44, 60);
+}
+
+function drawAbigailBackStep(g) {
+  g.clear();
+  g.fillStyle(0x222211); g.fillRect(8,52,12,8); g.fillRect(24,49,12,11);
+  g.fillStyle(0x334422); g.fillRect(8,34,12,18); g.fillRect(24,32,12,18);
+  g.fillStyle(0x446622); g.fillRect(4,14,36,22);
+  g.fillStyle(0x557733); g.fillRect(8,15,28,20);
+  g.fillStyle(0x334411); g.fillRect(4,14,5,20); g.fillRect(35,14,5,20);
+  g.fillStyle(0x334411); g.fillRect(20,14,4,20);
+  g.fillStyle(0x8b5e3c); g.fillRect(2,14,6,22);
+  g.fillStyle(0x7a4a28); g.fillRect(2,14,6,4);
+  g.fillStyle(0xddcc99); g.fillRect(3,8,2,10); g.fillRect(6,8,2,10);
+  g.fillStyle(0x8b5e3c); g.fillRect(4,32,36,4);
+  g.fillStyle(0x6b3f1e); g.fillRect(19,31,6,5);
+  g.fillStyle(0x557733); g.fillRect(0,18,5,22);
+  g.fillStyle(0x557733); g.fillRect(39,14,5,22);
+  g.fillStyle(0xffcc99); g.fillRect(18,10,8,6);
+  g.fillStyle(0x446622); g.fillRect(10,0,24,13);
+  g.fillStyle(0x334411); g.fillRect(10,0,5,12); g.fillRect(29,0,5,12);
+  g.fillStyle(0x2d1f15); g.fillRect(14,6,16,8);
+  g.fillStyle(0x443322); g.fillRect(16,2,12,6);
+  g.generateTexture('ranger_back_step', 44, 60);
+}
+
+function drawAbigailFSide(g) {
+  g.clear();
+  g.fillStyle(0x222211); g.fillRect(8,52,12,8); g.fillRect(22,53,10,7);
+  g.fillStyle(0x334422); g.fillRect(8,34,12,18); g.fillRect(22,35,10,17);
+  g.fillStyle(0x446633); g.fillRect(10,34,4,16);
+  g.fillStyle(0x446622); g.fillRect(4,14,34,22);
+  g.fillStyle(0x557733); g.fillRect(7,15,26,20);
+  g.fillStyle(0x668844); g.fillRect(9,15,16,6);
+  g.fillStyle(0x334411); g.fillRect(4,14,4,20); g.fillRect(34,14,4,20);
+  g.fillStyle(0x8b5e3c); g.fillRect(4,32,34,4);
+  g.fillStyle(0x6b3f1e); g.fillRect(17,31,6,5);
+  g.fillStyle(0x8b5e3c); g.fillRect(37,4,4,52);
+  g.fillStyle(0x7a4a28); g.fillRect(37,4,4,4); g.fillRect(37,52,4,4);
+  g.fillStyle(0xddcc99); g.fillRect(39,4,1,52);
+  g.fillStyle(0x557733); g.fillRect(0,16,5,22);
+  g.fillStyle(0xffcc99); g.fillRect(0,28,5,8);
+  g.fillStyle(0x557733); g.fillRect(36,18,4,14);
+  g.fillStyle(0xffcc99); g.fillRect(36,28,4,8);
+  g.fillStyle(0xffcc99); g.fillRect(17,10,9,6);
+  g.fillStyle(0xffcc99); g.fillRect(13,4,14,8);
+  g.fillStyle(0x446622); g.fillRect(10,0,22,13);
+  g.fillStyle(0x334411); g.fillRect(10,0,5,12); g.fillRect(28,0,4,12);
+  g.fillStyle(0x557733); g.fillRect(13,0,16,5);
+  g.fillStyle(0x2d1f15); g.fillRect(14,6,12,6);
+  g.generateTexture('ranger_fside', 44, 60);
+}
+
+function drawAbigailFSideStep(g) {
+  g.clear();
+  g.fillStyle(0x222211); g.fillRect(8,49,12,11); g.fillRect(22,53,10,7);
+  g.fillStyle(0x334422); g.fillRect(8,32,12,18); g.fillRect(22,35,10,17);
+  g.fillStyle(0x446633); g.fillRect(10,32,4,16);
+  g.fillStyle(0x446622); g.fillRect(4,14,34,22);
+  g.fillStyle(0x557733); g.fillRect(7,15,26,20);
+  g.fillStyle(0x668844); g.fillRect(9,15,16,6);
+  g.fillStyle(0x334411); g.fillRect(4,14,4,20); g.fillRect(34,14,4,20);
+  g.fillStyle(0x8b5e3c); g.fillRect(4,32,34,4);
+  g.fillStyle(0x6b3f1e); g.fillRect(17,31,6,5);
+  g.fillStyle(0x8b5e3c); g.fillRect(37,4,4,52);
+  g.fillStyle(0x7a4a28); g.fillRect(37,4,4,4); g.fillRect(37,52,4,4);
+  g.fillStyle(0xddcc99); g.fillRect(39,4,1,52);
+  g.fillStyle(0x557733); g.fillRect(0,14,5,22);
+  g.fillStyle(0xffcc99); g.fillRect(0,24,5,8);
+  g.fillStyle(0x557733); g.fillRect(36,22,4,14);
+  g.fillStyle(0xffcc99); g.fillRect(36,32,4,8);
+  g.fillStyle(0xffcc99); g.fillRect(17,10,9,6);
+  g.fillStyle(0xffcc99); g.fillRect(13,4,14,8);
+  g.fillStyle(0x446622); g.fillRect(10,0,22,13);
+  g.fillStyle(0x334411); g.fillRect(10,0,5,12); g.fillRect(28,0,4,12);
+  g.fillStyle(0x557733); g.fillRect(13,0,16,5);
+  g.fillStyle(0x2d1f15); g.fillRect(14,6,12,6);
+  g.generateTexture('ranger_fside_step', 44, 60);
+}
+
+function drawAbigailBSide(g) {
+  g.clear();
+  g.fillStyle(0x222211); g.fillRect(8,52,12,8); g.fillRect(23,52,10,8);
+  g.fillStyle(0x334422); g.fillRect(8,34,12,18); g.fillRect(23,34,10,18);
+  g.fillStyle(0x446622); g.fillRect(4,14,34,22);
+  g.fillStyle(0x557733); g.fillRect(7,15,24,20);
+  g.fillStyle(0x334411); g.fillRect(4,14,4,20); g.fillRect(34,14,4,20);
+  g.fillStyle(0x334411); g.fillRect(18,14,3,20);
+  g.fillStyle(0x8b5e3c); g.fillRect(2,14,5,20);
+  g.fillStyle(0xddcc99); g.fillRect(3,8,2,10); g.fillRect(6,8,2,10);
+  g.fillStyle(0x8b5e3c); g.fillRect(4,32,34,4);
+  g.fillStyle(0x6b3f1e); g.fillRect(17,31,6,5);
+  g.fillStyle(0x557733); g.fillRect(0,16,5,22);
+  g.fillStyle(0x557733); g.fillRect(37,16,5,22);
+  g.fillStyle(0xffcc99); g.fillRect(17,10,9,6);
+  g.fillStyle(0x446622); g.fillRect(10,0,22,13);
+  g.fillStyle(0x334411); g.fillRect(10,0,5,12); g.fillRect(28,0,4,12);
+  g.fillStyle(0x2d1f15); g.fillRect(13,6,14,8);
+  g.fillStyle(0x443322); g.fillRect(15,2,12,6);
+  g.generateTexture('ranger_bside', 44, 60);
+}
+
+function drawAbigailBSideStep(g) {
+  g.clear();
+  g.fillStyle(0x222211); g.fillRect(8,52,12,8); g.fillRect(23,49,10,11);
+  g.fillStyle(0x334422); g.fillRect(8,34,12,18); g.fillRect(23,32,10,18);
+  g.fillStyle(0x446622); g.fillRect(4,14,34,22);
+  g.fillStyle(0x557733); g.fillRect(7,15,24,20);
+  g.fillStyle(0x334411); g.fillRect(4,14,4,20); g.fillRect(34,14,4,20);
+  g.fillStyle(0x334411); g.fillRect(18,14,3,20);
+  g.fillStyle(0x8b5e3c); g.fillRect(2,14,5,20);
+  g.fillStyle(0xddcc99); g.fillRect(3,8,2,10); g.fillRect(6,8,2,10);
+  g.fillStyle(0x8b5e3c); g.fillRect(4,32,34,4);
+  g.fillStyle(0x6b3f1e); g.fillRect(17,31,6,5);
+  g.fillStyle(0x557733); g.fillRect(0,18,5,22);
+  g.fillStyle(0x557733); g.fillRect(37,14,5,22);
+  g.fillStyle(0xffcc99); g.fillRect(17,10,9,6);
+  g.fillStyle(0x446622); g.fillRect(10,0,22,13);
+  g.fillStyle(0x334411); g.fillRect(10,0,5,12); g.fillRect(28,0,4,12);
+  g.fillStyle(0x2d1f15); g.fillRect(13,6,14,8);
+  g.fillStyle(0x443322); g.fillRect(15,2,12,6);
+  g.generateTexture('ranger_bside_step', 44, 60);
 }
 
 // ── KEY BINDING DEFAULTS ─────────────────────────────────────
@@ -5391,7 +5905,10 @@ class GameScene extends Phaser.Scene {
       spr, lbl, charData, pNum,
       hp: _hcMaxHp, maxHp: _hcMaxHp,
       ammo: charData.id==='gunslinger' ? 8 : Infinity,
-      reserveAmmo: charData.id==='gunslinger' ? 32 : 0, // 8 loaded + 32 reserve = 40 max
+      reserveAmmo: charData.id==='gunslinger' ? 32 : 0,
+      flowerAmmo: charData.id==='charmer' ? 0 : undefined,
+      knifeCooldown: 0,
+      bowCooldown: 0,
       isDowned: false, isPermanentlyDead: false, downTimer: 0, downText: null,
       hpBar, dir: 'front', walkTimer: 0,
       atkCooldown: 0, reloading: false,
@@ -6630,6 +7147,7 @@ class GameScene extends Phaser.Scene {
     _safe('updateMinimap',    () => this.updateMinimap());
     _safe('updateTreeSeeds',  () => this.updateTreeSeeds(delta));
     _safe('redrawHUD',        () => this.redrawHUD());
+    _safe('_updateScoutPanel', () => this._updateScoutPanel());
     if (this._touchActive) _safe('_drawTouchHUD', () => this._drawTouchHUD());
   }
 
@@ -8108,6 +8626,35 @@ class GameScene extends Phaser.Scene {
       player.atkCooldown = 500;
       this.meleeSwing(player, 55, 0xdddddd, 0.18, 0);
       if (player._knightUpgraded) this._fireShieldThrow(player);
+    } else if (id === 'charmer') {
+      // Pirouette — 360° AoE spin
+      SFX._play(660, 'sine', 0.12, 0.4);
+      player.atkCooldown = 1500;
+      this._log(`${player.charData.player} Pirouette  hp=${player.hp}/${player.maxHp}`, 'player');
+      const pfx = this.add.graphics().setDepth(20);
+      if (this.hudCam) this.hudCam.ignore(pfx);
+      pfx.lineStyle(5, 0xff88cc, 0.9);
+      pfx.strokeCircle(player.spr.x, player.spr.y, 55);
+      pfx.lineStyle(3, 0xffccee, 0.6);
+      pfx.strokeCircle(player.spr.x, player.spr.y, 38);
+      this.tweens.add({ targets: pfx, alpha: 0, scaleX: 1.4, scaleY: 1.4, duration: 400, onComplete: () => pfx.destroy() });
+      const px = player.spr.x, py = player.spr.y;
+      this.enemies.forEach(e => {
+        if (e.dying) return;
+        const d = Phaser.Math.Distance.Between(px, py, e.spr.x, e.spr.y);
+        if (d < 75) {
+          e._aggroOverride = true;
+          e._charmTinted = false;
+          if (e.spr?.active) e.spr.clearTint();
+          this._hurtEnemy(e, 35, px, py, 0xff88cc, player);
+        }
+      });
+    } else if (id === 'ranger') {
+      // Bow shot — ranged arrow, infinite ammo
+      SFX._play(280, 'triangle', 0.08, 0.2);
+      player.atkCooldown = 800;
+      this._log(`${player.charData.player} bow shot  hp=${player.hp}/${player.maxHp}`, 'player');
+      this._fireArrow(player);
     } else {
       // Architect
       SFX.wrench();
@@ -8115,6 +8662,45 @@ class GameScene extends Phaser.Scene {
       this.meleeSwing(player, 45, 0xcc8833, 0.2, 350);
       if (player._architectUpgraded) this._fireNailGun(player);
     }
+  }
+
+  _fireArrow(player) {
+    const angle = this.getAimAngle(player);
+    const arrow = this.physics.add.image(player.spr.x, player.spr.y, 'bullet')
+      .setDepth(15).setScale(1.8, 0.9).setTint(0x886633);
+    arrow.setRotation(angle);
+    if (this.hudCam) this.hudCam.ignore(arrow);
+    this.physics.velocityFromAngle(Phaser.Math.RadToDeg(angle), 520, arrow.body.velocity);
+    arrow.body.allowGravity = false;
+    if (this.obstacles) {
+      this.physics.add.collider(arrow, this.obstacles, () => { if (arrow.active) arrow.destroy(); });
+    }
+    if (this.enemies) {
+      this.enemies.forEach(e => {
+        if (e.dying) return;
+        this.physics.add.overlap(arrow, e.spr, () => {
+          if (!arrow.active || e.dying) return;
+          arrow.destroy();
+          const dmg = player._rangerUpgraded ? 35 : 35;
+          this._hurtEnemy(e, dmg, arrow.x, arrow.y, 0x886633, player);
+          if (player._rangerUpgraded) {
+            // Explosive arrow: splash damage to nearby enemies
+            const ax = arrow.x, ay = arrow.y;
+            this.enemies.forEach(ne => {
+              if (ne === e || ne.dying) return;
+              if (Phaser.Math.Distance.Between(ax, ay, ne.spr.x, ne.spr.y) < 60) {
+                this._hurtEnemy(ne, 20, ax, ay, 0xff8833, player);
+              }
+            });
+            const sfx = this.add.graphics().setDepth(20);
+            if (this.hudCam) this.hudCam.ignore(sfx);
+            sfx.fillStyle(0xff8833, 0.7); sfx.fillCircle(ax, ay, 60);
+            this.tweens.add({ targets: sfx, alpha: 0, scaleX: 1.5, scaleY: 1.5, duration: 300, onComplete: () => sfx.destroy() });
+          }
+        });
+      });
+    }
+    this.time.delayedCall(1800, () => { if (arrow.active) arrow.destroy(); });
   }
 
   _fireShieldThrow(player) {
@@ -8248,6 +8834,49 @@ class GameScene extends Phaser.Scene {
       this._log(`${player.charData.player} deployed TURRET  pos=(${Math.floor(player.spr.x/CFG.TILE)},${Math.floor(player.spr.y/CFG.TILE)})`, 'player');
       this.hint('Turret deployed!', 2000);
       this.deployTurret(player.spr.x, player.spr.y, player);
+    } else if (id === 'charmer') {
+      // FLOWER TOSS — charm-on-hit bouquet
+      if ((player.flowerAmmo || 0) <= 0) {
+        this.hint('No flowers! Craft a Flower Bouquet.', 2000);
+        return;
+      }
+      player.flowerAmmo--;
+      SFX._play(880, 'sine', 0.1, 0.3);
+      this._log(`${player.charData.player} Flower Toss  flowers_left=${player.flowerAmmo}`, 'player');
+      this.hint('Flower Toss! (' + player.flowerAmmo + ' left)', 1200);
+      const angle = this.getAimAngle(player);
+      const flower = this.physics.add.image(player.spr.x, player.spr.y, 'item_flower')
+        .setDepth(15).setScale(1.5).setTint(0xff88cc);
+      flower.setRotation(angle);
+      if (this.hudCam) this.hudCam.ignore(flower);
+      this.physics.velocityFromAngle(Phaser.Math.RadToDeg(angle), 280, flower.body.velocity);
+      flower.body.allowGravity = false;
+      if (this.enemies) {
+        this.enemies.forEach(e => {
+          if (e.dying) return;
+          this.physics.add.overlap(flower, e.spr, () => {
+            if (!flower.active || e.dying) return;
+            flower.destroy();
+            this._hurtEnemy(e, 20, flower.x, flower.y, 0xff88cc, player);
+            // Brief charm even on aggroed enemies — override clears after 2s
+            e._aggroOverride = false;
+            e._charmedTimer = 2000;
+          });
+        });
+      }
+      this.time.delayedCall(1500, () => { if (flower.active) flower.destroy(); });
+    } else if (id === 'ranger') {
+      // KNIFE STRIKE — quick melee
+      if (player.knifeCooldown > 0) {
+        this.hint('Knife: ' + Math.ceil(player.knifeCooldown / 1000) + 's', 800);
+        return;
+      }
+      player.knifeCooldown = 500;
+      this.tickCooldown(player, 'knifeCooldown', 500);
+      SFX._play(400, 'square', 0.06, 0.12);
+      player.atkCooldown = 500;
+      this._log(`${player.charData.player} Knife Strike  hp=${player.hp}/${player.maxHp}`, 'player');
+      this.meleeSwing(player, 35, 0x886633, 0.15, 0);
     }
   }
 
@@ -8321,7 +8950,7 @@ class GameScene extends Phaser.Scene {
           const angToE = Phaser.Math.Angle.Between(player.spr.x, player.spr.y, e.spr.x, e.spr.y);
           const diff = Phaser.Math.Angle.Wrap(angToE - dirAngle);
           if (Math.abs(diff) > Math.PI * 0.65) return;
-          const meleeDmg = player.charData.id === 'knight' ? 45 : 30;
+          const meleeDmg = player.charData.id === 'knight' ? 45 : (player.charData.id === 'ranger' ? 25 : 30);
           this._hurtEnemy(e, meleeDmg, player.spr.x, player.spr.y, 0xff6644, player);
           // Extra architect knockback (stacks on top of _hurtEnemy base impulse)
           if (knockback && e.spr.body) {
@@ -8746,6 +9375,83 @@ class GameScene extends Phaser.Scene {
 
   // Per-frame proximity check for spike traps.  Replaces physics.add.overlap because
   // add.image() has no physics body, and it also covers enemies that spawn after placement.
+  _updateScoutPanel() {
+    const SCOUT_DATA = {
+      wolf:           { atk: 'Bite',         weak: 'Spikes / fire',  note: '"Asked three questions. Got a growl."' },
+      rat:            { atk: 'Swarm nip',     weak: 'AoE attacks',   note: '"Honestly? Kind of cute. Still a threat."' },
+      bear:           { atk: 'Maul',          weak: 'Keep distance', note: '"Named this one Gerald."' },
+      raider_brawler: { atk: 'Melee rush',    weak: 'Kite & shoot',  note: '"Very passionate. Very punchy."' },
+      raider_shooter: { atk: 'Ranged shots',  weak: 'Get close fast',note: '"Asked about reload rate. He ran."' },
+      raider_heavy:   { atk: 'Heavy melee',   weak: 'Fire & retreat',note: '"Too slow for questions. Very big."' },
+      dust_hound:     { atk: 'Pack nip',      weak: 'Separate them', note: '"Pack mentality. Asked the alpha. Complicated."' },
+      ice_crawler:    { atk: 'Frost slow',    weak: 'Fire attacks',  note: '"Cold outside, deeply misunderstood."' },
+      bog_lurker:     { atk: 'Ambush lunge',  weak: 'Light it up',   note: '"Lurks. Did not answer questions. Rude."' },
+      spider_ruins:   { atk: 'Web drop',      weak: 'Keep moving',   note: '"Eight eyes. Eight chances to connect."' },
+      water_lurker:   { atk: 'Drag under',    weak: 'Stay off water',note: '"Waved at it. It didn\'t wave back."' },
+    };
+
+    const abigail = [this.p1, this.p2].find(p => p && p.charData && p.charData.id === 'ranger' && !p.isDowned && p.spr && p.spr.active);
+    if (!abigail) { this._hideScoutPanel(); return; }
+
+    // Find nearest enemy within scout range
+    let nearest = null, nearDist = Infinity;
+    if (this.enemies) {
+      for (const e of this.enemies) {
+        if (!e.spr?.active || e.dying || e._dormant) continue;
+        const d = Phaser.Math.Distance.Between(abigail.spr.x, abigail.spr.y, e.spr.x, e.spr.y);
+        if (d < 120 && d < nearDist) { nearDist = d; nearest = e; }
+      }
+    }
+
+    if (!nearest) { this._hideScoutPanel(); return; }
+
+    const data = SCOUT_DATA[nearest.type];
+    if (!data) { this._hideScoutPanel(); return; }
+
+    // Build panel lazily
+    const { W, H } = CFG;
+    if (!this._scoutPanel) {
+      this._scoutPanel = {
+        bg:   this._h(this.add.graphics().setDepth(105)),
+        name: this._h(this.add.text(0, 0, '', { fontFamily:'monospace', fontSize:'11px', color:'#ffddaa', stroke:'#000', strokeThickness:2 }).setDepth(106)),
+        atk:  this._h(this.add.text(0, 0, '', { fontFamily:'monospace', fontSize:'9px',  color:'#ff9966' }).setDepth(106)),
+        weak: this._h(this.add.text(0, 0, '', { fontFamily:'monospace', fontSize:'9px',  color:'#88ff88' }).setDepth(106)),
+        note: this._h(this.add.text(0, 0, '', { fontFamily:'monospace', fontSize:'8px',  color:'#ddccff', wordWrap:{ width: 160 } }).setDepth(106)),
+        visible: false,
+      };
+    }
+
+    const p = this._scoutPanel;
+    const px = W - 14, py = H / 2 - 40;
+    const nameStr = nearest.type.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
+
+    p.bg.clear();
+    p.bg.fillStyle(0x000000, 0.75); p.bg.fillRoundedRect(px - 178, py - 6, 178, 90, 6);
+    p.bg.lineStyle(1, 0x886633, 0.8); p.bg.strokeRoundedRect(px - 178, py - 6, 178, 90, 6);
+
+    p.name.setText('>> ' + nameStr).setPosition(px - 172, py);
+    p.atk.setText('ATK: ' + data.atk).setPosition(px - 172, py + 16);
+    p.weak.setText('WEAK: ' + data.weak).setPosition(px - 172, py + 30);
+    p.note.setText(data.note).setPosition(px - 172, py + 46);
+
+    if (!p.visible) {
+      p.visible = true;
+      [p.bg, p.name, p.atk, p.weak, p.note].forEach(o => o.setAlpha(0).setVisible(true));
+      this.tweens.add({ targets: [p.bg, p.name, p.atk, p.weak, p.note], alpha: 1, duration: 200 });
+    }
+
+    // Auto-hide timer refresh
+    if (this._scoutHideTimer) this._scoutHideTimer.remove();
+    this._scoutHideTimer = this.time.delayedCall(4000, () => this._hideScoutPanel());
+  }
+
+  _hideScoutPanel() {
+    if (!this._scoutPanel || !this._scoutPanel.visible) return;
+    this._scoutPanel.visible = false;
+    const objs = [this._scoutPanel.bg, this._scoutPanel.name, this._scoutPanel.atk, this._scoutPanel.weak, this._scoutPanel.note];
+    this.tweens.add({ targets: objs, alpha: 0, duration: 250, onComplete: () => objs.forEach(o => o.setVisible(false)) });
+  }
+
   updateSpikeTraps() {
     if (!this.spikeTraps || !this.spikeTraps.length || !this.enemies) return;
     for (let si = this.spikeTraps.length - 1; si >= 0; si--) {
@@ -9770,6 +10476,37 @@ class GameScene extends Phaser.Scene {
         }
         return;
       }
+      // Lauren (charmer) daytime aura — suppress enemy aggro within radius
+      if (!e._aggroOverride) {
+        const charmer = [this.p1, this.p2].find(p => p && p.charData && p.charData.id === 'charmer' && !p.isDowned && p.spr && p.spr.active);
+        if (charmer) {
+          const auraR = charmer._charmerUpgraded ? 280 : 200;
+          const effectiveR = this.isNight ? (charmer._charmerUpgraded ? 140 : 0) : auraR;
+          if (effectiveR > 0) {
+            const d = Phaser.Math.Distance.Between(e.spr.x, e.spr.y, charmer.spr.x, charmer.spr.y);
+            if (d < effectiveR) {
+              e.spr.setVelocity(0, 0);
+              if (!e._charmTinted) { e._charmTinted = true; e.spr.setTint(0xffaacc); }
+              return;
+            }
+          }
+        }
+      }
+      // Clear charm tint when out of range or night
+      if (e._charmTinted && (e._aggroOverride || !([this.p1, this.p2].find(p => p && p.charData && p.charData.id === 'charmer' && !p.isDowned)))) {
+        e._charmTinted = false;
+        if (e.spr?.active) e.spr.clearTint();
+      }
+      // Flower-charm: brief suppress from Flower Toss hit
+      if ((e._charmedTimer || 0) > 0 && !e._aggroOverride) {
+        e._charmedTimer -= delta;
+        e.spr.setVelocity(0, 0);
+        if (!e._charmTinted) { e._charmTinted = true; e.spr.setTint(0xffaacc); }
+        return;
+      } else if (e._charmedTimer <= 0 && e._charmTinted && !e._aggroOverride) {
+        e._charmTinted = false;
+        if (e.spr?.active) e.spr.clearTint();
+      }
       // ── Biome-enemy special pre-frame logic ──────────────────
       // Bog Lurker: stays hidden until player is within 90px, then bursts
       if (e.type === 'bog_lurker') {
@@ -10393,6 +11130,9 @@ class GameScene extends Phaser.Scene {
       { label: 'Knight Upgrade',     key: 'knight_upgrade',    cost: {metal:3, fiber:2},        needsBench: true,  type: 'upgrade', charId: 'knight' },
       { label: 'Architect Upgrade',  key: 'architect_upgrade', cost: {metal:3, wood:2},         needsBench: true,  type: 'upgrade', charId: 'architect' },
       { label: 'Gunslinger Upgrade', key: 'gunslinger_upgrade',cost: {metal:2, fiber:1},        needsBench: true,  type: 'upgrade', charId: 'gunslinger' },
+      { label: 'Flower Bouquet (+3)',key: 'flower_bouquet',    cost: {food:2, fiber:1},         needsBench: false, type: 'instant', charId: 'charmer' },
+      { label: 'Lauren Upgrade',     key: 'charmer_upgrade',   cost: {metal:2, fiber:2},        needsBench: true,  type: 'upgrade', charId: 'charmer' },
+      { label: 'Abigail Upgrade',    key: 'ranger_upgrade',    cost: {metal:3, wood:2},         needsBench: true,  type: 'upgrade', charId: 'ranger' },
     ];
   }
 
@@ -10605,7 +11345,17 @@ class GameScene extends Phaser.Scene {
       }
     }
 
-    if (rec.type === 'instant' && rec.key === 'ammo_pack') {
+    if (rec.type === 'instant' && rec.key === 'flower_bouquet') {
+      // Flower Bouquet: +3 flowers for Lauren; hint if Lauren not in game
+      const charmer = [this.p1, this.p2].filter(Boolean).find(p => p.charData.id === 'charmer');
+      if (charmer) {
+        charmer.flowerAmmo = (charmer.flowerAmmo || 0) + 3;
+        this._log(`${charmer.charData.player} got +3 flowers  flowers=${charmer.flowerAmmo}`, 'player');
+        this.hint('+3 Flowers for Lauren! (' + charmer.flowerAmmo + ' total)', 2000);
+      } else {
+        this.hint('Lauren isn\'t in play — flowers wasted!', 2000);
+      }
+    } else if (rec.type === 'instant' && rec.key === 'ammo_pack') {
       // Ammo Pack: +8 reserve ammo for Gunslinger; small metal refund hint for others
       const gunslinger = [this.p1, this.p2].filter(Boolean).find(p => p.charData.id === 'gunslinger');
       if (gunslinger) {
@@ -10638,13 +11388,17 @@ class GameScene extends Phaser.Scene {
       target[upgradeFlag] = true;
       this._log(`${target.charData.player} upgrade: ${rec.label}`, 'player');
       if (rec.charId === 'gunslinger') target._gunslingerClip = 12;
+      if (rec.charId === 'charmer') target._charmerUpgraded = true;
+      if (rec.charId === 'ranger') target._rangerUpgraded = true;
       target.spr.setTint(0xffaa22);
       this.time.delayedCall(400, () => {
         if (!target.spr?.active) return;
         if (target._frostSlowed) target.spr.setTint(0x88ccff);
         else target.spr.clearTint();
       });
-      this.hint(rec.label + ' unlocked for ' + target.charData.player + '!', 3000);
+      const upgradeDesc = rec.charId === 'charmer' ? ' — Aura expanded + night partial!' :
+                          rec.charId === 'ranger'  ? ' — Explosive arrows unlocked!' : '';
+      this.hint(rec.label + ' unlocked for ' + target.charData.player + '!' + upgradeDesc, 3000);
     }
   }
 
