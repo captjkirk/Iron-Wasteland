@@ -7,7 +7,7 @@
 // ── VERSION ───────────────────────────────────────────────────
 // Update this each commit so the title screen reflects the build date.
 // Stored as UTC ISO so it can be displayed in each player's local timezone.
-const VERSION = '2026-04-19T22:41:37Z';
+const VERSION = '2026-04-23T04:13:00Z';
 // Format VERSION into the viewer's local time with abbreviated tz name (EDT, PDT, BST, etc.)
 function _fmtVersion(iso) {
   try {
@@ -45,6 +45,23 @@ const CFG = {
   WAKE_RADIUS:    700,  // px — hysteresis: dormant enemy wakes when closer than this
   MAX_ACTIVE_ENEMIES: 180, // hard cap on simultaneously active (non-dormant) enemies
   MAX_ENEMIES: 280, // hard cap on this.enemies.length across all spawners (den/wave)
+};
+
+// ── ENEMY LOOT TABLES ─────────────────────────────────────────
+// Format: [item_key, base_chance, flags]  flags: 0=plain, 1=multiply by foodMult, 2=rare (skip if hc.rareDropsBossOnly)
+// Chance > 1 = always drops (bears always drop metal regardless of rdm).
+const _RAIDER_LOOT = [['item_ammo', 0.6, 0], ['item_metal', 0.4, 0], ['item_food', 0.3, 1]];
+const ENEMY_LOOT = {
+  wolf:         [['item_fiber', 0.5, 0], ['item_metal', 0.3, 0]],
+  rat:          [['item_fiber', 0.6, 0], ['item_ammo',  0.25, 0]],
+  bear:         [['item_metal', 1e9, 0], ['item_wood',  0.5, 0], ['item_fiber', 0.4, 0]],
+  brawler:      _RAIDER_LOOT,
+  shooter:      _RAIDER_LOOT,
+  heavy:        _RAIDER_LOOT,
+  ice_crawler:  [['item_fiber', 0.5, 0], ['item_rare', 0.2, 2]],
+  spider_ruins: [['item_fiber', 0.7, 0], ['item_metal', 0.25, 0]],
+  bog_lurker:   [['item_food',  0.5, 1], ['item_fiber', 0.3, 0]],
+  dust_hound:   [['item_food',  0.4, 1], ['item_fiber', 0.35, 0]],
 };
 
 // ── WORLD GEN CONFIG KNOBS ────────────────────────────────────
@@ -175,6 +192,20 @@ const CHARS = [
     stats: [3, 3, 2, 5],
     desc: ['Master builder. Wrench melee.', 'ORCHESTRATE: deploy auto-turret'],
   },
+  {
+    id: 'charmer', player: 'Lauren', title: 'The Charmer',
+    color: 0xd988bb, dark: 0x995577,
+    speed: 175, maxHp: 130,
+    stats: [3, 4, 3, 2],
+    desc: ['Daytime aura charms enemies.', 'FLOWER: charm-on-hit bouquet toss'],
+  },
+  {
+    id: 'ranger', player: 'Abigail', title: 'The Ranger',
+    color: 0x557733, dark: 0x334422,
+    speed: 185, maxHp: 120,
+    stats: [3, 5, 4, 2],
+    desc: ['Bow & knife. Scout panel passive.', 'KNIFE: quick close-range strike'],
+  },
 ];
 
 // Shared state across scenes
@@ -259,6 +290,7 @@ const Music = {
   },
   _dayLoop(startAt) {
     if (!this.playing || !this.ctx) return;
+    if (this.mode === 'boss')  return; // boss loop runs independently; resume when switchFromBoss fires
     if (this.mode === 'night') { this._nightLoop(this.ctx.currentTime); return; }
     const b = 60/125; // beats at 125 bpm
     const len = b*16;
@@ -298,7 +330,8 @@ const Music = {
   },
   _nightLoop(startAt) {
     if (!this.playing || !this.ctx) return;
-    if (this.mode === 'day') { this._dayLoop(this.ctx.currentTime); return; }
+    if (this.mode === 'boss') return; // boss loop runs independently; resume when switchFromBoss fires
+    if (this.mode === 'day')  { this._dayLoop(this.ctx.currentTime); return; }
     const b = 60/80; // slower tempo — 80 bpm, more menacing
     const len = b*16;
     const now = this.ctx.currentTime;
@@ -380,7 +413,7 @@ const Music = {
 
     // Snare-like noise bursts on beats 2 and 4 (reduced from 4 to 2 per loop to prevent audio thread saturation)
     [b*2, b*10].forEach(t => {
-      if (o+t > -0.05) this._noise(0.06, 0.45);
+      if (o+t > -0.05) SFX._noise(0.06, 0.45);
     });
 
     // Sustained pad swells (triangle, lower octave for warmth)
@@ -444,7 +477,16 @@ const SFX = {
   wrench() { this._play(220,'square',0.06,0.35,'drop'); this._play(140,'sawtooth',0.1,0.15); },
   shoot()  { this._noise(0.06,0.6); this._play(800,'square',0.04,0.3,'drop'); },
   reload() { this._play(400,'square',0.03,0.2); this._play(600,'square',0.03,0.15); },
-  hit()    { this._play(160,'sawtooth',0.08,0.5,'drop'); this._noise(0.05,0.3); },
+  hit(type) {
+    // Pitch by enemy mass: heavier = lower thud, lighter = higher yip.
+    // Falls back to the original 160 Hz for anything unrecognised.
+    let f = 160;
+    if (type === 'bear' || type === 'heavy') f = 90;
+    else if (type === 'rat' || type === 'dust_hound' || type === 'ice_crawler') f = 220;
+    else if (typeof type === 'string' && type.startsWith('boss_')) f = 65;
+    this._play(f, 'sawtooth', 0.08, 0.5, 'drop');
+    this._noise(0.05, 0.3);
+  },
   playerHurt() { this._play(200,'sawtooth',0.15,0.6,'drop'); },
   enemyDie()   { this._play(120,'square',0.2,0.5,'drop'); this._noise(0.1,0.25); },
 };
@@ -569,6 +611,8 @@ function getControls(playerNum, charId, isSolo) {
       knight:     ['WASD — Move', 'Mouse — Aim', 'LClick — Sword', 'RClick — Rally', 'Q — Build', 'E — Interact', 'R — Rotate build'],
       gunslinger: ['WASD — Move', 'Mouse — Aim', 'LClick — Shoot', 'RClick — Reload', 'Q — Build', 'E — Interact', 'R — Rotate build'],
       architect:  ['WASD — Move', 'Mouse — Aim', 'LClick — Wrench', 'RClick — Turret', 'Q — Build', 'E — Interact', 'R — Rotate build'],
+      charmer:    ['WASD — Move', 'Mouse — Aim', 'LClick — Pirouette (360° AoE)', 'RClick — Flower Toss', 'Q — Build', 'E — Interact', 'Passive: Raiders are allies; charm aura near enemies'],
+      ranger:     ['WASD — Move', 'Mouse — Aim', 'LClick — Bow Shot', 'RClick — Knife Strike', 'Q — Build', 'E — Interact', 'Passive: Scout panel on nearby enemies'],
     };
     return map[charId] || ['WASD — Move'];
   }
@@ -581,6 +625,8 @@ function getControls(playerNum, charId, isSolo) {
     knight:     [move, atk+' — Sword', atk2+' — Rally', build+' — Build', inter+' — Interact'],
     gunslinger: [move, atk+' — Shoot', atk2+' — Reload', build+' — Build', inter+' — Interact'],
     architect:  [move, atk+' — Wrench', atk2+' — Turret', build+' — Build', inter+' — Interact'],
+    charmer:    [move, atk+' — Pirouette (360° AoE)', atk2+' — Flower Toss', build+' — Build', inter+' — Interact', 'Passive: Raiders are allies; charm aura'],
+    ranger:     [move, atk+' — Bow Shot', atk2+' — Knife Strike', build+' — Build', inter+' — Interact', 'Passive: Scout panel on nearby enemies'],
   };
   return map[charId] || [move];
 }
@@ -747,6 +793,16 @@ function buildTextures(scene) {
   drawArchitectBack(g);   drawArchitectBackStep(g);
   drawArchitectFSide(g);  drawArchitectFSideStep(g);
   drawArchitectBSide(g);  drawArchitectBSideStep(g);
+  drawLauren(g);       drawLaurenStep(g);
+  drawLaurenFront(g);  drawLaurenFrontStep(g);
+  drawLaurenBack(g);   drawLaurenBackStep(g);
+  drawLaurenFSide(g);  drawLaurenFSideStep(g);
+  drawLaurenBSide(g);  drawLaurenBSideStep(g);
+  drawAbigail(g);       drawAbigailStep(g);
+  drawAbigailFront(g);  drawAbigailFrontStep(g);
+  drawAbigailBack(g);   drawAbigailBackStep(g);
+  drawAbigailFSide(g);  drawAbigailFSideStep(g);
+  drawAbigailBSide(g);  drawAbigailBSideStep(g);
   // Enemy raider directional sprites
   drawRaiderDirectionals(g);
 
@@ -762,6 +818,14 @@ function buildTextures(scene) {
   g.fillStyle(0xffcc00); g.fillRect(2, 0, 6, 4);
   g.fillStyle(0x777700); g.fillRect(3, 12, 4, 2);
   g.generateTexture('ammo_icon', 10, 14);
+
+  // Flower projectile (Lauren's toss)
+  g.clear();
+  g.fillStyle(0xff99bb); g.fillCircle(6, 6, 5);
+  g.fillStyle(0xffccdd); g.fillCircle(6, 6, 3);
+  g.fillStyle(0xffee44); g.fillCircle(6, 6, 2);
+  g.fillStyle(0x44aa22); g.fillRect(5, 9, 2, 5);
+  g.generateTexture('item_flower', 12, 14);
 
   // Resource items
   // Wood
@@ -825,13 +889,17 @@ function buildTextures(scene) {
   g.fillStyle(0xffee44); g.fillEllipse(8, 5, 3, 4);
   g.generateTexture('campfire', 16, 14);
 
-  // Fire glow (radial warm gradient, used for pulsating campfire/campsite glow)
+  // Fire glow — radial warm gradient with softer falloff so it reads as
+  // a real pool of light rather than concentric color rings.
   g.clear();
-  g.fillStyle(0xff7711, 0.12); g.fillCircle(64, 64, 64);
-  g.fillStyle(0xff8822, 0.14); g.fillCircle(64, 64, 50);
-  g.fillStyle(0xffaa33, 0.16); g.fillCircle(64, 64, 36);
-  g.fillStyle(0xffcc55, 0.18); g.fillCircle(64, 64, 22);
-  g.fillStyle(0xffee88, 0.20); g.fillCircle(64, 64, 10);
+  g.fillStyle(0xff6611, 0.08); g.fillCircle(64, 64, 64);
+  g.fillStyle(0xff7722, 0.10); g.fillCircle(64, 64, 56);
+  g.fillStyle(0xff8833, 0.12); g.fillCircle(64, 64, 48);
+  g.fillStyle(0xff9944, 0.14); g.fillCircle(64, 64, 40);
+  g.fillStyle(0xffaa55, 0.16); g.fillCircle(64, 64, 32);
+  g.fillStyle(0xffbb66, 0.18); g.fillCircle(64, 64, 24);
+  g.fillStyle(0xffcc77, 0.20); g.fillCircle(64, 64, 16);
+  g.fillStyle(0xffee99, 0.22); g.fillCircle(64, 64, 8);
   g.generateTexture('fire_glow', 128, 128);
 
   // Torch — wall sconce (bracket + cup + flame, top-down isometric style)
@@ -2837,6 +2905,552 @@ function drawRaiderDirectionals(g) {
   g.generateTexture('raider_heavy_bside_step', 26, 30);
 }
 
+// ── LAUREN (The Charmer) sprites ─────────────────────────────
+function drawLauren(g) {
+  g.clear();
+  // shoe (side view)
+  g.fillStyle(0x774455); g.fillRect(8,52,14,8);
+  // lower skirt (wide fan)
+  g.fillStyle(0xbb6699); g.fillRect(0,42,36,10);
+  g.fillStyle(0xd988bb); g.fillRect(2,36,34,14);
+  g.fillStyle(0xeeccdd); g.fillRect(4,34,22,4);
+  g.fillStyle(0xcc77aa); g.fillRect(2,50,34,2);
+  // waist ribbon
+  g.fillStyle(0xff99bb); g.fillRect(14,32,10,4);
+  g.fillStyle(0xff77aa); g.fillRect(17,29,4,6);
+  // bodice
+  g.fillStyle(0x9966aa); g.fillRect(10,14,18,20);
+  g.fillStyle(0x775588); g.fillRect(10,14,4,18);
+  g.fillStyle(0xbb88cc); g.fillRect(14,14,6,6);
+  // arms
+  g.fillStyle(0xffcc99); g.fillRect(28,16,8,12);
+  g.fillStyle(0xffcc99); g.fillRect(4,16,6,12);
+  // neck
+  g.fillStyle(0xffcc99); g.fillRect(15,10,10,6);
+  // face
+  g.fillStyle(0xffcc99); g.fillRect(11,4,16,8);
+  // hair
+  g.fillStyle(0xcc8844); g.fillRect(10,0,18,8);
+  g.fillStyle(0xdd9955); g.fillRect(10,0,18,3);
+  g.fillStyle(0xcc8844); g.fillRect(6,4,6,10);
+  g.fillStyle(0xaa6622); g.fillRect(24,6,6,8);
+  g.generateTexture('charmer', 44, 60);
+}
+
+function drawLaurenStep(g) {
+  g.clear();
+  g.fillStyle(0x774455); g.fillRect(8,49,14,11);
+  g.fillStyle(0xbb6699); g.fillRect(0,42,36,10);
+  g.fillStyle(0xd988bb); g.fillRect(2,36,34,14);
+  g.fillStyle(0xeeccdd); g.fillRect(4,34,22,4);
+  g.fillStyle(0xcc77aa); g.fillRect(2,50,34,2);
+  g.fillStyle(0xff99bb); g.fillRect(14,32,10,4);
+  g.fillStyle(0xff77aa); g.fillRect(17,29,4,6);
+  g.fillStyle(0x9966aa); g.fillRect(10,14,18,20);
+  g.fillStyle(0x775588); g.fillRect(10,14,4,18);
+  g.fillStyle(0xbb88cc); g.fillRect(14,14,6,6);
+  g.fillStyle(0xffcc99); g.fillRect(28,14,8,12);
+  g.fillStyle(0xffcc99); g.fillRect(4,18,6,12);
+  g.fillStyle(0xffcc99); g.fillRect(15,10,10,6);
+  g.fillStyle(0xffcc99); g.fillRect(11,4,16,8);
+  g.fillStyle(0xcc8844); g.fillRect(10,0,18,8);
+  g.fillStyle(0xdd9955); g.fillRect(10,0,18,3);
+  g.fillStyle(0xcc8844); g.fillRect(6,4,6,10);
+  g.fillStyle(0xaa6622); g.fillRect(24,6,6,8);
+  g.generateTexture('charmer_step', 44, 60);
+}
+
+function drawLaurenFront(g) {
+  g.clear();
+  g.fillStyle(0x774455); g.fillRect(9,52,10,8); g.fillRect(25,52,10,8);
+  g.fillStyle(0xbb6699); g.fillRect(1,44,42,8);
+  g.fillStyle(0xd988bb); g.fillRect(3,36,38,14);
+  g.fillStyle(0xeeccdd); g.fillRect(7,34,30,6);
+  g.fillStyle(0xcc77aa); g.fillRect(3,50,38,2);
+  g.fillStyle(0xff99bb); g.fillRect(16,32,12,5);
+  g.fillStyle(0xff77aa); g.fillRect(20,28,4,6);
+  g.fillStyle(0x9966aa); g.fillRect(12,14,20,20);
+  g.fillStyle(0x775588); g.fillRect(12,14,4,18);
+  g.fillStyle(0xbb88cc); g.fillRect(16,14,10,6);
+  g.fillStyle(0xffcc99); g.fillRect(4,16,8,14);
+  g.fillStyle(0xffcc99); g.fillRect(32,16,8,14);
+  g.fillStyle(0xffcc99); g.fillRect(18,10,8,6);
+  g.fillStyle(0xffcc99); g.fillRect(14,4,16,8);
+  g.fillStyle(0xcc8844); g.fillRect(12,0,20,8);
+  g.fillStyle(0xdd9955); g.fillRect(12,0,20,3);
+  g.fillStyle(0xcc8844); g.fillRect(8,4,6,10);
+  g.fillStyle(0xcc8844); g.fillRect(30,4,6,10);
+  g.generateTexture('charmer_front', 44, 60);
+}
+
+function drawLaurenFrontStep(g) {
+  g.clear();
+  g.fillStyle(0x774455); g.fillRect(9,49,10,11); g.fillRect(25,52,10,8);
+  g.fillStyle(0xbb6699); g.fillRect(1,44,42,8);
+  g.fillStyle(0xd988bb); g.fillRect(3,36,38,14);
+  g.fillStyle(0xeeccdd); g.fillRect(7,34,30,6);
+  g.fillStyle(0xcc77aa); g.fillRect(3,50,38,2);
+  g.fillStyle(0xff99bb); g.fillRect(16,32,12,5);
+  g.fillStyle(0xff77aa); g.fillRect(20,28,4,6);
+  g.fillStyle(0x9966aa); g.fillRect(12,14,20,20);
+  g.fillStyle(0x775588); g.fillRect(12,14,4,18);
+  g.fillStyle(0xbb88cc); g.fillRect(16,14,10,6);
+  g.fillStyle(0xffcc99); g.fillRect(4,14,8,14);
+  g.fillStyle(0xffcc99); g.fillRect(32,18,8,14);
+  g.fillStyle(0xffcc99); g.fillRect(18,10,8,6);
+  g.fillStyle(0xffcc99); g.fillRect(14,4,16,8);
+  g.fillStyle(0xcc8844); g.fillRect(12,0,20,8);
+  g.fillStyle(0xdd9955); g.fillRect(12,0,20,3);
+  g.fillStyle(0xcc8844); g.fillRect(8,4,6,10);
+  g.fillStyle(0xcc8844); g.fillRect(30,4,6,10);
+  g.generateTexture('charmer_front_step', 44, 60);
+}
+
+function drawLaurenBack(g) {
+  g.clear();
+  g.fillStyle(0x774455); g.fillRect(9,52,10,8); g.fillRect(25,52,10,8);
+  g.fillStyle(0xbb6699); g.fillRect(1,44,42,8);
+  g.fillStyle(0xd988bb); g.fillRect(3,36,38,14);
+  g.fillStyle(0xcc77aa); g.fillRect(3,50,38,2);
+  g.fillStyle(0xff99bb); g.fillRect(17,32,10,4);
+  g.fillStyle(0x775588); g.fillRect(12,14,20,20);
+  g.fillStyle(0x9966aa); g.fillRect(16,14,12,18);
+  g.fillStyle(0x553366); g.fillRect(20,14,4,18);
+  g.fillStyle(0xffcc99); g.fillRect(4,16,8,14);
+  g.fillStyle(0xffcc99); g.fillRect(32,16,8,14);
+  g.fillStyle(0xffcc99); g.fillRect(18,10,8,6);
+  // hair bun (back view)
+  g.fillStyle(0xcc8844); g.fillRect(12,0,20,12);
+  g.fillStyle(0xdd9955); g.fillRect(12,0,20,4);
+  g.fillStyle(0xcc8844); g.fillRect(8,4,6,10);
+  g.fillStyle(0xcc8844); g.fillRect(30,4,6,10);
+  g.fillStyle(0xaa6622); g.fillEllipse(22,10,12,8);
+  g.generateTexture('charmer_back', 44, 60);
+}
+
+function drawLaurenBackStep(g) {
+  g.clear();
+  g.fillStyle(0x774455); g.fillRect(9,52,10,8); g.fillRect(25,49,10,11);
+  g.fillStyle(0xbb6699); g.fillRect(1,44,42,8);
+  g.fillStyle(0xd988bb); g.fillRect(3,36,38,14);
+  g.fillStyle(0xcc77aa); g.fillRect(3,50,38,2);
+  g.fillStyle(0xff99bb); g.fillRect(17,32,10,4);
+  g.fillStyle(0x775588); g.fillRect(12,14,20,20);
+  g.fillStyle(0x9966aa); g.fillRect(16,14,12,18);
+  g.fillStyle(0x553366); g.fillRect(20,14,4,18);
+  g.fillStyle(0xffcc99); g.fillRect(4,18,8,14);
+  g.fillStyle(0xffcc99); g.fillRect(32,14,8,14);
+  g.fillStyle(0xffcc99); g.fillRect(18,10,8,6);
+  g.fillStyle(0xcc8844); g.fillRect(12,0,20,12);
+  g.fillStyle(0xdd9955); g.fillRect(12,0,20,4);
+  g.fillStyle(0xcc8844); g.fillRect(8,4,6,10);
+  g.fillStyle(0xcc8844); g.fillRect(30,4,6,10);
+  g.fillStyle(0xaa6622); g.fillEllipse(22,10,12,8);
+  g.generateTexture('charmer_back_step', 44, 60);
+}
+
+function drawLaurenFSide(g) {
+  g.clear();
+  g.fillStyle(0x774455); g.fillRect(9,52,12,8); g.fillRect(22,53,10,7);
+  g.fillStyle(0xbb6699); g.fillRect(1,43,40,9);
+  g.fillStyle(0xd988bb); g.fillRect(3,36,36,14);
+  g.fillStyle(0xeeccdd); g.fillRect(6,34,24,5);
+  g.fillStyle(0xcc77aa); g.fillRect(3,50,36,2);
+  g.fillStyle(0xff99bb); g.fillRect(15,32,12,4);
+  g.fillStyle(0xff77aa); g.fillRect(19,29,4,5);
+  g.fillStyle(0x9966aa); g.fillRect(11,14,20,20);
+  g.fillStyle(0x775588); g.fillRect(11,14,5,18);
+  g.fillStyle(0xbb88cc); g.fillRect(16,14,8,6);
+  g.fillStyle(0xffcc99); g.fillRect(4,16,7,14);
+  g.fillStyle(0xffcc99); g.fillRect(30,16,8,14);
+  g.fillStyle(0xffcc99); g.fillRect(17,10,9,6);
+  g.fillStyle(0xffcc99); g.fillRect(13,4,16,8);
+  g.fillStyle(0xcc8844); g.fillRect(11,0,20,8);
+  g.fillStyle(0xdd9955); g.fillRect(11,0,20,3);
+  g.fillStyle(0xcc8844); g.fillRect(7,4,6,10);
+  g.fillStyle(0xcc8844); g.fillRect(29,4,6,10);
+  g.generateTexture('charmer_fside', 44, 60);
+}
+
+function drawLaurenFSideStep(g) {
+  g.clear();
+  g.fillStyle(0x774455); g.fillRect(9,49,12,11); g.fillRect(22,53,10,7);
+  g.fillStyle(0xbb6699); g.fillRect(1,43,40,9);
+  g.fillStyle(0xd988bb); g.fillRect(3,36,36,14);
+  g.fillStyle(0xeeccdd); g.fillRect(6,34,24,5);
+  g.fillStyle(0xcc77aa); g.fillRect(3,50,36,2);
+  g.fillStyle(0xff99bb); g.fillRect(15,32,12,4);
+  g.fillStyle(0xff77aa); g.fillRect(19,29,4,5);
+  g.fillStyle(0x9966aa); g.fillRect(11,14,20,20);
+  g.fillStyle(0x775588); g.fillRect(11,14,5,18);
+  g.fillStyle(0xbb88cc); g.fillRect(16,14,8,6);
+  g.fillStyle(0xffcc99); g.fillRect(4,14,7,14);
+  g.fillStyle(0xffcc99); g.fillRect(30,18,8,14);
+  g.fillStyle(0xffcc99); g.fillRect(17,10,9,6);
+  g.fillStyle(0xffcc99); g.fillRect(13,4,16,8);
+  g.fillStyle(0xcc8844); g.fillRect(11,0,20,8);
+  g.fillStyle(0xdd9955); g.fillRect(11,0,20,3);
+  g.fillStyle(0xcc8844); g.fillRect(7,4,6,10);
+  g.fillStyle(0xcc8844); g.fillRect(29,4,6,10);
+  g.generateTexture('charmer_fside_step', 44, 60);
+}
+
+function drawLaurenBSide(g) {
+  g.clear();
+  g.fillStyle(0x774455); g.fillRect(9,52,12,8); g.fillRect(23,52,10,8);
+  g.fillStyle(0xbb6699); g.fillRect(1,44,40,8);
+  g.fillStyle(0xd988bb); g.fillRect(3,36,36,14);
+  g.fillStyle(0xcc77aa); g.fillRect(3,50,36,2);
+  g.fillStyle(0xff99bb); g.fillRect(16,32,10,4);
+  g.fillStyle(0x775588); g.fillRect(11,14,20,20);
+  g.fillStyle(0x9966aa); g.fillRect(15,14,12,18);
+  g.fillStyle(0x553366); g.fillRect(20,14,3,18);
+  g.fillStyle(0xffcc99); g.fillRect(4,16,7,14);
+  g.fillStyle(0xffcc99); g.fillRect(31,16,8,14);
+  g.fillStyle(0xffcc99); g.fillRect(17,10,9,6);
+  g.fillStyle(0xcc8844); g.fillRect(11,0,20,10);
+  g.fillStyle(0xdd9955); g.fillRect(11,0,20,3);
+  g.fillStyle(0xcc8844); g.fillRect(7,4,6,10);
+  g.fillStyle(0xcc8844); g.fillRect(29,4,6,10);
+  g.fillStyle(0xaa6622); g.fillEllipse(23,9,10,7);
+  g.generateTexture('charmer_bside', 44, 60);
+}
+
+function drawLaurenBSideStep(g) {
+  g.clear();
+  g.fillStyle(0x774455); g.fillRect(9,52,12,8); g.fillRect(23,49,10,11);
+  g.fillStyle(0xbb6699); g.fillRect(1,44,40,8);
+  g.fillStyle(0xd988bb); g.fillRect(3,36,36,14);
+  g.fillStyle(0xcc77aa); g.fillRect(3,50,36,2);
+  g.fillStyle(0xff99bb); g.fillRect(16,32,10,4);
+  g.fillStyle(0x775588); g.fillRect(11,14,20,20);
+  g.fillStyle(0x9966aa); g.fillRect(15,14,12,18);
+  g.fillStyle(0x553366); g.fillRect(20,14,3,18);
+  g.fillStyle(0xffcc99); g.fillRect(4,18,7,14);
+  g.fillStyle(0xffcc99); g.fillRect(31,14,8,14);
+  g.fillStyle(0xffcc99); g.fillRect(17,10,9,6);
+  g.fillStyle(0xcc8844); g.fillRect(11,0,20,10);
+  g.fillStyle(0xdd9955); g.fillRect(11,0,20,3);
+  g.fillStyle(0xcc8844); g.fillRect(7,4,6,10);
+  g.fillStyle(0xcc8844); g.fillRect(29,4,6,10);
+  g.fillStyle(0xaa6622); g.fillEllipse(23,9,10,7);
+  g.generateTexture('charmer_bside_step', 44, 60);
+}
+
+// ── ABIGAIL (The Ranger) sprites ─────────────────────────────
+function drawAbigail(g) {
+  g.clear();
+  // boots
+  g.fillStyle(0x222211); g.fillRect(7,52,11,8); g.fillRect(20,52,11,8);
+  g.fillStyle(0x3d3320); g.fillRect(20,52,4,6);
+  // leggings — narrower
+  g.fillStyle(0x334422); g.fillRect(7,34,11,18); g.fillRect(20,34,11,18);
+  g.fillStyle(0x446633); g.fillRect(21,34,3,16);
+  // cloak body — slimmer (22px vs 28px)
+  g.fillStyle(0x446622); g.fillRect(6,14,22,22);
+  g.fillStyle(0x557733); g.fillRect(8,15,16,20);
+  g.fillStyle(0x668844); g.fillRect(9,15,10,6);
+  g.fillStyle(0x334411); g.fillRect(6,14,3,20); g.fillRect(25,14,3,20);
+  // belt
+  g.fillStyle(0x8b5e3c); g.fillRect(6,32,22,4);
+  g.fillStyle(0x6b3f1e); g.fillRect(14,31,6,5);
+  // bow (right side, vertical stave)
+  g.fillStyle(0x8b5e3c); g.fillRect(33,4,4,52);
+  g.fillStyle(0x7a4a28); g.fillRect(33,4,4,4); g.fillRect(33,52,4,4);
+  g.fillStyle(0xddcc99); g.fillRect(35,4,1,52);
+  // arms
+  g.fillStyle(0x557733); g.fillRect(3,14,4,22);
+  g.fillStyle(0xffcc99); g.fillRect(3,26,4,8);
+  g.fillStyle(0x557733); g.fillRect(27,18,4,14);
+  g.fillStyle(0xffcc99); g.fillRect(27,28,4,8);
+  // long brown hair — flows from hood past shoulder on left side
+  g.fillStyle(0x8b4513); g.fillRect(0,4,5,26);
+  g.fillStyle(0xaa6633); g.fillRect(1,4,3,12);
+  g.fillStyle(0x7a3d10); g.fillRect(0,20,4,10);
+  // neck + face
+  g.fillStyle(0xffcc99); g.fillRect(14,10,8,6);
+  g.fillStyle(0xffcc99); g.fillRect(11,4,12,8);
+  // hood — same width as slimmer body
+  g.fillStyle(0x446622); g.fillRect(9,0,16,12);
+  g.fillStyle(0x334411); g.fillRect(9,0,3,10); g.fillRect(22,0,3,10);
+  g.fillStyle(0x557733); g.fillRect(11,0,12,5);
+  g.fillStyle(0x2d1f15); g.fillRect(11,6,8,5);
+  g.generateTexture('ranger', 44, 60);
+}
+
+function drawAbigailStep(g) {
+  g.clear();
+  g.fillStyle(0x222211); g.fillRect(7,49,11,11); g.fillRect(20,52,11,8);
+  g.fillStyle(0x3d3320); g.fillRect(20,52,4,6);
+  g.fillStyle(0x334422); g.fillRect(7,32,11,18); g.fillRect(20,34,11,18);
+  g.fillStyle(0x446633); g.fillRect(21,34,3,16);
+  g.fillStyle(0x446622); g.fillRect(6,14,22,22);
+  g.fillStyle(0x557733); g.fillRect(8,15,16,20);
+  g.fillStyle(0x668844); g.fillRect(9,15,10,6);
+  g.fillStyle(0x334411); g.fillRect(6,14,3,20); g.fillRect(25,14,3,20);
+  g.fillStyle(0x8b5e3c); g.fillRect(6,32,22,4);
+  g.fillStyle(0x6b3f1e); g.fillRect(14,31,6,5);
+  g.fillStyle(0x8b5e3c); g.fillRect(33,4,4,52);
+  g.fillStyle(0x7a4a28); g.fillRect(33,4,4,4); g.fillRect(33,52,4,4);
+  g.fillStyle(0xddcc99); g.fillRect(35,4,1,52);
+  g.fillStyle(0x557733); g.fillRect(3,18,4,22);
+  g.fillStyle(0xffcc99); g.fillRect(3,28,4,8);
+  g.fillStyle(0x557733); g.fillRect(27,14,4,14);
+  g.fillStyle(0xffcc99); g.fillRect(27,24,4,8);
+  g.fillStyle(0x8b4513); g.fillRect(0,4,5,26);
+  g.fillStyle(0xaa6633); g.fillRect(1,4,3,12);
+  g.fillStyle(0x7a3d10); g.fillRect(0,20,4,10);
+  g.fillStyle(0xffcc99); g.fillRect(14,10,8,6);
+  g.fillStyle(0xffcc99); g.fillRect(11,4,12,8);
+  g.fillStyle(0x446622); g.fillRect(9,0,16,12);
+  g.fillStyle(0x334411); g.fillRect(9,0,3,10); g.fillRect(22,0,3,10);
+  g.fillStyle(0x557733); g.fillRect(11,0,12,5);
+  g.fillStyle(0x2d1f15); g.fillRect(11,6,8,5);
+  g.generateTexture('ranger_step', 44, 60);
+}
+
+function drawAbigailFront(g) {
+  g.clear();
+  g.fillStyle(0x222211); g.fillRect(9,52,11,8); g.fillRect(24,52,11,8);
+  g.fillStyle(0x334422); g.fillRect(9,34,11,18); g.fillRect(24,34,11,18);
+  g.fillStyle(0x446633); g.fillRect(11,34,3,16); g.fillRect(26,34,3,16);
+  // slimmer body — 26px wide instead of 36px
+  g.fillStyle(0x446622); g.fillRect(9,14,26,22);
+  g.fillStyle(0x557733); g.fillRect(11,15,20,20);
+  g.fillStyle(0x668844); g.fillRect(13,15,16,6);
+  g.fillStyle(0x334411); g.fillRect(9,14,3,20); g.fillRect(32,14,3,20);
+  g.fillStyle(0x8b5e3c); g.fillRect(9,32,26,4);
+  g.fillStyle(0x6b3f1e); g.fillRect(19,31,6,5);
+  // bow to the right
+  g.fillStyle(0x8b5e3c); g.fillRect(39,4,4,52);
+  g.fillStyle(0x7a4a28); g.fillRect(39,4,4,4); g.fillRect(39,52,4,4);
+  g.fillStyle(0xddcc99); g.fillRect(41,4,1,52);
+  // arms
+  g.fillStyle(0x557733); g.fillRect(5,16,5,22);
+  g.fillStyle(0xffcc99); g.fillRect(5,28,5,8);
+  g.fillStyle(0x557733); g.fillRect(34,16,5,14);
+  g.fillStyle(0xffcc99); g.fillRect(34,26,5,8);
+  // long brown hair — visible on both sides of hood
+  g.fillStyle(0x8b4513); g.fillRect(5,4,5,26);
+  g.fillStyle(0xaa6633); g.fillRect(6,4,3,14);
+  g.fillStyle(0x8b4513); g.fillRect(34,4,5,26);
+  g.fillStyle(0xaa6633); g.fillRect(35,4,3,14);
+  // neck + face
+  g.fillStyle(0xffcc99); g.fillRect(18,10,8,6);
+  g.fillStyle(0xffcc99); g.fillRect(15,4,14,8);
+  // hood
+  g.fillStyle(0x446622); g.fillRect(12,0,20,13);
+  g.fillStyle(0x334411); g.fillRect(12,0,4,12); g.fillRect(28,0,4,12);
+  g.fillStyle(0x557733); g.fillRect(14,0,16,5);
+  g.fillStyle(0x2d1f15); g.fillRect(15,6,14,6);
+  g.generateTexture('ranger_front', 44, 60);
+}
+
+function drawAbigailFrontStep(g) {
+  g.clear();
+  g.fillStyle(0x222211); g.fillRect(9,49,11,11); g.fillRect(24,52,11,8);
+  g.fillStyle(0x334422); g.fillRect(9,32,11,18); g.fillRect(24,34,11,18);
+  g.fillStyle(0x446633); g.fillRect(11,32,3,16); g.fillRect(26,34,3,16);
+  g.fillStyle(0x446622); g.fillRect(9,14,26,22);
+  g.fillStyle(0x557733); g.fillRect(11,15,20,20);
+  g.fillStyle(0x668844); g.fillRect(13,15,16,6);
+  g.fillStyle(0x334411); g.fillRect(9,14,3,20); g.fillRect(32,14,3,20);
+  g.fillStyle(0x8b5e3c); g.fillRect(9,32,26,4);
+  g.fillStyle(0x6b3f1e); g.fillRect(19,31,6,5);
+  g.fillStyle(0x8b5e3c); g.fillRect(39,4,4,52);
+  g.fillStyle(0x7a4a28); g.fillRect(39,4,4,4); g.fillRect(39,52,4,4);
+  g.fillStyle(0xddcc99); g.fillRect(41,4,1,52);
+  g.fillStyle(0x557733); g.fillRect(5,14,5,22);
+  g.fillStyle(0xffcc99); g.fillRect(5,24,5,8);
+  g.fillStyle(0x557733); g.fillRect(34,18,5,14);
+  g.fillStyle(0xffcc99); g.fillRect(34,28,5,8);
+  g.fillStyle(0x8b4513); g.fillRect(5,4,5,26);
+  g.fillStyle(0xaa6633); g.fillRect(6,4,3,14);
+  g.fillStyle(0x8b4513); g.fillRect(34,4,5,26);
+  g.fillStyle(0xaa6633); g.fillRect(35,4,3,14);
+  g.fillStyle(0xffcc99); g.fillRect(18,10,8,6);
+  g.fillStyle(0xffcc99); g.fillRect(15,4,14,8);
+  g.fillStyle(0x446622); g.fillRect(12,0,20,13);
+  g.fillStyle(0x334411); g.fillRect(12,0,4,12); g.fillRect(28,0,4,12);
+  g.fillStyle(0x557733); g.fillRect(14,0,16,5);
+  g.fillStyle(0x2d1f15); g.fillRect(15,6,14,6);
+  g.generateTexture('ranger_front_step', 44, 60);
+}
+
+function drawAbigailBack(g) {
+  g.clear();
+  g.fillStyle(0x222211); g.fillRect(9,52,11,8); g.fillRect(24,52,11,8);
+  g.fillStyle(0x334422); g.fillRect(9,34,11,18); g.fillRect(24,34,11,18);
+  // slimmer body
+  g.fillStyle(0x446622); g.fillRect(9,14,26,22);
+  g.fillStyle(0x557733); g.fillRect(11,15,20,20);
+  g.fillStyle(0x334411); g.fillRect(9,14,3,20); g.fillRect(32,14,3,20);
+  g.fillStyle(0x334411); g.fillRect(20,14,4,20);
+  // quiver on back (left side)
+  g.fillStyle(0x8b5e3c); g.fillRect(6,14,5,22);
+  g.fillStyle(0x7a4a28); g.fillRect(6,14,5,4);
+  g.fillStyle(0xddcc99); g.fillRect(7,8,2,10); g.fillRect(10,8,2,10);
+  g.fillStyle(0x8b5e3c); g.fillRect(9,32,26,4);
+  // arms
+  g.fillStyle(0x557733); g.fillRect(5,16,5,22);
+  g.fillStyle(0x557733); g.fillRect(34,16,5,22);
+  // long brown hair — flowing down the back (most visible from this angle)
+  g.fillStyle(0x8b4513); g.fillRect(9,0,26,30);
+  g.fillStyle(0xaa6633); g.fillRect(11,0,14,16);
+  g.fillStyle(0x7a3d10); g.fillRect(9,18,26,12);
+  g.fillStyle(0xcc8844); g.fillRect(13,2,10,8);
+  // hood over hair
+  g.fillStyle(0x446622); g.fillRect(12,0,20,14);
+  g.fillStyle(0x334411); g.fillRect(12,0,4,12); g.fillRect(28,0,4,12);
+  g.fillStyle(0x2d1f15); g.fillRect(14,6,16,8);
+  g.generateTexture('ranger_back', 44, 60);
+}
+
+function drawAbigailBackStep(g) {
+  g.clear();
+  g.fillStyle(0x222211); g.fillRect(9,52,11,8); g.fillRect(24,49,11,11);
+  g.fillStyle(0x334422); g.fillRect(9,34,11,18); g.fillRect(24,32,11,18);
+  g.fillStyle(0x446622); g.fillRect(9,14,26,22);
+  g.fillStyle(0x557733); g.fillRect(11,15,20,20);
+  g.fillStyle(0x334411); g.fillRect(9,14,3,20); g.fillRect(32,14,3,20);
+  g.fillStyle(0x334411); g.fillRect(20,14,4,20);
+  g.fillStyle(0x8b5e3c); g.fillRect(6,14,5,22);
+  g.fillStyle(0x7a4a28); g.fillRect(6,14,5,4);
+  g.fillStyle(0xddcc99); g.fillRect(7,8,2,10); g.fillRect(10,8,2,10);
+  g.fillStyle(0x8b5e3c); g.fillRect(9,32,26,4);
+  g.fillStyle(0x557733); g.fillRect(5,18,5,22);
+  g.fillStyle(0x557733); g.fillRect(34,14,5,22);
+  g.fillStyle(0x8b4513); g.fillRect(9,0,26,30);
+  g.fillStyle(0xaa6633); g.fillRect(11,0,14,16);
+  g.fillStyle(0x7a3d10); g.fillRect(9,18,26,12);
+  g.fillStyle(0xcc8844); g.fillRect(13,2,10,8);
+  g.fillStyle(0x446622); g.fillRect(12,0,20,14);
+  g.fillStyle(0x334411); g.fillRect(12,0,4,12); g.fillRect(28,0,4,12);
+  g.fillStyle(0x2d1f15); g.fillRect(14,6,16,8);
+  g.generateTexture('ranger_back_step', 44, 60);
+}
+
+function drawAbigailFSide(g) {
+  g.clear();
+  g.fillStyle(0x222211); g.fillRect(8,52,11,8); g.fillRect(22,53,10,7);
+  g.fillStyle(0x334422); g.fillRect(8,34,11,18); g.fillRect(22,35,10,17);
+  g.fillStyle(0x446633); g.fillRect(10,34,3,16);
+  // slimmer diagonal body
+  g.fillStyle(0x446622); g.fillRect(6,14,24,22);
+  g.fillStyle(0x557733); g.fillRect(8,15,18,20);
+  g.fillStyle(0x668844); g.fillRect(10,15,12,6);
+  g.fillStyle(0x334411); g.fillRect(6,14,3,20); g.fillRect(27,14,3,20);
+  g.fillStyle(0x8b5e3c); g.fillRect(6,32,24,4);
+  g.fillStyle(0x6b3f1e); g.fillRect(15,31,6,5);
+  g.fillStyle(0x8b5e3c); g.fillRect(37,4,4,52);
+  g.fillStyle(0x7a4a28); g.fillRect(37,4,4,4); g.fillRect(37,52,4,4);
+  g.fillStyle(0xddcc99); g.fillRect(39,4,1,52);
+  // arms
+  g.fillStyle(0x557733); g.fillRect(3,16,4,22);
+  g.fillStyle(0xffcc99); g.fillRect(3,28,4,8);
+  g.fillStyle(0x557733); g.fillRect(29,18,4,14);
+  g.fillStyle(0xffcc99); g.fillRect(29,28,4,8);
+  // brown hair on left side
+  g.fillStyle(0x8b4513); g.fillRect(0,4,5,26);
+  g.fillStyle(0xaa6633); g.fillRect(1,4,3,12);
+  g.fillStyle(0x7a3d10); g.fillRect(0,20,4,10);
+  // neck + face
+  g.fillStyle(0xffcc99); g.fillRect(15,10,8,6);
+  g.fillStyle(0xffcc99); g.fillRect(12,4,12,8);
+  // hood
+  g.fillStyle(0x446622); g.fillRect(10,0,18,13);
+  g.fillStyle(0x334411); g.fillRect(10,0,3,12); g.fillRect(25,0,3,12);
+  g.fillStyle(0x557733); g.fillRect(12,0,14,5);
+  g.fillStyle(0x2d1f15); g.fillRect(13,6,11,6);
+  g.generateTexture('ranger_fside', 44, 60);
+}
+
+function drawAbigailFSideStep(g) {
+  g.clear();
+  g.fillStyle(0x222211); g.fillRect(8,49,11,11); g.fillRect(22,53,10,7);
+  g.fillStyle(0x334422); g.fillRect(8,32,11,18); g.fillRect(22,35,10,17);
+  g.fillStyle(0x446633); g.fillRect(10,32,3,16);
+  g.fillStyle(0x446622); g.fillRect(6,14,24,22);
+  g.fillStyle(0x557733); g.fillRect(8,15,18,20);
+  g.fillStyle(0x668844); g.fillRect(10,15,12,6);
+  g.fillStyle(0x334411); g.fillRect(6,14,3,20); g.fillRect(27,14,3,20);
+  g.fillStyle(0x8b5e3c); g.fillRect(6,32,24,4);
+  g.fillStyle(0x6b3f1e); g.fillRect(15,31,6,5);
+  g.fillStyle(0x8b5e3c); g.fillRect(37,4,4,52);
+  g.fillStyle(0x7a4a28); g.fillRect(37,4,4,4); g.fillRect(37,52,4,4);
+  g.fillStyle(0xddcc99); g.fillRect(39,4,1,52);
+  g.fillStyle(0x557733); g.fillRect(3,14,4,22);
+  g.fillStyle(0xffcc99); g.fillRect(3,24,4,8);
+  g.fillStyle(0x557733); g.fillRect(29,22,4,14);
+  g.fillStyle(0xffcc99); g.fillRect(29,32,4,8);
+  g.fillStyle(0x8b4513); g.fillRect(0,4,5,26);
+  g.fillStyle(0xaa6633); g.fillRect(1,4,3,12);
+  g.fillStyle(0x7a3d10); g.fillRect(0,20,4,10);
+  g.fillStyle(0xffcc99); g.fillRect(15,10,8,6);
+  g.fillStyle(0xffcc99); g.fillRect(12,4,12,8);
+  g.fillStyle(0x446622); g.fillRect(10,0,18,13);
+  g.fillStyle(0x334411); g.fillRect(10,0,3,12); g.fillRect(25,0,3,12);
+  g.fillStyle(0x557733); g.fillRect(12,0,14,5);
+  g.fillStyle(0x2d1f15); g.fillRect(13,6,11,6);
+  g.generateTexture('ranger_fside_step', 44, 60);
+}
+
+function drawAbigailBSide(g) {
+  g.clear();
+  g.fillStyle(0x222211); g.fillRect(8,52,11,8); g.fillRect(23,52,10,8);
+  g.fillStyle(0x334422); g.fillRect(8,34,11,18); g.fillRect(23,34,10,18);
+  // slimmer diagonal body
+  g.fillStyle(0x446622); g.fillRect(6,14,24,22);
+  g.fillStyle(0x557733); g.fillRect(8,15,18,20);
+  g.fillStyle(0x334411); g.fillRect(6,14,3,20); g.fillRect(27,14,3,20);
+  g.fillStyle(0x334411); g.fillRect(18,14,3,20);
+  // quiver visible on left
+  g.fillStyle(0x8b5e3c); g.fillRect(3,14,5,20);
+  g.fillStyle(0xddcc99); g.fillRect(4,8,2,10); g.fillRect(7,8,2,10);
+  g.fillStyle(0x8b5e3c); g.fillRect(6,32,24,4);
+  // arms
+  g.fillStyle(0x557733); g.fillRect(3,16,4,22);
+  g.fillStyle(0x557733); g.fillRect(29,16,5,22);
+  // long brown hair — prominent from back-diagonal
+  g.fillStyle(0x8b4513); g.fillRect(28,4,5,26);
+  g.fillStyle(0xaa6633); g.fillRect(29,4,3,14);
+  g.fillStyle(0x7a3d10); g.fillRect(28,20,5,10);
+  // neck
+  g.fillStyle(0xffcc99); g.fillRect(16,10,8,6);
+  // hood
+  g.fillStyle(0x446622); g.fillRect(10,0,18,13);
+  g.fillStyle(0x334411); g.fillRect(10,0,3,12); g.fillRect(25,0,3,12);
+  g.fillStyle(0x2d1f15); g.fillRect(12,6,14,8);
+  g.fillStyle(0x8b4513); g.fillRect(25,0,6,12);
+  g.fillStyle(0xaa6633); g.fillRect(26,0,4,6);
+  g.generateTexture('ranger_bside', 44, 60);
+}
+
+function drawAbigailBSideStep(g) {
+  g.clear();
+  g.fillStyle(0x222211); g.fillRect(8,52,11,8); g.fillRect(23,49,10,11);
+  g.fillStyle(0x334422); g.fillRect(8,34,11,18); g.fillRect(23,32,10,18);
+  g.fillStyle(0x446622); g.fillRect(6,14,24,22);
+  g.fillStyle(0x557733); g.fillRect(8,15,18,20);
+  g.fillStyle(0x334411); g.fillRect(6,14,3,20); g.fillRect(27,14,3,20);
+  g.fillStyle(0x334411); g.fillRect(18,14,3,20);
+  g.fillStyle(0x8b5e3c); g.fillRect(3,14,5,20);
+  g.fillStyle(0xddcc99); g.fillRect(4,8,2,10); g.fillRect(7,8,2,10);
+  g.fillStyle(0x8b5e3c); g.fillRect(6,32,24,4);
+  g.fillStyle(0x557733); g.fillRect(3,18,4,22);
+  g.fillStyle(0x557733); g.fillRect(29,14,5,22);
+  g.fillStyle(0x8b4513); g.fillRect(28,4,5,26);
+  g.fillStyle(0xaa6633); g.fillRect(29,4,3,14);
+  g.fillStyle(0x7a3d10); g.fillRect(28,20,5,10);
+  g.fillStyle(0xffcc99); g.fillRect(16,10,8,6);
+  g.fillStyle(0x446622); g.fillRect(10,0,18,13);
+  g.fillStyle(0x334411); g.fillRect(10,0,3,12); g.fillRect(25,0,3,12);
+  g.fillStyle(0x2d1f15); g.fillRect(12,6,14,8);
+  g.fillStyle(0x8b4513); g.fillRect(25,0,6,12);
+  g.fillStyle(0xaa6633); g.fillRect(26,0,4,6);
+  g.generateTexture('ranger_bside_step', 44, 60);
+}
+
 // ── KEY BINDING DEFAULTS ─────────────────────────────────────
 const DEFAULT_BINDINGS = {
   p1up:'W', p1down:'S', p1left:'A', p1right:'D',
@@ -2859,7 +3473,12 @@ function saveSettings(obj) {
   try {
     const cur = loadSettings();
     localStorage.setItem('iw_settings', JSON.stringify(Object.assign(cur, obj)));
-  } catch(e) {}
+  } catch(e) {
+    // Quota exceeded / storage disabled: no player-facing toast for settings
+    // (they're low-stakes and the in-memory state is still correct for this session).
+    // Surface in the console so a bug report can see it.
+    console.warn('iw_settings save failed:', e && e.message ? e.message : e);
+  }
 }
 function isTouchDevice() {
   return ('ontouchstart' in window) || (navigator.maxTouchPoints > 0);
@@ -2893,8 +3512,17 @@ class ControlsScene extends Phaser.Scene {
       stroke:'#7a4a1a', strokeThickness:4,
     }).setOrigin(0.5);
 
-    this.add.text(W/2, 82, 'Click any key to rebind it. Press ESC to cancel a rebind.', {
-      fontFamily:'monospace', fontSize:'11px', color:'#445544',
+    this.add.text(W/2, 76, 'Click a key box, then press the new key on your keyboard.', {
+      fontFamily:'monospace', fontSize:'11px', color:'#556655',
+    }).setOrigin(0.5);
+    this.add.text(W/2, 90, 'Press ESC while a box is highlighted to cancel that rebind.', {
+      fontFamily:'monospace', fontSize:'10px', color:'#445544',
+    }).setOrigin(0.5);
+
+    // Soft warning slot for duplicate key bindings — populated by checkDupes() below.
+    this._warnText = this.add.text(W/2, 106, '', {
+      fontFamily:'monospace', fontSize:'11px', color:'#ffaa44',
+      stroke:'#000', strokeThickness:2,
     }).setOrigin(0.5);
 
     // Column headers
@@ -2917,6 +3545,35 @@ class ControlsScene extends Phaser.Scene {
     this._keyBoxes = [];
 
     const getBindings = () => Object.assign({}, DEFAULT_BINDINGS, loadSettings().bindings || {});
+
+    // Build a lookup of action key → human label for the duplicate-binding warning.
+    const ACTION_LABELS = {};
+    ACTIONS.forEach(row => {
+      ACTION_LABELS[row.p1] = 'P1 ' + row.label;
+      ACTION_LABELS[row.p2] = 'P2 ' + row.label;
+    });
+    const checkDupes = () => {
+      const B = getBindings();
+      const seen = new Map();
+      const conflicts = [];
+      for (const [action, key] of Object.entries(B)) {
+        if (!key) continue;
+        if (seen.has(key)) {
+          conflicts.push({ key, a: seen.get(key), b: action });
+        } else {
+          seen.set(key, action);
+        }
+      }
+      if (!this._warnText) return;
+      if (conflicts.length === 0) {
+        this._warnText.setText('');
+      } else {
+        const c = conflicts[0];
+        const more = conflicts.length > 1 ? ` (+${conflicts.length - 1} more)` : '';
+        this._warnText.setText(`⚠ ${keyDisplayName(c.key)} is bound to ${ACTION_LABELS[c.a]} AND ${ACTION_LABELS[c.b]}${more}`);
+      }
+    };
+    this._checkDupes = checkDupes;
 
     const makeKeyBox = (actionKey, x, y, isP1) => {
       const B = getBindings();
@@ -2964,6 +3621,7 @@ class ControlsScene extends Phaser.Scene {
           cur[actionKey] = keyName;
           saveSettings({ bindings: cur });
           redraw(false, false);
+          checkDupes();
         };
         this._listening = { actionKey, redraw, handler };
         this.input.keyboard.once('keydown', handler);
@@ -2985,6 +3643,9 @@ class ControlsScene extends Phaser.Scene {
       this._keyBoxes.push(makeKeyBox(row.p2, W/2 + 120, y, false));
     });
 
+    // Surface any duplicate bindings the player walked in with.
+    checkDupes();
+
     // Reset to defaults button
     const resetBtn = this.add.text(W/2, ROW_START + ACTIONS.length * ROW_H + 20, '[ RESET TO DEFAULTS ]', {
       fontFamily:'monospace', fontSize:'14px', color:'#cc4444',
@@ -2998,6 +3659,7 @@ class ControlsScene extends Phaser.Scene {
       }
       saveSettings({ bindings: Object.assign({}, DEFAULT_BINDINGS) });
       this._keyBoxes.forEach(b => b.redraw(false, false));
+      checkDupes();
     });
 
     // Back button
@@ -3036,7 +3698,35 @@ class ControlsScene extends Phaser.Scene {
 // ── SCENE: BOOT ───────────────────────────────────────────────
 class BootScene extends Phaser.Scene {
   constructor() { super('Boot'); }
-  create() { _qlog(`session start  v=${_fmtVersion(VERSION)}  ua=${navigator.userAgent.slice(0,80)}`, 'boot'); buildTextures(this); this.scene.start('ModeSelect'); }
+  create() {
+    _qlog(`session start  v=${_fmtVersion(VERSION)}  ua=${navigator.userAgent.slice(0,80)}`, 'boot');
+
+    // Brief splash so slow mobile loads don't show a blank canvas.
+    // buildTextures() is synchronous and blocks the JS thread for ~50–200 ms
+    // on lower-end devices; running it inside a setTimeout(0) lets the splash
+    // paint first, so the player sees IRON WASTELAND + Loading… right away.
+    const { W, H } = CFG;
+    this.cameras.main.setBackgroundColor('#0a0a14');
+    const title = this.add.text(W/2, H/2 - 24, 'IRON WASTELAND', {
+      fontFamily:'monospace', fontSize:'32px', color:'#cc8833',
+      stroke:'#7a4a1a', strokeThickness:4, letterSpacing: 4,
+    }).setOrigin(0.5).setAlpha(0);
+    const sub = this.add.text(W/2, H/2 + 14, 'Loading…', {
+      fontFamily:'monospace', fontSize:'12px', color:'#556655', letterSpacing: 2,
+    }).setOrigin(0.5).setAlpha(0);
+
+    this.tweens.add({ targets: [title, sub], alpha: 1, duration: 220, ease: 'Sine.Out' });
+
+    // Defer the heavy texture build so the splash actually paints.
+    setTimeout(() => {
+      buildTextures(this);
+      // Hold the splash briefly after textures finish so it doesn't flash.
+      this.time.delayedCall(280, () => {
+        this.cameras.main.fadeOut(220, 0, 0, 0);
+        this.time.delayedCall(220, () => this.scene.start('ModeSelect'));
+      });
+    }, 60);
+  }
 }
 
 // ── SCENE: MODE SELECT ────────────────────────────────────────
@@ -3187,22 +3877,42 @@ class ModeSelectScene extends Phaser.Scene {
   }
 
   setMode(mode) {
+    const changed = this.selMode !== mode;
     this.selMode = mode;
     this.pBoxes.forEach(b => {
-      this.drawBox(b.box, b.x, b.y, b.mode === mode, 0x6699ff, false);
-      b.lbl.setColor(b.mode === mode ? '#88aaff' : '#aaaaaa');
+      const isSel = b.mode === mode;
+      this.drawBox(b.box, b.x, b.y, isSel, 0x6699ff, false);
+      b.lbl.setColor(isSel ? '#88aaff' : '#aaaaaa');
+      // Quick scale punch on the newly-chosen label so selection feels tactile.
+      if (changed && isSel) this._punchLabel(b.lbl);
+      else if (changed && !isSel) b.lbl.setScale(1);
     });
     this.updatePrompt();
   }
 
   setDiff(diff) {
+    const changed = this.selDiff !== diff;
     this.selDiff = diff;
     const cols = { survival: 0x33cc55, hardcore: 0xff4444 };
     this.dBoxes.forEach(b => {
-      this.drawBox(b.box, b.x, b.y, b.diff === diff, cols[b.diff], true);
-      b.lbl.setColor(b.diff === diff ? (diff === 'hardcore' ? '#ff6666' : '#55ee77') : '#aaaaaa');
+      const isSel = b.diff === diff;
+      this.drawBox(b.box, b.x, b.y, isSel, cols[b.diff], true);
+      b.lbl.setColor(isSel ? (diff === 'hardcore' ? '#ff6666' : '#55ee77') : '#aaaaaa');
+      if (changed && isSel) this._punchLabel(b.lbl);
+      else if (changed && !isSel) b.lbl.setScale(1);
     });
     this.updatePrompt();
+  }
+
+  // Brief scale-up tween (1.0 → 1.06 → 1.0) used for selection feedback.
+  _punchLabel(lbl) {
+    if (!lbl || !lbl.active) return;
+    this.tweens.killTweensOf(lbl);
+    lbl.setScale(1);
+    this.tweens.add({
+      targets: lbl, scale: 1.06, duration: 110, ease: 'Quad.Out',
+      yoyo: true,
+    });
   }
 
   updatePrompt() {
@@ -3237,11 +3947,27 @@ class SettingsScene extends Phaser.Scene {
 
   create() {
     const { W, H } = CFG;
-    this.cameras.main.fadeIn(300, 0, 0, 0);
+    const fromGame = this._returnTo === 'Game';
+    // Skip the menu fade-in when we're popping over a paused game — the
+    // pause overlay should appear instantly so the player knows the world froze.
+    if (!fromGame) this.cameras.main.fadeIn(300, 0, 0, 0);
 
     const bg = this.add.graphics();
-    bg.fillGradientStyle(0x0a0a14, 0x0a0a14, 0x080810, 0x080810, 1);
-    bg.fillRect(0, 0, W, H);
+    if (fromGame) {
+      // Pause overlay: 65% dim so the frozen world peeks through.
+      bg.fillStyle(0x000000, 0.65).fillRect(0, 0, W, H);
+    } else {
+      bg.fillGradientStyle(0x0a0a14, 0x0a0a14, 0x080810, 0x080810, 1);
+      bg.fillRect(0, 0, W, H);
+    }
+
+    // Discreet PAUSED watermark — only when overlaying gameplay.
+    if (fromGame) {
+      this.add.text(20, 22, '⏸ PAUSED', {
+        fontFamily:'monospace', fontSize:'14px', color:'#88aabb',
+        stroke:'#000', strokeThickness:2, letterSpacing: 3,
+      }).setOrigin(0, 0.5);
+    }
 
     this.add.text(W/2, 44, 'SETTINGS', {
       fontFamily:'monospace', fontSize:'36px', color:'#cc8833',
@@ -3481,8 +4207,10 @@ class CharSelectScene extends Phaser.Scene {
       fontFamily:'monospace', fontSize: Math.max(9, Math.round(13*S)) + 'px', color:'#555566',
     }).setOrigin(0.5);
 
-    const cardW = Math.round(252 * S), cardH = Math.round(370 * S);
-    const gap = Math.round(18 * S);
+    const gap = Math.round(14 * S);
+    const maxCardW = Math.round(252 * S);
+    const cardW = Math.min(maxCardW, Math.floor((W - Math.round(40*S) - gap * (CHARS.length - 1)) / CHARS.length));
+    const cardH = Math.round(cardW * (370/252));
     const startX = W/2 - (CHARS.length-1) * ((cardW+gap)/2);
     this.cards = CHARS.map((ch, i) => this.buildCard(ch, startX + i*(cardW+gap), H/2+Math.round(28*S), cardW, cardH, S));
 
@@ -3699,6 +4427,27 @@ class GameScene extends Phaser.Scene {
 
     this.solo        = STATE.mode === 1;
     this.hardcore    = STATE.difficulty === 'hardcore';
+    // Difficulty modifier table — Survival uses identity values, Hardcore tightens every axis.
+    // Centralising here so every call-site reads `this.hc.*` instead of a bare constant.
+    this.hc = this.hardcore ? {
+      // Flavor 1 — survivability
+      maxHpMult: 0.9, campfireHeal: 2, bedHealPerTick: 5, foodHealMult: 0.75, medkitHeal: 25,
+      // Flavor 2 — enemy aggression
+      diffBase: 1.15, diffRamp: 0.15, diffCap: 3.5,
+      nightMult: 1.55, waveInterval: 75000,
+      denRespawn: 20000, waterDenRespawn: 18000, huntingPartyStartDay: 1,
+      // Flavor 3 — boss / pressure events
+      bossStartDay: 4, bossHpMult: 1.20, bossDmgMult: 1.15, raidRespawnDays: 7,
+      // Flavor 4 — scarcity / info
+      resourceDropMult: 0.75, rareDropsBossOnly: true, fogRevealMult: 0.8, minimapDefaultOff: true,
+    } : {
+      maxHpMult: 1.0, campfireHeal: 3, bedHealPerTick: 8, foodHealMult: 1.0, medkitHeal: 40,
+      diffBase: 1.0,  diffRamp: 0.10, diffCap: 3.0,
+      nightMult: 1.35, waveInterval: 90000,
+      denRespawn: 30000, waterDenRespawn: 25000, huntingPartyStartDay: 2,
+      bossStartDay: 5, bossHpMult: 1.0, bossDmgMult: 1.0, raidRespawnDays: 10,
+      resourceDropMult: 1.0, rareDropsBossOnly: false, fogRevealMult: 1.0, minimapDefaultOff: false,
+    };
     this.isOver      = false;
     this.timeAlive   = 0;
     this.barrackOpen = false;
@@ -3716,10 +4465,6 @@ class GameScene extends Phaser.Scene {
     this._wo = []; this._ho = [];
     this._w = o => { this._wo.push(o); return o; };
     this._h = o => { this._ho.push(o); return o; };
-
-    // Pause state
-    this._paused = false;
-    this._pauseOverlay = null;
 
     // Contextual tutorial hint flags (each fires once)
     this._ctx = {
@@ -3806,6 +4551,16 @@ class GameScene extends Phaser.Scene {
         this._worldSeed = isNaN(_urlSeed) ? (Date.now() & 0x7fffffff) : _urlSeed;
         _worldRng = _makeMulberry32(this._worldSeed);
         this._log(`World init start  run=#${this._runCount}  ${this.solo?'1P':'2P'}  ${this.hardcore?'hardcore':'survival'}  seed=${this._worldSeed}`, 'world');
+        // Hardcore tuning snapshot — lets session logs show exactly what modifiers were active
+        const _hc = this.hc;
+        this._log(
+          `HC tuning  hp=${_hc.maxHpMult}x  camp=${_hc.campfireHeal}  bed=${_hc.bedHealPerTick}  food=${_hc.foodHealMult}x  med=${_hc.medkitHeal}  ` +
+          `diff=${_hc.diffBase}+${_hc.diffRamp}/day cap=${_hc.diffCap}x  night=${_hc.nightMult}x  wave=${_hc.waveInterval/1000}s  ` +
+          `den=${_hc.denRespawn/1000}/${_hc.waterDenRespawn/1000}s  huntDay=${_hc.huntingPartyStartDay}  ` +
+          `boss=day${_hc.bossStartDay} hp${_hc.bossHpMult}x dmg${_hc.bossDmgMult}x  raidBack=${_hc.raidRespawnDays}d  ` +
+          `loot=${_hc.resourceDropMult}x rareBossOnly=${_hc.rareDropsBossOnly}  fog=${_hc.fogRevealMult}x  mmOff=${_hc.minimapDefaultOff}`,
+          'world'
+        );
         this.physics.world.setBounds(0, 0, worldW, worldH);
         _setProgress(5, 'Seeding biomes...');
         this._log('World init: biome seeds', 'world');
@@ -3856,11 +4611,13 @@ class GameScene extends Phaser.Scene {
 
             this.hotkeys.p1use.on('down', () => { if (!this.barrackOpen && !this.isOver) this.tryInteract(this.p1); });
             if (this.p2) this.hotkeys.p2use.on('down', () => { if (!this.barrackOpen && !this.isOver) this.tryInteract(this.p2); });
-            this.hotkeys.tab.on('down', () => { if (!this.barrackOpen && !this.craftMenuOpen && !this.isOver) this.togglePause(); });
+            this.hotkeys.tab.on('down', () => { if (!this.barrackOpen && !this.craftMenuOpen && !this.isOver) this.toggleControls(); });
             this.hotkeys.esc.on('down', () => {
-              this.closeBarrack();
-              if (this._paused) { this.togglePause(); return; }
-              if (this.controlsVis) this.toggleControls();
+              if (this.isOver) return;
+              if (this.barrackOpen)   { this.closeBarrack(); return; }
+              if (this.craftMenuOpen) { this.closeCraftMenu(); return; }
+              if (this.controlsVis)   { this.toggleControls(); return; }
+              this.openPauseSettings();
             });
 
             // Backtick/grave (`) toggles the debug event log
@@ -4169,6 +4926,29 @@ class GameScene extends Phaser.Scene {
       }
     }
 
+    // Ground wave shading — two sine waves at different angles produce broad organic shade bands.
+    // Depth 0.55 sits above biome tiles (0.5) but below all water tiles (0.6+), so the effect
+    // applies only to dry land and is naturally occluded by water.
+    {
+      const wgfx = this.add.graphics().setDepth(0.55);
+      this._w(wgfx);
+      const WSTEP = 3, WSZ = TILE * WSTEP;
+      for (let tx = 0; tx < CFG.MAP_W; tx += WSTEP) {
+        for (let ty = 0; ty < CFG.MAP_H; ty += WSTEP) {
+          // Domain-warp the wave inputs with low-frequency noise so the bands
+          // bend and drift organically rather than repeating as obvious stripes.
+          const wx = (_biomeNoise(tx, ty, 40) - 0.5) * 28;
+          const wy = (_biomeNoise(tx + 137, ty + 213, 40) - 0.5) * 28;
+          const w = Math.sin((tx + wx) * 0.10 + (ty + wy) * 0.06) * 0.55
+                  + Math.sin((tx + wx) * 0.04 - (ty + wy) * 0.09 + 2.3) * 0.45;
+          const a = Math.abs(w) * 0.18;
+          if (a < 0.008) continue;
+          wgfx.fillStyle(w < 0 ? 0x000000 : 0xffffff, a);
+          wgfx.fillRect(tx * TILE, ty * TILE, WSZ, WSZ);
+        }
+      }
+    }
+
     // Grass variants in grassland areas
     for (let i = 0; i < 100; i++) {
       const tx = Phaser.Math.Between(2, CFG.MAP_W-3), ty = Phaser.Math.Between(2, CFG.MAP_H-3);
@@ -4413,6 +5193,7 @@ class GameScene extends Phaser.Scene {
     }
 
     // Ruins city — navigable abandoned city grid (replaces scattered pillars)
+    this._mmFloorTiles = []; // flat tx,ty pairs — filled by buildRuinsCity for minimap
     this._log('buildWorld: buildRuinsCity start', 'world');
     this.buildRuinsCity(stx, sty, TILE);
     this._log('buildWorld: buildRuinsCity done', 'world');
@@ -4596,6 +5377,38 @@ class GameScene extends Phaser.Scene {
         }
       }
     }
+
+    // ── TERRAIN OVERLAP CLEANUP ───────────────────────────────────────────────
+    // Sweep every tree, rock, and biome spire placed earlier in buildWorld and
+    // destroy any that landed on a water tile or inside a mountain collision zone.
+    // Both _waterMap and _solidTileSet are fully built by this point.
+    {
+      const _overlapKeys = new Set(['rock', 'rock2', 'ice_rock', 'rock_desert', 'ice_spire', 'rock_spire', 'mangrove_roots']);
+      let _overlapRemoved = 0;
+      this.obstacles.getChildren().slice().forEach(ob => {
+        const k = ob.texture && ob.texture.key;
+        if (k === 'mountain' || k === 'mountain2') return; // never cull mountains
+        if (!ob.isTree && !_overlapKeys.has(k)) return;   // keep walls, ruin blocks
+        const tx = Math.floor(ob.x / TILE), ty = Math.floor(ob.y / TILE);
+        if (this._waterMap[tx + ty * CFG.MAP_W] || this._solidTileSet.has(tx + ',' + ty)) {
+          ob.destroy();
+          _overlapRemoved++;
+        }
+      });
+      this._log(`terrain overlap cleanup  removed=${_overlapRemoved}`, 'world');
+    }
+
+    // Unified impassable tile set — mountains + deep water.
+    // River routing and future path-validation use this to stay on walkable ground.
+    this._impassableTileSet = new Set(this._solidTileSet);
+    for (const dt of this.deepWaterTiles) {
+      const _itx = Math.floor(dt.x / TILE), _ity = Math.floor(dt.y / TILE);
+      this._impassableTileSet.add(_itx + ',' + _ity);
+    }
+
+    // Pre-build minimap terrain color map — makes trees, water, rocks, and buildings
+    // visible on the radar without any per-frame cost.
+    this._buildMinimapColorMap(TILE);
 
     // Barracks — random grass-biome placement (outside spawn safe zone).
     // The old fixed offset (stx+20, sty-16) was hidden behind mountains ~90% of
@@ -4800,7 +5613,7 @@ class GameScene extends Phaser.Scene {
             if (!pl || pl.isDowned || !pl.spr.active) return;
             const d = Phaser.Math.Distance.Between(pl.spr.x, pl.spr.y, cs.x, cs.y);
             if (d < 64) {
-              pl.hp = Math.min(pl.maxHp, pl.hp + 5);
+              pl.hp = Math.min(pl.maxHp, pl.hp + Math.max(1, Math.round(5 * this.hc.foodHealMult)));
             }
           });
         });
@@ -4883,6 +5696,7 @@ class GameScene extends Phaser.Scene {
           for (let wy = by+1; wy < by+blockH-1; wy++) {
             if (wx < 2 || wx > CFG.MAP_W-3 || wy < 2 || wy > CFG.MAP_H-3) continue;
             this._w(this.add.tileSprite(wx*TILE, wy*TILE, TILE, TILE, 'ruin_floor').setOrigin(0).setDepth(0.6));
+            if (this._mmFloorTiles) this._mmFloorTiles.push(wx, wy);
           }
         }
 
@@ -5075,7 +5889,7 @@ class GameScene extends Phaser.Scene {
   }
 
   revealFog(centerTX, centerTY, radius) {
-    const r = radius || (CFG.FOG_REVEAL_R * (this.fogRevealMult || 1));
+    const r = radius || (CFG.FOG_REVEAL_R * (this.fogRevealMult || 1) * this.hc.fogRevealMult);
     const cx = Math.floor(centerTX), cy = Math.floor(centerTY);
     // Clear and rebuild current-frame visible set for this reveal call
     // (updateFog calls this once per player per tick, so we reset before p1 and union p2)
@@ -5165,17 +5979,22 @@ class GameScene extends Phaser.Scene {
       .setOrigin(0.5, 0).setDepth(11).setAlpha(0).setVisible(false));
     if (this.hudCam) this.hudCam.ignore(waterOverlay);
 
+    const _hcMaxHp = Math.max(1, Math.round(charData.maxHp * this.hc.maxHpMult));
     return {
       spr, lbl, charData, pNum,
-      hp: charData.maxHp, maxHp: charData.maxHp,
+      hp: _hcMaxHp, maxHp: _hcMaxHp,
       ammo: charData.id==='gunslinger' ? 8 : Infinity,
-      reserveAmmo: charData.id==='gunslinger' ? 32 : 0, // 8 loaded + 32 reserve = 40 max
+      reserveAmmo: charData.id==='gunslinger' ? 32 : 0,
+      flowerAmmo: charData.id==='charmer' ? 0 : undefined,
+      knifeCooldown: 0,
+      bowCooldown: 0,
       isDowned: false, isPermanentlyDead: false, downTimer: 0, downText: null,
       hpBar, dir: 'front', walkTimer: 0,
       atkCooldown: 0, reloading: false,
       rallyCooldown: 0, turretCooldown: 0,
       isSleeping: false, zzzText: null,
       inv: { wood:0, metal:0, fiber:0, food:0 },
+      kills: 0,
       waterOverlay,
     };
   }
@@ -5241,18 +6060,27 @@ class GameScene extends Phaser.Scene {
     }
 
     // ── MINIMAP ─────────────────────────────────────────────────
-    const mmW = 120, mmH = 120;
+    const mmW = 160, mmH = 160;
     const mmX = W - mmW - 10, mmY = 96; // top-right so it doesn't overlap P2 inventory
-    // Background
+    const mmCX = mmX + mmW / 2, mmCY = mmY + mmH / 2, mmR = mmW / 2;
+    // Circular background
     const mmBg = this._h(this.add.graphics().setDepth(110));
-    mmBg.fillStyle(0x000000, 0.7); mmBg.fillRoundedRect(mmX - 2, mmY - 2, mmW + 4, mmH + 4, 4);
-    mmBg.lineStyle(1, 0x555566); mmBg.strokeRoundedRect(mmX - 2, mmY - 2, mmW + 4, mmH + 4, 4);
+    mmBg.fillStyle(0x000000, 0.75); mmBg.fillCircle(mmCX, mmCY, mmR + 3);
+    mmBg.lineStyle(1.5, 0x445566, 0.9); mmBg.strokeCircle(mmCX, mmCY, mmR + 3);
     this.minimapGfx = this._h(this.add.graphics().setDepth(111));
     this.minimapDots = this._h(this.add.graphics().setDepth(112));
     this.mmBounds = { x: mmX, y: mmY, w: mmW, h: mmH };
-    this._h(this.add.text(mmX + mmW/2, mmY - 10, 'MAP', {
-      fontFamily:'monospace', fontSize:'8px', color:'#666677',
+    // Store radar geometry for boss indicator positioning
+    this.radarCenter = { x: mmCX, y: mmCY, r: mmR };
+    this._h(this.add.text(mmCX, mmY - 11, 'RADAR', {
+      fontFamily:'monospace', fontSize:'8px', color:'#667788',
     }).setOrigin(0.5).setDepth(111));
+
+    // Circular clip mask — tiles drawn outside the circle are hidden
+    const _mmMaskGfx = this._h(this.add.graphics());
+    _mmMaskGfx.fillStyle(0xffffff, 1);
+    _mmMaskGfx.fillCircle(mmCX, mmCY, mmR);
+    this.minimapDots.setMask(_mmMaskGfx.createGeometryMask());
 
     // Pre-render biome colors on minimap (static, done once)
     this._renderMinimapBase();
@@ -5268,95 +6096,242 @@ class GameScene extends Phaser.Scene {
   }
 
   _renderMinimapBase() {
-    if (!this.minimapGfx) return;
-    const mm = this.mmBounds;
-    const scaleX = mm.w / CFG.MAP_W, scaleY = mm.h / CFG.MAP_H;
-    this.minimapGfx.clear();
-    // Draw biome blocks (sample every 4 tiles for perf)
-    const step = 4;
-    for (let tx = 0; tx < CFG.MAP_W; tx += step) {
-      for (let ty = 0; ty < CFG.MAP_H; ty += step) {
-        const biome = getBiome(tx, ty);
-        this.minimapGfx.fillStyle(BIOME_COLORS[biome] || 0x333333, 0.8);
-        this.minimapGfx.fillRect(
-          mm.x + tx * scaleX,
-          mm.y + ty * scaleY,
-          Math.ceil(step * scaleX),
-          Math.ceil(step * scaleY)
-        );
+    // Radar is now fully dynamic (player-centered, fog-aware) — no static pre-render needed.
+    if (this.minimapGfx) this.minimapGfx.clear();
+  }
+
+  // Build a full-map color lookup (Uint32Array, one entry per tile).
+  // Called once at end of world-gen; each updateMinimap() call reads it in O(1).
+  // Layer order: biome → water → ice → deep water → trees → rocks → building floors → walls → mountains.
+  _buildMinimapColorMap(TILE) {
+    const { MAP_W, MAP_H } = CFG;
+    this._mmColorMap = new Uint32Array(MAP_W * MAP_H);
+
+    // Base layer — biome color for every tile, with same wave shading as the world ground.
+    // Subsequent layers (water, trees, buildings) override these values so the shade only
+    // appears on visible ground tiles, matching the in-world behaviour.
+    for (let ty = 0; ty < MAP_H; ty++) {
+      for (let tx = 0; tx < MAP_W; tx++) {
+        let col = BIOME_COLORS[getBiome(tx, ty)] || 0x333333;
+        const wx = (_biomeNoise(tx, ty, 40) - 0.5) * 28;
+        const wy = (_biomeNoise(tx + 137, ty + 213, 40) - 0.5) * 28;
+        const w = Math.sin((tx + wx) * 0.10 + (ty + wy) * 0.06) * 0.55
+                + Math.sin((tx + wx) * 0.04 - (ty + wy) * 0.09 + 2.3) * 0.45;
+        const f = 1 + w * 0.14;
+        const r = Math.min(255, Math.max(0, Math.round(((col >> 16) & 0xff) * f)));
+        const g = Math.min(255, Math.max(0, Math.round(((col >>  8) & 0xff) * f)));
+        const b = Math.min(255, Math.max(0, Math.round(( col        & 0xff) * f)));
+        this._mmColorMap[tx + ty * MAP_W] = (r << 16) | (g << 8) | b;
       }
     }
-    // Draw mountain markers (small gray dots)
+
+    // Water (shallow)
+    if (this._waterMap) {
+      for (let i = 0; i < this._waterMap.length; i++) {
+        if (this._waterMap[i]) this._mmColorMap[i] = 0x2255aa;
+      }
+    }
+    // Ice
+    if (this._iceMap) {
+      for (let i = 0; i < this._iceMap.length; i++) {
+        if (this._iceMap[i]) this._mmColorMap[i] = 0x88aadd;
+      }
+    }
+    // Deep water (overrides shallow)
+    if (this.deepWaterTiles) {
+      for (const dt of this.deepWaterTiles) {
+        const tx = Math.floor(dt.x / TILE), ty = Math.floor(dt.y / TILE);
+        if (tx >= 0 && tx < MAP_W && ty >= 0 && ty < MAP_H)
+          this._mmColorMap[tx + ty * MAP_W] = 0x112277;
+      }
+    }
+
+    // Obstacle features — trees, rocks, biome spires, mangroves
+    const _ROCK_KEYS = new Set(['rock','rock2','ice_rock','rock_desert','ice_spire','rock_spire','mangrove_roots']);
+    if (this.obstacles) {
+      for (const ob of this.obstacles.getChildren()) {
+        const k = ob.texture?.key;
+        if (!k) continue;
+        const tx = Math.floor(ob.x / TILE), ty = Math.floor(ob.y / TILE);
+        if (tx < 0 || tx >= MAP_W || ty < 0 || ty >= MAP_H) continue;
+        if (ob.isTree)             this._mmColorMap[tx + ty * MAP_W] = 0x1a4a10; // dark green
+        else if (_ROCK_KEYS.has(k)) this._mmColorMap[tx + ty * MAP_W] = 0x776655; // warm gray
+      }
+    }
+
+    // Building interior floors — ruins city (tracked in _mmFloorTiles) + biome structures
+    const _FLOOR_COL = 0x7a7a8a; // medium gray, readable on all biome backgrounds
+    if (this._mmFloorTiles) {
+      for (let i = 0; i < this._mmFloorTiles.length; i += 2) {
+        const tx = this._mmFloorTiles[i], ty = this._mmFloorTiles[i + 1];
+        if (tx >= 0 && tx < MAP_W && ty >= 0 && ty < MAP_H)
+          this._mmColorMap[tx + ty * MAP_W] = _FLOOR_COL;
+      }
+    }
+    // Biome structures: W=7 H=5, interior dx:1..5 dy:1..3, centered on _preStructureTiles pos
+    if (this._preStructureTiles) {
+      for (const positions of Object.values(this._preStructureTiles)) {
+        for (const pos of positions) {
+          const x0 = pos.tx - 3, y0 = pos.ty - 2; // floor(7/2)=3, floor(5/2)=2
+          for (let dx = 1; dx <= 5; dx++) {
+            for (let dy = 1; dy <= 3; dy++) {
+              const tx = x0 + dx, ty = y0 + dy;
+              if (tx >= 0 && tx < MAP_W && ty >= 0 && ty < MAP_H)
+                this._mmColorMap[tx + ty * MAP_W] = _FLOOR_COL;
+            }
+          }
+        }
+      }
+    }
+
+    // Ruins + biome structure walls — bright white outline so structures are clearly legible
+    if (this._wallTileSet) {
+      for (const key of this._wallTileSet) {
+        const sep = key.indexOf(',');
+        const tx = parseInt(key, 10), ty = parseInt(key.slice(sep + 1), 10);
+        if (tx >= 0 && tx < MAP_W && ty >= 0 && ty < MAP_H)
+          this._mmColorMap[tx + ty * MAP_W] = 0xeeeeff; // near-white wall outline
+      }
+    }
+
+    // Mountains — bright so ridgelines read clearly against all biomes
     if (this.mountainTiles) {
-      this.minimapGfx.fillStyle(0x888899, 0.9);
       for (const m of this.mountainTiles) {
-        this.minimapGfx.fillRect(mm.x + m.tx * scaleX - 0.5, mm.y + m.ty * scaleY - 0.5, 2, 2);
+        if (m.tx >= 0 && m.tx < MAP_W && m.ty >= 0 && m.ty < MAP_H)
+          this._mmColorMap[m.tx + m.ty * MAP_W] = 0xddeeff; // very light blue-white
       }
     }
   }
 
   updateMinimap() {
     if (!this.minimapDots || !this.mmBounds) return;
-    if (loadSettings().minimapEnabled === false) {
+    const _mmSet = loadSettings().minimapEnabled;
+    const _mmOn  = (_mmSet === undefined) ? !this.hc.minimapDefaultOff : (_mmSet !== false);
+    if (!_mmOn) {
       this.minimapGfx && this.minimapGfx.setVisible(false);
       this.minimapDots.setVisible(false);
       return;
     }
     this.minimapGfx && this.minimapGfx.setVisible(true);
     this.minimapDots.setVisible(true);
-    // Only update every 8 frames
-    if (this._fogFrame % 8 !== 0) return;
+    // Update every 5 frames — dynamic view is cheaper per-frame than the old full-map render
+    if (this._fogFrame % 5 !== 0) return;
 
     const mm = this.mmBounds;
-    const scaleX = mm.w / CFG.MAP_W, scaleY = mm.h / CFG.MAP_H;
     const TILE = CFG.TILE;
     this.minimapDots.clear();
 
-    // Draw fog coverage on minimap (sample every 6 tiles)
-    const step = 6;
-    this.minimapDots.fillStyle(0x000000, 0.6);
-    for (let tx = 0; tx < CFG.MAP_W; tx += step) {
-      for (let ty = 0; ty < CFG.MAP_H; ty += step) {
-        if (!this.fogRevealed.has(tx + ',' + ty)) {
-          this.minimapDots.fillRect(
-            mm.x + tx * scaleX,
-            mm.y + ty * scaleY,
-            Math.ceil(step * scaleX),
-            Math.ceil(step * scaleY)
-          );
-        }
+    // Reference player for centering: P1 if active, else P2
+    const refP = (this.p1?.spr?.active && !this.p1.isDowned) ? this.p1
+               : (this.p2?.spr?.active && !this.p2.isDowned) ? this.p2 : null;
+    if (!refP) return;
+
+    // Radar shows a 40-tile radius (1280px world) around the reference player.
+    // scale: minimap pixels per world tile.
+    const VIEW = 40;
+    const scale = mm.w / (VIEW * 2);
+    const centerTX = Math.floor(refP.spr.x / TILE);
+    const centerTY = Math.floor(refP.spr.y / TILE);
+    const minTX = centerTX - VIEW, maxTX = centerTX + VIEW;
+    const minTY = centerTY - VIEW, maxTY = centerTY + VIEW;
+    const tileSize = Math.max(1, scale);
+
+    // Single unified terrain pass — color map encodes biome, water, ice, trees,
+    // rocks, ruins/structure walls, and mountains all at O(1) per tile.
+    // Falls back to live getBiome lookup if color map wasn't built yet.
+    for (let tx = minTX; tx <= maxTX; tx++) {
+      for (let ty = minTY; ty <= maxTY; ty++) {
+        if (tx < 0 || ty < 0 || tx >= CFG.MAP_W || ty >= CFG.MAP_H) continue;
+        if (!this.fogRevealed.has(tx + ',' + ty)) continue;
+        const color = this._mmColorMap
+          ? this._mmColorMap[tx + ty * CFG.MAP_W]
+          : (BIOME_COLORS[getBiome(tx, ty)] || 0x333333);
+        this.minimapDots.fillStyle(color, 0.9);
+        this.minimapDots.fillRect(
+          mm.x + (tx - minTX) * scale,
+          mm.y + (ty - minTY) * scale,
+          tileSize + 0.5, tileSize + 0.5
+        );
       }
     }
 
-    // POI dots
+    // POI dots — revealed and within radar range
     if (this.pois) {
       this.pois.forEach(poi => {
+        if (poi.tx < minTX || poi.tx > maxTX || poi.ty < minTY || poi.ty > maxTY) return;
+        if (!this.fogRevealed.has(poi.tx + ',' + poi.ty)) return;
         let col = 0xffffff;
-        if (poi.type === 'cache') col = 0xccaa00;
-        else if (poi.type === 'den') col = 0xcc4444;
-        else if (poi.type === 'tower') col = 0x66aaff;
-        else if (poi.type === 'camp') col = 0x44cc66;
-        else if (poi.type === 'campfire') col = 0xff8833;   // orange — player-built campfire
-        else if (poi.type === 'craftbench') col = 0xddcc44; // yellow — player-built workbench
-        else if (poi.type === 'bed') col = 0xaa88ff;        // purple — player-built bed
-        else if (poi.type === 'raidcamp') col = 0xff2222;   // red — raider camp
-        // Only show if revealed
-        if (this.fogRevealed.has(poi.tx + ',' + poi.ty)) {
-          this.minimapDots.fillStyle(col);
-          this.minimapDots.fillRect(mm.x + poi.tx * scaleX - 1, mm.y + poi.ty * scaleY - 1, 3, 3);
-        }
+        if      (poi.type === 'cache')      col = 0xccaa00;
+        else if (poi.type === 'den')        col = 0xcc4444;
+        else if (poi.type === 'tower')      col = 0x66aaff;
+        else if (poi.type === 'camp')       col = 0x44cc66;
+        else if (poi.type === 'campfire')   col = 0xff8833;
+        else if (poi.type === 'craftbench') col = 0xddcc44;
+        else if (poi.type === 'bed')        col = 0xaa88ff;
+        else if (poi.type === 'raidcamp')   col = 0xff2222;
+        const mx = mm.x + (poi.tx - minTX) * scale;
+        const my = mm.y + (poi.ty - minTY) * scale;
+        this.minimapDots.fillStyle(col, 1);
+        this.minimapDots.fillRect(mx - 1, my - 1, 3, 3);
       });
     }
 
+    // Player-built walls — dynamic overlay (not in the static color map)
+    if (this.builtWalls && this.builtWalls.length) {
+      this.minimapDots.fillStyle(0xaaccff, 0.85);
+      for (const w of this.builtWalls) {
+        if (!w.active) continue;
+        const wtx = Math.floor(w.x / TILE), wty = Math.floor(w.y / TILE);
+        if (wtx < minTX || wtx > maxTX || wty < minTY || wty > maxTY) continue;
+        this.minimapDots.fillRect(
+          mm.x + (wtx - minTX) * scale,
+          mm.y + (wty - minTY) * scale,
+          tileSize + 0.5, tileSize + 0.5
+        );
+      }
+    }
+
+    // Boss dot — always visible when alive; projected to the circle edge if outside radar range.
+    if (this.boss && this.boss.spr?.active && this.boss.hp > 0) {
+      const btx = Math.floor(this.boss.spr.x / TILE);
+      const bty = Math.floor(this.boss.spr.y / TILE);
+      const rawMX = mm.x + (btx - minTX) * scale;
+      const rawMY = mm.y + (bty - minTY) * scale;
+      // Project to circle perimeter if boss is outside the radar view
+      const rcx = mm.x + mm.w / 2, rcy = mm.y + mm.h / 2;
+      const dx = rawMX - rcx, dy = rawMY - rcy;
+      const edgeDist = Math.sqrt(dx * dx + dy * dy);
+      const innerR = mm.w / 2 - 5;
+      let bmx = rawMX, bmy = rawMY;
+      if (edgeDist > innerR) {
+        bmx = rcx + (dx / edgeDist) * innerR;
+        bmy = rcy + (dy / edgeDist) * innerR;
+      }
+      const pulse = Math.sin(this.time.now / 280) * 0.3 + 0.7;
+      this.minimapDots.fillStyle(0xff2200, pulse);
+      this.minimapDots.fillCircle(bmx, bmy, 3.5);
+      this.minimapDots.lineStyle(1.5, 0xff5500, pulse * 0.6);
+      this.minimapDots.strokeCircle(bmx, bmy, 5.5);
+    }
+
     // Player dots
-    const drawDot = (p, color) => {
-      if (!p || !p.spr.active) return;
-      const ptx = p.spr.x / TILE, pty = p.spr.y / TILE;
-      this.minimapDots.fillStyle(color);
-      this.minimapDots.fillCircle(mm.x + ptx * scaleX, mm.y + pty * scaleY, 2.5);
+    const drawPlayer = (p, color) => {
+      if (!p || !p.spr?.active) return;
+      const pmx = mm.x + (Math.floor(p.spr.x / TILE) - minTX) * scale;
+      const pmy = mm.y + (Math.floor(p.spr.y / TILE) - minTY) * scale;
+      this.minimapDots.fillStyle(color, 1);
+      this.minimapDots.fillCircle(pmx, pmy, 3);
+      this.minimapDots.lineStyle(1, 0xffffff, 0.7);
+      this.minimapDots.strokeCircle(pmx, pmy, 3);
     };
-    drawDot(this.p1, 0x6699ff);
-    if (this.p2) drawDot(this.p2, 0xff9944);
+    drawPlayer(this.p1, 0x6699ff);
+    if (this.p2) drawPlayer(this.p2, 0xff9944);
+
+    // Subtle crosshair at center for orientation
+    const cx = mm.x + mm.w / 2, cy = mm.y + mm.h / 2;
+    this.minimapDots.lineStyle(1, 0x445566, 0.35);
+    this.minimapDots.lineBetween(cx - 5, cy, cx + 5, cy);
+    this.minimapDots.lineBetween(cx, cy - 5, cx, cy + 5);
   }
 
   makeAmmoRow(x, y, tint) {
@@ -5522,7 +6497,7 @@ class GameScene extends Phaser.Scene {
 
     let anyReviving = false;
     for (const { downed, rescuer } of pairs) {
-      if (!downed || !rescuer || !downed.isDowned || !rescuer.spr.visible) continue;
+      if (!downed || !rescuer || !downed.spr || !rescuer.spr || !downed.isDowned || !rescuer.spr.visible) continue;
       if (downed.hp <= 0 && !downed.isDowned) continue;
 
       const dist = Phaser.Math.Distance.Between(downed.spr.x, downed.spr.y, rescuer.spr.x, rescuer.spr.y);
@@ -5611,6 +6586,8 @@ class GameScene extends Phaser.Scene {
         bossDefeated: this.bossDefeated,
         p1Name: this.p1 ? this.p1.charData.player : 'P1',
         p2Name: (this.p2 && !this.p2.isPermanentlyDead) ? this.p2.charData.player : null,
+        p1Kills: this.p1 ? this.p1.kills : 0,
+        p2Kills: this.p2 ? this.p2.kills : 0,
         dbgEntries: this._dbgEntries,
       });
     });
@@ -5715,31 +6692,14 @@ class GameScene extends Phaser.Scene {
     // When hiding: objects stay invisible (default from buildControlsOverlay)
   }
 
-  togglePause() {
-    this._paused = !this._paused;
-    this._log(`game ${this._paused ? 'paused' : 'resumed'}`, 'player');
-    if (this._paused) {
-      this.physics.world.pause();
-      if (!this._pauseOverlay) {
-        const { W, H } = CFG;
-        const g = this.add.graphics().setScrollFactor(0).setDepth(200);
-        g.fillStyle(0x000000, 0.55);
-        g.fillRect(0, 0, W, H);
-        const t = this.add.text(W/2, H/2, 'PAUSED', {
-          fontFamily: 'monospace', fontSize: '36px', color: '#ffffff',
-          stroke: '#000', strokeThickness: 4,
-        }).setOrigin(0.5).setScrollFactor(0).setDepth(201);
-        const sub = this.add.text(W/2, H/2 + 44, 'Press TAB to resume', {
-          fontFamily: 'monospace', fontSize: '14px', color: '#aaaaaa',
-        }).setOrigin(0.5).setScrollFactor(0).setDepth(201);
-        this._pauseOverlay = [g, t, sub];
-        this._pauseOverlay.forEach(o => this._h(o));
-      }
-      this._pauseOverlay.forEach(o => o.setVisible(true));
-    } else {
-      this.physics.world.resume();
-      if (this._pauseOverlay) this._pauseOverlay.forEach(o => o.setVisible(false));
-    }
+  openPauseSettings() {
+    this._log('game paused — settings opened', 'player');
+    // Pause immediately so the world freezes mid-frame; Settings overlays on top.
+    // We deliberately do NOT fade the world to black — Settings now uses a
+    // semi-transparent background so the paused world peeks through.
+    this.scene.pause();
+    this.scene.launch('Settings', { returnTo: 'Game' });
+    this.scene.bringToTop('Settings');
   }
 
   // ── BARRACKS OVERLAY ─────────────────────────────────────────
@@ -5749,7 +6709,9 @@ class GameScene extends Phaser.Scene {
     const push = o => { this.bObjs.push(o); this._h(o); return o; };
     const t = (x,y,str,sty) => push(this.add.text(x,y,str,sty).setDepth(211));
 
-    push(this.add.graphics().setDepth(210)).fillStyle(0x000000, 0.92).fillRect(0,0,W,H);
+    // 0.70 alpha so the player can still see the world they're stepping
+    // away from — earlier 0.92 felt like a full scene transition.
+    push(this.add.graphics().setDepth(210)).fillStyle(0x000000, 0.70).fillRect(0,0,W,H);
     t(W/2,52,'BARRACKS \u2014 SWAP CHARACTER',{ fontFamily:'monospace', fontSize:'24px', color:'#cc8833', stroke:'#000', strokeThickness:3 }).setOrigin(0.5);
     this.bHintText = t(W/2, 90, '', { fontFamily:'monospace', fontSize:'13px', color:'#666677' }).setOrigin(0.5);
 
@@ -5798,6 +6760,9 @@ class GameScene extends Phaser.Scene {
         return;
       }
     }
+
+    // Nothing interactable in range — log so we can diagnose "E key not working" reports
+    this._log(`${player.charData.player} interact: nothing in range  pos=(${Math.floor(player.spr.x/CFG.TILE)},${Math.floor(player.spr.y/CFG.TILE)})`, 'player');
   }
 
   toggleSleep(player, bed) {
@@ -5888,8 +6853,9 @@ class GameScene extends Phaser.Scene {
       this._sleepHealAcc -= 2000;
       sleeping.forEach(p => {
         if (!p.isDowned) {
-          p.hp = Math.min(p.maxHp, p.hp + 8);
-          this._log(`${p.charData.player} sleep heal +8  hp=${p.hp}/${p.maxHp}`, 'player');
+          const _bedHeal = this.hc.bedHealPerTick;
+          p.hp = Math.min(p.maxHp, p.hp + _bedHeal);
+          this._log(`${p.charData.player} sleep heal +${_bedHeal}  hp=${p.hp}/${p.maxHp}`, 'player');
         }
       });
     }
@@ -5955,8 +6921,8 @@ class GameScene extends Phaser.Scene {
     const _prevChar  = player.charData.id;
     this._log(`Barracks: ${player.charData.player} swapped ${_prevChar} → ${newCh.id}`, 'player');
     player.charData  = newCh;
-    player.maxHp     = newCh.maxHp;
-    player.hp        = Math.max(1, Math.round(newCh.maxHp * hpPct));
+    player.maxHp     = Math.max(1, Math.round(newCh.maxHp * this.hc.maxHpMult));
+    player.hp        = Math.max(1, Math.round(player.maxHp * hpPct));
     player.spr.setTexture(newCh.id);
     player.lbl.setText(newCh.player);
     if (newCh.id==='gunslinger') {
@@ -6007,30 +6973,89 @@ class GameScene extends Phaser.Scene {
   }
 
   // ── HINT ─────────────────────────────────────────────────────
+  // Show a contextual tip. Hints are now QUEUED rather than overwriting:
+  // a new call while one is on screen waits in line, so rapid events
+  // (e.g. revive + frost + web in close succession) all get to read.
   hint(text, duration) {
     this._log(`HINT: ${text}`, 'player');
-    // Destroy any existing hint immediately so they never overlap
-    if (this._activeHint && this._activeHint.active) {
-      this.tweens.killTweensOf(this._activeHint);
-      this._activeHint.destroy();
-    }
-    // Cancel orphaned delayedCall from the previous hint (killTweensOf won't reach it)
-    if (this._hintTimer) { this._hintTimer.remove(false); this._hintTimer = null; }
-    const minDur = 3500;
-    duration = Math.max(duration, minDur);
-    const h = this.add.text(CFG.W/2, 112, text, {
-      fontFamily:'monospace', fontSize:'17px', color:'#ffffff',
-      stroke:'#000', strokeThickness:4, backgroundColor:'#000000bb', padding:{x:16,y:9},
-    }).setOrigin(0.5).setDepth(160).setAlpha(0);
+    duration = Math.max(duration || 2500, 800);
+    this._hintQueue = this._hintQueue || [];
+    // Suppress immediate exact duplicates (the same hint fired twice in a
+    // row is almost always a bug or a per-frame re-trigger; the queue
+    // shouldn't compound it).
+    const last = this._hintQueue[this._hintQueue.length - 1];
+    if (last && last.text === text) return;
+    if (this._activeHint && this._activeHint._hintText === text && this._hintQueue.length === 0) return;
+    // Cap queue length so a chaotic moment doesn't trail tips long after.
+    if (this._hintQueue.length >= 4) this._hintQueue.shift();
+    this._hintQueue.push({ text, duration });
+    this._processHintQueue();
+  }
+
+  _processHintQueue() {
+    if (this._tutBusy) return; // wait until tutorial panel is gone
+    if (this._activeHint && this._activeHint.active) return;
+    if (!this._hintQueue || this._hintQueue.length === 0) return;
+    const { text, duration } = this._hintQueue.shift();
+    const { W } = CFG;
+    const PW = 560, PH = 46, PX = (W - PW) / 2, PY = 108;
+
+    const bg = this.add.graphics().setDepth(160).setAlpha(0);
+    bg.fillStyle(0x050d05, 0.88);
+    bg.fillRoundedRect(PX, PY, PW, PH, 8);
+    bg.lineStyle(2, 0x4a7a38, 0.80);
+    bg.strokeRoundedRect(PX, PY, PW, PH, 8);
+    this.cameras.main.ignore(bg);
+
+    const h = this.add.text(W / 2, PY + PH / 2, text, {
+      fontFamily:'monospace', fontSize:'15px', color:'#ccdfc8',
+      stroke:'#000', strokeThickness:2,
+      wordWrap:{ width: PW - 32 },
+    }).setOrigin(0.5).setDepth(161).setAlpha(0);
     this.cameras.main.ignore(h);
+    h._hintText = text;
     this._activeHint = h;
-    this.tweens.add({ targets:h, alpha:1, duration:280,
+    this._activeHintBg = bg;
+
+    this.tweens.add({ targets:[bg, h], alpha:1, duration:280,
       onComplete:() => {
         this._hintTimer = this.time.delayedCall(duration, () => {
           this._hintTimer = null;
-          this.tweens.add({ targets:h, alpha:0, duration:450,
-            onComplete:() => { if (h === this._activeHint) this._activeHint = null; h.destroy(); }
+          this.tweens.add({ targets:[bg, h], alpha:0, duration:450,
+            onComplete:() => {
+              if (h === this._activeHint) { this._activeHint = null; this._activeHintBg = null; }
+              bg.destroy();
+              h.destroy();
+              // Small gap so consecutive hints don't bleed into each other visually.
+              this.time.delayedCall(150, () => this._processHintQueue());
+            }
           });
+        });
+      }
+    });
+  }
+
+  // ── STATUS ───────────────────────────────────────────────────
+  // Immediate, non-queued status line for rapid-fire reactive feedback
+  // (cooldown counters, per-hit status effects, per-attack warnings).
+  // Always replaces whatever was showing — no queue, no lag.
+  _showStatus(text, duration) {
+    if (this._statusTimer) { this._statusTimer.remove(); this._statusTimer = null; }
+    if (this._statusTxt?.active) {
+      this.tweens.killTweensOf(this._statusTxt);
+      this._statusTxt.setText(text).setAlpha(1);
+    } else {
+      this._statusTxt = this.add.text(CFG.W / 2, 162, text, {
+        fontFamily:'monospace', fontSize:'15px', color:'#ffffff',
+        stroke:'#000', strokeThickness:3, backgroundColor:'#000000bb', padding:{x:14,y:7},
+      }).setOrigin(0.5).setDepth(158).setAlpha(1);
+      this.cameras.main.ignore(this._statusTxt);
+    }
+    this._statusTimer = this.time.delayedCall(duration || 1500, () => {
+      this._statusTimer = null;
+      if (this._statusTxt?.active) {
+        this.tweens.add({ targets:this._statusTxt, alpha:0, duration:300,
+          onComplete:() => { if (this._statusTxt?.active) { this._statusTxt.destroy(); this._statusTxt = null; } }
         });
       }
     });
@@ -6076,7 +7101,11 @@ class GameScene extends Phaser.Scene {
   }
 
   _showNextTutTip() {
-    if (!this._tutActive || !this._tutQueue.length) { this._tutBusy = false; return; }
+    if (!this._tutActive || !this._tutQueue.length) {
+      this._tutBusy = false;
+      this._processHintQueue(); // release any hints that were waiting
+      return;
+    }
     this._tutBusy = true;
     this._showTutPanel(this._tutQueue.shift());
   }
@@ -6156,14 +7185,20 @@ class GameScene extends Phaser.Scene {
   update(time, delta) {
     if (!this._worldReady) return; // deferred world init not yet complete
     if (this.isOver) return;
-    if (this._paused) return;
 
     // Heartbeat — wall-clock, so it shows even if the game clock stalls.
     const _hbNow = Date.now();
     if (!this._lastHeartbeat || _hbNow - this._lastHeartbeat > 5000) {
       this._lastHeartbeat = _hbNow;
       this._log(`update heartbeat  gameT=${(this.timeAlive||0).toFixed(1)}s  day=${this.dayNum}  fps=${Math.round(this.game.loop.actualFps)}  bodies=${this.physics.world.bodies.size}`, 'perf');
+      if (this._perfBudget && this._perfBudget.n > 0) {
+        const _n = this._perfBudget.n;
+        const _av = k => (this._perfBudget[k] / _n).toFixed(2);
+        this._log(`frame budget (${_n}fr avg)  terrain=${_av('terrain')}ms  enemies=${_av('enemies')}ms  waves=${_av('waves')}ms  dens=${_av('dens')}ms  raiders=${_av('raiders')}ms  boss=${_av('boss')}ms  daynight=${_av('daynight')}ms`, 'perf');
+        this._perfBudget = null;
+      }
     }
+    if (!this._perfBudget) this._perfBudget = { terrain: 0, enemies: 0, waves: 0, dens: 0, raiders: 0, boss: 0, daynight: 0, n: 0 };
 
     // _onIce, _inShallowWater, and toxic pool detection are now all computed per-frame
     // inside applyTerrainEffects via Uint8Array map lookups — no reset needed here.
@@ -6208,8 +7243,10 @@ class GameScene extends Phaser.Scene {
     if (this.p2 && (this.p2._webSlowCd || 0) > 0) this.p2._webSlowCd = Math.max(0, this.p2._webSlowCd - delta);
 
     // Tundra slowdown effect
-    this.applyTerrainEffects(this.p1);
-    if (this.p2) this.applyTerrainEffects(this.p2);
+    { const _t = performance.now(); this.applyTerrainEffects(this.p1); if (this.p2) this.applyTerrainEffects(this.p2); this._perfBudget.terrain += performance.now() - _t; }
+
+    // Cache active players once per frame — reused by updateEnemyDens, updateWaterDens, etc.
+    this._activePlayers = [this.p1, this.p2].filter(p => p && p.spr && p.spr.active);
 
     // Water submersion visual overlay
     this._updateWaterSubmersion(this.p1);
@@ -6223,18 +7260,19 @@ class GameScene extends Phaser.Scene {
     this.checkDeaths();
     this.updateDowned(delta);
     this.updateRevive(delta);
-    this.updateEnemies(delta);
-    this.updateWaves(delta);
-    this.updateEnemyDens(delta);
-    this.updateWaterDens(delta);
-    this.updateRaiders(delta);
-    this.updateBoss(delta);
+    { const _t = performance.now(); this.updateEnemies(delta); this._perfBudget.enemies += performance.now() - _t; }
+    { const _t = performance.now(); this.updateWaves(delta); this._perfBudget.waves += performance.now() - _t; }
+    { const _t = performance.now(); this.updateEnemyDens(delta); this.updateWaterDens(delta); this._perfBudget.dens += performance.now() - _t; }
+    { const _t = performance.now(); this.updateRaiders(delta); this._perfBudget.raiders += performance.now() - _t; }
+    { const _t = performance.now(); this.updateBoss(delta); this._perfBudget.boss += performance.now() - _t; }
     this.updateSleep(delta);
-    this.updateDayNight(delta);
+    { const _t = performance.now(); this.updateDayNight(delta); this._perfBudget.daynight += performance.now() - _t; }
+    this._perfBudget.n++;
     // Post-updateDayNight stages — wrapped so a throw or stall is attributable.
     // _stageTrace is armed briefly around the Day-5 boss transition to give
     // per-stage checkpoints; otherwise only errors log.
-    const _stageLog = (name) => { if (this._stageTrace) this._log('stage: ' + name, 'perf'); };
+    // Only trace stages on genuinely stalled frames (>100ms delta) to avoid log flood.
+    const _stageLog = (name) => { if (this._stageTrace && delta > 100) this._log('stage: ' + name + ' (stall ' + delta.toFixed(0) + 'ms)', 'perf'); };
     const _safe = (name, fn) => { _stageLog(name); try { fn(); } catch (e) { this._log(`${name} ERR: ${e && e.message || e}`, 'error'); } };
     _safe('updateBuildMode',  () => this.updateBuildMode());
     _safe('updateCraftMenu',  () => this.updateCraftMenu(delta));
@@ -6244,6 +7282,7 @@ class GameScene extends Phaser.Scene {
     _safe('updateMinimap',    () => this.updateMinimap());
     _safe('updateTreeSeeds',  () => this.updateTreeSeeds(delta));
     _safe('redrawHUD',        () => this.redrawHUD());
+    _safe('_updateScoutPanel', () => this._updateScoutPanel());
     if (this._touchActive) _safe('_drawTouchHUD', () => this._drawTouchHUD());
   }
 
@@ -6289,11 +7328,15 @@ class GameScene extends Phaser.Scene {
       this._tcLabels[name] = t;
     }
 
-    // Pointer event handlers
-    this.input.on('pointerdown', this._onTouchDown, this);
-    this.input.on('pointermove', this._onTouchMove, this);
-    this.input.on('pointerup',   this._onTouchUp,   this);
-    this.input.on('pointerupoutside', this._onTouchUp, this);
+    // Remove before re-adding to prevent listener accumulation on scene restart
+    this.input.off('pointerdown',       this._onTouchDown, this);
+    this.input.off('pointermove',       this._onTouchMove, this);
+    this.input.off('pointerup',         this._onTouchUp,   this);
+    this.input.off('pointerupoutside',  this._onTouchUp,   this);
+    this.input.on('pointerdown',        this._onTouchDown, this);
+    this.input.on('pointermove',        this._onTouchMove, this);
+    this.input.on('pointerup',          this._onTouchUp,   this);
+    this.input.on('pointerupoutside',   this._onTouchUp,   this);
   }
 
   _onTouchDown(pointer) {
@@ -6612,7 +7655,10 @@ class GameScene extends Phaser.Scene {
         if (tower.activateBar)   { tower.activateBar.clear(); tower.activateBar.setVisible(false); }
         if (tower.activateLabel) { tower.activateLabel.setVisible(false); }
         if (tower.prompt) tower.prompt.setVisible(false);
-        this._log(`Radio Tower activated  day=${this.dayNum}`, 'world');
+        const _rtBodies = this.physics.world.bodies.size;
+        const _rtEnemies = (this.enemies || []).length;
+        const _rtActive  = this._activeEnemyCount ?? (this.enemies || []).filter(e => e.spr?.active && !e._dormant).length;
+        this._log(`Radio Tower activated  day=${this.dayNum}  bodies=${_rtBodies}  enemies=${_rtEnemies}  active=${_rtActive}`, 'world');
         tower.spr.setTint(0x66aaff);
         this.fogRevealMult = 2;
         this.hint('Radio Tower online! Vision range doubled permanently!', 5000);
@@ -6747,7 +7793,7 @@ class GameScene extends Phaser.Scene {
       brawler: { hp: 130, speed: 110, dmg: 20, range: 36, atkInterval: 1100, shootRange: 0 },
       shooter: { hp: 80,  speed: 90,  dmg: 16, range: 40, atkInterval: 1200, shootRange: 280 },
     };
-    const huntExpires = this.time.now + 180000; // 3 minutes
+    const huntExpires = this.time.now + 300000; // 5 minutes
     for (let i = 0; i < count; i++) {
       const rtype = types[i % types.length];
       const s = stats[rtype];
@@ -6774,15 +7820,20 @@ class GameScene extends Phaser.Scene {
       this.raiders.push(raider);
       this.enemies.push(raider);
     }
-    this._log(`Hunting party incoming!  count=${count}  day=${this.dayNum}`, 'world');
-    this.hint('\u26a0 A raiding party is on your trail!', 4000);
+    // Compass direction from player to the spawn edge
+    const _huntDeg = (Math.atan2(baseY - axy, baseX - axx) * 180 / Math.PI + 360) % 360;
+    const _huntDir = ['E','SE','S','SW','W','NW','N','NE'][Math.round(_huntDeg / 45) % 8];
+    this._log(`Hunting party incoming!  count=${count}  day=${this.dayNum}  from=${_huntDir}  spawn_tile=(${Math.floor(baseX/CFG.TILE)},${Math.floor(baseY/CFG.TILE)})`, 'world');
+    this.hint('\u26a0 Raiders spotted at the wastes edge!', 4000);
+    this._huntPartyAlertFired = false;
+    this._huntDirReminderAt = this.time.now + 45000; // first reminder 45s after spawn
     SFX._play(120, 'sawtooth', 0.3, 0.5, 'drop');
   }
 
   updateRaiders(delta) {
     // Shooters fire projectiles; brawlers get a charge lunge
     if (!this.raiders || this.isOver) return;
-    const players = [this.p1, this.p2].filter(p => p && !p.isDowned && p.hp > 0 && p.spr.visible);
+    const players = [this.p1, this.p2].filter(p => p && p.spr && !p.isDowned && p.hp > 0 && p.spr.visible);
 
     this.raiders.forEach(raider => {
       if (raider.hp <= 0 || !raider.spr.active) return;
@@ -6791,6 +7842,8 @@ class GameScene extends Phaser.Scene {
         raider.isHuntParty = false;
         raider.aggroRange = 320;
         raider.speed = raider.speed / 1.15; // undo the hunt speed boost
+        const _huntAlive = this.raiders.filter(r => r.isHuntParty && r.hp > 0 && r.spr?.active).length;
+        this._log(`Hunt party expired  type=${raider.type}  dist=${nearDist.toFixed(0)}px  remaining_hunters=${_huntAlive}  pos=(${Math.floor(raider.spr.x/CFG.TILE)},${Math.floor(raider.spr.y/CFG.TILE)})`, 'world');
       }
 
       let nearest = null, nearDist = Infinity;
@@ -6799,6 +7852,14 @@ class GameScene extends Phaser.Scene {
         if (d < nearDist) { nearDist = d; nearest = p; }
       });
       if (!nearest) return;
+
+      // Fire a "closing in" alert when the first hunt-party raider reaches ~1200px.
+      if (raider.isHuntParty && !this._huntPartyAlertFired && nearDist < 1200) {
+        this._huntPartyAlertFired = true;
+        this.hint('⚠ Raiders closing in — get ready!', 4000);
+        this._log('Hunt party closing in  dist=' + nearDist.toFixed(0), 'world');
+        SFX._play(200, 'sawtooth', 0.2, 0.6, 'drop');
+      }
 
       // Mutual aggro: redirect toward boss if closer and within 220px
       let target = nearest, targetDist = nearDist;
@@ -6836,6 +7897,18 @@ class GameScene extends Phaser.Scene {
         }
       }
     });
+
+    // Periodic reminder while hunt party is still alive
+    if (this._huntDirReminderAt && this.time.now > this._huntDirReminderAt) {
+      const _huntActive = this.raiders.filter(r => r.isHuntParty && r.hp > 0 && r.spr?.active);
+      if (_huntActive.length > 0) {
+        this._huntDirReminderAt = this.time.now + 45000;
+        this.hint('⚠ Raiders still hunting you...', 4000);
+        this._log(`Hunt party reminder  alive=${_huntActive.length}`, 'world');
+      } else {
+        this._huntDirReminderAt = null;
+      }
+    }
   }
 
   _fireRaiderShot(raider, target) {
@@ -6859,9 +7932,11 @@ class GameScene extends Phaser.Scene {
         const baseDmg = raider.dmg * 0.7;
         const dmg = this._knightShieldBlock(p, bullet.x, bullet.y, baseDmg);
         bullet.destroy();
-        p.hp = Math.max(0, p.hp - dmg);
-        this._log(`${p.charData.player} shot by raider  dmg=${Math.round(dmg)}  hp=${p.hp}/${p.maxHp}`, 'combat');
+        const _rdmg = Math.round(dmg);
+        p.hp = Math.max(0, p.hp - _rdmg);
+        this._log(`${p.charData.player} shot by raider  dmg=${_rdmg}  hp=${p.hp}/${p.maxHp}`, 'combat');
         SFX.playerHurt();
+        this._floatDamage(p.spr.x, p.spr.y - 18, _rdmg);
         // Only apply red hurt tint if shield didn't already flash blue
         if (dmg >= baseDmg) {
           p.spr.setTint(0xff0000);
@@ -6936,9 +8011,11 @@ class GameScene extends Phaser.Scene {
     const hpBar = this.add.graphics().setDepth(14);
     if (this.hudCam) { this.hudCam.ignore(hpBg); this.hudCam.ignore(hpBar); }
 
+    const _bossHp  = Math.max(1, Math.round(bt.hp  * this.hc.bossHpMult));
+    const _bossDmg = Math.max(1, Math.round(bt.dmg * this.hc.bossDmgMult));
     this.boss = {
-      spr, hp: bt.hp, maxHp: bt.hp,
-      speed: bt.speed, dmg: bt.dmg, name: bt.name,
+      spr, hp: _bossHp, maxHp: _bossHp,
+      speed: bt.speed, dmg: _bossDmg, name: bt.name,
       isBoss: true, type: bt.key,
       attackTimer: 0, atkInterval: 2200,
       aggroRange: 99999, attackRange: 70, wanderTimer: 0, sizeMult: 1,
@@ -6951,8 +8028,13 @@ class GameScene extends Phaser.Scene {
     // Add boss to main enemy array so melee + bullets can hit it
     this.enemies.push(this.boss);
 
+    // Screen-edge indicator \u2014 pulsing arrow visible on HUD when boss is off-screen
+    const _bossInd = this.add.graphics().setDepth(200);
+    this.cameras.main.ignore(_bossInd); // HUD-only: main camera skips it, hudCam renders it
+    this.boss._indicator = _bossInd;
+
     // Announce arrival
-    this._log(`Boss spawned: ${bt.name}  hp=${bt.hp}  day=${this.dayNum}  diff=${this._diffMult().toFixed(1)}x`, 'world');
+    this._log(`Boss spawned: ${bt.name}  hp=${_bossHp}  dmg=${_bossDmg}  day=${this.dayNum}  diff=${this._diffMult().toFixed(1)}x`, 'world');
     this.hint('\u2620 ' + bt.name.toUpperCase() + ' APPROACHES! \u2620', 6000);
     SFX.bossRoar();
     this._log('spawnBoss: roar done', 'world');
@@ -7056,6 +8138,9 @@ class GameScene extends Phaser.Scene {
     // Update world-space HP bar above boss
     const bx = b.spr.x, by = b.spr.y;
     const barW = 80, barH = 8;
+    // Defensive: if the HP graphics were destroyed out-of-band (tween or
+    // restart edge case) skip the draw rather than crash on .clear().
+    if (!b.hpBg || !b.hpBg.active || !b.hpBar || !b.hpBar.active) return;
     b.hpBg.clear();
     b.hpBg.fillStyle(0x220000, 0.85);
     b.hpBg.fillRect(bx - barW/2 - 1, by - 90, barW + 2, barH + 2);
@@ -7077,9 +8162,44 @@ class GameScene extends Phaser.Scene {
     }
     b.nameLabel.setPosition(bx, by - 103);
 
+    // Radar-edge threat indicator — pulsing arrow just outside the radar circle when boss is off-screen
+    if (b._indicator && b._indicator.active) {
+      b._indicator.clear();
+      const rc = this.radarCenter;
+      if (rc) {
+        const cam = this.cameras.main;
+        const GW = CFG.W, GH = CFG.H;
+        const screenX = (bx - cam.scrollX) * cam.zoom;
+        const screenY = (by - cam.scrollY) * cam.zoom;
+        const offScreen = screenX < -40 || screenX > GW + 40 || screenY < -40 || screenY > GH + 40;
+        if (offScreen) {
+          // Angle from viewport center (≈ player) to boss, same compass as the radar dot
+          const ang = Math.atan2(by - cam.worldView.centerY, bx - cam.worldView.centerX);
+          // Place arrow just outside the radar circle perimeter
+          const ex = rc.x + Math.cos(ang) * (rc.r + 9);
+          const ey = rc.y + Math.sin(ang) * (rc.r + 9);
+          const pulse = Math.sin(this.time.now / 220) * 0.35 + 0.65;
+          const tip = { x: ex + Math.cos(ang) * 9,   y: ey + Math.sin(ang) * 9 };
+          const l   = { x: ex + Math.cos(ang + 2.3) * 6, y: ey + Math.sin(ang + 2.3) * 6 };
+          const r   = { x: ex + Math.cos(ang - 2.3) * 6, y: ey + Math.sin(ang - 2.3) * 6 };
+          b._indicator.fillStyle(0xff2200, pulse);
+          b._indicator.fillTriangle(tip.x, tip.y, l.x, l.y, r.x, r.y);
+          b._indicator.lineStyle(1.5, 0xff5500, pulse * 0.45);
+          b._indicator.strokeCircle(ex, ey, 7 + Math.sin(this.time.now / 180) * 2);
+        }
+      }
+    }
+
     // Boss chases nearest player — relentless, no wander
     const players = [this.p1, this.p2].filter(p => p && !p.isDowned && p.hp > 0);
     if (players.length === 0) { b.spr.setVelocity(0, 0); return; }
+
+    // Periodic position snapshot so logs can trace boss pathing (throttled to ~every 5s)
+    if (!b._lastPosLog || this.time.now - b._lastPosLog > 5000) {
+      b._lastPosLog = this.time.now;
+      const _p1dist = this.p1?.spr ? Phaser.Math.Distance.Between(bx, by, this.p1.spr.x, this.p1.spr.y) : -1;
+      this._log(`boss pos  type=${b.type}  tile=(${Math.floor(bx/CFG.TILE)},${Math.floor(by/CFG.TILE)})  hp=${b.hp}/${b.maxHp}  dist_p1=${Math.round(_p1dist)}  state=${b._bossState}`, 'world');
+    }
 
     let nearest = players[0], nearDist = Phaser.Math.Distance.Between(b.spr.x, b.spr.y, players[0].spr.x, players[0].spr.y);
     players.forEach(p => {
@@ -7112,9 +8232,24 @@ class GameScene extends Phaser.Scene {
         });
       }
 
-      // Chase toward nearest foe (raider or player)
-      const ang = Phaser.Math.Angle.Between(b.spr.x, b.spr.y, foeX, foeY);
-      b.spr.setVelocity(Math.cos(ang) * b.speed, Math.sin(ang) * b.speed);
+      // Chase toward nearest foe — use obstacle steering so the boss can't freeze on terrain
+      const vel = this._steerToward(b, foeX, foeY, b.speed);
+      b._bossEscTimer = (b._bossEscTimer || 0) - delta;
+      if (b._bossEscTimer > 0) {
+        // escape burst active — keep current velocity, don't overwrite
+      } else if (vel.x === 0 && vel.y === 0) {
+        b._bossStuckDur = (b._bossStuckDur || 0) + delta;
+        if (b._bossStuckDur > 600) {
+          b._bossStuckDur = 0;
+          const escAng = Phaser.Math.FloatBetween(0, Math.PI * 2);
+          b.spr.setVelocity(Math.cos(escAng) * b.speed * 2, Math.sin(escAng) * b.speed * 2);
+          b._bossEscTimer = 800;
+          this._log(`boss unstuck  type=${b.type}  tile=(${Math.floor(b.spr.x/CFG.TILE)},${Math.floor(b.spr.y/CFG.TILE)})`, 'world');
+        }
+      } else {
+        b._bossStuckDur = 0;
+        b.spr.setVelocity(vel.x, vel.y);
+      }
       b.spr.setFlipX(foeX < b.spr.x);
 
       // Special attacks always target the nearest player even when fighting raiders
@@ -7168,6 +8303,7 @@ class GameScene extends Phaser.Scene {
             nearest.hp = Math.max(0, nearest.hp - b.dmg);
             this._log(nearest.charData.player + ' hit for ' + b.dmg + '  hp=' + nearest.hp + '/' + nearest.maxHp, 'combat');
             SFX.playerHurt();
+            this._floatDamage(nearest.spr.x, nearest.spr.y - 18, b.dmg);
             nearest.spr.setTint(0xff0000);
             this.cameras.main.shake(300, 0.008);
             this.time.delayedCall(200, () => {
@@ -7180,7 +8316,7 @@ class GameScene extends Phaser.Scene {
               nearest._frostSlowed = true;
               nearest._speedMult = 0.55;
               this._log(`${nearest.charData.player} frost slowed  hp=${nearest.hp}/${nearest.maxHp}`, 'combat');
-              this.hint('FROST SLOW! (-45% speed)', 1500);
+              this._showStatus('FROST SLOW! (-45% speed)', 1500);
               this.time.delayedCall(280, () => { if (nearest.spr?.active && nearest._frostSlowed) nearest.spr.setTint(0x88ccff); });
               this.time.delayedCall(3000, () => {
                 if (!nearest) return;
@@ -7303,6 +8439,7 @@ class GameScene extends Phaser.Scene {
           p.hp = Math.max(0, p.hp - slamDmg);
           this._log(`${p.charData.player} boss stomp  dmg=${slamDmg}  hp=${p.hp}/${p.maxHp}`, 'combat');
           SFX.playerHurt();
+          this._floatDamage(p.spr.x, p.spr.y - 18, slamDmg);
           p.spr.setTint(b.type === 'boss_troll' ? 0x88ccff : 0xff4400);
           this.time.delayedCall(250, () => {
             if (!p.spr?.active) return;
@@ -7327,6 +8464,7 @@ class GameScene extends Phaser.Scene {
             p.hp = Math.max(0, p.hp - chargeDmg);
             this._log(`${p.charData.player} troll charge  dmg=${chargeDmg}  hp=${p.hp}/${p.maxHp}`, 'combat');
             SFX.playerHurt();
+            this._floatDamage(p.spr.x, p.spr.y - 18, chargeDmg);
             p.spr.setTint(0xff8800);
             this.cameras.main.shake(250, 0.01);
             this.time.delayedCall(200, () => {
@@ -7360,13 +8498,14 @@ class GameScene extends Phaser.Scene {
             p.hp = Math.max(0, p.hp - sprayDmg);
             this._log(`${p.charData.player} boss spray  dmg=${sprayDmg}  hp=${p.hp}/${p.maxHp}`, 'combat');
             SFX.playerHurt();
+            this._floatDamage(p.spr.x, p.spr.y - 18, sprayDmg);
             p.spr.setTint(col);
             // Spider Queen web: root player briefly (1.5s)
             if (b.type === 'boss_spider' && !p._webbed) {
               p._webbed = true;
               p._speedMult = 0;
               this._log(`${p.charData.player} webbed by boss_spider – immobilised 1.5s hp=${p.hp}/${p.maxHp}`, 'combat');
-              this.hint('WEBBED! Can\'t move!', 1500);
+              this._showStatus('WEBBED! Can\'t move!', 1500);
               this.time.delayedCall(1500, () => {
                 if (!p) return;
                 p._webbed = false;
@@ -7395,12 +8534,13 @@ class GameScene extends Phaser.Scene {
     if (!this.enemyDens) return;
     this.enemyDens.forEach(den => {
       den.respawnTimer += delta;
-      if (den.respawnTimer >= 30000) {
+      if (den.respawnTimer >= this.hc.denRespawn) {
         den.respawnTimer = 0;
         if (this.enemies.length >= CFG.MAX_ENEMIES) return;
         // Only respawn when a player is nearby — prevents offscreen accumulation
-        const _ap = [this.p1, this.p2].filter(p => p && p.spr && p.spr.active);
-        const nearDist = _ap.length ? Math.min(..._ap.map(p => Phaser.Math.Distance.Between(den.x, den.y, p.spr.x, p.spr.y))) : Infinity;
+        const _ap = this._activePlayers || [];
+        let nearDist = Infinity;
+        for (const p of _ap) { const _d = Phaser.Math.Distance.Between(den.x, den.y, p.spr.x, p.spr.y); if (_d < nearDist) nearDist = _d; }
         if (nearDist > 1200) return;
         // Cap per-den live population
         den.liveCount = den.liveCount || 0;
@@ -7428,10 +8568,11 @@ class GameScene extends Phaser.Scene {
         den.liveCount++;
         // Start dormant if far from all players
         {
-          const _sd = _ap.length ? Math.min(..._ap.map(p => Phaser.Math.Distance.Between(ex, ey, p.spr.x, p.spr.y))) : Infinity;
+          let _sd = Infinity;
+          for (const p of _ap) { const _d = Phaser.Math.Distance.Between(ex, ey, p.spr.x, p.spr.y); if (_d < _sd) _sd = _d; }
           if (_sd > CFG.DORMANT_RADIUS) { e._dormant = true; spr.setVisible(false); if (spr.body) { spr.body.enable = false; this.physics.world.bodies.delete(spr.body); } }
         }
-        this._log(`Den respawn: ${type}  total_enemies=${this.enemies.length+1}`, 'world');
+        this._log(`Den respawn: ${type}  total_enemies=${this.enemies.length+1}  den_pop=${den.liveCount+1}/4`, 'world');
         this.enemies.push(e);
       }
     });
@@ -7441,12 +8582,13 @@ class GameScene extends Phaser.Scene {
     if (!this.waterDens) return;
     this.waterDens.forEach(den => {
       den.respawnTimer += delta;
-      if (den.respawnTimer < 25000) return;
+      if (den.respawnTimer < this.hc.waterDenRespawn) return;
       den.respawnTimer = 0;
       if (this.enemies.length >= CFG.MAX_ENEMIES) return;
       // Only respawn when a player is nearby — prevents offscreen accumulation
-      const _ap = [this.p1, this.p2].filter(p => p && p.spr && p.spr.active);
-      const nearDist = _ap.length ? Math.min(..._ap.map(p => Phaser.Math.Distance.Between(den.x, den.y, p.spr.x, p.spr.y))) : Infinity;
+      const _ap = this._activePlayers || [];
+      let nearDist = Infinity;
+      for (const p of _ap) { const _d = Phaser.Math.Distance.Between(den.x, den.y, p.spr.x, p.spr.y); if (_d < nearDist) nearDist = _d; }
       if (nearDist > 1200) return;
       // Cap per-den live population
       den.liveCount = den.liveCount || 0;
@@ -7572,7 +8714,7 @@ class GameScene extends Phaser.Scene {
   }
 
   checkBarrackRange() {
-    const near = p => p && Phaser.Math.Distance.Between(p.spr.x, p.spr.y, this.bPos.x, this.bPos.y) < 110;
+    const near = p => p && p.spr && Phaser.Math.Distance.Between(p.spr.x, p.spr.y, this.bPos.x, this.bPos.y) < 110;
     this.bPrompt.setVisible(near(this.p1) || near(this.p2));
   }
 
@@ -7586,7 +8728,7 @@ class GameScene extends Phaser.Scene {
         SFX.wrench();
         player.atkCooldown = 500;
         this.meleeSwing(player, 38, 0xcc8833, 0.22, 0);
-        this.hint('Out of ammo! Pistol whip!', 1200);
+        this._showStatus('Out of ammo! Pistol whip!', 1200);
         return;
       }
       player.ammo--;
@@ -7608,7 +8750,7 @@ class GameScene extends Phaser.Scene {
           this.physics.add.overlap(blt, e.spr, () => {
             if (!blt.active || e.dying) return; // dying guard: second in-flight bullet can't double-kill
             blt.destroy();
-            this._hurtEnemy(e, 35, blt.x, blt.y);
+            this._hurtEnemy(e, 35, blt.x, blt.y, 0xff6644, player);
           });
         });
       }
@@ -7619,6 +8761,35 @@ class GameScene extends Phaser.Scene {
       player.atkCooldown = 500;
       this.meleeSwing(player, 55, 0xdddddd, 0.18, 0);
       if (player._knightUpgraded) this._fireShieldThrow(player);
+    } else if (id === 'charmer') {
+      // Pirouette — 360° AoE spin
+      SFX._play(660, 'sine', 0.12, 0.4);
+      player.atkCooldown = 1500;
+      this._log(`${player.charData.player} Pirouette  hp=${player.hp}/${player.maxHp}`, 'player');
+      const pfx = this.add.graphics().setDepth(20);
+      if (this.hudCam) this.hudCam.ignore(pfx);
+      pfx.lineStyle(5, 0xff88cc, 0.9);
+      pfx.strokeCircle(player.spr.x, player.spr.y, 55);
+      pfx.lineStyle(3, 0xffccee, 0.6);
+      pfx.strokeCircle(player.spr.x, player.spr.y, 38);
+      this.tweens.add({ targets: pfx, alpha: 0, scaleX: 1.4, scaleY: 1.4, duration: 400, onComplete: () => pfx.destroy() });
+      const px = player.spr.x, py = player.spr.y;
+      this.enemies.forEach(e => {
+        if (e.dying) return;
+        const d = Phaser.Math.Distance.Between(px, py, e.spr.x, e.spr.y);
+        if (d < 75) {
+          e._aggroOverride = true;
+          e._charmTinted = false;
+          if (e.spr?.active) e.spr.clearTint();
+          this._hurtEnemy(e, 35, px, py, 0xff88cc, player);
+        }
+      });
+    } else if (id === 'ranger') {
+      // Bow shot — ranged arrow, infinite ammo
+      SFX._play(280, 'triangle', 0.08, 0.2);
+      player.atkCooldown = 800;
+      this._log(`${player.charData.player} bow shot  hp=${player.hp}/${player.maxHp}`, 'player');
+      this._fireArrow(player);
     } else {
       // Architect
       SFX.wrench();
@@ -7626,6 +8797,45 @@ class GameScene extends Phaser.Scene {
       this.meleeSwing(player, 45, 0xcc8833, 0.2, 350);
       if (player._architectUpgraded) this._fireNailGun(player);
     }
+  }
+
+  _fireArrow(player) {
+    const angle = this.getAimAngle(player);
+    const arrow = this.physics.add.image(player.spr.x, player.spr.y, 'bullet')
+      .setDepth(15).setScale(1.8, 0.9).setTint(0x886633);
+    arrow.setRotation(angle);
+    if (this.hudCam) this.hudCam.ignore(arrow);
+    this.physics.velocityFromAngle(Phaser.Math.RadToDeg(angle), 520, arrow.body.velocity);
+    arrow.body.allowGravity = false;
+    if (this.obstacles) {
+      this.physics.add.collider(arrow, this.obstacles, () => { if (arrow.active) arrow.destroy(); });
+    }
+    if (this.enemies) {
+      this.enemies.forEach(e => {
+        if (e.dying) return;
+        this.physics.add.overlap(arrow, e.spr, () => {
+          if (!arrow.active || e.dying) return;
+          arrow.destroy();
+          const dmg = player._rangerUpgraded ? 35 : 35;
+          this._hurtEnemy(e, dmg, arrow.x, arrow.y, 0x886633, player);
+          if (player._rangerUpgraded) {
+            // Explosive arrow: splash damage to nearby enemies
+            const ax = arrow.x, ay = arrow.y;
+            this.enemies.forEach(ne => {
+              if (ne === e || ne.dying) return;
+              if (Phaser.Math.Distance.Between(ax, ay, ne.spr.x, ne.spr.y) < 60) {
+                this._hurtEnemy(ne, 20, ax, ay, 0xff8833, player);
+              }
+            });
+            const sfx = this.add.graphics().setDepth(20);
+            if (this.hudCam) this.hudCam.ignore(sfx);
+            sfx.fillStyle(0xff8833, 0.7); sfx.fillCircle(ax, ay, 60);
+            this.tweens.add({ targets: sfx, alpha: 0, scaleX: 1.5, scaleY: 1.5, duration: 300, onComplete: () => sfx.destroy() });
+          }
+        });
+      });
+    }
+    this.time.delayedCall(1800, () => { if (arrow.active) arrow.destroy(); });
   }
 
   _fireShieldThrow(player) {
@@ -7645,7 +8855,7 @@ class GameScene extends Phaser.Scene {
         this.physics.add.overlap(blt, e.spr, () => {
           if (!blt.active || e.dying) return;
           blt.destroy();
-          this._hurtEnemy(e, 28, blt.x, blt.y, 0x5599ff);
+          this._hurtEnemy(e, 28, blt.x, blt.y, 0x5599ff, player);
         });
       });
     }
@@ -7669,7 +8879,7 @@ class GameScene extends Phaser.Scene {
         this.physics.add.overlap(blt, e.spr, () => {
           if (!blt.active || e.dying) return;
           blt.destroy();
-          this._hurtEnemy(e, 14, blt.x, blt.y, 0xff8833);
+          this._hurtEnemy(e, 14, blt.x, blt.y, 0xff8833, player);
         });
       });
     }
@@ -7699,7 +8909,7 @@ class GameScene extends Phaser.Scene {
     } else if (id === 'knight') {
       // RALLY — war cry boosts speed + frightens nearby enemies (30s cooldown)
       if (player.rallyCooldown > 0) {
-        this.hint('RALLY: ' + Math.ceil(player.rallyCooldown / 1000) + 's', 1200);
+        this._showStatus('RALLY: ' + Math.ceil(player.rallyCooldown / 1000) + 's', 1200);
         return;
       }
       player.rallyCooldown = 30000;
@@ -7748,7 +8958,7 @@ class GameScene extends Phaser.Scene {
     } else if (id === 'architect') {
       // ORCHESTRATE — deploy auto-turret for 30 seconds
       if (player.turretCooldown > 0) {
-        this.hint('TURRET: ' + Math.ceil(player.turretCooldown / 1000) + 's', 1200);
+        this._showStatus('TURRET: ' + Math.ceil(player.turretCooldown / 1000) + 's', 1200);
         return;
       }
       player.turretCooldown = 45000;
@@ -7758,7 +8968,50 @@ class GameScene extends Phaser.Scene {
       SFX._play(700, 'triangle', 0.08, 0.2);
       this._log(`${player.charData.player} deployed TURRET  pos=(${Math.floor(player.spr.x/CFG.TILE)},${Math.floor(player.spr.y/CFG.TILE)})`, 'player');
       this.hint('Turret deployed!', 2000);
-      this.deployTurret(player.spr.x, player.spr.y);
+      this.deployTurret(player.spr.x, player.spr.y, player);
+    } else if (id === 'charmer') {
+      // FLOWER TOSS — charm-on-hit bouquet
+      if ((player.flowerAmmo || 0) <= 0) {
+        this.hint('No flowers! Craft a Flower Bouquet.', 2000);
+        return;
+      }
+      player.flowerAmmo--;
+      SFX._play(880, 'sine', 0.1, 0.3);
+      this._log(`${player.charData.player} Flower Toss  flowers_left=${player.flowerAmmo}`, 'player');
+      this.hint('Flower Toss! (' + player.flowerAmmo + ' left)', 1200);
+      const angle = this.getAimAngle(player);
+      const flower = this.physics.add.image(player.spr.x, player.spr.y, 'item_flower')
+        .setDepth(15).setScale(1.5).setTint(0xff88cc);
+      flower.setRotation(angle);
+      if (this.hudCam) this.hudCam.ignore(flower);
+      this.physics.velocityFromAngle(Phaser.Math.RadToDeg(angle), 280, flower.body.velocity);
+      flower.body.allowGravity = false;
+      if (this.enemies) {
+        this.enemies.forEach(e => {
+          if (e.dying) return;
+          this.physics.add.overlap(flower, e.spr, () => {
+            if (!flower.active || e.dying) return;
+            flower.destroy();
+            this._hurtEnemy(e, 20, flower.x, flower.y, 0xff88cc, player);
+            // Brief charm even on aggroed enemies — override clears after 2s
+            e._aggroOverride = false;
+            e._charmedTimer = 2000;
+          });
+        });
+      }
+      this.time.delayedCall(1500, () => { if (flower.active) flower.destroy(); });
+    } else if (id === 'ranger') {
+      // KNIFE STRIKE — quick melee
+      if (player.knifeCooldown > 0) {
+        this.hint('Knife: ' + Math.ceil(player.knifeCooldown / 1000) + 's', 800);
+        return;
+      }
+      player.knifeCooldown = 500;
+      this.tickCooldown(player, 'knifeCooldown', 500);
+      SFX._play(400, 'square', 0.06, 0.12);
+      player.atkCooldown = 500;
+      this._log(`${player.charData.player} Knife Strike  hp=${player.hp}/${player.maxHp}`, 'player');
+      this.meleeSwing(player, 35, 0x886633, 0.15, 0);
     }
   }
 
@@ -7769,7 +9022,7 @@ class GameScene extends Phaser.Scene {
     });
   }
 
-  deployTurret(x, y) {
+  deployTurret(x, y, owner) {
     const turret = this.add.graphics().setDepth(15);
     if (this.hudCam) this.hudCam.ignore(turret);
     // Draw turret
@@ -7797,7 +9050,7 @@ class GameScene extends Phaser.Scene {
           bfx.lineStyle(2, 0xddff44, 0.8);
           bfx.lineBetween(x, y-10, nearest.spr.x, nearest.spr.y);
           this.tweens.add({ targets:bfx, alpha:0, duration:150, onComplete:()=>bfx.destroy() });
-          this._hurtEnemy(nearest, 18, x, y);
+          this._hurtEnemy(nearest, 18, x, y, 0xff6644, owner);
         }
       }
     });
@@ -7832,8 +9085,8 @@ class GameScene extends Phaser.Scene {
           const angToE = Phaser.Math.Angle.Between(player.spr.x, player.spr.y, e.spr.x, e.spr.y);
           const diff = Phaser.Math.Angle.Wrap(angToE - dirAngle);
           if (Math.abs(diff) > Math.PI * 0.65) return;
-          const meleeDmg = player.charData.id === 'knight' ? 45 : 30;
-          this._hurtEnemy(e, meleeDmg, player.spr.x, player.spr.y);
+          const meleeDmg = player.charData.id === 'knight' ? 45 : (player.charData.id === 'ranger' ? 25 : 30);
+          this._hurtEnemy(e, meleeDmg, player.spr.x, player.spr.y, 0xff6644, player);
           // Extra architect knockback (stacks on top of _hurtEnemy base impulse)
           if (knockback && e.spr.body) {
             e.spr.body.velocity.x += Math.cos(angToE) * knockback;
@@ -7883,7 +9136,7 @@ class GameScene extends Phaser.Scene {
 
   // Central damage handler: applies damage, 220ms flinch stagger, knockback impulse,
   // hit-flash tint, SFX, and kill check. Use instead of inline e.hp -= X everywhere.
-  _hurtEnemy(e, dmg, fromX, fromY, tint = 0xff6644) {
+  _hurtEnemy(e, dmg, fromX, fromY, tint = 0xff6644, owner = null) {
     if (!e || e.dying) return;
     e.hp -= dmg;
     e._flinchTimer = 220;
@@ -7904,9 +9157,53 @@ class GameScene extends Phaser.Scene {
         duration: 80, yoyo: true, ease: 'Quad.Out',
       });
     }
-    SFX.hit();
+    SFX.hit(e.type);
+    // Floating damage number — styled by magnitude so big crits pop visually.
+    this._floatDamage(e.spr.x, e.spr.y - (e.isBoss ? 28 : 14), dmg);
+    // Hit-pause: brief physics freeze on impact for weight. Guarded so
+    // multiple hits in the same frame don't stack into a visible stutter.
+    this._hitPause(40);
     this._log(e.type + ' hit  dmg=' + dmg + '  hp=' + e.hp + '/' + (e.maxHp || '?'), 'combat');
-    if (e.hp <= 0) this.killEnemy(e);
+    if (e.hp <= 0) this.killEnemy(e, owner);
+  }
+
+  // Brief physics-world freeze (ms) for impact weight. No-op if a prior
+  // pause is still in flight — prevents cumulative stutter on multi-hit frames.
+  _hitPause(ms) {
+    if (this._hitPauseActive || this.isOver || !this.physics || !this.physics.world) return;
+    this._hitPauseActive = true;
+    try { this.physics.world.pause(); } catch(e) {}
+    this.time.delayedCall(ms, () => {
+      this._hitPauseActive = false;
+      try { this.physics.world.resume(); } catch(e) {}
+    });
+  }
+
+  // Floating damage number — reuses the pickup-float pattern but colour-codes
+  // by magnitude so bigger hits feel impactful.
+  //   < 15   off-white (chip)
+  //   15-39  yellow    (solid)
+  //   40+    orange    (heavy / crit)
+  _floatDamage(x, y, dmg) {
+    if (!dmg || dmg < 1) return;
+    const colour = dmg >= 40 ? '#ff8844' : dmg >= 15 ? '#ffee44' : '#e8e8ee';
+    const size   = dmg >= 40 ? '15px'    : dmg >= 15 ? '13px'    : '11px';
+    const t = this.add.text(x, y, '-' + dmg, {
+      fontFamily: 'monospace', fontSize: size, color: colour,
+      stroke: '#000000', strokeThickness: 3,
+    }).setOrigin(0.5, 1).setDepth(150).setAlpha(1);
+    if (this.hudCam) this.hudCam.ignore(t);
+    // Slight horizontal jitter so multi-hits in one frame don't stack perfectly.
+    const jx = (Math.random() - 0.5) * 14;
+    this.tweens.add({
+      targets: t, x: x + jx, y: y - 22, duration: 520, ease: 'Cubic.Out',
+      onComplete: () => {
+        this.tweens.add({
+          targets: t, y: y - 40, alpha: 0, duration: 260,
+          ease: 'Cubic.In', onComplete: () => t.destroy(),
+        });
+      },
+    });
   }
 
   // Floating pickup notification — shows "+N Item" rising from world position
@@ -7943,7 +9240,7 @@ class GameScene extends Phaser.Scene {
         p._webSlowCd = 2500;
         p._speedMult = 0.4;
         this._log(`${p.charData.player} caught in spider web  hp=${p.hp}/${p.maxHp}`, 'combat');
-        this.hint('Caught in a web!', 1500);
+        this._showStatus('Caught in a web!', 1500);
         this.time.delayedCall(2500, () => {
           if (p && p.spr?.active) { p._speedMult = 1; p._webSlowCd = 0; }
         });
@@ -8010,15 +9307,17 @@ class GameScene extends Phaser.Scene {
     if (fps < 30 && (!this._lastFpsWarn || (this.timeAlive||0) - this._lastFpsWarn > 10)) {
       this._lastFpsWarn = this.timeAlive || 0;
       const _all = this.enemies || [];
-      const _activeCount = _all.filter(e => e.spr?.active && !e._dormant).length;
+      const _activeCount = this._activeEnemyCount ?? _all.filter(e => e.spr?.active && !e._dormant).length;
       const _bodies = this.physics.world.bodies.size;
+      const _dormantCount = _all.filter(e => e._dormant).length;
+      const _campfireCount = (this.pois || []).filter(p => p.type === 'campfire').length;
       this._dbgEntries && this._dbgEntries.push(
-        `T${Math.floor((this.timeAlive||0)/60).toString().padStart(2,'0')}:${(Math.floor(this.timeAlive||0)%60).toString().padStart(2,'0')} [PERF  ] FPS drop: ${fps}  active=${_activeCount}/${_all.length}  bodies=${_bodies}`
+        `T${Math.floor((this.timeAlive||0)/60).toString().padStart(2,'0')}:${(Math.floor(this.timeAlive||0)%60).toString().padStart(2,'0')} [PERF  ] FPS drop: ${fps}  active=${_activeCount}/${_all.length}  dormant=${_dormantCount}  bodies=${_bodies}  campfires=${_campfireCount}`
       );
     }
     const t      = Math.floor(this.timeAlive || 0);
     const ts     = `${Math.floor(t/60).toString().padStart(2,'0')}:${(t%60).toString().padStart(2,'0')}`;
-    const active = (this.enemies || []).filter(e => e.spr?.active && !e._dormant).length;
+    const active = this._activeEnemyCount ?? (this.enemies || []).filter(e => e.spr?.active && !e._dormant).length;
     const total  = (this.enemies || []).length;
     const phase  = this.isNight ? 'NIGHT' : 'DAY';
     const p1s    = this.p1
@@ -8057,7 +9356,7 @@ class GameScene extends Phaser.Scene {
       `Mode     : ${mode}`,
       `Session  : ${Math.floor(t/60)}m ${t%60}s`,
       `Day      : ${this.dayNum||1}   Diff: ${this._diffMult ? this._diffMult().toFixed(1) : '?'}x`,
-      `Kills    : ${this.kills||0}`,
+      `Kills    : ${this.kills||0}  (P1:${this.p1?.kills||0}${this.p2 ? '  P2:'+this.p2.kills : ''})`,
       `Seed     : ${this._worldSeed||'?'}`,
       p1s, p2s,
       `─────────────────────────────────────────`,
@@ -8090,15 +9389,17 @@ class GameScene extends Phaser.Scene {
     }
   }
 
-  killEnemy(e) {
+  killEnemy(e, owner = null) {
     if (e.dying) return; // already being killed — prevent double-kill & double-count
     e.dying = true;
     e.hp = 0;
     if (e._den) e._den.liveCount = Math.max(0, (e._den.liveCount || 0) - 1);
     this.kills++;
+    if (owner) owner.kills++;
     this._log('Enemy killed  type=' + e.type + '  kills=' + this.kills, 'combat');
-    // Remove from update loop immediately so dead entries don't accumulate
-    this.enemies = this.enemies.filter(e2 => e2 !== e);
+    // Remove from update loop immediately — splice avoids reallocating the whole array
+    const _ei = this.enemies.indexOf(e);
+    if (_ei !== -1) this.enemies.splice(_ei, 1);
     SFX.enemyDie();
     // Stop movement immediately — prevent corpse from drifting
     if (e.spr.body) { e.spr.body.setVelocity(0, 0); e.spr.body.enable = false; }
@@ -8118,11 +9419,12 @@ class GameScene extends Phaser.Scene {
     });
     // Raider kill — check if camp cleared
     if (e.isRaider) {
-      this.raiders = this.raiders.filter(r => r !== e);
+      const _ri = this.raiders.indexOf(e); if (_ri !== -1) this.raiders.splice(_ri, 1);
       if (this.raiders.length === 0 && this.raidCamp) {
-        this._log(`Raider camp cleared!  day=${this.dayNum}  kills=${this.kills}  raiders_return_day=${this.dayNum+10}`, 'world');
-        this.hint('Raider camp cleared! Loot cache unlocked — raiders return in 10 days…', 4500);
-        this.raidRespawnDay = this.dayNum + 10;
+        const _raidDays = this.hc.raidRespawnDays;
+        this._log(`Raider camp cleared!  day=${this.dayNum}  kills=${this.kills}  raiders_return_day=${this.dayNum+_raidDays}`, 'world');
+        this.hint('Raider camp cleared! Loot cache unlocked — raiders return in ' + _raidDays + ' days…', 4500);
+        this.raidRespawnDay = this.dayNum + _raidDays;
         if (this.raidCamp.spr && this.raidCamp.spr.active) this.raidCamp.spr.setTint(0x555555);
         // Unlock the loot cache
         const cache = this.raidCamp.cache;
@@ -8144,6 +9446,7 @@ class GameScene extends Phaser.Scene {
       if (e.hpBar && e.hpBar.active) e.hpBar.destroy();
       if (e.nameLabel && e.nameLabel.active) e.nameLabel.destroy();
       if (e._telegraphGfx && e._telegraphGfx.active) e._telegraphGfx.destroy();
+      if (e._indicator && e._indicator.active) e._indicator.destroy();
       this.boss = null;
       this.bossDefeated = true;
       this._log(`Boss defeated: ${e.name||e.type}  day=${this.dayNum}  kills=${this.kills}`, 'world');
@@ -8191,21 +9494,99 @@ class GameScene extends Phaser.Scene {
     }
     // Dust Hound pack frenzy — surviving packmates speed up for 4s on death
     if (e.type === 'dust_hound' && e._packId !== undefined) {
-      this.enemies.forEach(other => {
-        if (other.type === 'dust_hound' && other._packId === e._packId && other.spr?.active) {
+      const packmates = this._packIndex?.get(e._packId) || [];
+      for (const other of packmates) {
+        if (other !== e && other.spr?.active) {
           other._frenzied = true;
           other.spr.setTint(0xff8800);
           this.time.delayedCall(4000, () => {
             if (other.spr?.active) { other._frenzied = false; other.spr.clearTint(); }
           });
         }
-      });
+      }
     }
     this.dropResource(ex, ey, e.type);
   }
 
   // Per-frame proximity check for spike traps.  Replaces physics.add.overlap because
   // add.image() has no physics body, and it also covers enemies that spawn after placement.
+  _updateScoutPanel() {
+    const SCOUT_DATA = {
+      wolf:           { atk: 'Bite',         weak: 'Spikes / fire',  note: '"Asked three questions. Got a growl."' },
+      rat:            { atk: 'Swarm nip',     weak: 'AoE attacks',   note: '"Honestly? Kind of cute. Still a threat."' },
+      bear:           { atk: 'Maul',          weak: 'Keep distance', note: '"Named this one Gerald."' },
+      raider_brawler: { atk: 'Melee rush',    weak: 'Kite & shoot',  note: '"Very passionate. Very punchy."' },
+      raider_shooter: { atk: 'Ranged shots',  weak: 'Get close fast',note: '"Asked about reload rate. He ran."' },
+      raider_heavy:   { atk: 'Heavy melee',   weak: 'Fire & retreat',note: '"Too slow for questions. Very big."' },
+      dust_hound:     { atk: 'Pack nip',      weak: 'Separate them', note: '"Pack mentality. Asked the alpha. Complicated."' },
+      ice_crawler:    { atk: 'Frost slow',    weak: 'Fire attacks',  note: '"Cold outside, deeply misunderstood."' },
+      bog_lurker:     { atk: 'Ambush lunge',  weak: 'Light it up',   note: '"Lurks. Did not answer questions. Rude."' },
+      spider_ruins:   { atk: 'Web drop',      weak: 'Keep moving',   note: '"Eight eyes. Eight chances to connect."' },
+      water_lurker:   { atk: 'Drag under',    weak: 'Stay off water',note: '"Waved at it. It didn\'t wave back."' },
+    };
+
+    const abigail = [this.p1, this.p2].find(p => p && p.charData && p.charData.id === 'ranger' && !p.isDowned && p.spr && p.spr.active);
+    if (!abigail) { this._hideScoutPanel(); return; }
+
+    // Find nearest enemy within scout range
+    let nearest = null, nearDist = Infinity;
+    if (this.enemies) {
+      for (const e of this.enemies) {
+        if (!e.spr?.active || e.dying || e._dormant) continue;
+        const d = Phaser.Math.Distance.Between(abigail.spr.x, abigail.spr.y, e.spr.x, e.spr.y);
+        if (d < 120 && d < nearDist) { nearDist = d; nearest = e; }
+      }
+    }
+
+    if (!nearest) { this._hideScoutPanel(); return; }
+
+    const data = SCOUT_DATA[nearest.type];
+    if (!data) { this._hideScoutPanel(); return; }
+
+    // Build panel lazily
+    const { W, H } = CFG;
+    if (!this._scoutPanel) {
+      this._scoutPanel = {
+        bg:   this._h(this.add.graphics().setDepth(105)),
+        name: this._h(this.add.text(0, 0, '', { fontFamily:'monospace', fontSize:'11px', color:'#ffddaa', stroke:'#000', strokeThickness:2 }).setDepth(106)),
+        atk:  this._h(this.add.text(0, 0, '', { fontFamily:'monospace', fontSize:'9px',  color:'#ff9966' }).setDepth(106)),
+        weak: this._h(this.add.text(0, 0, '', { fontFamily:'monospace', fontSize:'9px',  color:'#88ff88' }).setDepth(106)),
+        note: this._h(this.add.text(0, 0, '', { fontFamily:'monospace', fontSize:'8px',  color:'#ddccff', wordWrap:{ width: 160 } }).setDepth(106)),
+        visible: false,
+      };
+    }
+
+    const p = this._scoutPanel;
+    const px = W - 14, py = H / 2 - 40;
+    const nameStr = nearest.type.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
+
+    p.bg.clear();
+    p.bg.fillStyle(0x000000, 0.75); p.bg.fillRoundedRect(px - 178, py - 6, 178, 90, 6);
+    p.bg.lineStyle(1, 0x886633, 0.8); p.bg.strokeRoundedRect(px - 178, py - 6, 178, 90, 6);
+
+    p.name.setText('>> ' + nameStr).setPosition(px - 172, py);
+    p.atk.setText('ATK: ' + data.atk).setPosition(px - 172, py + 16);
+    p.weak.setText('WEAK: ' + data.weak).setPosition(px - 172, py + 30);
+    p.note.setText(data.note).setPosition(px - 172, py + 46);
+
+    if (!p.visible) {
+      p.visible = true;
+      [p.bg, p.name, p.atk, p.weak, p.note].forEach(o => o.setAlpha(0).setVisible(true));
+      this.tweens.add({ targets: [p.bg, p.name, p.atk, p.weak, p.note], alpha: 1, duration: 200 });
+    }
+
+    // Auto-hide timer refresh
+    if (this._scoutHideTimer) this._scoutHideTimer.remove();
+    this._scoutHideTimer = this.time.delayedCall(4000, () => this._hideScoutPanel());
+  }
+
+  _hideScoutPanel() {
+    if (!this._scoutPanel || !this._scoutPanel.visible) return;
+    this._scoutPanel.visible = false;
+    const objs = [this._scoutPanel.bg, this._scoutPanel.name, this._scoutPanel.atk, this._scoutPanel.weak, this._scoutPanel.note];
+    this.tweens.add({ targets: objs, alpha: 0, duration: 250, onComplete: () => objs.forEach(o => o.setVisible(false)) });
+  }
+
   updateSpikeTraps() {
     if (!this.spikeTraps || !this.spikeTraps.length || !this.enemies) return;
     for (let si = this.spikeTraps.length - 1; si >= 0; si--) {
@@ -8298,38 +9679,19 @@ class GameScene extends Phaser.Scene {
       drops.push('item_metal');
       drops.push('item_ammo');
     } else {
-      // Food drops scale down each day so mid-game survival stays tense
+      // Food drops scale down each day so mid-game survival stays tense.
+      // Hardcore additionally multiplies every roll by hc.resourceDropMult (0.75).
+      const rdm      = this.hc.resourceDropMult;
       const foodMult = Math.max(0.35, 1 - 0.12 * ((this.dayNum || 1) - 1));
       // All enemies drop food sometimes
-      if (Math.random() < 0.4 * foodMult) drops.push('item_food');
-      // Type-specific drops
-      if (enemyType === 'wolf') {
-        if (Math.random() < 0.5) drops.push('item_fiber');
-        if (Math.random() < 0.3) drops.push('item_metal');
-      } else if (enemyType === 'rat') {
-        if (Math.random() < 0.6) drops.push('item_fiber');
-        if (Math.random() < 0.25) drops.push('item_ammo');
-      } else if (enemyType === 'bear') {
-        drops.push('item_metal');
-        if (Math.random() < 0.5) drops.push('item_wood');
-        if (Math.random() < 0.4) drops.push('item_fiber');
-      } else if (enemyType === 'brawler' || enemyType === 'shooter' || enemyType === 'heavy') {
-        // Raiders drop ammo and supplies
-        if (Math.random() < 0.6) drops.push('item_ammo');
-        if (Math.random() < 0.4) drops.push('item_metal');
-        if (Math.random() < 0.3 * foodMult) drops.push('item_food');
-      } else if (enemyType === 'ice_crawler') {
-        if (Math.random() < 0.5) drops.push('item_fiber');
-        if (Math.random() < 0.2) drops.push('item_rare');
-      } else if (enemyType === 'spider_ruins') {
-        if (Math.random() < 0.7) drops.push('item_fiber');
-        if (Math.random() < 0.25) drops.push('item_metal');
-      } else if (enemyType === 'bog_lurker') {
-        if (Math.random() < 0.5 * foodMult) drops.push('item_food');
-        if (Math.random() < 0.3) drops.push('item_fiber');
-      } else if (enemyType === 'dust_hound') {
-        if (Math.random() < 0.4 * foodMult) drops.push('item_food');
-        if (Math.random() < 0.35) drops.push('item_fiber');
+      if (Math.random() < 0.4 * foodMult * rdm) drops.push('item_food');
+      // Type-specific drops via lookup table (flags: 0=plain rdm, 1=foodMult*rdm, 2=rare/hc-blocked)
+      const _loot = ENEMY_LOOT[enemyType];
+      if (_loot) {
+        for (const [item, chance, flags] of _loot) {
+          if (flags === 2 && this.hc.rareDropsBossOnly) continue;
+          if (Math.random() < chance * (flags === 1 ? foodMult : 1) * rdm) drops.push(item);
+        }
       }
     }
     drops.forEach((key, i) => {
@@ -8357,9 +9719,10 @@ class GameScene extends Phaser.Scene {
           }
           this.redrawHUD();
         } else if (item.itemType === 'food') {
-          player.hp = Math.min(player.maxHp, player.hp + 15);
+          const _foodHeal = Math.max(1, Math.round(15 * this.hc.foodHealMult));
+          player.hp = Math.min(player.maxHp, player.hp + _foodHeal);
           this._log(`${player.charData.player} picked up food  hp=${player.hp}/${player.maxHp}`, 'player');
-          label = '+15 HP';
+          label = '+' + _foodHeal + ' HP';
         } else {
           player.inv[item.itemType] = (player.inv[item.itemType] || 0) + 1;
           this.resourcesGathered++;
@@ -8383,7 +9746,7 @@ class GameScene extends Phaser.Scene {
     // this.enemies already initialised in create() so water lurkers from _buildLakes are preserved
     this.waveNum = 0;
     this.waveTimer = 0;
-    this.WAVE_INTERVAL = 90000; // 90 seconds between waves
+    this.WAVE_INTERVAL = this.hc.waveInterval; // Survival 90s / Hardcore 75s
     this._spawnGroup(worldW, worldH, cx, cy, { wolf:15, rat:20, bear:6 }, false);
 
     // Initial biome-exclusive enemy spawns
@@ -8404,7 +9767,7 @@ class GameScene extends Phaser.Scene {
                     rat:       {key:'rat',       hp:38, speed:145,dmg:7, baseScale:1.6,w:15,h:9 },
                     bear:      {key:'bear',      hp:160,speed:58, dmg:20,baseScale:2.4,w:24,h:18},
                     bog_lurker:{key:'bog_lurker',hp:65, speed:60, dmg:14,baseScale:1.8,w:20,h:14},
-                    dust_hound:{key:'dust_hound',hp:35, speed:125,dmg:6, baseScale:1.3,w:18,h:12} }[type];
+                    dust_hound:{key:'dust_hound',hp:35, speed:125,dmg:6, baseScale:1.3,w:18,h:12,atkInterval:1500} }[type];
         const count = Phaser.Math.Between(2, 4);
         for (let i = 0; i < count; i++) {
           const ang = (i / count) * Math.PI * 2;
@@ -8595,7 +9958,9 @@ class GameScene extends Phaser.Scene {
     const { TILE, SAFE_R, MAP_W, MAP_H, LAKE_SPECS, PLACEMENT } = CFG;
     const _rng = _worldRng;
     const _ri = (a, b) => a + Math.floor(_rng() * (b - a + 1));
-    this.waterDens = this.waterDens || [];
+    // Rebuilt fresh each run — previously `this.waterDens || []` reused the
+    // prior run's array, leaking stale den references across restarts.
+    this.waterDens = [];
     this.pois = this.pois || [];
     let _lakePlaced = 0, _lakeSkipCenter = 0, _lakeSkipBlob = 0;
     for (const biome of LAKE_SPECS) {
@@ -8764,7 +10129,7 @@ class GameScene extends Phaser.Scene {
       ice_crawler:  { hp:45,  speed:130, dmg:7,  baseScale:1.6, w:18, h:12, atkInterval:1400 },
       spider_ruins: { hp:40,  speed:70,  dmg:8,  baseScale:1.6, w:16, h:12, atkInterval:1800 },
       bog_lurker:   { hp:55,  speed:55,  dmg:13, baseScale:1.8, w:20, h:14, atkInterval:2000 },
-      dust_hound:   { hp:28,  speed:118, dmg:5,  baseScale:1.3, w:18, h:12, atkInterval:1300 },
+      dust_hound:   { hp:28,  speed:118, dmg:5,  baseScale:1.3, w:18, h:12, atkInterval:1500 },
     };
     const aggros = { ice_crawler:160, spider_ruins:130, bog_lurker:80, dust_hound:200 };
     const t = defs[type];
@@ -8818,10 +10183,12 @@ class GameScene extends Phaser.Scene {
   }
 
   // Day-based difficulty multiplier.
-  // Day 1 = 1.0× (base tuned values). Grows 10% per day, caps at 3.0× on day 21+.
+  // Survival: base 1.0, +10% per day, cap 3.0× on day 21+.
+  // Hardcore: base 1.15, +15% per day, cap 3.5× (see this.hc).
   // Applies to enemy HP, damage, speed, and attack rate at spawn time.
   _diffMult() {
-    return Math.min(3.0, 1 + (this.dayNum - 1) * 0.1);
+    const hc = this.hc || { diffBase: 1.0, diffRamp: 0.10, diffCap: 3.0 };
+    return Math.min(hc.diffCap, hc.diffBase + (this.dayNum - 1) * hc.diffRamp);
   }
 
   _spawnGroup(worldW, worldH, cx, cy, counts, fromEdges) {
@@ -8855,6 +10222,19 @@ class GameScene extends Phaser.Scene {
             ey = Phaser.Math.Between(TILE*3, worldH-TILE*3);
           } while (Phaser.Math.Distance.Between(ex, ey, cx, cy) < SAFE_R*TILE*2.5);
         }
+        // Nudge spawn off solid tiles (mountains) — up to 8 attempts at a random offset
+        if (this._solidTileSet) {
+          const _stx = Math.round(ex / TILE), _sty = Math.round(ey / TILE);
+          if (this._solidTileSet.has(_stx + ',' + _sty)) {
+            for (let _sa = 0; _sa < 8; _sa++) {
+              const _ox = Phaser.Math.Between(-3, 3), _oy = Phaser.Math.Between(-3, 3);
+              if (!this._solidTileSet.has((_stx + _ox) + ',' + (_sty + _oy))) {
+                ex = (_stx + _ox) * TILE; ey = (_sty + _oy) * TILE;
+                break;
+              }
+            }
+          }
+        }
         // Size variance: 1.0x to 1.5x — floor raised so enemies are never too small to see
         const sizeMult = Phaser.Math.FloatBetween(1.0, 1.5);
         const sc = t.baseScale * sizeMult;
@@ -8874,8 +10254,9 @@ class GameScene extends Phaser.Scene {
         const e = { spr, hp, maxHp:hp, speed:spd, dmg, atkInterval, type:t.key, attackTimer:0, wanderTimer:Phaser.Math.Between(0,2000), aggroRange:aggroR, attackRange:atkR, sizeMult };
         // Start dormant if far from all players
         {
-          const _ap = [this.p1, this.p2].filter(p => p && p.spr && p.spr.active);
-          const _sd = _ap.length ? Math.min(..._ap.map(p => Phaser.Math.Distance.Between(ex, ey, p.spr.x, p.spr.y))) : Infinity;
+          const _ap = this._activePlayers || [this.p1, this.p2].filter(p => p && p.spr && p.spr.active);
+          let _sd = Infinity;
+          for (const p of _ap) { const _d = Phaser.Math.Distance.Between(ex, ey, p.spr.x, p.spr.y); if (_d < _sd) _sd = _d; }
           if (_sd > CFG.DORMANT_RADIUS) { e._dormant = true; spr.setVisible(false); if (spr.body) { spr.body.enable = false; this.physics.world.bodies.delete(spr.body); } }
         }
         this.enemies.push(e);
@@ -8889,7 +10270,8 @@ class GameScene extends Phaser.Scene {
       this.waveTimer = 0;
       this.waveNum++;
       if (this.enemies.length >= CFG.MAX_ENEMIES) {
-        this._log('Wave ' + (this.waveNum+1) + ' capped — MAX_ENEMIES reached (' + this.enemies.length + ')', 'world');
+        const _wSkip = Math.min(6 + this.waveNum * 2, 20), _rSkip = Math.min(8 + this.waveNum * 3, 30), _bSkip = Math.min(1 + this.waveNum, 8);
+        this._log('Wave ' + this.waveNum + ' capped — MAX_ENEMIES reached (' + this.enemies.length + '/' + CFG.MAX_ENEMIES + ')  skipped: w=' + _wSkip + ' r=' + _rSkip + ' b=' + _bSkip, 'world');
         return;
       }
       // Escalating counts
@@ -8904,8 +10286,8 @@ class GameScene extends Phaser.Scene {
         this._spawnBiomeEnemy('bog_lurker',   'swamp',  Math.min(1 + wn, 4),  1);
         this._spawnBiomeEnemy('dust_hound',   'waste',  Math.min(3 * wn, 9),  3);
       }
-      this._log('Wave ' + (this.waveNum+1) + ' day=' + this.dayNum + ' diff=' + this._diffMult().toFixed(1) + 'x  w=' + w + ' r=' + r + ' b=' + b, 'world');
-      this.hint('Wave ' + (this.waveNum+1) + '! Enemies approaching from the wastes!', 3000);
+      this._log('Wave ' + this.waveNum + ' day=' + this.dayNum + ' diff=' + this._diffMult().toFixed(1) + 'x  w=' + w + ' r=' + r + ' b=' + b, 'world');
+      this.hint('Wave ' + this.waveNum + '! Enemies approaching from the wastes!', 3000);
       SFX._play(200, 'sawtooth', 0.3, 0.4, 'drop');
     }
   }
@@ -8989,7 +10371,7 @@ class GameScene extends Phaser.Scene {
               if (!this._ctx.firstHarvest) {
                 this._ctx.firstHarvest = true;
                 this._tutTrigger('gather');
-                this.time.delayedCall(800, () => this.hint('Press Q (P1) or 0 (P2) to open the Crafting Menu', 5000));
+                if (this._tutShown?.has('gather')) this.hint('Resources collected! Press Q to Craft — build Walls and more.', 6000);
               }
               item.destroy();
             };
@@ -9116,8 +10498,8 @@ class GameScene extends Phaser.Scene {
       }
       return true;
     };
-    // Try direct angle, then ±37°, ±75°, ±112° until a clear heading is found
-    for (const off of [0, 0.65, -0.65, 1.3, -1.3, 1.95, -1.95]) {
+    // Try direct angle, then ±37°, ±75°, ±112°, ±150°, 180° until a clear heading is found
+    for (const off of [0, 0.65, -0.65, 1.3, -1.3, 1.95, -1.95, 2.6, -2.6, Math.PI]) {
       const ang = baseAng + off;
       if (isHeadingClear(ang)) return { x: Math.cos(ang) * spd, y: Math.sin(ang) * spd };
     }
@@ -9126,14 +10508,28 @@ class GameScene extends Phaser.Scene {
 
   updateEnemies(delta) {
     if (!this.enemies || this.isOver) return;
-    const players = [this.p1, this.p2].filter(p => p && !p.isDowned && p.hp > 0 && p.spr.visible);
+    const players = [this.p1, this.p2].filter(p => p && p.spr && !p.isDowned && p.hp > 0 && p.spr.visible);
+    // Flat player positions cached once per frame — avoids repeated .spr chain dereference in hot loops
+    const _pPos = players.map(p => ({ x: p.spr.x, y: p.spr.y }));
     // Hoist camera view once per frame for dormancy + culling checks
     const _cam = this.cameras.main;
     const _view = _cam.worldView;
     const _VIEW_BUF = 400; // px buffer outside viewport before hiding sprite
-    // Count active enemies once per frame for MAX_ACTIVE_ENEMIES cap
+    // Count active enemies once per frame for MAX_ACTIVE_ENEMIES cap; cached on scene for _dbgRefresh
     let _activeCount = 0;
     for (const _e of this.enemies) { if (_e.spr?.active && !_e._dormant) _activeCount++; }
+    this._activeEnemyCount = _activeCount;
+
+    // Build pack index once per tick so killEnemy() can look up packmates in O(k) instead of O(n)
+    const _packIndex = new Map();
+    for (const _e of this.enemies) {
+      if (_e._packId !== undefined && _e.spr?.active) {
+        let _arr = _packIndex.get(_e._packId);
+        if (!_arr) { _arr = []; _packIndex.set(_e._packId, _arr); }
+        _arr.push(_e);
+      }
+    }
+    this._packIndex = _packIndex;
 
     this.enemies.forEach(e => {
       if (e.dying || !e.spr.active) return;
@@ -9143,8 +10539,8 @@ class GameScene extends Phaser.Scene {
       // Raiders are always aggressive — never dormant. Boss already excluded above.
       if (!e.isRaider) {
         let _minDist2 = Infinity;
-        for (const p of players) {
-          const _dx = e.spr.x - p.spr.x, _dy = e.spr.y - p.spr.y;
+        for (const _pp of _pPos) {
+          const _dx = e.spr.x - _pp.x, _dy = e.spr.y - _pp.y;
           const _d2 = _dx * _dx + _dy * _dy;
           if (_d2 < _minDist2) _minDist2 = _d2;
         }
@@ -9153,7 +10549,7 @@ class GameScene extends Phaser.Scene {
           if (_minDist2 < CFG.WAKE_RADIUS * CFG.WAKE_RADIUS && _activeCount < CFG.MAX_ACTIVE_ENEMIES) {
             // Wake up (only if under active-enemy cap)
             e._dormant = false;
-            if (e.spr.body) {
+            if (e.spr.body && !e.spr.body.destroyed) {
               this.physics.world.bodies.set(e.spr.body);
               e.spr.body.enable = true;
               e.spr.body.reset(e.spr.x, e.spr.y);
@@ -9214,6 +10610,79 @@ class GameScene extends Phaser.Scene {
           e._scaredFromX = null; e._scaredFromY = null;
         }
         return;
+      }
+      // Lauren (charmer) passive — human enemies are permanent allies; others charmed within aura
+      const HUMAN_ENEMY_TYPES = ['raider_brawler', 'raider_shooter', 'raider_heavy'];
+      const isHumanEnemy = HUMAN_ENEMY_TYPES.includes(e.type);
+      const charmerPlayer = [this.p1, this.p2].find(p => p && p.charData && p.charData.id === 'charmer' && !p.isDowned && p.spr && p.spr.active);
+      if (!e._aggroOverride) {
+        if (charmerPlayer) {
+          let charmed = false;
+          if (isHumanEnemy) {
+            // Human enemies are always Lauren's allies — no range or day/night restriction
+            charmed = true;
+          } else {
+            // Non-human enemies: charm within aura radius (day always, night only if upgraded)
+            const auraR = charmerPlayer._charmerUpgraded ? 280 : 200;
+            const effectiveR = this.isNight ? (charmerPlayer._charmerUpgraded ? 140 : 0) : auraR;
+            if (effectiveR > 0) {
+              const d = Phaser.Math.Distance.Between(e.spr.x, e.spr.y, charmerPlayer.spr.x, charmerPlayer.spr.y);
+              if (d < effectiveR) charmed = true;
+            }
+          }
+          if (charmed) {
+            if (!e._charmTinted) { e._charmTinted = true; e.spr.setTint(0xffaacc); }
+            if (isHumanEnemy) {
+              // Ally AI: protect Lauren — find nearest non-human enemy and attack it
+              const allyTarget = this.enemies.find(t =>
+                t !== e && !t.dying && t.spr && t.spr.active &&
+                !HUMAN_ENEMY_TYPES.includes(t.type) &&
+                Phaser.Math.Distance.Between(e.spr.x, e.spr.y, t.spr.x, t.spr.y) < 350
+              );
+              if (allyTarget) {
+                const spd = e.speed * 0.85;
+                const vel = this._steerToward(e, allyTarget.spr.x, allyTarget.spr.y, spd);
+                e.spr.setVelocity(vel.x, vel.y);
+                const allyDist = Phaser.Math.Distance.Between(e.spr.x, e.spr.y, allyTarget.spr.x, allyTarget.spr.y);
+                if (allyDist < e.attackRange) {
+                  e.attackTimer = (e.attackTimer || 0) - delta;
+                  if (e.attackTimer <= 0) {
+                    this._hurtEnemy(allyTarget, e.dmg, e.spr.x, e.spr.y, 0xff88cc, null);
+                    e.attackTimer = e.atkInterval || 1200;
+                  }
+                }
+              } else {
+                // No nearby threat — escort Lauren
+                const d = Phaser.Math.Distance.Between(e.spr.x, e.spr.y, charmerPlayer.spr.x, charmerPlayer.spr.y);
+                if (d > 80) {
+                  const vel = this._steerToward(e, charmerPlayer.spr.x, charmerPlayer.spr.y, e.speed * 0.6);
+                  e.spr.setVelocity(vel.x, vel.y);
+                } else {
+                  e.spr.setVelocity(0, 0);
+                }
+              }
+              return;
+            } else {
+              e.spr.setVelocity(0, 0);
+              return;
+            }
+          }
+        }
+      }
+      // Clear charm tint when conditions no longer apply
+      if (e._charmTinted && (e._aggroOverride || !charmerPlayer || (isHumanEnemy && e._aggroOverride))) {
+        e._charmTinted = false;
+        if (e.spr?.active) e.spr.clearTint();
+      }
+      // Flower-charm: brief suppress from Flower Toss hit
+      if ((e._charmedTimer || 0) > 0 && !e._aggroOverride) {
+        e._charmedTimer -= delta;
+        e.spr.setVelocity(0, 0);
+        if (!e._charmTinted) { e._charmTinted = true; e.spr.setTint(0xffaacc); }
+        return;
+      } else if (e._charmedTimer <= 0 && e._charmTinted && !e._aggroOverride) {
+        e._charmTinted = false;
+        if (e.spr?.active) e.spr.clearTint();
       }
       // ── Biome-enemy special pre-frame logic ──────────────────
       // Bog Lurker: stays hidden until player is within 90px, then bursts
@@ -9288,7 +10757,7 @@ class GameScene extends Phaser.Scene {
         if (d < nearDist) { nearDist = d; nearest = p; }
       });
       if (!nearest) { e.spr.setVelocity(0,0); return; }
-      const nightMult = (this.isNight) ? 1.35 : 1;
+      const nightMult = (this.isNight) ? this.hc.nightMult : 1;
       const aggroRange = e.aggroRange * nightMult;
 
       if (nearDist < aggroRange) {
@@ -9342,7 +10811,22 @@ class GameScene extends Phaser.Scene {
           const chaseY = e.lastKnownY !== undefined ? e.lastKnownY : nearest.spr.y;
           // Steer around obstacles instead of running straight into them
           const vel = this._steerToward(e, chaseX, chaseY, spd);
-          e.spr.setVelocity(vel.x, vel.y);
+          e._escapeTimer = (e._escapeTimer || 0) - delta;
+          if (e._escapeTimer > 0) {
+            // Keep the escape burst velocity — don't overwrite it
+          } else if (vel.x === 0 && vel.y === 0) {
+            e._stuckDur = (e._stuckDur || 0) + delta;
+            if (e._stuckDur > 800) {
+              this._log(`enemy unstuck  type=${e.type}  pos=(${Math.floor(e.spr.x/CFG.TILE)},${Math.floor(e.spr.y/CFG.TILE)})`, 'combat');
+              e._stuckDur = 0;
+              const escAng = Phaser.Math.FloatBetween(0, Math.PI * 2);
+              e.spr.setVelocity(Math.cos(escAng) * spd * 1.5, Math.sin(escAng) * spd * 1.5);
+              e._escapeTimer = 600;
+            }
+          } else {
+            e._stuckDur = 0;
+            e.spr.setVelocity(vel.x, vel.y);
+          }
           // directional flip is handled below in the walk-cycle block
         }
 
@@ -9354,6 +10838,7 @@ class GameScene extends Phaser.Scene {
             nearest.hp = Math.max(0, nearest.hp);
             this._log(`${e.type} hit ${nearest.charData.player} dmg=${dmg} hp=${nearest.hp}/${nearest.maxHp}`, 'combat');
             SFX.playerHurt();
+            this._floatDamage(nearest.spr.x, nearest.spr.y - 18, Math.round(dmg));
             if (nearest.isSleeping) { this.wakePlayer(nearest); this._hideSleepIndicator(); this.hint(nearest.charData.player + ' was woken by an enemy!', 2000); }
             // Only apply red hurt tint if shield didn't already flash blue
             if (dmg >= e.dmg) {
@@ -9364,7 +10849,7 @@ class GameScene extends Phaser.Scene {
                 else nearest.spr.clearTint();
               });
             }
-            e.attackTimer = e.atkInterval || (e.type==='bear' ? 2400 : e.type==='wolf' ? 1600 : 1200);
+            e.attackTimer = e.atkInterval || (e.type==='bear' ? 2400 : e.type==='wolf' ? 1600 : e.type==='dust_hound' ? 1500 : 1200);
             this.checkDeaths();
           }
         }
@@ -9373,7 +10858,10 @@ class GameScene extends Phaser.Scene {
         if (e.wanderTimer <= 0) {
           const ang = Math.random() * Math.PI * 2;
           const wspd = (e._effectiveSpeed !== undefined ? e._effectiveSpeed : e.speed) * 0.3;
-          e.spr.setVelocity(Math.cos(ang)*wspd, Math.sin(ang)*wspd);
+          const wanderX = e.spr.x + Math.cos(ang) * 200;
+          const wanderY = e.spr.y + Math.sin(ang) * 200;
+          const vel = this._steerToward(e, wanderX, wanderY, wspd);
+          e.spr.setVelocity(vel.x, vel.y);
           e.wanderTimer = Phaser.Math.Between(1500, 3500);
         }
       }
@@ -9399,7 +10887,8 @@ class GameScene extends Phaser.Scene {
         }
         if (e.isRaider) {
           const _dirSuffix = _dir === 'side' ? '' : '_' + _dir;
-          e.spr.setTexture('raider_' + e.type + _dirSuffix + (_moving ? _step : ''));
+          const _tex = 'raider_' + e.type + _dirSuffix + (_moving ? _step : '');
+          if (e._lastTexKey !== _tex) { e._lastTexKey = _tex; e.spr.setTexture(_tex); }
         }
       }
     });
@@ -9432,7 +10921,7 @@ class GameScene extends Phaser.Scene {
       if (!this._ctx.firstNight) {
         this._ctx.firstNight = true;
         this._tutTrigger('nightfall');
-        this.hint('Night falls — enemies are faster and more dangerous! Build Walls or sleep in a Bed.', 6000);
+        if (this._tutShown?.has('nightfall')) this.hint('Night falls — enemies are faster and more dangerous! Build Walls or sleep in a Bed.', 6000);
       }
     }
 
@@ -9445,7 +10934,7 @@ class GameScene extends Phaser.Scene {
       this.hint('Dawn of Day ' + this.dayNum + ' \u2014 enemies grow stronger!', 3000);
       if (this.dayNum === 2) this._tutTrigger('caches');
       // Periodic hunting party — separate cadence from raid camp respawn.
-      if (this.dayNum >= (this.huntNextDay || 0) && this.dayNum >= 2) {
+      if (this.dayNum >= (this.huntNextDay || 0) && this.dayNum >= this.hc.huntingPartyStartDay) {
         this.huntNextDay = this.dayNum + Phaser.Math.Between(2, 3);
         this.time.delayedCall(6000, () => { if (!this.isOver) this.spawnHuntingParty(); });
       }
@@ -9460,9 +10949,10 @@ class GameScene extends Phaser.Scene {
           }
         });
       }
-      // Boss schedule: Day 5 = 100% guaranteed debut.
-      // After that, every 5-day interval rolls at 50% (+10% per missed interval).
-      else if (!this.bossSpawned && this.dayNum >= 5 && this.dayNum % 5 === 0) {
+      // Boss schedule: first boss on hc.bossStartDay (guaranteed), then on every
+      // bossStartDay-multiple interval (Survival: days 5, 10, 15…; Hardcore: 4, 8, 12…).
+      // First check rolls at 100%; subsequent missed rolls grow +10% toward guaranteed.
+      else if (!this.bossSpawned && this.dayNum >= this.hc.bossStartDay && this.dayNum % this.hc.bossStartDay === 0) {
         if (this._bossChance === undefined) this._bossChance = 1.0; // day-5 guaranteed
         const roll = this._bossChance;
         if (Math.random() < roll) {
@@ -9533,8 +11023,9 @@ class GameScene extends Phaser.Scene {
           }
           this.redrawHUD();
         } else if (crate.itemType === 'food') {
-          player.hp = Math.min(player.maxHp, player.hp + 20);
-          this._log(`${player.charData.player} crate food  hp=${player.hp}/${player.maxHp}`, 'player');
+          const _crateFoodHeal = Math.max(1, Math.round(20 * this.hc.foodHealMult));
+          player.hp = Math.min(player.maxHp, player.hp + _crateFoodHeal);
+          this._log(`${player.charData.player} crate food +${_crateFoodHeal}  hp=${player.hp}/${player.maxHp}`, 'player');
         } else {
           player.inv[crate.itemType] = (player.inv[crate.itemType] || 0) + 2;
           this.resourcesGathered += 2;
@@ -9616,6 +11107,26 @@ class GameScene extends Phaser.Scene {
     const p = this.buildOwner;
     const x = this.buildGhost.x, y = this.buildGhost.y;
 
+    // Terrain validation — reject placement on water, ice, mountain, toxic, or occupied tiles
+    {
+      const tx = Math.floor(x / CFG.TILE), ty = Math.floor(y / CFG.TILE);
+      if (this._waterMap && this._waterMap[tx + ty * CFG.MAP_W]) {
+        this.hint("Can't build on water!", 2000); return;
+      }
+      if (this._iceMap && this._iceMap[tx + ty * CFG.MAP_W]) {
+        this.hint("Can't build on ice!", 2000); return;
+      }
+      if (this._solidTileSet && this._solidTileSet.has(tx + ',' + ty)) {
+        this.hint("Can't build on a mountain!", 2000); return;
+      }
+      if (this._toxicTileIndex && this._toxicTileIndex.has(tx + ',' + ty)) {
+        this.hint("Can't build on toxic ground!", 2000); return;
+      }
+      if (this.builtWalls && this.builtWalls.some(w => w.active && Phaser.Math.Distance.Between(w.x, w.y, x, y) < 24)) {
+        this.hint("Too close to existing structure!", 2000); return;
+      }
+    }
+
     // Bed requires craftbench to be built first
     if (this.buildType === 'bed' && !this.craftBenchPlaced) {
       this.hint('Need a Craftbench first to build a bed!', 2500);
@@ -9682,8 +11193,13 @@ class GameScene extends Phaser.Scene {
             if (pl.isDowned) return;
             const d = Phaser.Math.Distance.Between(pl.spr.x, pl.spr.y, cf.x, cf.y);
             if (d < 80) {
-              pl.hp = Math.min(pl.maxHp, pl.hp + 3);
-              this._log(`${pl.charData.player} campfire heal +3  hp=${pl.hp}/${pl.maxHp}`, 'player');
+              const _cfHeal = this.hc.campfireHeal;
+              const _cfHpBefore = pl.hp;
+              pl.hp = Math.min(pl.maxHp, pl.hp + _cfHeal);
+              // Suppress log spam when already at max HP — only log actual healing
+              if (_cfHpBefore < pl.maxHp) {
+                this._log(`${pl.charData.player} campfire heal +${_cfHeal}  hp=${pl.hp}/${pl.maxHp}`, 'player');
+              }
             }
           });
         }
@@ -9778,19 +11294,22 @@ class GameScene extends Phaser.Scene {
   // ── CRAFT MENU ─────────────────────────────────────────────────
   static get RECIPES() {
     return [
-      { label: 'Wall',               key: 'wall',              cost: {wood:3},                  needsBench: false, type: 'build' },
-      { label: 'Gate',               key: 'gate',              cost: {wood:4, metal:2},         needsBench: false, type: 'build' },
-      { label: 'Campfire',           key: 'campfire',          cost: {wood:5},                  needsBench: false, type: 'build' },
-      { label: 'Torch',              key: 'torch',             cost: {wood:2, fiber:1},         needsBench: false, type: 'build' },
-      { label: 'Spike Trap',         key: 'spike_trap',        cost: {wood:2, metal:1},         needsBench: false, type: 'build' },
-      { label: 'Craftbench',         key: 'craftbench',        cost: {wood:5, metal:3},         needsBench: false, type: 'build' },
-      { label: 'Bed',                key: 'bed',               cost: {wood:8, fiber:6, metal:2},needsBench: true,  type: 'build' },
-      { label: 'Reinforced Wall',    key: 'reinforced_wall',   cost: {wood:4, metal:3},         needsBench: true,  type: 'build' },
-      { label: 'Med Kit (+40 HP)',   key: 'med_kit',           cost: {fiber:3, food:2},         needsBench: true,  type: 'instant' },
-      { label: 'Ammo Pack (+8)',     key: 'ammo_pack',         cost: {metal:2},                 needsBench: false, type: 'instant' },
-      { label: 'Knight Upgrade',     key: 'knight_upgrade',    cost: {metal:3, fiber:2},        needsBench: true,  type: 'upgrade', charId: 'knight' },
-      { label: 'Architect Upgrade',  key: 'architect_upgrade', cost: {metal:3, wood:2},         needsBench: true,  type: 'upgrade', charId: 'architect' },
-      { label: 'Gunslinger Upgrade', key: 'gunslinger_upgrade',cost: {metal:2, fiber:1},        needsBench: true,  type: 'upgrade', charId: 'gunslinger' },
+      { label: 'Wall',               key: 'wall',              cost: {wood:3},                  needsBench: false, type: 'build',   tooltip: 'Blocks enemies and absorbs damage before collapsing.' },
+      { label: 'Gate',               key: 'gate',              cost: {wood:4, metal:2},         needsBench: false, type: 'build',   tooltip: 'Players pass through freely; blocks all enemies. Toggle with interact.' },
+      { label: 'Campfire',           key: 'campfire',          cost: {wood:5},                  needsBench: false, type: 'build',   tooltip: 'Slowly restores HP for nearby players. Provides light at night.' },
+      { label: 'Torch',              key: 'torch',             cost: {wood:2, fiber:1},         needsBench: false, type: 'build',   tooltip: 'Lights a small area at night. Cheap — place liberally around your base.' },
+      { label: 'Spike Trap',         key: 'spike_trap',        cost: {wood:2, metal:1},         needsBench: false, type: 'build',   tooltip: 'Damages any enemy that steps on it. Stays active indefinitely.' },
+      { label: 'Craftbench',         key: 'craftbench',        cost: {wood:5, metal:3},         needsBench: false, type: 'build',   tooltip: 'Required to unlock advanced recipes, upgrades, and the Bed.' },
+      { label: 'Bed',                key: 'bed',               cost: {wood:8, fiber:6, metal:2},needsBench: true,  type: 'build',   tooltip: 'Sets your respawn point. Sleep in it to greatly reduce down-timer.' },
+      { label: 'Reinforced Wall',    key: 'reinforced_wall',   cost: {wood:4, metal:3},         needsBench: true,  type: 'build',   tooltip: 'Twice as durable as a standard wall. Holds the line against heavy raids.' },
+      { label: 'Med Kit (+40 HP)',   key: 'med_kit',           cost: {fiber:3, food:2},         needsBench: true,  type: 'instant', tooltip: 'Instantly restores 40 HP to the crafter. Use when critically wounded.' },
+      { label: 'Ammo Pack (+8)',     key: 'ammo_pack',         cost: {metal:2},                 needsBench: false, type: 'instant', tooltip: 'Adds 8 rounds to the shared team ammo pool immediately.' },
+      { label: 'Knight Upgrade',     key: 'knight_upgrade',    cost: {metal:3, fiber:2},        needsBench: true,  type: 'upgrade', charId: 'knight',     tooltip: 'Knight: unlocks Shield Throw ability + passive 70% damage block.' },
+      { label: 'Architect Upgrade',  key: 'architect_upgrade', cost: {metal:3, wood:2},         needsBench: true,  type: 'upgrade', charId: 'architect',  tooltip: 'Architect: unlocks Nail Gun secondary attack.' },
+      { label: 'Gunslinger Upgrade', key: 'gunslinger_upgrade',cost: {metal:2, fiber:1},        needsBench: true,  type: 'upgrade', charId: 'gunslinger', tooltip: 'Gunslinger: increases clip size by 4 rounds (8 → 12).' },
+      { label: 'Flower Bouquet (+3)',key: 'flower_bouquet',    cost: {food:2, fiber:1},         needsBench: false, type: 'instant', charId: 'charmer',    tooltip: 'Lauren only: boosts her charm counter by 3 immediately.' },
+      { label: 'Lauren Upgrade',     key: 'charmer_upgrade',   cost: {metal:2, fiber:2},        needsBench: true,  type: 'upgrade', charId: 'charmer',    tooltip: 'Lauren: unlocks Charmer passive buff and special ability.' },
+      { label: 'Abigail Upgrade',    key: 'ranger_upgrade',    cost: {metal:3, wood:2},         needsBench: true,  type: 'upgrade', charId: 'ranger',     tooltip: 'Abigail: unlocks Ranger passive buff and special ability.' },
     ];
   }
 
@@ -9800,6 +11319,7 @@ class GameScene extends Phaser.Scene {
     this._log(`${player.charData.player} opened craft menu`, 'player');
     this.craftMenuOwner = player;
     this.craftMenuSel = 0;
+    this.craftMenuScroll = 0;
     // Contextual tip: first time opening crafting menu
     if (!this._ctx.firstCraft) {
       this._ctx.firstCraft = true;
@@ -9822,25 +11342,39 @@ class GameScene extends Phaser.Scene {
     // Tap / click to select or craft — works for mouse and touch
     this._craftMenuPointerFn = (ptr) => {
       const { W, H } = CFG;
-      const PW = 440, PH = 330, PX = (W - PW) / 2, PY = H - PH - 20;
+      const PW = 440, PH = _isMobile ? 330 : 380;
+      const ROW_H = 25, N_VISIBLE = Math.floor((PH - 94) / ROW_H);
+      const PX = (W - PW) / 2, PY = H - PH - 20;
       const px = ptr.x, py = ptr.y;
       if (px < PX || px > PX + PW || py < PY || py > PY + PH) return;
       const RECIPES = GameScene.RECIPES;
-      for (let idx = 0; idx < RECIPES.length; idx++) {
-        const rowY = PY + 34 + idx * 25;
-        if (py >= rowY - 2 && py < rowY + 20) {
+      const scroll = this.craftMenuScroll || 0;
+      for (let visIdx = 0; visIdx < N_VISIBLE; visIdx++) {
+        const idx = visIdx + scroll;
+        if (idx >= RECIPES.length) break;
+        const rowY = PY + 34 + visIdx * ROW_H;
+        if (py >= rowY - 2 && py < rowY + ROW_H) {
           if (idx === this.craftMenuSel) {
             this._log(`craft click confirm  sel=${idx} (${RECIPES[idx].label})  owner=${this.craftMenuOwner?.charData?.player}`, 'player');
             this.craftSelected();
           } else {
             this._log(`craft click select  sel=${idx} (${RECIPES[idx].label})  owner=${this.craftMenuOwner?.charData?.player}`, 'player');
             this.craftMenuSel = idx;
+            this._craftScrollToSel();
           }
           return;
         }
       }
     };
     this.input.on('pointerdown', this._craftMenuPointerFn);
+  }
+
+  _craftScrollToSel() {
+    const N_VISIBLE = Math.floor(((_isMobile ? 330 : 380) - 94) / 25);
+    let s = this.craftMenuScroll || 0;
+    if (this.craftMenuSel < s) s = this.craftMenuSel;
+    else if (this.craftMenuSel >= s + N_VISIBLE) s = this.craftMenuSel - N_VISIBLE + 1;
+    this.craftMenuScroll = s;
   }
 
   closeCraftMenu() {
@@ -9863,10 +11397,12 @@ class GameScene extends Phaser.Scene {
     // Keyboard navigate up / down
     if (Phaser.Input.Keyboard.JustDown(this._craftNavUp) || Phaser.Input.Keyboard.JustDown(this._craftNavUp2)) {
       this.craftMenuSel = (this.craftMenuSel - 1 + RECIPES.length) % RECIPES.length;
+      this._craftScrollToSel();
       this._log(`craft nav up  sel=${this.craftMenuSel} (${RECIPES[this.craftMenuSel].label})  owner=${this.craftMenuOwner?.charData?.player}`, 'player');
     }
     if (Phaser.Input.Keyboard.JustDown(this._craftNavDn) || Phaser.Input.Keyboard.JustDown(this._craftNavDn2)) {
       this.craftMenuSel = (this.craftMenuSel + 1) % RECIPES.length;
+      this._craftScrollToSel();
       this._log(`craft nav dn  sel=${this.craftMenuSel} (${RECIPES[this.craftMenuSel].label})  owner=${this.craftMenuOwner?.charData?.player}`, 'player');
     }
 
@@ -9876,6 +11412,7 @@ class GameScene extends Phaser.Scene {
       const jy = this._joy.vec.y;
       if (this._craftTouchNavCd <= 0 && Math.abs(jy) > 0.5) {
         this.craftMenuSel = (this.craftMenuSel + (jy > 0 ? 1 : -1) + RECIPES.length) % RECIPES.length;
+        this._craftScrollToSel();
         this._craftTouchNavCd = 350;
         this._log(`craft nav joy  sel=${this.craftMenuSel} (${RECIPES[this.craftMenuSel].label})  owner=${this.craftMenuOwner?.charData?.player}`, 'player');
       }
@@ -9888,7 +11425,10 @@ class GameScene extends Phaser.Scene {
     const RECIPES = GameScene.RECIPES;
     const { W, H } = CFG;
     const team = this.getTeamInv();
-    const PW = 440, PH = 330, PX = (W - PW) / 2, PY = H - PH - 20;
+    const PW = 440, PH = _isMobile ? 330 : 380;
+    const ROW_H = 25, N_VISIBLE = Math.floor((PH - 94) / ROW_H);
+    const PX = (W - PW) / 2, PY = H - PH - 20;
+    const scroll = this.craftMenuScroll || 0;
 
     // Recreate graphics each frame (simple approach)
     if (this.craftMenuGfx) this.craftMenuGfx.destroy();
@@ -9918,17 +11458,36 @@ class GameScene extends Phaser.Scene {
       : 'Click / W/S = select  |  Click again / Attack = craft  |  Q/0 = close';
     addTxt(PX + PW/2, PY + PH - 14, navHint, { fontSize:'9px', color:'#556644' }).setOrigin(0.5);
 
+    // Scroll indicators
+    if (scroll > 0) {
+      addTxt(PX + PW/2, PY + 26, `▲  ${scroll} more above`, { fontSize:'9px', color:'#778866' }).setOrigin(0.5);
+    }
+    const moreBelow = RECIPES.length - (scroll + N_VISIBLE);
+    if (moreBelow > 0) {
+      const arrowY = PY + 34 + N_VISIBLE * ROW_H + 3;
+      addTxt(PX + PW/2, arrowY, `▼  ${moreBelow} more below`, { fontSize:'9px', color:'#778866' }).setOrigin(0.5);
+    }
+
     // Hover detection for mouse (skip on touch)
     const mPtr = this._touchActive ? null : this.input.activePointer;
-    const hoverIdx = mPtr
-      ? RECIPES.findIndex((_, idx) => {
-          const rowY = PY + 34 + idx * 25;
-          return mPtr.x >= PX && mPtr.x <= PX + PW && mPtr.y >= rowY - 2 && mPtr.y < rowY + 20;
-        })
-      : -1;
+    let hoverIdx = -1;
+    if (mPtr) {
+      for (let visIdx = 0; visIdx < N_VISIBLE; visIdx++) {
+        const idx = visIdx + scroll;
+        if (idx >= RECIPES.length) break;
+        const rowY = PY + 34 + visIdx * ROW_H;
+        if (mPtr.x >= PX && mPtr.x <= PX + PW && mPtr.y >= rowY - 2 && mPtr.y < rowY + ROW_H) {
+          hoverIdx = idx; break;
+        }
+      }
+    }
 
-    RECIPES.forEach((rec, idx) => {
-      const rowY = PY + 34 + idx * 25;
+    // Render visible items
+    for (let visIdx = 0; visIdx < N_VISIBLE; visIdx++) {
+      const idx = visIdx + scroll;
+      if (idx >= RECIPES.length) break;
+      const rec = RECIPES[idx];
+      const rowY = PY + 34 + visIdx * ROW_H;
       const isSelected = idx === this.craftMenuSel;
       const isHovered = idx === hoverIdx && !isSelected;
 
@@ -9940,9 +11499,8 @@ class GameScene extends Phaser.Scene {
         g.fillStyle(0x1a2a11, 0.7); g.fillRect(PX + 6, rowY - 2, PW - 12, 22);
       }
 
-      // Bench requirement
+      // Bench requirement and affordability
       const locked = rec.needsBench && !this.craftBenchPlaced;
-      // Can afford?
       const canAfford = !locked && Object.entries(rec.cost).every(([r,a]) => (team[r]||0) >= a);
 
       const nameColor = locked ? '#555544' : isSelected ? '#ffffff' : isHovered ? '#ddeedd' : '#aabbaa';
@@ -9952,7 +11510,18 @@ class GameScene extends Phaser.Scene {
       const suffix  = locked ? ' [bench reqd]' : '';
       addTxt(PX + 18, rowY + 2, rec.label + suffix, { color: nameColor });
       addTxt(PX + PW - 18, rowY + 2, costStr, { color: costColor }).setOrigin(1, 0);
-    });
+    }
+
+    // Tooltip section — shows description for hovered item (mouse) or selected item (keyboard/touch)
+    const tooltipRec = RECIPES[hoverIdx >= 0 ? hoverIdx : this.craftMenuSel];
+    const itemsEnd = PY + 34 + N_VISIBLE * ROW_H;
+    const sepY = itemsEnd + (moreBelow > 0 ? 16 : 6);
+    g.lineStyle(1, 0x334422, 0.8); g.lineBetween(PX + 12, sepY, PX + PW - 12, sepY);
+    if (tooltipRec) {
+      const typeTag = { build: '[BUILD]', instant: '[INSTANT]', upgrade: '[UPGRADE]' }[tooltipRec.type] || '';
+      addTxt(PX + 18, sepY + 6, `${typeTag}  ${tooltipRec.label}`, { fontSize:'10px', color:'#aacc88' });
+      addTxt(PX + 18, sepY + 19, tooltipRec.tooltip || '', { fontSize:'10px', color:'#889977' });
+    }
   }
 
   craftSelected() {
@@ -10003,7 +11572,17 @@ class GameScene extends Phaser.Scene {
       }
     }
 
-    if (rec.type === 'instant' && rec.key === 'ammo_pack') {
+    if (rec.type === 'instant' && rec.key === 'flower_bouquet') {
+      // Flower Bouquet: +3 flowers for Lauren; hint if Lauren not in game
+      const charmer = [this.p1, this.p2].filter(Boolean).find(p => p.charData.id === 'charmer');
+      if (charmer) {
+        charmer.flowerAmmo = (charmer.flowerAmmo || 0) + 3;
+        this._log(`${charmer.charData.player} got +3 flowers  flowers=${charmer.flowerAmmo}`, 'player');
+        this.hint('+3 Flowers for Lauren! (' + charmer.flowerAmmo + ' total)', 2000);
+      } else {
+        this.hint('Lauren isn\'t in play — flowers wasted!', 2000);
+      }
+    } else if (rec.type === 'instant' && rec.key === 'ammo_pack') {
       // Ammo Pack: +8 reserve ammo for Gunslinger; small metal refund hint for others
       const gunslinger = [this.p1, this.p2].filter(Boolean).find(p => p.charData.id === 'gunslinger');
       if (gunslinger) {
@@ -10016,16 +11595,17 @@ class GameScene extends Phaser.Scene {
         this.hint('No Gunslinger in play — ammo wasted!', 2000);
       }
     } else if (rec.type === 'instant' && rec.key === 'med_kit') {
-      // D8 — Med Kit: restore 40 HP to the crafting player, green flash
-      player.hp = Math.min(player.maxHp, player.hp + 40);
-      this._log(`${player.charData.player} used Med Kit  hp=${player.hp}/${player.maxHp}`, 'player');
+      // D8 — Med Kit: restore HP (difficulty-scaled) to the crafting player, green flash
+      const _medHeal = this.hc.medkitHeal;
+      player.hp = Math.min(player.maxHp, player.hp + _medHeal);
+      this._log(`${player.charData.player} used Med Kit +${_medHeal}  hp=${player.hp}/${player.maxHp}`, 'player');
       player.spr.setTint(0x44ff44);
       this.time.delayedCall(300, () => {
         if (!player.spr?.active) return;
         if (player._frostSlowed) player.spr.setTint(0x88ccff);
         else player.spr.clearTint();
       });
-      this.hint(player.charData.player + ' used Med Kit: +40 HP!', 2000);
+      this.hint(player.charData.player + ' used Med Kit: +' + _medHeal + ' HP!', 2000);
     } else if (rec.type === 'upgrade') {
       const target = [this.p1, this.p2].filter(Boolean).find(p => p.charData.id === rec.charId);
       if (!target) { this.hint('That character isn\'t in the game!', 2000); return; }
@@ -10035,13 +11615,17 @@ class GameScene extends Phaser.Scene {
       target[upgradeFlag] = true;
       this._log(`${target.charData.player} upgrade: ${rec.label}`, 'player');
       if (rec.charId === 'gunslinger') target._gunslingerClip = 12;
+      if (rec.charId === 'charmer') target._charmerUpgraded = true;
+      if (rec.charId === 'ranger') target._rangerUpgraded = true;
       target.spr.setTint(0xffaa22);
       this.time.delayedCall(400, () => {
         if (!target.spr?.active) return;
         if (target._frostSlowed) target.spr.setTint(0x88ccff);
         else target.spr.clearTint();
       });
-      this.hint(rec.label + ' unlocked for ' + target.charData.player + '!', 3000);
+      const upgradeDesc = rec.charId === 'charmer' ? ' — Aura expanded + night partial!' :
+                          rec.charId === 'ranger'  ? ' — Explosive arrows unlocked!' : '';
+      this.hint(rec.label + ' unlocked for ' + target.charData.player + '!' + upgradeDesc, 3000);
     }
   }
 
@@ -10069,6 +11653,8 @@ class GameOverScene extends Phaser.Scene {
     this.bossDefeated  = data.bossDefeated  || false;
     this.p1Name        = data.p1Name        || 'P1';
     this.p2Name        = data.p2Name        || null;
+    this.p1Kills       = data.p1Kills       ?? 0;
+    this.p2Kills       = data.p2Kills       ?? 0;
     this._dbgEntries   = data.dbgEntries    || null;
   }
 
@@ -10109,7 +11695,7 @@ class GameOverScene extends Phaser.Scene {
     }).setOrigin(0.5);
 
     // ── Score breakdown panel ──────────────────────────────
-    const panelX = W/2 - 220, panelY = 148, panelW = 440, panelH = 210;
+    const panelX = W/2 - 220, panelY = 148, panelW = 440, panelH = this.p2Name ? 236 : 210;
     const panel = this.add.graphics();
     panel.fillStyle(0x110000, 0.85); panel.fillRoundedRect(panelX, panelY, panelW, panelH, 10);
     panel.lineStyle(1, 0x553333, 0.8); panel.strokeRoundedRect(panelX, panelY, panelW, panelH, 10);
@@ -10118,12 +11704,19 @@ class GameOverScene extends Phaser.Scene {
     const timeStr = mins > 0 ? mins + 'm ' + secs + 's' : secs + 's';
     const modeLabel = (this.mode===1?'1P':'2P') + ' ' + (this.difficulty==='hardcore'?'HARDCORE':'SURVIVAL');
 
+    const killRows = this.p2Name
+      ? [
+          [this.p1Name + ' kills', this.p1Kills + ' kills', '#ff8844'],
+          [this.p2Name + ' kills', this.p2Kills + ' kills', '#ff8844'],
+        ]
+      : [['Enemies killed', this.p1Kills + ' kills', '#ff8844']];
+
     const rows = [
       ['Survivors',       this._defaultName,                        '#aabbcc'],
       ['Mode',            modeLabel,                                '#8899aa'],
       ['Days survived',   'Day ' + this.days,                       '#ffee44'],
       ['Time alive',      timeStr,                                  '#cccccc'],
-      ['Enemies killed',  this.kills + ' kills',                    '#ff8844'],
+      ...killRows,
       ['Resources found', this.resources + ' items',                '#88cc66'],
       ['Boss defeated',   this.bossDefeated ? 'YES +500' : 'No',   this.bossDefeated ? '#ffdd44' : '#556666'],
     ];
@@ -10450,7 +12043,18 @@ class GameOverScene extends Phaser.Scene {
       lb.push({ name, score: this._score, days: this.days, time: Math.floor(this.timeAlive), date: dateStr });
       lb.sort((a, b) => b.score - a.score);
       lb.splice(10);
-      try { localStorage.setItem('iw_scores', JSON.stringify(lb)); } catch(e) {}
+      try {
+        localStorage.setItem('iw_scores', JSON.stringify(lb));
+      } catch(e) {
+        // Storage full / disabled: tell the player so they know the run
+        // didn't make it onto the leaderboard.
+        console.warn('iw_scores save failed:', e && e.message ? e.message : e);
+        const warn = this.add.text(CFG.W/2, CFG.H - 12, '⚠ Could not save score (storage full?)', {
+          fontFamily: 'monospace', fontSize: '10px', color: '#ff8844',
+          backgroundColor: '#000000cc', padding: { x: 6, y: 3 },
+        }).setOrigin(0.5).setDepth(500);
+        this.time.delayedCall(4500, () => { if (warn && warn.active) warn.destroy(); });
+      }
     }
   }
 
