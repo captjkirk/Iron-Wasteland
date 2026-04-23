@@ -397,7 +397,7 @@ const Music = {
 
     // Snare-like noise bursts on beats 2 and 4 (reduced from 4 to 2 per loop to prevent audio thread saturation)
     [b*2, b*10].forEach(t => {
-      if (o+t > -0.05) this._noise(0.06, 0.45);
+      if (o+t > -0.05) SFX._noise(0.06, 0.45);
     });
 
     // Sustained pad swells (triangle, lower octave for warmth)
@@ -6303,7 +6303,8 @@ class GameScene extends Phaser.Scene {
     // Post-updateDayNight stages — wrapped so a throw or stall is attributable.
     // _stageTrace is armed briefly around the Day-5 boss transition to give
     // per-stage checkpoints; otherwise only errors log.
-    const _stageLog = (name) => { if (this._stageTrace) this._log('stage: ' + name, 'perf'); };
+    // Only trace stages on genuinely stalled frames (>100ms delta) to avoid log flood.
+    const _stageLog = (name) => { if (this._stageTrace && delta > 100) this._log('stage: ' + name + ' (stall ' + delta.toFixed(0) + 'ms)', 'perf'); };
     const _safe = (name, fn) => { _stageLog(name); try { fn(); } catch (e) { this._log(`${name} ERR: ${e && e.message || e}`, 'error'); } };
     _safe('updateBuildMode',  () => this.updateBuildMode());
     _safe('updateCraftMenu',  () => this.updateCraftMenu(delta));
@@ -6848,7 +6849,8 @@ class GameScene extends Phaser.Scene {
       this.enemies.push(raider);
     }
     this._log(`Hunting party incoming!  count=${count}  day=${this.dayNum}`, 'world');
-    this.hint('\u26a0 A raiding party is on your trail!', 4000);
+    this.hint('\u26a0 Raiders spotted at the wastes edge!', 4000);
+    this._huntPartyAlertFired = false;
     SFX._play(120, 'sawtooth', 0.3, 0.5, 'drop');
   }
 
@@ -6872,6 +6874,14 @@ class GameScene extends Phaser.Scene {
         if (d < nearDist) { nearDist = d; nearest = p; }
       });
       if (!nearest) return;
+
+      // Fire a "closing in" alert when the first hunt-party raider reaches ~1200px.
+      if (raider.isHuntParty && !this._huntPartyAlertFired && nearDist < 1200) {
+        this._huntPartyAlertFired = true;
+        this.hint('⚠ Raiders closing in — get ready!', 4000);
+        this._log('Hunt party closing in  dist=' + nearDist.toFixed(0), 'world');
+        SFX._play(200, 'sawtooth', 0.2, 0.6, 'drop');
+      }
 
       // Mutual aggro: redirect toward boss if closer and within 220px
       let target = nearest, targetDist = nearDist;
@@ -8324,15 +8334,16 @@ class GameScene extends Phaser.Scene {
     }
     // Dust Hound pack frenzy — surviving packmates speed up for 4s on death
     if (e.type === 'dust_hound' && e._packId !== undefined) {
-      this.enemies.forEach(other => {
-        if (other.type === 'dust_hound' && other._packId === e._packId && other.spr?.active) {
+      const packmates = this._packIndex?.get(e._packId) || [];
+      for (const other of packmates) {
+        if (other !== e && other.spr?.active) {
           other._frenzied = true;
           other.spr.setTint(0xff8800);
           this.time.delayedCall(4000, () => {
             if (other.spr?.active) { other._frenzied = false; other.spr.clearTint(); }
           });
         }
-      });
+      }
     }
     this.dropResource(ex, ey, e.type);
   }
@@ -8974,6 +8985,19 @@ class GameScene extends Phaser.Scene {
             ey = Phaser.Math.Between(TILE*3, worldH-TILE*3);
           } while (Phaser.Math.Distance.Between(ex, ey, cx, cy) < SAFE_R*TILE*2.5);
         }
+        // Nudge spawn off solid tiles (mountains) — up to 8 attempts at a random offset
+        if (this._solidTileSet) {
+          const _stx = Math.round(ex / TILE), _sty = Math.round(ey / TILE);
+          if (this._solidTileSet.has(_stx + ',' + _sty)) {
+            for (let _sa = 0; _sa < 8; _sa++) {
+              const _ox = Phaser.Math.Between(-3, 3), _oy = Phaser.Math.Between(-3, 3);
+              if (!this._solidTileSet.has((_stx + _ox) + ',' + (_sty + _oy))) {
+                ex = (_stx + _ox) * TILE; ey = (_sty + _oy) * TILE;
+                break;
+              }
+            }
+          }
+        }
         // Size variance: 1.0x to 1.5x — floor raised so enemies are never too small to see
         const sizeMult = Phaser.Math.FloatBetween(1.0, 1.5);
         const sc = t.baseScale * sizeMult;
@@ -9236,8 +9260,8 @@ class GameScene extends Phaser.Scene {
       }
       return true;
     };
-    // Try direct angle, then ±37°, ±75°, ±112° until a clear heading is found
-    for (const off of [0, 0.65, -0.65, 1.3, -1.3, 1.95, -1.95]) {
+    // Try direct angle, then ±37°, ±75°, ±112°, ±150°, 180° until a clear heading is found
+    for (const off of [0, 0.65, -0.65, 1.3, -1.3, 1.95, -1.95, 2.6, -2.6, Math.PI]) {
       const ang = baseAng + off;
       if (isHeadingClear(ang)) return { x: Math.cos(ang) * spd, y: Math.sin(ang) * spd };
     }
@@ -9257,6 +9281,17 @@ class GameScene extends Phaser.Scene {
     let _activeCount = 0;
     for (const _e of this.enemies) { if (_e.spr?.active && !_e._dormant) _activeCount++; }
     this._activeEnemyCount = _activeCount;
+
+    // Build pack index once per tick so killEnemy() can look up packmates in O(k) instead of O(n)
+    const _packIndex = new Map();
+    for (const _e of this.enemies) {
+      if (_e._packId !== undefined && _e.spr?.active) {
+        let _arr = _packIndex.get(_e._packId);
+        if (!_arr) { _arr = []; _packIndex.set(_e._packId, _arr); }
+        _arr.push(_e);
+      }
+    }
+    this._packIndex = _packIndex;
 
     this.enemies.forEach(e => {
       if (e.dying || !e.spr.active) return;
@@ -9465,7 +9500,21 @@ class GameScene extends Phaser.Scene {
           const chaseY = e.lastKnownY !== undefined ? e.lastKnownY : nearest.spr.y;
           // Steer around obstacles instead of running straight into them
           const vel = this._steerToward(e, chaseX, chaseY, spd);
-          e.spr.setVelocity(vel.x, vel.y);
+          e._escapeTimer = (e._escapeTimer || 0) - delta;
+          if (e._escapeTimer > 0) {
+            // Keep the escape burst velocity — don't overwrite it
+          } else if (vel.x === 0 && vel.y === 0) {
+            e._stuckDur = (e._stuckDur || 0) + delta;
+            if (e._stuckDur > 800) {
+              e._stuckDur = 0;
+              const escAng = Phaser.Math.FloatBetween(0, Math.PI * 2);
+              e.spr.setVelocity(Math.cos(escAng) * spd * 1.5, Math.sin(escAng) * spd * 1.5);
+              e._escapeTimer = 600;
+            }
+          } else {
+            e._stuckDur = 0;
+            e.spr.setVelocity(vel.x, vel.y);
+          }
           // directional flip is handled below in the walk-cycle block
         }
 
@@ -9497,7 +9546,10 @@ class GameScene extends Phaser.Scene {
         if (e.wanderTimer <= 0) {
           const ang = Math.random() * Math.PI * 2;
           const wspd = (e._effectiveSpeed !== undefined ? e._effectiveSpeed : e.speed) * 0.3;
-          e.spr.setVelocity(Math.cos(ang)*wspd, Math.sin(ang)*wspd);
+          const wanderX = e.spr.x + Math.cos(ang) * 200;
+          const wanderY = e.spr.y + Math.sin(ang) * 200;
+          const vel = this._steerToward(e, wanderX, wanderY, wspd);
+          e.spr.setVelocity(vel.x, vel.y);
           e.wanderTimer = Phaser.Math.Between(1500, 3500);
         }
       }
