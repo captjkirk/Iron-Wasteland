@@ -5957,6 +5957,9 @@ class GameScene extends Phaser.Scene {
         return;
       }
     }
+
+    // Nothing interactable in range — log so we can diagnose "E key not working" reports
+    this._log(`${player.charData.player} interact: nothing in range  pos=(${Math.floor(player.spr.x/CFG.TILE)},${Math.floor(player.spr.y/CFG.TILE)})`, 'player');
   }
 
   toggleSleep(player, bed) {
@@ -6797,7 +6800,10 @@ class GameScene extends Phaser.Scene {
         if (tower.activateBar)   { tower.activateBar.clear(); tower.activateBar.setVisible(false); }
         if (tower.activateLabel) { tower.activateLabel.setVisible(false); }
         if (tower.prompt) tower.prompt.setVisible(false);
-        this._log(`Radio Tower activated  day=${this.dayNum}`, 'world');
+        const _rtBodies = this.physics.world.bodies.size;
+        const _rtEnemies = (this.enemies || []).length;
+        const _rtActive  = this._activeEnemyCount ?? (this.enemies || []).filter(e => e.spr?.active && !e._dormant).length;
+        this._log(`Radio Tower activated  day=${this.dayNum}  bodies=${_rtBodies}  enemies=${_rtEnemies}  active=${_rtActive}`, 'world');
         tower.spr.setTint(0x66aaff);
         this.fogRevealMult = 2;
         this.hint('Radio Tower online! Vision range doubled permanently!', 5000);
@@ -6977,6 +6983,8 @@ class GameScene extends Phaser.Scene {
         raider.isHuntParty = false;
         raider.aggroRange = 320;
         raider.speed = raider.speed / 1.15; // undo the hunt speed boost
+        const _huntAlive = this.raiders.filter(r => r.isHuntParty && r.hp > 0 && r.spr?.active).length;
+        this._log(`Hunt party expired  type=${raider.type}  dist=${nearDist.toFixed(0)}px  remaining_hunters=${_huntAlive}  pos=(${Math.floor(raider.spr.x/CFG.TILE)},${Math.floor(raider.spr.y/CFG.TILE)})`, 'world');
       }
 
       let nearest = null, nearDist = Infinity;
@@ -7281,6 +7289,13 @@ class GameScene extends Phaser.Scene {
     // Boss chases nearest player — relentless, no wander
     const players = [this.p1, this.p2].filter(p => p && !p.isDowned && p.hp > 0);
     if (players.length === 0) { b.spr.setVelocity(0, 0); return; }
+
+    // Periodic position snapshot so logs can trace boss pathing (throttled to ~every 5s)
+    if (!b._lastPosLog || this.time.now - b._lastPosLog > 5000) {
+      b._lastPosLog = this.time.now;
+      const _p1dist = this.p1?.spr ? Phaser.Math.Distance.Between(bx, by, this.p1.spr.x, this.p1.spr.y) : -1;
+      this._log(`boss pos  type=${b.type}  tile=(${Math.floor(bx/CFG.TILE)},${Math.floor(by/CFG.TILE)})  hp=${b.hp}/${b.maxHp}  dist_p1=${Math.round(_p1dist)}  state=${b._bossState}`, 'world');
+    }
 
     let nearest = players[0], nearDist = Phaser.Math.Distance.Between(b.spr.x, b.spr.y, players[0].spr.x, players[0].spr.y);
     players.forEach(p => {
@@ -7638,7 +7653,7 @@ class GameScene extends Phaser.Scene {
           for (const p of _ap) { const _d = Phaser.Math.Distance.Between(ex, ey, p.spr.x, p.spr.y); if (_d < _sd) _sd = _d; }
           if (_sd > CFG.DORMANT_RADIUS) { e._dormant = true; spr.setVisible(false); if (spr.body) { spr.body.enable = false; this.physics.world.bodies.delete(spr.body); } }
         }
-        this._log(`Den respawn: ${type}  total_enemies=${this.enemies.length+1}`, 'world');
+        this._log(`Den respawn: ${type}  total_enemies=${this.enemies.length+1}  den_pop=${den.liveCount+1}/4`, 'world');
         this.enemies.push(e);
       }
     });
@@ -8264,8 +8279,10 @@ class GameScene extends Phaser.Scene {
       const _all = this.enemies || [];
       const _activeCount = this._activeEnemyCount ?? _all.filter(e => e.spr?.active && !e._dormant).length;
       const _bodies = this.physics.world.bodies.size;
+      const _dormantCount = _all.filter(e => e._dormant).length;
+      const _campfireCount = (this.pois || []).filter(p => p.type === 'campfire').length;
       this._dbgEntries && this._dbgEntries.push(
-        `T${Math.floor((this.timeAlive||0)/60).toString().padStart(2,'0')}:${(Math.floor(this.timeAlive||0)%60).toString().padStart(2,'0')} [PERF  ] FPS drop: ${fps}  active=${_activeCount}/${_all.length}  bodies=${_bodies}`
+        `T${Math.floor((this.timeAlive||0)/60).toString().padStart(2,'0')}:${(Math.floor(this.timeAlive||0)%60).toString().padStart(2,'0')} [PERF  ] FPS drop: ${fps}  active=${_activeCount}/${_all.length}  dormant=${_dormantCount}  bodies=${_bodies}  campfires=${_campfireCount}`
       );
     }
     const t      = Math.floor(this.timeAlive || 0);
@@ -9144,7 +9161,8 @@ class GameScene extends Phaser.Scene {
       this.waveTimer = 0;
       this.waveNum++;
       if (this.enemies.length >= CFG.MAX_ENEMIES) {
-        this._log('Wave ' + this.waveNum + ' capped — MAX_ENEMIES reached (' + this.enemies.length + ')', 'world');
+        const _wSkip = Math.min(6 + this.waveNum * 2, 20), _rSkip = Math.min(8 + this.waveNum * 3, 30), _bSkip = Math.min(1 + this.waveNum, 8);
+        this._log('Wave ' + this.waveNum + ' capped — MAX_ENEMIES reached (' + this.enemies.length + '/' + CFG.MAX_ENEMIES + ')  skipped: w=' + _wSkip + ' r=' + _rSkip + ' b=' + _bSkip, 'world');
         return;
       }
       // Escalating counts
@@ -9617,6 +9635,7 @@ class GameScene extends Phaser.Scene {
           } else if (vel.x === 0 && vel.y === 0) {
             e._stuckDur = (e._stuckDur || 0) + delta;
             if (e._stuckDur > 800) {
+              this._log(`enemy unstuck  type=${e.type}  pos=(${Math.floor(e.spr.x/CFG.TILE)},${Math.floor(e.spr.y/CFG.TILE)})`, 'combat');
               e._stuckDur = 0;
               const escAng = Phaser.Math.FloatBetween(0, Math.PI * 2);
               e.spr.setVelocity(Math.cos(escAng) * spd * 1.5, Math.sin(escAng) * spd * 1.5);
@@ -9973,8 +9992,12 @@ class GameScene extends Phaser.Scene {
             const d = Phaser.Math.Distance.Between(pl.spr.x, pl.spr.y, cf.x, cf.y);
             if (d < 80) {
               const _cfHeal = this.hc.campfireHeal;
+              const _cfHpBefore = pl.hp;
               pl.hp = Math.min(pl.maxHp, pl.hp + _cfHeal);
-              this._log(`${pl.charData.player} campfire heal +${_cfHeal}  hp=${pl.hp}/${pl.maxHp}`, 'player');
+              // Suppress log spam when already at max HP — only log actual healing
+              if (_cfHpBefore < pl.maxHp) {
+                this._log(`${pl.charData.player} campfire heal +${_cfHeal}  hp=${pl.hp}/${pl.maxHp}`, 'player');
+              }
             }
           });
         }
