@@ -1,0 +1,468 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Sprite Preview — Lauren & Abigail</title>
+  <style>
+    body { background: #1a1a2e; color: #eee; font-family: monospace; padding: 20px; }
+    h1 { color: #ffcc44; }
+    h2 { color: #ffaacc; margin-top: 30px; }
+    h3 { color: #88ff88; margin-top: 20px; }
+    .row { display: flex; flex-wrap: wrap; gap: 16px; align-items: flex-end; margin-bottom: 12px; }
+    .frame { text-align: center; }
+    .frame canvas { display: block; image-rendering: pixelated; width: 88px; height: 120px; border: 1px solid #444; background: #2a2a3e; }
+    .frame span { font-size: 10px; color: #aaa; display: block; margin-top: 4px; }
+    #gameCanvas { display: none; }
+  </style>
+</head>
+<body>
+  <h1>Iron Wasteland — Character Sprite Preview</h1>
+  <p style="color:#888">All 10 directional frames for Lauren (The Charmer) and Abigail (The Ranger), rendered at 2× scale.</p>
+
+  <h2>Lauren — The Charmer</h2>
+  <h3>Side / Walk</h3>
+  <div class="row" id="lauren-side"></div>
+  <h3>Front / Back</h3>
+  <div class="row" id="lauren-fb"></div>
+  <h3>Diagonal</h3>
+  <div class="row" id="lauren-diag"></div>
+
+  <h2>Abigail — The Ranger</h2>
+  <h3>Side / Walk</h3>
+  <div class="row" id="abigail-side"></div>
+  <h3>Front / Back</h3>
+  <div class="row" id="abigail-fb"></div>
+  <h3>Diagonal</h3>
+  <div class="row" id="abigail-diag"></div>
+
+  <canvas id="gameCanvas"></canvas>
+  <script src="lib/phaser.min.js"></script>
+  <script>
+    // Inline only the draw functions needed for preview
+    // ── Lauren ──────────────────────────────────────────────────
+    function drawLauren(g) {
+      g.clear();
+      g.fillStyle(0x774455); g.fillRect(8,52,14,8);
+      g.fillStyle(0xbb6699); g.fillRect(0,42,36,10);
+      g.fillStyle(0xd988bb); g.fillRect(2,36,34,14);
+      g.fillStyle(0xeeccdd); g.fillRect(4,34,22,4);
+      g.fillStyle(0xcc77aa); g.fillRect(2,50,34,2);
+      g.fillStyle(0xff99bb); g.fillRect(14,32,10,4);
+      g.fillStyle(0xff77aa); g.fillRect(17,29,4,6);
+      g.fillStyle(0x9966aa); g.fillRect(10,14,18,20);
+      g.fillStyle(0x775588); g.fillRect(10,14,4,18);
+      g.fillStyle(0xbb88cc); g.fillRect(14,14,6,6);
+      g.fillStyle(0xffcc99); g.fillRect(28,16,8,12);
+      g.fillStyle(0xffcc99); g.fillRect(4,16,6,12);
+      g.fillStyle(0xffcc99); g.fillRect(15,10,10,6);
+      g.fillStyle(0xffcc99); g.fillRect(11,4,16,8);
+      g.fillStyle(0xcc8844); g.fillRect(10,0,18,8);
+      g.fillStyle(0xdd9955); g.fillRect(10,0,18,3);
+      g.fillStyle(0xcc8844); g.fillRect(6,4,6,10);
+      g.fillStyle(0xaa6622); g.fillRect(24,6,6,8);
+      g.generateTexture('charmer', 44, 60);
+    }
+    function drawLaurenStep(g) {
+      g.clear();
+      g.fillStyle(0x774455); g.fillRect(8,49,14,11);
+      g.fillStyle(0xbb6699); g.fillRect(0,42,36,10);
+      g.fillStyle(0xd988bb); g.fillRect(2,36,34,14);
+      g.fillStyle(0xeeccdd); g.fillRect(4,34,22,4);
+      g.fillStyle(0xcc77aa); g.fillRect(2,50,34,2);
+      g.fillStyle(0xff99bb); g.fillRect(14,32,10,4);
+      g.fillStyle(0xff77aa); g.fillRect(17,29,4,6);
+      g.fillStyle(0x9966aa); g.fillRect(10,14,18,20);
+      g.fillStyle(0x775588); g.fillRect(10,14,4,18);
+      g.fillStyle(0xbb88cc); g.fillRect(14,14,6,6);
+      g.fillStyle(0xffcc99); g.fillRect(28,14,8,12);
+      g.fillStyle(0xffcc99); g.fillRect(4,18,6,12);
+      g.fillStyle(0xffcc99); g.fillRect(15,10,10,6);
+      g.fillStyle(0xffcc99); g.fillRect(11,4,16,8);
+      g.fillStyle(0xcc8844); g.fillRect(10,0,18,8);
+      g.fillStyle(0xdd9955); g.fillRect(10,0,18,3);
+      g.fillStyle(0xcc8844); g.fillRect(6,4,6,10);
+      g.fillStyle(0xaa6622); g.fillRect(24,6,6,8);
+      g.generateTexture('charmer_step', 44, 60);
+    }
+    function drawLaurenFront(g) {
+      g.clear();
+      g.fillStyle(0x774455); g.fillRect(9,52,10,8); g.fillRect(25,52,10,8);
+      g.fillStyle(0xbb6699); g.fillRect(1,44,42,8);
+      g.fillStyle(0xd988bb); g.fillRect(3,36,38,14);
+      g.fillStyle(0xeeccdd); g.fillRect(7,34,30,6);
+      g.fillStyle(0xcc77aa); g.fillRect(3,50,38,2);
+      g.fillStyle(0xff99bb); g.fillRect(16,32,12,5);
+      g.fillStyle(0xff77aa); g.fillRect(20,28,4,6);
+      g.fillStyle(0x9966aa); g.fillRect(12,14,20,20);
+      g.fillStyle(0x775588); g.fillRect(12,14,4,18);
+      g.fillStyle(0xbb88cc); g.fillRect(16,14,10,6);
+      g.fillStyle(0xffcc99); g.fillRect(4,16,8,14);
+      g.fillStyle(0xffcc99); g.fillRect(32,16,8,14);
+      g.fillStyle(0xffcc99); g.fillRect(18,10,8,6);
+      g.fillStyle(0xffcc99); g.fillRect(14,4,16,8);
+      g.fillStyle(0xcc8844); g.fillRect(12,0,20,8);
+      g.fillStyle(0xdd9955); g.fillRect(12,0,20,3);
+      g.fillStyle(0xcc8844); g.fillRect(8,4,6,10);
+      g.fillStyle(0xcc8844); g.fillRect(30,4,6,10);
+      g.generateTexture('charmer_front', 44, 60);
+    }
+    function drawLaurenFrontStep(g) {
+      g.clear();
+      g.fillStyle(0x774455); g.fillRect(9,49,10,11); g.fillRect(25,52,10,8);
+      g.fillStyle(0xbb6699); g.fillRect(1,44,42,8);
+      g.fillStyle(0xd988bb); g.fillRect(3,36,38,14);
+      g.fillStyle(0xeeccdd); g.fillRect(7,34,30,6);
+      g.fillStyle(0xcc77aa); g.fillRect(3,50,38,2);
+      g.fillStyle(0xff99bb); g.fillRect(16,32,12,5);
+      g.fillStyle(0xff77aa); g.fillRect(20,28,4,6);
+      g.fillStyle(0x9966aa); g.fillRect(12,14,20,20);
+      g.fillStyle(0x775588); g.fillRect(12,14,4,18);
+      g.fillStyle(0xbb88cc); g.fillRect(16,14,10,6);
+      g.fillStyle(0xffcc99); g.fillRect(4,14,8,14);
+      g.fillStyle(0xffcc99); g.fillRect(32,18,8,14);
+      g.fillStyle(0xffcc99); g.fillRect(18,10,8,6);
+      g.fillStyle(0xffcc99); g.fillRect(14,4,16,8);
+      g.fillStyle(0xcc8844); g.fillRect(12,0,20,8);
+      g.fillStyle(0xdd9955); g.fillRect(12,0,20,3);
+      g.fillStyle(0xcc8844); g.fillRect(8,4,6,10);
+      g.fillStyle(0xcc8844); g.fillRect(30,4,6,10);
+      g.generateTexture('charmer_front_step', 44, 60);
+    }
+    function drawLaurenBack(g) {
+      g.clear();
+      g.fillStyle(0x774455); g.fillRect(9,52,10,8); g.fillRect(25,52,10,8);
+      g.fillStyle(0xbb6699); g.fillRect(1,44,42,8);
+      g.fillStyle(0xd988bb); g.fillRect(3,36,38,14);
+      g.fillStyle(0xcc77aa); g.fillRect(3,50,38,2);
+      g.fillStyle(0xff99bb); g.fillRect(17,32,10,4);
+      g.fillStyle(0x775588); g.fillRect(12,14,20,20);
+      g.fillStyle(0x9966aa); g.fillRect(16,14,12,18);
+      g.fillStyle(0x553366); g.fillRect(20,14,4,18);
+      g.fillStyle(0xffcc99); g.fillRect(4,16,8,14);
+      g.fillStyle(0xffcc99); g.fillRect(32,16,8,14);
+      g.fillStyle(0xffcc99); g.fillRect(18,10,8,6);
+      g.fillStyle(0xcc8844); g.fillRect(12,0,20,12);
+      g.fillStyle(0xdd9955); g.fillRect(12,0,20,4);
+      g.fillStyle(0xcc8844); g.fillRect(8,4,6,10);
+      g.fillStyle(0xcc8844); g.fillRect(30,4,6,10);
+      g.fillStyle(0xaa6622); g.fillEllipse(22,10,12,8);
+      g.generateTexture('charmer_back', 44, 60);
+    }
+    function drawLaurenBackStep(g) {
+      g.clear();
+      g.fillStyle(0x774455); g.fillRect(9,52,10,8); g.fillRect(25,49,10,11);
+      g.fillStyle(0xbb6699); g.fillRect(1,44,42,8);
+      g.fillStyle(0xd988bb); g.fillRect(3,36,38,14);
+      g.fillStyle(0xcc77aa); g.fillRect(3,50,38,2);
+      g.fillStyle(0xff99bb); g.fillRect(17,32,10,4);
+      g.fillStyle(0x775588); g.fillRect(12,14,20,20);
+      g.fillStyle(0x9966aa); g.fillRect(16,14,12,18);
+      g.fillStyle(0x553366); g.fillRect(20,14,4,18);
+      g.fillStyle(0xffcc99); g.fillRect(4,18,8,14);
+      g.fillStyle(0xffcc99); g.fillRect(32,14,8,14);
+      g.fillStyle(0xffcc99); g.fillRect(18,10,8,6);
+      g.fillStyle(0xcc8844); g.fillRect(12,0,20,12);
+      g.fillStyle(0xdd9955); g.fillRect(12,0,20,4);
+      g.fillStyle(0xcc8844); g.fillRect(8,4,6,10);
+      g.fillStyle(0xcc8844); g.fillRect(30,4,6,10);
+      g.fillStyle(0xaa6622); g.fillEllipse(22,10,12,8);
+      g.generateTexture('charmer_back_step', 44, 60);
+    }
+    function drawLaurenFSide(g) {
+      g.clear();
+      g.fillStyle(0x774455); g.fillRect(9,52,12,8); g.fillRect(22,53,10,7);
+      g.fillStyle(0xbb6699); g.fillRect(1,43,40,9);
+      g.fillStyle(0xd988bb); g.fillRect(3,36,36,14);
+      g.fillStyle(0xeeccdd); g.fillRect(6,34,24,5);
+      g.fillStyle(0xcc77aa); g.fillRect(3,50,36,2);
+      g.fillStyle(0xff99bb); g.fillRect(15,32,12,4);
+      g.fillStyle(0xff77aa); g.fillRect(19,29,4,5);
+      g.fillStyle(0x9966aa); g.fillRect(11,14,20,20);
+      g.fillStyle(0x775588); g.fillRect(11,14,5,18);
+      g.fillStyle(0xbb88cc); g.fillRect(16,14,8,6);
+      g.fillStyle(0xffcc99); g.fillRect(4,16,7,14);
+      g.fillStyle(0xffcc99); g.fillRect(30,16,8,14);
+      g.fillStyle(0xffcc99); g.fillRect(17,10,9,6);
+      g.fillStyle(0xffcc99); g.fillRect(13,4,16,8);
+      g.fillStyle(0xcc8844); g.fillRect(11,0,20,8);
+      g.fillStyle(0xdd9955); g.fillRect(11,0,20,3);
+      g.fillStyle(0xcc8844); g.fillRect(7,4,6,10);
+      g.fillStyle(0xcc8844); g.fillRect(29,4,6,10);
+      g.generateTexture('charmer_fside', 44, 60);
+    }
+    function drawLaurenFSideStep(g) {
+      g.clear();
+      g.fillStyle(0x774455); g.fillRect(9,49,12,11); g.fillRect(22,53,10,7);
+      g.fillStyle(0xbb6699); g.fillRect(1,43,40,9);
+      g.fillStyle(0xd988bb); g.fillRect(3,36,36,14);
+      g.fillStyle(0xeeccdd); g.fillRect(6,34,24,5);
+      g.fillStyle(0xcc77aa); g.fillRect(3,50,36,2);
+      g.fillStyle(0xff99bb); g.fillRect(15,32,12,4);
+      g.fillStyle(0xff77aa); g.fillRect(19,29,4,5);
+      g.fillStyle(0x9966aa); g.fillRect(11,14,20,20);
+      g.fillStyle(0x775588); g.fillRect(11,14,5,18);
+      g.fillStyle(0xbb88cc); g.fillRect(16,14,8,6);
+      g.fillStyle(0xffcc99); g.fillRect(4,14,7,14);
+      g.fillStyle(0xffcc99); g.fillRect(30,18,8,14);
+      g.fillStyle(0xffcc99); g.fillRect(17,10,9,6);
+      g.fillStyle(0xffcc99); g.fillRect(13,4,16,8);
+      g.fillStyle(0xcc8844); g.fillRect(11,0,20,8);
+      g.fillStyle(0xdd9955); g.fillRect(11,0,20,3);
+      g.fillStyle(0xcc8844); g.fillRect(7,4,6,10);
+      g.fillStyle(0xcc8844); g.fillRect(29,4,6,10);
+      g.generateTexture('charmer_fside_step', 44, 60);
+    }
+    function drawLaurenBSide(g) {
+      g.clear();
+      g.fillStyle(0x774455); g.fillRect(9,52,12,8); g.fillRect(23,52,10,8);
+      g.fillStyle(0xbb6699); g.fillRect(1,44,40,8);
+      g.fillStyle(0xd988bb); g.fillRect(3,36,36,14);
+      g.fillStyle(0xcc77aa); g.fillRect(3,50,36,2);
+      g.fillStyle(0xff99bb); g.fillRect(16,32,10,4);
+      g.fillStyle(0x775588); g.fillRect(11,14,20,20);
+      g.fillStyle(0x9966aa); g.fillRect(15,14,12,18);
+      g.fillStyle(0x553366); g.fillRect(20,14,3,18);
+      g.fillStyle(0xffcc99); g.fillRect(4,16,7,14);
+      g.fillStyle(0xffcc99); g.fillRect(31,16,8,14);
+      g.fillStyle(0xffcc99); g.fillRect(17,10,9,6);
+      g.fillStyle(0xcc8844); g.fillRect(11,0,20,10);
+      g.fillStyle(0xdd9955); g.fillRect(11,0,20,3);
+      g.fillStyle(0xcc8844); g.fillRect(7,4,6,10);
+      g.fillStyle(0xcc8844); g.fillRect(29,4,6,10);
+      g.fillStyle(0xaa6622); g.fillEllipse(23,9,10,7);
+      g.generateTexture('charmer_bside', 44, 60);
+    }
+    function drawLaurenBSideStep(g) {
+      g.clear();
+      g.fillStyle(0x774455); g.fillRect(9,52,12,8); g.fillRect(23,49,10,11);
+      g.fillStyle(0xbb6699); g.fillRect(1,44,40,8);
+      g.fillStyle(0xd988bb); g.fillRect(3,36,36,14);
+      g.fillStyle(0xcc77aa); g.fillRect(3,50,36,2);
+      g.fillStyle(0xff99bb); g.fillRect(16,32,10,4);
+      g.fillStyle(0x775588); g.fillRect(11,14,20,20);
+      g.fillStyle(0x9966aa); g.fillRect(15,14,12,18);
+      g.fillStyle(0x553366); g.fillRect(20,14,3,18);
+      g.fillStyle(0xffcc99); g.fillRect(4,18,7,14);
+      g.fillStyle(0xffcc99); g.fillRect(31,14,8,14);
+      g.fillStyle(0xffcc99); g.fillRect(17,10,9,6);
+      g.fillStyle(0xcc8844); g.fillRect(11,0,20,10);
+      g.fillStyle(0xdd9955); g.fillRect(11,0,20,3);
+      g.fillStyle(0xcc8844); g.fillRect(7,4,6,10);
+      g.fillStyle(0xcc8844); g.fillRect(29,4,6,10);
+      g.fillStyle(0xaa6622); g.fillEllipse(23,9,10,7);
+      g.generateTexture('charmer_bside_step', 44, 60);
+    }
+
+    // ── Abigail ─────────────────────────────────────────────────
+    function drawAbigail(g) {
+      g.clear();
+      g.fillStyle(0x222211); g.fillRect(6,52,12,8); g.fillRect(19,52,12,8);
+      g.fillStyle(0x3d3320); g.fillRect(19,52,4,6);
+      g.fillStyle(0x334422); g.fillRect(6,34,12,18); g.fillRect(19,34,12,18);
+      g.fillStyle(0x446633); g.fillRect(20,34,4,16);
+      g.fillStyle(0x446622); g.fillRect(2,14,28,22);
+      g.fillStyle(0x557733); g.fillRect(4,15,22,20);
+      g.fillStyle(0x668844); g.fillRect(6,15,14,6);
+      g.fillStyle(0x334411); g.fillRect(2,14,4,20); g.fillRect(26,14,4,20);
+      g.fillStyle(0x8b5e3c); g.fillRect(2,32,28,4);
+      g.fillStyle(0x6b3f1e); g.fillRect(14,31,6,5);
+      g.fillStyle(0x8b5e3c); g.fillRect(33,4,4,52);
+      g.fillStyle(0x7a4a28); g.fillRect(33,4,4,4); g.fillRect(33,52,4,4);
+      g.fillStyle(0xddcc99); g.fillRect(35,4,1,52);
+      g.fillStyle(0x557733); g.fillRect(0,14,4,22);
+      g.fillStyle(0xffcc99); g.fillRect(0,26,4,8);
+      g.fillStyle(0x557733); g.fillRect(28,18,5,14);
+      g.fillStyle(0xffcc99); g.fillRect(28,28,5,8);
+      g.fillStyle(0xffcc99); g.fillRect(14,10,10,6);
+      g.fillStyle(0xffcc99); g.fillRect(10,4,14,8);
+      g.fillStyle(0x446622); g.fillRect(8,0,20,12);
+      g.fillStyle(0x334411); g.fillRect(8,0,4,10); g.fillRect(24,0,4,10);
+      g.fillStyle(0x557733); g.fillRect(10,0,14,5);
+      g.fillStyle(0x2d1f15); g.fillRect(10,6,10,6);
+      g.generateTexture('ranger', 44, 60);
+    }
+    function drawAbigailStep(g) {
+      g.clear();
+      g.fillStyle(0x222211); g.fillRect(6,49,12,11); g.fillRect(19,52,12,8);
+      g.fillStyle(0x3d3320); g.fillRect(19,52,4,6);
+      g.fillStyle(0x334422); g.fillRect(6,32,12,18); g.fillRect(19,34,12,18);
+      g.fillStyle(0x446633); g.fillRect(20,34,4,16);
+      g.fillStyle(0x446622); g.fillRect(2,14,28,22);
+      g.fillStyle(0x557733); g.fillRect(4,15,22,20);
+      g.fillStyle(0x668844); g.fillRect(6,15,14,6);
+      g.fillStyle(0x334411); g.fillRect(2,14,4,20); g.fillRect(26,14,4,20);
+      g.fillStyle(0x8b5e3c); g.fillRect(2,32,28,4);
+      g.fillStyle(0x6b3f1e); g.fillRect(14,31,6,5);
+      g.fillStyle(0x8b5e3c); g.fillRect(33,4,4,52);
+      g.fillStyle(0x7a4a28); g.fillRect(33,4,4,4); g.fillRect(33,52,4,4);
+      g.fillStyle(0xddcc99); g.fillRect(35,4,1,52);
+      g.fillStyle(0x557733); g.fillRect(0,18,4,22);
+      g.fillStyle(0xffcc99); g.fillRect(0,28,4,8);
+      g.fillStyle(0x557733); g.fillRect(28,14,5,14);
+      g.fillStyle(0xffcc99); g.fillRect(28,24,5,8);
+      g.fillStyle(0xffcc99); g.fillRect(14,10,10,6);
+      g.fillStyle(0xffcc99); g.fillRect(10,4,14,8);
+      g.fillStyle(0x446622); g.fillRect(8,0,20,12);
+      g.fillStyle(0x334411); g.fillRect(8,0,4,10); g.fillRect(24,0,4,10);
+      g.fillStyle(0x557733); g.fillRect(10,0,14,5);
+      g.fillStyle(0x2d1f15); g.fillRect(10,6,10,6);
+      g.generateTexture('ranger_step', 44, 60);
+    }
+    function drawAbigailFront(g) {
+      g.clear();
+      g.fillStyle(0x222211); g.fillRect(8,52,12,8); g.fillRect(24,52,12,8);
+      g.fillStyle(0x334422); g.fillRect(8,34,12,18); g.fillRect(24,34,12,18);
+      g.fillStyle(0x446633); g.fillRect(10,34,4,16); g.fillRect(26,34,4,16);
+      g.fillStyle(0x446622); g.fillRect(4,14,36,22);
+      g.fillStyle(0x557733); g.fillRect(8,15,28,20);
+      g.fillStyle(0x668844); g.fillRect(10,15,20,6);
+      g.fillStyle(0x334411); g.fillRect(4,14,5,20); g.fillRect(35,14,5,20);
+      g.fillStyle(0x8b5e3c); g.fillRect(4,32,36,4);
+      g.fillStyle(0x6b3f1e); g.fillRect(19,31,6,5);
+      g.fillStyle(0x8b5e3c); g.fillRect(39,4,4,52);
+      g.fillStyle(0x7a4a28); g.fillRect(39,4,4,4); g.fillRect(39,52,4,4);
+      g.fillStyle(0xddcc99); g.fillRect(41,4,1,52);
+      g.fillStyle(0x557733); g.fillRect(0,16,5,22);
+      g.fillStyle(0xffcc99); g.fillRect(0,28,5,8);
+      g.fillStyle(0x557733); g.fillRect(39,16,5,14);
+      g.fillStyle(0xffcc99); g.fillRect(39,26,5,8);
+      g.fillStyle(0xffcc99); g.fillRect(18,10,8,6);
+      g.fillStyle(0xffcc99); g.fillRect(14,4,16,8);
+      g.fillStyle(0x446622); g.fillRect(10,0,24,13);
+      g.fillStyle(0x334411); g.fillRect(10,0,5,12); g.fillRect(29,0,5,12);
+      g.fillStyle(0x557733); g.fillRect(13,0,18,5);
+      g.fillStyle(0x2d1f15); g.fillRect(15,6,14,6);
+      g.generateTexture('ranger_front', 44, 60);
+    }
+    function drawAbigailBack(g) {
+      g.clear();
+      g.fillStyle(0x222211); g.fillRect(8,52,12,8); g.fillRect(24,52,12,8);
+      g.fillStyle(0x334422); g.fillRect(8,34,12,18); g.fillRect(24,34,12,18);
+      g.fillStyle(0x446622); g.fillRect(4,14,36,22);
+      g.fillStyle(0x557733); g.fillRect(8,15,28,20);
+      g.fillStyle(0x334411); g.fillRect(4,14,5,20); g.fillRect(35,14,5,20);
+      g.fillStyle(0x334411); g.fillRect(20,14,4,20);
+      g.fillStyle(0x8b5e3c); g.fillRect(2,14,6,22);
+      g.fillStyle(0x7a4a28); g.fillRect(2,14,6,4);
+      g.fillStyle(0xddcc99); g.fillRect(3,8,2,10); g.fillRect(6,8,2,10);
+      g.fillStyle(0x8b5e3c); g.fillRect(4,32,36,4);
+      g.fillStyle(0x557733); g.fillRect(0,16,5,22);
+      g.fillStyle(0x557733); g.fillRect(39,16,5,22);
+      g.fillStyle(0xffcc99); g.fillRect(18,10,8,6);
+      g.fillStyle(0x446622); g.fillRect(10,0,24,13);
+      g.fillStyle(0x334411); g.fillRect(10,0,5,12); g.fillRect(29,0,5,12);
+      g.fillStyle(0x2d1f15); g.fillRect(14,6,16,8);
+      g.fillStyle(0x443322); g.fillRect(16,2,12,6);
+      g.generateTexture('ranger_back', 44, 60);
+    }
+    function drawAbigailFSide(g) {
+      g.clear();
+      g.fillStyle(0x222211); g.fillRect(8,52,12,8); g.fillRect(22,53,10,7);
+      g.fillStyle(0x334422); g.fillRect(8,34,12,18); g.fillRect(22,35,10,17);
+      g.fillStyle(0x446633); g.fillRect(10,34,4,16);
+      g.fillStyle(0x446622); g.fillRect(4,14,34,22);
+      g.fillStyle(0x557733); g.fillRect(7,15,26,20);
+      g.fillStyle(0x668844); g.fillRect(9,15,16,6);
+      g.fillStyle(0x334411); g.fillRect(4,14,4,20); g.fillRect(34,14,4,20);
+      g.fillStyle(0x8b5e3c); g.fillRect(4,32,34,4);
+      g.fillStyle(0x8b5e3c); g.fillRect(37,4,4,52);
+      g.fillStyle(0xddcc99); g.fillRect(39,4,1,52);
+      g.fillStyle(0x557733); g.fillRect(0,16,5,22);
+      g.fillStyle(0xffcc99); g.fillRect(0,28,5,8);
+      g.fillStyle(0xffcc99); g.fillRect(17,10,9,6);
+      g.fillStyle(0xffcc99); g.fillRect(13,4,14,8);
+      g.fillStyle(0x446622); g.fillRect(10,0,22,13);
+      g.fillStyle(0x334411); g.fillRect(10,0,5,12); g.fillRect(28,0,4,12);
+      g.fillStyle(0x557733); g.fillRect(13,0,16,5);
+      g.fillStyle(0x2d1f15); g.fillRect(14,6,12,6);
+      g.generateTexture('ranger_fside', 44, 60);
+    }
+    function drawAbigailBSide(g) {
+      g.clear();
+      g.fillStyle(0x222211); g.fillRect(8,52,12,8); g.fillRect(23,52,10,8);
+      g.fillStyle(0x334422); g.fillRect(8,34,12,18); g.fillRect(23,34,10,18);
+      g.fillStyle(0x446622); g.fillRect(4,14,34,22);
+      g.fillStyle(0x557733); g.fillRect(7,15,24,20);
+      g.fillStyle(0x334411); g.fillRect(4,14,4,20); g.fillRect(34,14,4,20);
+      g.fillStyle(0x334411); g.fillRect(18,14,3,20);
+      g.fillStyle(0x8b5e3c); g.fillRect(2,14,5,20);
+      g.fillStyle(0xddcc99); g.fillRect(3,8,2,10); g.fillRect(6,8,2,10);
+      g.fillStyle(0x8b5e3c); g.fillRect(4,32,34,4);
+      g.fillStyle(0x557733); g.fillRect(0,16,5,22);
+      g.fillStyle(0x557733); g.fillRect(37,16,5,22);
+      g.fillStyle(0xffcc99); g.fillRect(17,10,9,6);
+      g.fillStyle(0x446622); g.fillRect(10,0,22,13);
+      g.fillStyle(0x334411); g.fillRect(10,0,5,12); g.fillRect(28,0,4,12);
+      g.fillStyle(0x2d1f15); g.fillRect(13,6,14,8);
+      g.fillStyle(0x443322); g.fillRect(15,2,12,6);
+      g.generateTexture('ranger_bside', 44, 60);
+    }
+
+    const LAUREN_FRAMES = [
+      { key:'charmer',           label:'Side',       fn: drawLauren },
+      { key:'charmer_step',      label:'Side Step',  fn: drawLaurenStep },
+      { key:'charmer_front',     label:'Front',      fn: drawLaurenFront },
+      { key:'charmer_front_step',label:'Front Step', fn: drawLaurenFrontStep },
+      { key:'charmer_back',      label:'Back',       fn: drawLaurenBack },
+      { key:'charmer_back_step', label:'Back Step',  fn: drawLaurenBackStep },
+      { key:'charmer_fside',     label:'F-Diag',     fn: drawLaurenFSide },
+      { key:'charmer_fside_step',label:'F-Diag Step',fn: drawLaurenFSideStep },
+      { key:'charmer_bside',     label:'B-Diag',     fn: drawLaurenBSide },
+      { key:'charmer_bside_step',label:'B-Diag Step',fn: drawLaurenBSideStep },
+    ];
+
+    const ABIGAIL_FRAMES = [
+      { key:'ranger',            label:'Side',       fn: drawAbigail },
+      { key:'ranger_step',       label:'Side Step',  fn: drawAbigailStep },
+      { key:'ranger_front',      label:'Front',      fn: drawAbigailFront },
+      { key:'ranger_back',       label:'Back',       fn: drawAbigailBack },
+      { key:'ranger_fside',      label:'F-Diag',     fn: drawAbigailFSide },
+      { key:'ranger_bside',      label:'B-Diag',     fn: drawAbigailBSide },
+    ];
+
+    class PreviewScene extends Phaser.Scene {
+      constructor() { super('Preview'); }
+      preload() {}
+      create() {
+        const g = this.add.graphics();
+
+        const renderFrame = (frameObj, containerId) => {
+          frameObj.fn(g);
+          const tex = this.textures.get(frameObj.key);
+          const src = tex.getSourceImage();
+          const div = document.createElement('div');
+          div.className = 'frame';
+          const c = document.createElement('canvas');
+          c.width = 88; c.height = 120;
+          const ctx = c.getContext('2d');
+          ctx.imageSmoothingEnabled = false;
+          ctx.drawImage(src, 0, 0, 44, 60, 0, 0, 88, 120);
+          const label = document.createElement('span');
+          label.textContent = frameObj.label;
+          div.appendChild(c);
+          div.appendChild(label);
+          document.getElementById(containerId).appendChild(div);
+        };
+
+        LAUREN_FRAMES.slice(0,2).forEach(f => renderFrame(f, 'lauren-side'));
+        LAUREN_FRAMES.slice(2,6).forEach(f => renderFrame(f, 'lauren-fb'));
+        LAUREN_FRAMES.slice(6).forEach(f => renderFrame(f, 'lauren-diag'));
+
+        ABIGAIL_FRAMES.slice(0,2).forEach(f => renderFrame(f, 'abigail-side'));
+        ABIGAIL_FRAMES.slice(2,4).forEach(f => renderFrame(f, 'abigail-fb'));
+        ABIGAIL_FRAMES.slice(4).forEach(f => renderFrame(f, 'abigail-diag'));
+
+        g.destroy();
+      }
+    }
+
+    new Phaser.Game({
+      type: Phaser.CANVAS,
+      canvas: document.getElementById('gameCanvas'),
+      width: 44, height: 60,
+      backgroundColor: '#000',
+      scene: [ PreviewScene ],
+    });
+  </script>
+</body>
+</html>
