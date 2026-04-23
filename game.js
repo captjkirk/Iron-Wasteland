@@ -7365,12 +7365,15 @@ class GameScene extends Phaser.Scene {
 
     this.bCards = CHARS.map((ch, i) => {
       const spacing = Math.min(250, Math.floor((W - 240) / (CHARS.length - 1)));
-      const x = W/2 + (i - Math.floor(CHARS.length / 2)) * spacing, y = H/2-10;
+      // y shifted down so the taller card (sprite + text below it) stays vertically centred
+      const x = W/2 + (i - Math.floor(CHARS.length / 2)) * spacing, y = H/2+20;
       const box    = push(this.add.graphics().setDepth(211));
-      const spr    = push(this.add.image(x, y-52, ch.id).setScale(2.5).setDepth(212));
-      const nameT  = push(t(x, y+16, ch.player, { fontFamily:'monospace', fontSize:'18px', color:'#'+ch.color.toString(16).padStart(6,'0') }).setOrigin(0.5));
-      const titT   = push(t(x, y+40, ch.title,  { fontFamily:'monospace', fontSize:'12px', color:'#777788' }).setOrigin(0.5));
-      const stateT = push(t(x, y+62, '',         { fontFamily:'monospace', fontSize:'12px', color:'#ff4444' }).setOrigin(0.5));
+      // sprite at y-60; at scale 2.5 the 60px-tall texture → 150px, so top = y-135, bottom = y+15
+      const spr    = push(this.add.image(x, y-60, ch.id).setScale(2.5).setDepth(212));
+      // name/title/state all sit below sprite bottom (y+15) with comfortable clearance
+      const nameT  = push(t(x, y+28, ch.player, { fontFamily:'monospace', fontSize:'18px', color:'#'+ch.color.toString(16).padStart(6,'0') }).setOrigin(0.5));
+      const titT   = push(t(x, y+50, ch.title,  { fontFamily:'monospace', fontSize:'12px', color:'#777788' }).setOrigin(0.5));
+      const stateT = push(t(x, y+70, '',         { fontFamily:'monospace', fontSize:'12px', color:'#ff4444' }).setOrigin(0.5));
       return { box, spr, nameT, titT, stateT, x, y };
     });
 
@@ -7556,7 +7559,7 @@ class GameScene extends Phaser.Scene {
       if (!this.barrackOpen) return;
       for (let i = 0; i < this.bCards.length; i++) {
         const c = this.bCards[i];
-        if (ptr.x >= c.x - 106 && ptr.x <= c.x + 106 && ptr.y >= c.y - 100 && ptr.y <= c.y + 98) {
+        if (ptr.x >= c.x - 106 && ptr.x <= c.x + 106 && ptr.y >= c.y - 140 && ptr.y <= c.y + 85) {
           if (i === this.barrackSel) { this.barrackConfirm(); }
           else { this.barrackSel = i; this.refreshBarrackCards(); }
           return;
@@ -7618,9 +7621,9 @@ class GameScene extends Phaser.Scene {
       const ch=CHARS[i], isSel=i===this.barrackSel, isCur=ch.id===this.barrackOwner.charData.id, isTaken=ch.id===otherId;
       card.box.clear();
       card.box.fillStyle(isSel?0x1e2e1e:0x0e0e1a, 0.96);
-      card.box.fillRoundedRect(card.x-106, card.y-100, 212, 198, 10);
+      card.box.fillRoundedRect(card.x-106, card.y-140, 212, 225, 10);
       card.box.lineStyle(isSel?3:2, isSel?0xcc8833:isCur?0x4488ff:isTaken?0x663333:0x2a2a3a);
-      card.box.strokeRoundedRect(card.x-106, card.y-100, 212, 198, 10);
+      card.box.strokeRoundedRect(card.x-106, card.y-140, 212, 225, 10);
       card.spr.setAlpha(isTaken?0.28:1);
       card.stateT.setText(isCur?'(current)':isTaken?'(taken)':'');
       card.stateT.setColor(isCur?'#4488ff':'#ff4444');
@@ -9452,22 +9455,26 @@ class GameScene extends Phaser.Scene {
       player.atkCooldown = 1500;
       this._triggerAtkAnim(player, 675);
       this._log(`${player.charData.player} Pirouette  hp=${player.hp}/${player.maxHp}`, 'player');
+      // Visual circle radius 50 expands to 50*1.4=70 — hit radius matches final visual
+      const PIRO_R = 70;
       const pfx = this.add.graphics().setDepth(20).setPosition(player.spr.x, player.spr.y);
       if (this.hudCam) this.hudCam.ignore(pfx);
       pfx.lineStyle(5, 0xff88cc, 0.9);
-      pfx.strokeCircle(0, 0, 55);
+      pfx.strokeCircle(0, 0, 50);
       pfx.lineStyle(3, 0xffccee, 0.6);
-      pfx.strokeCircle(0, 0, 38);
+      pfx.strokeCircle(0, 0, 34);
       this.tweens.add({ targets: pfx, alpha: 0, scaleX: 1.4, scaleY: 1.4, duration: 400, onComplete: () => pfx.destroy() });
       const px = player.spr.x, py = player.spr.y;
       this.enemies.forEach(e => {
         if (e.dying) return;
         const d = Phaser.Math.Distance.Between(px, py, e.spr.x, e.spr.y);
-        if (d < 75) {
+        if (d < PIRO_R) {
           e._aggroOverride = true;
           e._charmTinted = false;
           if (e.spr?.active) e.spr.clearTint();
-          this._hurtEnemy(e, 35, px, py, 0xff88cc, player);
+          // Falloff: 35 dmg at center, 15 dmg at edge
+          const dmg = Math.round(Phaser.Math.Linear(35, 15, d / PIRO_R));
+          this._hurtEnemy(e, dmg, px, py, 0xff88cc, player);
         }
       });
     } else if (id === 'ranger') {
