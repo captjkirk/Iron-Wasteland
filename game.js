@@ -6380,7 +6380,7 @@ class GameScene extends Phaser.Scene {
   // (e.g. revive + frost + web in close succession) all get to read.
   hint(text, duration) {
     this._log(`HINT: ${text}`, 'player');
-    duration = Math.max(duration || 0, 3500);
+    duration = Math.max(duration || 2500, 800);
     this._hintQueue = this._hintQueue || [];
     // Suppress immediate exact duplicates (the same hint fired twice in a
     // row is almost always a bug or a per-frame re-trigger; the queue
