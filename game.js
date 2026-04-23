@@ -5778,6 +5778,7 @@ class GameScene extends Phaser.Scene {
     this.deepWaterTiles = [];   // deep water — obstacles (impassable)
     this.iceTiles = [];         // frozen water — overlap (slippery)
     this.rivers = [];           // river metadata — rebuilt each run by _buildRivers
+    this._cityCenter = null;    // set by buildRuinsCity, read by _buildRivers
     // Typed-array terrain maps — numeric index (tx + ty*MAP_W), no string allocations
     this._waterMap = new Uint8Array(CFG.MAP_W * CFG.MAP_H); // 1=shallow water
     this._iceMap   = new Uint8Array(CFG.MAP_W * CFG.MAP_H); // 1=ice tile
@@ -6393,6 +6394,9 @@ class GameScene extends Phaser.Scene {
     // Clamp so the entire city fits within map bounds
     const cl = Math.max(3, Math.min(cityLeft, CFG.MAP_W - totalW - 3));
     const ct = Math.max(3, Math.min(cityTop,  CFG.MAP_H - totalH - 3));
+
+    // Store for river generation — rivers avoid a radius around the city
+    this._cityCenter = { tx: Math.round(cl + totalW / 2), ty: Math.round(ct + totalH / 2) };
 
     // Helper — place one wall segment (obstacle with tight hitbox)
     const placeWall = (tx, ty) => {
@@ -10943,9 +10947,26 @@ class GameScene extends Phaser.Scene {
 
     this.rivers = [];
 
+    // ── EXCLUSION ZONES ──────────────────────────────────────────────────────
+    // Rivers skip tiles inside the spawn grassland and the ruins city so they
+    // don't carve through the starting area or the abandoned city.
+    const SPAWN_EXCL = SAFE_R + 22; // 32 tiles — covers the starting grassland biome
+    const CITY_EXCL  = 42;          // covers the full ruins city footprint + buffer
+    const _inExcl = (tx, ty) => {
+      const dsx = tx - stx, dsy = ty - sty;
+      if (dsx * dsx + dsy * dsy < SPAWN_EXCL * SPAWN_EXCL) return true;
+      if (this._cityCenter) {
+        const dcx = tx - this._cityCenter.tx, dcy = ty - this._cityCenter.ty;
+        if (dcx * dcx + dcy * dcy < CITY_EXCL * CITY_EXCL) return true;
+      }
+      return false;
+    };
+
     // ── ENDPOINT POOL ───────────────────────────────────────────────────────
-    // Lake centers (populated by _buildLakes above)
-    const lakePts = (this.lakeCenters || []).map(lc => ({ tx: lc.tx, ty: lc.ty, isEdge: false }));
+    // Lake centers (populated by _buildLakes above); exclude any that fall in a zone
+    const lakePts = (this.lakeCenters || [])
+      .filter(lc => !_inExcl(lc.tx, lc.ty))
+      .map(lc => ({ tx: lc.tx, ty: lc.ty, isEdge: false }));
 
     // Map-edge entry points — 4 per side, seeded positions for variety.
     // Rivers that start/end here look like they flow in from off-screen.
@@ -11006,7 +11027,7 @@ class GameScene extends Phaser.Scene {
       const startTile = findEdgeTile(fromPt, toPt);
       const endTile   = findEdgeTile(toPt, fromPt);
 
-      if (Math.abs(startTile.tx - stx) < SAFE_R + 2 && Math.abs(startTile.ty - sty) < SAFE_R + 2) {
+      if (_inExcl(startTile.tx, startTile.ty) || _inExcl(endTile.tx, endTile.ty)) {
         _skipped++; continue;
       }
 
@@ -11048,7 +11069,7 @@ class GameScene extends Phaser.Scene {
         let safety = 0;
         while ((cx !== nx || cy !== ny) && ++safety < 1200) {
           const key = cx + ',' + cy;
-          if (!this._solidTileSet || !this._solidTileSet.has(key)) centerline.add(key);
+          if ((!this._solidTileSet || !this._solidTileSet.has(key)) && !_inExcl(cx, cy)) centerline.add(key);
           const remX = nx - cx, remY = ny - cy;
           let stepX = 0, stepY = 0;
           if (Math.abs(remX) >= Math.abs(remY)) {
@@ -11083,6 +11104,7 @@ class GameScene extends Phaser.Scene {
             const nk = nx + ',' + ny;
             if (riverTiles.has(nk)) continue;
             if (this._solidTileSet && this._solidTileSet.has(nk)) continue;
+            if (_inExcl(nx, ny)) continue;
             riverTiles.add(nk);
           }
         }
@@ -11093,7 +11115,7 @@ class GameScene extends Phaser.Scene {
       riverTiles.forEach(key => {
         const [rtx, rty] = key.split(',').map(Number);
         if (rtx < 1 || rty < 1 || rtx >= MAP_W - 1 || rty >= MAP_H - 1) return;
-        if (Math.abs(rtx - stx) < SAFE_R && Math.abs(rty - sty) < SAFE_R) return;
+        if (_inExcl(rtx, rty)) return;
         if (this._waterMap[rtx + rty * MAP_W]) return; // already water — skip
         const tile = this._w(this.add.image(rtx * TILE, rty * TILE, 'water_river').setOrigin(0).setDepth(0.75));
         if (this.hudCam) this.hudCam.ignore(tile);
