@@ -4586,6 +4586,7 @@ class GameScene extends Phaser.Scene {
     }
 
     // Ruins city — navigable abandoned city grid (replaces scattered pillars)
+    this._mmFloorTiles = []; // flat tx,ty pairs — filled by buildRuinsCity for minimap
     this._log('buildWorld: buildRuinsCity start', 'world');
     this.buildRuinsCity(stx, sty, TILE);
     this._log('buildWorld: buildRuinsCity done', 'world');
@@ -5088,6 +5089,7 @@ class GameScene extends Phaser.Scene {
           for (let wy = by+1; wy < by+blockH-1; wy++) {
             if (wx < 2 || wx > CFG.MAP_W-3 || wy < 2 || wy > CFG.MAP_H-3) continue;
             this._w(this.add.tileSprite(wx*TILE, wy*TILE, TILE, TILE, 'ruin_floor').setOrigin(0).setDepth(0.6));
+            if (this._mmFloorTiles) this._mmFloorTiles.push(wx, wy);
           }
         }
 
@@ -5490,7 +5492,7 @@ class GameScene extends Phaser.Scene {
 
   // Build a full-map color lookup (Uint32Array, one entry per tile).
   // Called once at end of world-gen; each updateMinimap() call reads it in O(1).
-  // Layer order: biome base → water → ice → deep water → trees → rocks → walls → mountains.
+  // Layer order: biome → water → ice → deep water → trees → rocks → building floors → walls → mountains.
   _buildMinimapColorMap(TILE) {
     const { MAP_W, MAP_H } = CFG;
     this._mmColorMap = new Uint32Array(MAP_W * MAP_H);
@@ -5531,26 +5533,51 @@ class GameScene extends Phaser.Scene {
         if (!k) continue;
         const tx = Math.floor(ob.x / TILE), ty = Math.floor(ob.y / TILE);
         if (tx < 0 || tx >= MAP_W || ty < 0 || ty >= MAP_H) continue;
-        if (ob.isTree)          this._mmColorMap[tx + ty * MAP_W] = 0x1a4a10; // dark green
+        if (ob.isTree)             this._mmColorMap[tx + ty * MAP_W] = 0x1a4a10; // dark green
         else if (_ROCK_KEYS.has(k)) this._mmColorMap[tx + ty * MAP_W] = 0x776655; // warm gray
       }
     }
 
-    // Ruins + biome structure walls — makes buildings show on radar
+    // Building interior floors — ruins city (tracked in _mmFloorTiles) + biome structures
+    const _FLOOR_COL = 0x7a7a8a; // medium gray, readable on all biome backgrounds
+    if (this._mmFloorTiles) {
+      for (let i = 0; i < this._mmFloorTiles.length; i += 2) {
+        const tx = this._mmFloorTiles[i], ty = this._mmFloorTiles[i + 1];
+        if (tx >= 0 && tx < MAP_W && ty >= 0 && ty < MAP_H)
+          this._mmColorMap[tx + ty * MAP_W] = _FLOOR_COL;
+      }
+    }
+    // Biome structures: W=7 H=5, interior dx:1..5 dy:1..3, centered on _preStructureTiles pos
+    if (this._preStructureTiles) {
+      for (const positions of Object.values(this._preStructureTiles)) {
+        for (const pos of positions) {
+          const x0 = pos.tx - 3, y0 = pos.ty - 2; // floor(7/2)=3, floor(5/2)=2
+          for (let dx = 1; dx <= 5; dx++) {
+            for (let dy = 1; dy <= 3; dy++) {
+              const tx = x0 + dx, ty = y0 + dy;
+              if (tx >= 0 && tx < MAP_W && ty >= 0 && ty < MAP_H)
+                this._mmColorMap[tx + ty * MAP_W] = _FLOOR_COL;
+            }
+          }
+        }
+      }
+    }
+
+    // Ruins + biome structure walls — bright white outline so structures are clearly legible
     if (this._wallTileSet) {
       for (const key of this._wallTileSet) {
         const sep = key.indexOf(',');
         const tx = parseInt(key, 10), ty = parseInt(key.slice(sep + 1), 10);
         if (tx >= 0 && tx < MAP_W && ty >= 0 && ty < MAP_H)
-          this._mmColorMap[tx + ty * MAP_W] = 0x9988bb; // purple-gray, pops on ruins bg
+          this._mmColorMap[tx + ty * MAP_W] = 0xeeeeff; // near-white wall outline
       }
     }
 
-    // Mountains (topmost override)
+    // Mountains — bright so ridgelines read clearly against all biomes
     if (this.mountainTiles) {
       for (const m of this.mountainTiles) {
         if (m.tx >= 0 && m.tx < MAP_W && m.ty >= 0 && m.ty < MAP_H)
-          this._mmColorMap[m.tx + m.ty * MAP_W] = 0x778899;
+          this._mmColorMap[m.tx + m.ty * MAP_W] = 0xddeeff; // very light blue-white
       }
     }
   }
