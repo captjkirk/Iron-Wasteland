@@ -803,6 +803,12 @@ function buildTextures(scene) {
   drawAbigailBack(g);   drawAbigailBackStep(g);
   drawAbigailFSide(g);  drawAbigailFSideStep(g);
   drawAbigailBSide(g);  drawAbigailBSideStep(g);
+  // Attack-pose frames
+  drawKnightAtk(g); drawKnightAtkFront(g); drawKnightAtkBack(g); drawKnightAtkFSide(g); drawKnightAtkBSide(g);
+  drawGunslingerAtk(g); drawGunslingerAtkFront(g); drawGunslingerAtkBack(g); drawGunslingerAtkFSide(g); drawGunslingerAtkBSide(g);
+  drawArchitectAtk(g); drawArchitectAtkFront(g); drawArchitectAtkBack(g); drawArchitectAtkFSide(g); drawArchitectAtkBSide(g);
+  drawLaurenAtk(g); drawLaurenAtkFront(g); drawLaurenAtkBack(g); drawLaurenAtkFSide(g); drawLaurenAtkBSide(g);
+  drawAbigailAtk(g); drawAbigailAtkFront(g); drawAbigailAtkBack(g); drawAbigailAtkFSide(g); drawAbigailAtkBSide(g);
   // Enemy raider directional sprites
   drawRaiderDirectionals(g);
 
@@ -3451,6 +3457,597 @@ function drawAbigailBSideStep(g) {
   g.generateTexture('ranger_bside_step', 44, 60);
 }
 
+// ── ATTACK-POSE FRAMES ──────────────────────────────────────────
+// One attack frame per direction per character. Shown briefly by _triggerAtkAnim.
+
+// ── KNIGHT attack variants ──────────────────────────────────────
+function drawKnightAtk(g) {
+  g.clear();
+  g.fillStyle(0x1a2d3d); g.fillRect(5,52,11,8); g.fillRect(18,52,11,8);
+  g.fillStyle(0x2d4a63); g.fillRect(18,52,4,6);
+  g.fillStyle(0x2d4a63); g.fillRect(5,34,11,20); g.fillRect(18,34,11,20);
+  g.fillStyle(0x3a5a7a); g.fillRect(19,34,4,18);
+  g.fillStyle(0x1a2d3d); g.fillRect(5,46,11,2); g.fillRect(18,46,11,2);
+  g.fillStyle(0x111111); g.fillRect(2,30,28,6);
+  g.fillStyle(0x2d4a63); g.fillRect(4,31,10,4); g.fillRect(16,31,10,4);
+  g.fillStyle(0x4a6d8c); g.fillRect(2,12,28,20);
+  g.fillStyle(0x3a5a7a); g.fillRect(6,14,18,16);
+  g.fillStyle(0x5588aa); g.fillRect(6,14,18,4);
+  g.fillStyle(0x2244aa); g.fillRect(0,12,6,24);
+  g.fillStyle(0x4466cc); g.fillRect(1,13,3,20);
+  g.fillStyle(0xccaa00); g.fillCircle(2,23,3);
+  g.fillStyle(0xeecc22); g.fillCircle(2,23,1);
+  // sword arm — extended forward at waist (swing follow-through)
+  g.fillStyle(0x4a6d8c); g.fillRect(28,20,14,8);
+  g.fillStyle(0x3a5a7a); g.fillRect(28,20,6,6);
+  g.fillStyle(0xcc9900); g.fillRect(38,16,6,5);
+  g.fillStyle(0x8b6914); g.fillRect(40,21,4,4);
+  g.fillStyle(0xbbbbbb); g.fillRect(38,14,5,2);
+  g.fillStyle(0xbbbbbb); g.fillRect(42,14,2,14);
+  g.fillStyle(0xdddddd); g.fillRect(43,14,1,12);
+  g.fillStyle(0x4a6d8c); g.fillRect(14,10,16,4);
+  g.fillStyle(0x4a6d8c); g.fillRect(8,0,24,13);
+  g.fillStyle(0x2d4a63); g.fillRect(8,4,24,8);
+  g.fillStyle(0x080808); g.fillRect(10,5,20,5);
+  g.fillStyle(0xffcc99); g.fillRect(12,6,16,3);
+  g.fillStyle(0x3a5a7a); g.fillRect(8,0,4,13); g.fillRect(28,0,4,13);
+  g.fillStyle(0x6688bb); g.fillRect(8,0,24,3);
+  g.generateTexture('knight_atk', 44, 60);
+}
+function drawKnightAtkFront(g) {
+  g.clear();
+  g.fillStyle(0x1a2d3d); g.fillRect(7,52,12,8); g.fillRect(23,52,12,8);
+  g.fillStyle(0x2d4a63); g.fillRect(7,34,12,20); g.fillRect(23,34,12,20);
+  g.fillStyle(0x3a5a7a); g.fillRect(9,34,4,18); g.fillRect(25,34,4,18);
+  g.fillStyle(0x1a2d3d); g.fillRect(7,46,12,2); g.fillRect(23,46,12,2);
+  g.fillStyle(0x111111); g.fillRect(4,30,36,6);
+  g.fillStyle(0x2d4a63); g.fillRect(6,31,10,4); g.fillRect(20,31,10,4);
+  g.fillStyle(0xccaa00); g.fillRect(19,30,5,4);
+  g.fillStyle(0x4a6d8c); g.fillRect(4,12,36,20);
+  g.fillStyle(0x3a5a7a); g.fillRect(10,14,24,16);
+  g.fillStyle(0x5588aa); g.fillRect(10,14,24,4);
+  g.fillStyle(0xccaa00); g.fillCircle(22,22,3);
+  g.fillStyle(0x4a6d8c); g.fillRect(0,12,6,22);
+  g.fillStyle(0x2244aa); g.fillRect(0,12,4,24);
+  g.fillStyle(0x4466cc); g.fillRect(1,13,2,20);
+  g.fillStyle(0xccaa00); g.fillCircle(1,23,2);
+  // right arm lowered, sword thrust down-forward (foreshortened)
+  g.fillStyle(0x4a6d8c); g.fillRect(36,22,8,12);
+  g.fillStyle(0xcc9900); g.fillRect(34,32,10,4);
+  g.fillStyle(0xbbbbbb); g.fillRect(38,34,4,8);
+  g.fillStyle(0xdddddd); g.fillRect(40,34,1,7);
+  g.fillStyle(0xffcc99); g.fillRect(17,10,10,4);
+  g.fillStyle(0x4a6d8c); g.fillRect(10,0,24,13);
+  g.fillStyle(0x2d4a63); g.fillRect(10,4,24,8);
+  g.fillStyle(0x080808); g.fillRect(12,5,20,5);
+  g.fillStyle(0xffcc99); g.fillRect(14,6,16,3);
+  g.fillStyle(0x3a5a7a); g.fillRect(10,0,4,13); g.fillRect(30,0,4,13);
+  g.fillStyle(0x6688bb); g.fillRect(10,0,24,3);
+  g.generateTexture('knight_atk_front', 44, 60);
+}
+function drawKnightAtkBack(g) {
+  g.clear();
+  g.fillStyle(0x1a2d3d); g.fillRect(7,52,12,8); g.fillRect(23,52,12,8);
+  g.fillStyle(0x2d4a63); g.fillRect(7,34,12,20); g.fillRect(23,34,12,20);
+  g.fillStyle(0x1a2d3d); g.fillRect(7,46,12,2); g.fillRect(23,46,12,2);
+  g.fillStyle(0x111111); g.fillRect(4,30,36,6);
+  g.fillStyle(0x4a6d8c); g.fillRect(4,12,36,20);
+  g.fillStyle(0x2d4a63); g.fillRect(10,14,24,16);
+  g.fillStyle(0x1a2d3d); g.fillRect(20,14,4,16);
+  // sword arm raised high (upswing), shield arm normal
+  g.fillStyle(0x4a6d8c); g.fillRect(0,12,6,22); g.fillRect(36,6,8,16);
+  g.fillStyle(0x2244aa); g.fillRect(0,14,4,22);
+  g.fillStyle(0xccaa00); g.fillRect(1,20,2,4);
+  g.fillStyle(0xcc9900); g.fillRect(34,4,10,5);
+  g.fillStyle(0xbbbbbb); g.fillRect(40,0,3,6);
+  g.fillStyle(0xdddddd); g.fillRect(42,0,1,5);
+  g.fillStyle(0xffcc99); g.fillRect(17,10,10,4);
+  g.fillStyle(0x4a6d8c); g.fillRect(10,0,24,13);
+  g.fillStyle(0x2d4a63); g.fillRect(10,2,24,10);
+  g.fillStyle(0x1a2d3d); g.fillRect(20,0,4,12);
+  g.fillStyle(0x3a5a7a); g.fillRect(10,0,4,13); g.fillRect(30,0,4,13);
+  g.fillStyle(0x6688bb); g.fillRect(10,0,24,3);
+  g.generateTexture('knight_atk_back', 44, 60);
+}
+function drawKnightAtkFSide(g) {
+  g.clear();
+  g.fillStyle(0x1a2d3d); g.fillRect(9,50,10,10); g.fillRect(22,52,12,8);
+  g.fillStyle(0x2d4a63); g.fillRect(9,34,10,16); g.fillRect(22,34,12,20);
+  g.fillStyle(0x3a5a7a); g.fillRect(24,34,4,18);
+  g.fillStyle(0x1a2d3d); g.fillRect(9,45,10,2); g.fillRect(22,46,12,2);
+  g.fillStyle(0x111111); g.fillRect(6,30,30,6);
+  g.fillStyle(0x2d4a63); g.fillRect(8,31,8,4); g.fillRect(20,31,10,4);
+  g.fillStyle(0x4a6d8c); g.fillRect(6,12,30,20);
+  g.fillStyle(0x2d4a63); g.fillRect(6,14,8,16);
+  g.fillStyle(0x3a5a7a); g.fillRect(14,14,20,16);
+  g.fillStyle(0x5588aa); g.fillRect(18,14,16,4);
+  g.fillStyle(0x2244aa); g.fillRect(2,12,6,24);
+  g.fillStyle(0x4466cc); g.fillRect(3,13,3,20);
+  g.fillStyle(0xccaa00); g.fillCircle(4,23,2);
+  // near arm — extended in swing
+  g.fillStyle(0x4a6d8c); g.fillRect(34,20,10,8);
+  g.fillStyle(0x3a5a7a); g.fillRect(34,20,5,6);
+  g.fillStyle(0xcc9900); g.fillRect(40,16,5,5);
+  g.fillStyle(0x8b6914); g.fillRect(41,21,3,4);
+  g.fillStyle(0xbbbbbb); g.fillRect(40,14,4,2);
+  g.fillStyle(0xbbbbbb); g.fillRect(43,14,1,12);
+  g.fillStyle(0xdddddd); g.fillRect(43,14,1,10);
+  g.fillStyle(0x4a6d8c); g.fillRect(16,10,14,4);
+  g.fillStyle(0x4a6d8c); g.fillRect(9,0,24,13);
+  g.fillStyle(0x2d4a63); g.fillRect(9,4,24,8);
+  g.fillStyle(0x080808); g.fillRect(11,5,20,5);
+  g.fillStyle(0xffcc99); g.fillRect(16,6,16,3);
+  g.fillStyle(0x3a5a7a); g.fillRect(9,0,4,13); g.fillRect(29,0,4,13);
+  g.fillStyle(0x6688bb); g.fillRect(9,0,24,3);
+  g.generateTexture('knight_atk_fside', 44, 60);
+}
+function drawKnightAtkBSide(g) {
+  g.clear();
+  g.fillStyle(0x1a2d3d); g.fillRect(9,50,10,10); g.fillRect(22,52,12,8);
+  g.fillStyle(0x2d4a63); g.fillRect(9,34,10,16); g.fillRect(22,34,12,20);
+  g.fillStyle(0x3a5a7a); g.fillRect(24,34,4,18);
+  g.fillStyle(0x1a2d3d); g.fillRect(9,44,10,2); g.fillRect(22,46,12,2);
+  g.fillStyle(0x111111); g.fillRect(6,30,30,6);
+  g.fillStyle(0x4a6d8c); g.fillRect(6,12,30,20);
+  g.fillStyle(0x2d4a63); g.fillRect(10,14,22,16);
+  g.fillStyle(0x1a2d3d); g.fillRect(18,14,6,16);
+  g.fillStyle(0x4a6d8c); g.fillRect(2,12,8,22);
+  g.fillStyle(0x2d4a63); g.fillRect(2,14,6,18);
+  g.fillStyle(0x2244aa); g.fillRect(2,14,4,22);
+  g.fillStyle(0xccaa00); g.fillRect(3,20,2,4);
+  // near arm raised (upswing from back-diagonal)
+  g.fillStyle(0x4a6d8c); g.fillRect(34,6,8,16);
+  g.fillStyle(0xcc9900); g.fillRect(36,4,8,5);
+  g.fillStyle(0xbbbbbb); g.fillRect(41,0,3,6);
+  g.fillStyle(0xdddddd); g.fillRect(43,0,1,5);
+  g.fillStyle(0xffcc99); g.fillRect(17,10,8,4);
+  g.fillStyle(0x4a6d8c); g.fillRect(9,0,24,13);
+  g.fillStyle(0x2d4a63); g.fillRect(9,2,24,10);
+  g.fillStyle(0x1a2d3d); g.fillRect(19,0,6,12);
+  g.fillStyle(0x3a5a7a); g.fillRect(9,0,4,13); g.fillRect(29,0,4,13);
+  g.fillStyle(0x6688bb); g.fillRect(9,0,24,3);
+  g.generateTexture('knight_atk_bside', 44, 60);
+}
+
+// ── GUNSLINGER attack variants ──────────────────────────────────
+function drawGunslingerAtk(g) {
+  g.clear();
+  g.fillStyle(0x3d2010); g.fillRect(5,52,11,8); g.fillRect(18,52,11,8);
+  g.fillStyle(0x5c3318); g.fillRect(18,52,4,6);
+  g.fillStyle(0x3a5a7a); g.fillRect(5,34,11,18); g.fillRect(18,34,11,18);
+  g.fillStyle(0x4a6a8a); g.fillRect(19,34,4,16);
+  g.fillStyle(0x3d2010); g.fillRect(18,42,10,8);
+  g.fillStyle(0x222222); g.fillRect(20,44,6,6);
+  g.fillStyle(0x9a6622); g.fillRect(2,30,28,6);
+  g.fillStyle(0xccaa44); g.fillRect(16,31,6,4);
+  g.fillStyle(0xcc8833); g.fillRect(2,12,28,20);
+  g.fillStyle(0xffeedd); g.fillRect(8,13,12,17);
+  g.fillStyle(0x9a6622); g.fillRect(2,12,4,20); g.fillRect(26,12,4,20);
+  // gun arm fully extended at waist height
+  g.fillStyle(0xcc8833); g.fillRect(28,20,16,6);
+  g.fillStyle(0x9a6622); g.fillRect(28,20,4,5);
+  g.fillStyle(0x333333); g.fillRect(38,17,8,5);
+  g.fillStyle(0x555555); g.fillRect(39,15,7,5);
+  g.fillStyle(0x222222); g.fillRect(43,19,4,3);
+  // left arm
+  g.fillStyle(0xcc8833); g.fillRect(0,12,4,22);
+  g.fillStyle(0xffcc99); g.fillRect(14,10,14,4);
+  g.fillStyle(0xffcc99); g.fillRect(10,4,18,8);
+  g.fillStyle(0x7a4a1a); g.fillRect(2,3,34,3);
+  g.fillStyle(0x553311); g.fillRect(8,0,20,6);
+  g.fillStyle(0x7a5533); g.fillRect(8,0,20,1);
+  g.fillStyle(0x7a4a1a); g.fillRect(8,4,20,1);
+  g.generateTexture('gunslinger_atk', 44, 60);
+}
+function drawGunslingerAtkFront(g) {
+  g.clear();
+  g.fillStyle(0x3d2010); g.fillRect(7,52,12,8); g.fillRect(23,52,12,8);
+  g.fillStyle(0x3a5a7a); g.fillRect(7,34,12,18); g.fillRect(23,34,12,18);
+  g.fillStyle(0x4a6a8a); g.fillRect(9,34,4,16); g.fillRect(25,34,4,16);
+  g.fillStyle(0x3d2010); g.fillRect(27,40,10,10);
+  g.fillStyle(0x222222); g.fillRect(29,42,7,7);
+  g.fillStyle(0x9a6622); g.fillRect(4,30,36,6);
+  g.fillStyle(0xccaa44); g.fillRect(19,31,6,4);
+  g.fillStyle(0xcc8833); g.fillRect(4,12,36,20);
+  g.fillStyle(0xffeedd); g.fillRect(14,13,16,17);
+  g.fillStyle(0x9a6622); g.fillRect(4,12,6,20); g.fillRect(34,12,6,20);
+  // left arm normal, right arm forward (foreshortened) with gun face-on
+  g.fillStyle(0xcc8833); g.fillRect(0,12,6,22); g.fillRect(36,18,8,8);
+  g.fillStyle(0x333333); g.fillRect(37,16,8,6);
+  g.fillStyle(0x555555); g.fillRect(38,14,7,5);
+  g.fillStyle(0x222222); g.fillCircle(41,22,3);
+  g.fillStyle(0x444444); g.fillCircle(41,22,1);
+  g.fillStyle(0xffcc99); g.fillRect(17,10,10,4);
+  g.fillStyle(0xffcc99); g.fillRect(12,4,20,8);
+  g.fillStyle(0x7a4a1a); g.fillRect(4,3,36,3);
+  g.fillStyle(0x553311); g.fillRect(10,0,24,6);
+  g.fillStyle(0x7a5533); g.fillRect(10,0,24,1);
+  g.fillStyle(0x7a4a1a); g.fillRect(10,4,24,1);
+  g.generateTexture('gunslinger_atk_front', 44, 60);
+}
+function drawGunslingerAtkBack(g) {
+  g.clear();
+  g.fillStyle(0x3d2010); g.fillRect(7,52,12,8); g.fillRect(23,52,12,8);
+  g.fillStyle(0x3a5a7a); g.fillRect(7,34,12,18); g.fillRect(23,34,12,18);
+  g.fillStyle(0x9a6622); g.fillRect(4,30,36,6);
+  g.fillStyle(0xcc8833); g.fillRect(4,12,36,20);
+  g.fillStyle(0xaa7030); g.fillRect(10,13,24,17);
+  g.fillStyle(0x8a4a18); g.fillRect(18,13,8,17);
+  // left arm normal, right arm raised with gun pointed up
+  g.fillStyle(0xcc8833); g.fillRect(0,12,6,22); g.fillRect(36,8,8,16);
+  g.fillStyle(0x333333); g.fillRect(36,6,10,4);
+  g.fillStyle(0x555555); g.fillRect(38,4,8,4);
+  g.fillStyle(0xffcc99); g.fillRect(17,10,10,4);
+  g.fillStyle(0x7a4a1a); g.fillRect(4,3,36,3);
+  g.fillStyle(0x553311); g.fillRect(10,0,24,6);
+  g.fillStyle(0x3d2010); g.fillRect(14,1,16,4);
+  g.fillStyle(0x7a4a1a); g.fillRect(10,4,24,1);
+  g.generateTexture('gunslinger_atk_back', 44, 60);
+}
+function drawGunslingerAtkFSide(g) {
+  g.clear();
+  g.fillStyle(0x3d2010); g.fillRect(9,50,10,10); g.fillRect(22,52,12,8);
+  g.fillStyle(0x3a5a7a); g.fillRect(9,34,10,16); g.fillRect(22,34,12,18);
+  g.fillStyle(0x4a6a8a); g.fillRect(24,34,4,16);
+  g.fillStyle(0x3d2010); g.fillRect(24,40,8,8);
+  g.fillStyle(0x222222); g.fillRect(26,42,5,5);
+  g.fillStyle(0x9a6622); g.fillRect(6,30,30,6);
+  g.fillStyle(0xccaa44); g.fillRect(20,31,6,4);
+  g.fillStyle(0xcc8833); g.fillRect(6,12,30,20);
+  g.fillStyle(0x9a6622); g.fillRect(6,12,4,20);
+  g.fillStyle(0xffeedd); g.fillRect(14,13,16,17);
+  g.fillStyle(0xcc8833); g.fillRect(2,12,6,22);
+  g.fillStyle(0x9a6622); g.fillRect(2,14,4,18);
+  // near arm — gun fully extended
+  g.fillStyle(0xcc8833); g.fillRect(34,20,10,6);
+  g.fillStyle(0x333333); g.fillRect(40,17,6,5);
+  g.fillStyle(0x555555); g.fillRect(40,15,6,5);
+  g.fillStyle(0x222222); g.fillRect(43,21,4,3);
+  g.fillStyle(0xffcc99); g.fillRect(16,10,14,4);
+  g.fillStyle(0xffcc99); g.fillRect(14,4,20,8);
+  g.fillStyle(0x7a4a1a); g.fillRect(4,3,34,3);
+  g.fillStyle(0x553311); g.fillRect(10,0,22,6);
+  g.fillStyle(0x7a5533); g.fillRect(10,0,22,1);
+  g.fillStyle(0x7a4a1a); g.fillRect(10,4,22,1);
+  g.generateTexture('gunslinger_atk_fside', 44, 60);
+}
+function drawGunslingerAtkBSide(g) {
+  g.clear();
+  g.fillStyle(0x3d2010); g.fillRect(9,50,10,10); g.fillRect(22,52,12,8);
+  g.fillStyle(0x3a5a7a); g.fillRect(9,34,10,16); g.fillRect(22,34,12,18);
+  g.fillStyle(0x9a6622); g.fillRect(6,30,30,6);
+  g.fillStyle(0xcc8833); g.fillRect(6,12,30,20);
+  g.fillStyle(0xaa7030); g.fillRect(10,13,22,17);
+  g.fillStyle(0x8a4a18); g.fillRect(18,13,6,17);
+  g.fillStyle(0xcc8833); g.fillRect(2,12,8,22);
+  g.fillStyle(0x9a6622); g.fillRect(2,14,6,18);
+  // near arm raised (shooting upward from back-diagonal)
+  g.fillStyle(0xcc8833); g.fillRect(34,8,8,16);
+  g.fillStyle(0x333333); g.fillRect(36,6,8,4);
+  g.fillStyle(0x555555); g.fillRect(38,4,7,4);
+  g.fillStyle(0xffcc99); g.fillRect(17,10,8,4);
+  g.fillStyle(0x7a4a1a); g.fillRect(4,3,34,3);
+  g.fillStyle(0x553311); g.fillRect(10,0,22,6);
+  g.fillStyle(0x3d2010); g.fillRect(14,1,14,4);
+  g.fillStyle(0x7a4a1a); g.fillRect(10,4,22,1);
+  g.generateTexture('gunslinger_atk_bside', 44, 60);
+}
+
+// ── ARCHITECT attack variants ────────────────────────────────────
+function drawArchitectAtk(g) {
+  g.clear();
+  g.fillStyle(0x222222); g.fillRect(5,52,11,8); g.fillRect(18,52,11,8);
+  g.fillStyle(0x444444); g.fillRect(18,52,4,6);
+  g.fillStyle(0x334477); g.fillRect(5,34,11,18); g.fillRect(18,34,11,18);
+  g.fillStyle(0x445588); g.fillRect(19,34,4,16);
+  g.fillStyle(0x8b6914); g.fillRect(2,30,28,6);
+  g.fillStyle(0xaaaaaa); g.fillRect(4,29,3,5);
+  g.fillStyle(0xcc8833); g.fillRect(8,29,3,5);
+  g.fillStyle(0x44aaff); g.fillRect(12,29,3,5);
+  g.fillStyle(0x3a9a55); g.fillRect(2,12,28,20);
+  g.fillStyle(0x1a5533); g.fillRect(10,14,12,16);
+  g.fillStyle(0xffcc00); g.fillRect(2,12,4,4); g.fillRect(26,12,4,4);
+  g.fillStyle(0x3a9a55); g.fillRect(0,12,4,22);
+  // right arm + wrench — arm horizontal, wrench swung forward
+  g.fillStyle(0x3a9a55); g.fillRect(28,18,14,8);
+  g.fillStyle(0x777777); g.fillRect(36,14,7,5);
+  g.fillStyle(0x999999); g.fillRect(37,19,4,12);
+  g.fillStyle(0xbbbbbb); g.fillRect(37,19,2,10);
+  g.fillStyle(0x555555); g.fillRect(36,13,7,2);
+  g.fillStyle(0x555555); g.fillRect(36,17,2,2); g.fillRect(40,17,2,2);
+  g.fillStyle(0xffcc99); g.fillRect(14,10,14,4);
+  g.fillStyle(0xffcc99); g.fillRect(10,4,18,8);
+  g.fillStyle(0x222222); g.fillRect(6,3,26,3);
+  g.fillStyle(0xddcc22); g.fillRect(6,0,26,6);
+  g.fillStyle(0xeeee44); g.fillRect(6,0,26,2);
+  g.fillStyle(0x666600); g.fillRect(6,4,26,2);
+  g.generateTexture('architect_atk', 44, 60);
+}
+function drawArchitectAtkFront(g) {
+  g.clear();
+  g.fillStyle(0x222222); g.fillRect(7,52,12,8); g.fillRect(23,52,12,8);
+  g.fillStyle(0x334477); g.fillRect(7,34,12,18); g.fillRect(23,34,12,18);
+  g.fillStyle(0x445588); g.fillRect(9,34,4,16); g.fillRect(25,34,4,16);
+  g.fillStyle(0x8b6914); g.fillRect(4,30,36,6);
+  g.fillStyle(0xaaaaaa); g.fillRect(8,29,3,5);
+  g.fillStyle(0xcc8833); g.fillRect(14,29,3,5);
+  g.fillStyle(0x44aaff); g.fillRect(20,29,3,5);
+  g.fillStyle(0x3a9a55); g.fillRect(4,12,36,20);
+  g.fillStyle(0x1a5533); g.fillRect(16,13,12,17);
+  g.fillStyle(0xffcc00); g.fillRect(3,11,8,4); g.fillRect(33,11,8,4);
+  g.fillStyle(0xffcc00); g.fillRect(5,19,5,2); g.fillRect(34,19,5,2);
+  g.fillStyle(0x3a9a55); g.fillRect(0,12,6,22);
+  // right arm raised, wrench swung overhead
+  g.fillStyle(0x3a9a55); g.fillRect(36,6,8,20);
+  g.fillStyle(0x777777); g.fillRect(34,4,9,5);
+  g.fillStyle(0x999999); g.fillRect(38,9,4,14);
+  g.fillStyle(0xbbbbbb); g.fillRect(38,9,2,12);
+  g.fillStyle(0x555555); g.fillRect(34,3,9,2);
+  g.fillStyle(0xffcc99); g.fillRect(17,10,10,4);
+  g.fillStyle(0xffcc99); g.fillRect(12,4,20,8);
+  g.fillStyle(0x222222); g.fillRect(8,3,28,3);
+  g.fillStyle(0xddcc22); g.fillRect(8,0,28,6);
+  g.fillStyle(0xeeee44); g.fillRect(8,0,28,2);
+  g.fillStyle(0x666600); g.fillRect(8,4,28,2);
+  g.generateTexture('architect_atk_front', 44, 60);
+}
+function drawArchitectAtkBack(g) {
+  g.clear();
+  g.fillStyle(0x222222); g.fillRect(7,52,12,8); g.fillRect(23,52,12,8);
+  g.fillStyle(0x334477); g.fillRect(7,34,12,18); g.fillRect(23,34,12,18);
+  g.fillStyle(0x8b6914); g.fillRect(4,30,36,6);
+  g.fillStyle(0x3a9a55); g.fillRect(4,12,36,20);
+  g.fillStyle(0x1a5533); g.fillRect(10,13,24,17);
+  g.fillStyle(0xffcc00); g.fillRect(4,11,8,4); g.fillRect(32,11,8,4);
+  g.fillStyle(0xffcc00); g.fillRect(6,19,5,2); g.fillRect(33,19,5,2);
+  g.fillStyle(0x3a9a55); g.fillRect(0,12,6,22);
+  // right arm raised from behind, wrench overhead
+  g.fillStyle(0x3a9a55); g.fillRect(36,6,8,16);
+  g.fillStyle(0x999999); g.fillRect(38,4,4,4);
+  g.fillStyle(0x777777); g.fillRect(34,2,10,4);
+  g.fillStyle(0xffcc99); g.fillRect(17,10,10,4);
+  g.fillStyle(0x222222); g.fillRect(8,3,28,3);
+  g.fillStyle(0xddcc22); g.fillRect(8,0,28,6);
+  g.fillStyle(0xaa9900); g.fillRect(10,1,24,4);
+  g.fillStyle(0x666600); g.fillRect(8,4,28,2);
+  g.generateTexture('architect_atk_back', 44, 60);
+}
+function drawArchitectAtkFSide(g) {
+  g.clear();
+  g.fillStyle(0x222222); g.fillRect(9,50,10,10); g.fillRect(22,52,12,8);
+  g.fillStyle(0x334477); g.fillRect(9,34,10,16); g.fillRect(22,34,12,18);
+  g.fillStyle(0x445588); g.fillRect(24,34,4,16);
+  g.fillStyle(0x8b6914); g.fillRect(6,30,30,6);
+  g.fillStyle(0xaaaaaa); g.fillRect(8,29,3,5);
+  g.fillStyle(0xcc8833); g.fillRect(14,29,3,5);
+  g.fillStyle(0x3a9a55); g.fillRect(6,12,30,20);
+  g.fillStyle(0x1a5533); g.fillRect(8,14,10,16);
+  g.fillStyle(0x4dbb66); g.fillRect(18,14,16,16);
+  g.fillStyle(0xffcc00); g.fillRect(6,11,6,4); g.fillRect(30,11,6,4);
+  g.fillStyle(0xffcc00); g.fillRect(22,19,5,2);
+  g.fillStyle(0x3a9a55); g.fillRect(2,12,6,22);
+  g.fillStyle(0x1a5533); g.fillRect(2,14,4,18);
+  // near arm — wrench swung forward
+  g.fillStyle(0x3a9a55); g.fillRect(34,18,10,8);
+  g.fillStyle(0x777777); g.fillRect(40,14,6,5);
+  g.fillStyle(0x999999); g.fillRect(41,19,3,12);
+  g.fillStyle(0xbbbbbb); g.fillRect(41,19,2,10);
+  g.fillStyle(0x555555); g.fillRect(40,13,5,2);
+  g.fillStyle(0xffcc99); g.fillRect(16,10,14,4);
+  g.fillStyle(0xffcc99); g.fillRect(14,4,20,8);
+  g.fillStyle(0x222222); g.fillRect(7,3,26,3);
+  g.fillStyle(0xddcc22); g.fillRect(7,0,26,6);
+  g.fillStyle(0xeeee44); g.fillRect(7,0,26,2);
+  g.fillStyle(0x666600); g.fillRect(7,4,26,2);
+  g.generateTexture('architect_atk_fside', 44, 60);
+}
+function drawArchitectAtkBSide(g) {
+  g.clear();
+  g.fillStyle(0x222222); g.fillRect(9,50,10,10); g.fillRect(22,52,12,8);
+  g.fillStyle(0x334477); g.fillRect(9,34,10,16); g.fillRect(22,34,12,18);
+  g.fillStyle(0x8b6914); g.fillRect(6,30,30,6);
+  g.fillStyle(0x3a9a55); g.fillRect(6,12,30,20);
+  g.fillStyle(0x1a5533); g.fillRect(10,14,22,16);
+  g.fillStyle(0x2a7a45); g.fillRect(18,14,6,16);
+  g.fillStyle(0xffcc00); g.fillRect(6,11,6,4); g.fillRect(30,11,6,4);
+  g.fillStyle(0xffcc00); g.fillRect(8,20,5,2); g.fillRect(23,20,5,2);
+  g.fillStyle(0x3a9a55); g.fillRect(2,12,8,22);
+  g.fillStyle(0x1a5533); g.fillRect(2,14,6,18);
+  // near arm raised (overhead swing from back-diagonal)
+  g.fillStyle(0x3a9a55); g.fillRect(34,6,8,16);
+  g.fillStyle(0x999999); g.fillRect(38,4,4,4);
+  g.fillStyle(0x777777); g.fillRect(34,2,10,4);
+  g.fillStyle(0xffcc99); g.fillRect(17,10,8,4);
+  g.fillStyle(0x222222); g.fillRect(7,3,26,3);
+  g.fillStyle(0xddcc22); g.fillRect(7,0,26,6);
+  g.fillStyle(0xaa9900); g.fillRect(9,1,22,4);
+  g.fillStyle(0x666600); g.fillRect(7,4,26,2);
+  g.generateTexture('architect_atk_bside', 44, 60);
+}
+
+// ── CHARMER (Lauren) attack variants — all show pirouette arms-out spin ──
+function _drawLaurenAtkPose(g, key) {
+  g.clear();
+  g.fillStyle(0x774455); g.fillRect(9,52,10,8); g.fillRect(25,52,10,8);
+  g.fillStyle(0xbb6699); g.fillRect(1,44,42,8);
+  g.fillStyle(0xd988bb); g.fillRect(3,36,38,14);
+  g.fillStyle(0xeeccdd); g.fillRect(7,34,30,6);
+  g.fillStyle(0xcc77aa); g.fillRect(3,50,38,2);
+  g.fillStyle(0xff99bb); g.fillRect(16,32,12,5);
+  g.fillStyle(0xff77aa); g.fillRect(20,28,4,6);
+  g.fillStyle(0x9966aa); g.fillRect(12,14,20,20);
+  g.fillStyle(0x775588); g.fillRect(12,14,4,18);
+  g.fillStyle(0xbb88cc); g.fillRect(16,14,10,6);
+  // arms extended wide (spinning)
+  g.fillStyle(0xffcc99); g.fillRect(0,16,10,8);
+  g.fillStyle(0xffcc99); g.fillRect(34,16,10,8);
+  g.fillStyle(0xffcc99); g.fillRect(18,10,8,6);
+  g.fillStyle(0xffcc99); g.fillRect(14,4,16,8);
+  g.fillStyle(0xcc8844); g.fillRect(12,0,20,8);
+  g.fillStyle(0xdd9955); g.fillRect(12,0,20,3);
+  g.fillStyle(0xcc8844); g.fillRect(8,4,6,10);
+  g.fillStyle(0xcc8844); g.fillRect(30,4,6,10);
+  g.generateTexture(key, 44, 60);
+}
+function drawLaurenAtk(g)      { _drawLaurenAtkPose(g, 'charmer_atk'); }
+function drawLaurenAtkFront(g) { _drawLaurenAtkPose(g, 'charmer_atk_front'); }
+function drawLaurenAtkBack(g)  { _drawLaurenAtkPose(g, 'charmer_atk_back'); }
+function drawLaurenAtkFSide(g) { _drawLaurenAtkPose(g, 'charmer_atk_fside'); }
+function drawLaurenAtkBSide(g) { _drawLaurenAtkPose(g, 'charmer_atk_bside'); }
+
+// ── RANGER (Abigail) attack variants ─────────────────────────────
+function drawAbigailAtk(g) {
+  g.clear();
+  g.fillStyle(0x222211); g.fillRect(6,52,12,8); g.fillRect(19,52,12,8);
+  g.fillStyle(0x3d3320); g.fillRect(19,52,4,6);
+  g.fillStyle(0x334422); g.fillRect(6,34,12,18); g.fillRect(19,34,12,18);
+  g.fillStyle(0x446633); g.fillRect(20,34,4,16);
+  g.fillStyle(0x446622); g.fillRect(2,14,28,22);
+  g.fillStyle(0x557733); g.fillRect(4,15,22,20);
+  g.fillStyle(0x668844); g.fillRect(6,15,14,6);
+  g.fillStyle(0x334411); g.fillRect(2,14,4,20); g.fillRect(26,14,4,20);
+  g.fillStyle(0x8b5e3c); g.fillRect(2,32,28,4);
+  g.fillStyle(0x6b3f1e); g.fillRect(14,31,6,5);
+  // bow drawn forward (moved to center-left)
+  g.fillStyle(0x8b5e3c); g.fillRect(18,4,4,52);
+  g.fillStyle(0x7a4a28); g.fillRect(18,4,4,4); g.fillRect(18,52,4,4);
+  g.fillStyle(0xddcc99); g.fillRect(20,4,1,52);
+  // left (far) arm at bow
+  g.fillStyle(0x557733); g.fillRect(0,14,4,22);
+  g.fillStyle(0xffcc99); g.fillRect(0,26,4,8);
+  // right arm — draw arm pulled back horizontally
+  g.fillStyle(0x557733); g.fillRect(22,18,10,6);
+  g.fillStyle(0xffcc99); g.fillRect(28,18,5,6);
+  // nocked arrow
+  g.fillStyle(0x886633); g.fillRect(18,22,12,2);
+  g.fillStyle(0x446622); g.fillRect(18,21,3,4);
+  g.fillStyle(0xffcc99); g.fillRect(14,10,10,6);
+  g.fillStyle(0xffcc99); g.fillRect(10,4,14,8);
+  g.fillStyle(0x446622); g.fillRect(8,0,20,12);
+  g.fillStyle(0x334411); g.fillRect(8,0,4,10); g.fillRect(24,0,4,10);
+  g.fillStyle(0x557733); g.fillRect(10,0,14,5);
+  g.fillStyle(0x2d1f15); g.fillRect(10,6,10,6);
+  g.generateTexture('ranger_atk', 44, 60);
+}
+function drawAbigailAtkFront(g) {
+  g.clear();
+  g.fillStyle(0x222211); g.fillRect(8,52,12,8); g.fillRect(24,52,12,8);
+  g.fillStyle(0x334422); g.fillRect(8,34,12,18); g.fillRect(24,34,12,18);
+  g.fillStyle(0x446633); g.fillRect(10,34,4,16); g.fillRect(26,34,4,16);
+  g.fillStyle(0x446622); g.fillRect(4,14,36,22);
+  g.fillStyle(0x557733); g.fillRect(8,15,28,20);
+  g.fillStyle(0x668844); g.fillRect(10,15,20,6);
+  g.fillStyle(0x334411); g.fillRect(4,14,5,20); g.fillRect(35,14,5,20);
+  g.fillStyle(0x8b5e3c); g.fillRect(4,32,36,4);
+  g.fillStyle(0x6b3f1e); g.fillRect(19,31,6,5);
+  // bow in draw position (right side, slightly forward)
+  g.fillStyle(0x8b5e3c); g.fillRect(39,4,4,52);
+  g.fillStyle(0x7a4a28); g.fillRect(39,4,4,4); g.fillRect(39,52,4,4);
+  g.fillStyle(0xddcc99); g.fillRect(41,4,1,52);
+  // left arm extended forward to bow
+  g.fillStyle(0x557733); g.fillRect(0,16,5,22);
+  g.fillStyle(0xffcc99); g.fillRect(0,28,5,8);
+  // right arm (draw arm) pulled back at shoulder
+  g.fillStyle(0x557733); g.fillRect(34,16,6,10);
+  g.fillStyle(0xffcc99); g.fillRect(34,20,5,6);
+  // arrow foreshortened (nocked, points toward viewer)
+  g.fillStyle(0x886633); g.fillRect(36,22,6,2);
+  g.fillStyle(0x446622); g.fillRect(38,20,3,4);
+  g.fillStyle(0xffcc99); g.fillRect(18,10,8,6);
+  g.fillStyle(0xffcc99); g.fillRect(14,4,16,8);
+  g.fillStyle(0x446622); g.fillRect(10,0,24,13);
+  g.fillStyle(0x334411); g.fillRect(10,0,5,12); g.fillRect(29,0,5,12);
+  g.fillStyle(0x557733); g.fillRect(13,0,18,5);
+  g.fillStyle(0x2d1f15); g.fillRect(15,6,14,6);
+  g.generateTexture('ranger_atk_front', 44, 60);
+}
+function drawAbigailAtkBack(g) {
+  g.clear();
+  g.fillStyle(0x222211); g.fillRect(8,52,12,8); g.fillRect(24,52,12,8);
+  g.fillStyle(0x334422); g.fillRect(8,34,12,18); g.fillRect(24,34,12,18);
+  g.fillStyle(0x446622); g.fillRect(4,14,36,22);
+  g.fillStyle(0x557733); g.fillRect(8,15,28,20);
+  g.fillStyle(0x334411); g.fillRect(4,14,5,20); g.fillRect(35,14,5,20);
+  g.fillStyle(0x334411); g.fillRect(20,14,4,20);
+  // quiver on back
+  g.fillStyle(0x8b5e3c); g.fillRect(2,14,6,22);
+  g.fillStyle(0x7a4a28); g.fillRect(2,14,6,4);
+  g.fillStyle(0xddcc99); g.fillRect(3,8,2,10); g.fillRect(6,8,2,10);
+  g.fillStyle(0x8b5e3c); g.fillRect(4,32,36,4);
+  g.fillStyle(0x6b3f1e); g.fillRect(19,31,6,5);
+  // left arm (bow arm) extended up-forward
+  g.fillStyle(0x557733); g.fillRect(0,16,5,22);
+  // right arm (draw arm) pulled far back
+  g.fillStyle(0x557733); g.fillRect(39,16,5,10);
+  g.fillStyle(0xffcc99); g.fillRect(39,20,5,6);
+  // arrow drawn back, tip visible at right edge
+  g.fillStyle(0x886633); g.fillRect(34,22,9,2);
+  g.fillStyle(0xffcc99); g.fillRect(18,10,8,6);
+  g.fillStyle(0x446622); g.fillRect(10,0,24,13);
+  g.fillStyle(0x334411); g.fillRect(10,0,5,12); g.fillRect(29,0,5,12);
+  g.fillStyle(0x2d1f15); g.fillRect(14,6,16,8);
+  g.fillStyle(0x443322); g.fillRect(16,2,12,6);
+  g.generateTexture('ranger_atk_back', 44, 60);
+}
+function drawAbigailAtkFSide(g) {
+  g.clear();
+  g.fillStyle(0x222211); g.fillRect(8,52,12,8); g.fillRect(22,53,10,7);
+  g.fillStyle(0x334422); g.fillRect(8,34,12,18); g.fillRect(22,35,10,17);
+  g.fillStyle(0x446633); g.fillRect(10,34,4,16);
+  g.fillStyle(0x446622); g.fillRect(4,14,34,22);
+  g.fillStyle(0x557733); g.fillRect(7,15,26,20);
+  g.fillStyle(0x668844); g.fillRect(9,15,16,6);
+  g.fillStyle(0x334411); g.fillRect(4,14,4,20); g.fillRect(34,14,4,20);
+  g.fillStyle(0x8b5e3c); g.fillRect(4,32,34,4);
+  g.fillStyle(0x6b3f1e); g.fillRect(17,31,6,5);
+  // bow drawn (moved forward to center)
+  g.fillStyle(0x8b5e3c); g.fillRect(20,4,4,52);
+  g.fillStyle(0x7a4a28); g.fillRect(20,4,4,4); g.fillRect(20,52,4,4);
+  g.fillStyle(0xddcc99); g.fillRect(22,4,1,52);
+  // far arm at bow
+  g.fillStyle(0x557733); g.fillRect(0,16,5,22);
+  g.fillStyle(0xffcc99); g.fillRect(0,28,5,8);
+  // near arm pulled back (draw arm)
+  g.fillStyle(0x557733); g.fillRect(22,18,12,6);
+  g.fillStyle(0xffcc99); g.fillRect(30,18,6,6);
+  // arrow
+  g.fillStyle(0x886633); g.fillRect(20,22,14,2);
+  g.fillStyle(0x446622); g.fillRect(20,21,3,4);
+  g.fillStyle(0xffcc99); g.fillRect(17,10,9,6);
+  g.fillStyle(0xffcc99); g.fillRect(13,4,14,8);
+  g.fillStyle(0x446622); g.fillRect(10,0,22,13);
+  g.fillStyle(0x334411); g.fillRect(10,0,5,12); g.fillRect(28,0,4,12);
+  g.fillStyle(0x557733); g.fillRect(13,0,16,5);
+  g.fillStyle(0x2d1f15); g.fillRect(14,6,12,6);
+  g.generateTexture('ranger_atk_fside', 44, 60);
+}
+function drawAbigailAtkBSide(g) {
+  g.clear();
+  g.fillStyle(0x222211); g.fillRect(8,52,12,8); g.fillRect(23,52,10,8);
+  g.fillStyle(0x334422); g.fillRect(8,34,12,18); g.fillRect(23,34,10,18);
+  g.fillStyle(0x446622); g.fillRect(4,14,34,22);
+  g.fillStyle(0x557733); g.fillRect(7,15,24,20);
+  g.fillStyle(0x334411); g.fillRect(4,14,4,20); g.fillRect(34,14,4,20);
+  g.fillStyle(0x334411); g.fillRect(18,14,3,20);
+  g.fillStyle(0x8b5e3c); g.fillRect(2,14,5,20);
+  g.fillStyle(0xddcc99); g.fillRect(3,8,2,10); g.fillRect(6,8,2,10);
+  g.fillStyle(0x8b5e3c); g.fillRect(4,32,34,4);
+  g.fillStyle(0x6b3f1e); g.fillRect(17,31,6,5);
+  // far arm (left, bow arm)
+  g.fillStyle(0x557733); g.fillRect(0,16,5,22);
+  // near arm (draw arm) pulled far back
+  g.fillStyle(0x557733); g.fillRect(37,16,5,10);
+  g.fillStyle(0xffcc99); g.fillRect(37,20,5,6);
+  // arrow drawn back
+  g.fillStyle(0x886633); g.fillRect(32,22,10,2);
+  g.fillStyle(0xffcc99); g.fillRect(17,10,9,6);
+  g.fillStyle(0x446622); g.fillRect(10,0,22,13);
+  g.fillStyle(0x334411); g.fillRect(10,0,5,12); g.fillRect(28,0,4,12);
+  g.fillStyle(0x2d1f15); g.fillRect(13,6,14,8);
+  g.fillStyle(0x443322); g.fillRect(15,2,12,6);
+  g.generateTexture('ranger_atk_bside', 44, 60);
+}
+
 // ── KEY BINDING DEFAULTS ─────────────────────────────────────
 const DEFAULT_BINDINGS = {
   p1up:'W', p1down:'S', p1left:'A', p1right:'D',
@@ -5990,7 +6587,7 @@ class GameScene extends Phaser.Scene {
       bowCooldown: 0,
       isDowned: false, isPermanentlyDead: false, downTimer: 0, downText: null,
       hpBar, dir: 'front', walkTimer: 0,
-      atkCooldown: 0, reloading: false,
+      atkCooldown: 0, atkAnimUntil: 0, reloading: false,
       rallyCooldown: 0, turretCooldown: 0,
       isSleeping: false, zzzText: null,
       inv: { wood:0, metal:0, fiber:0, food:0 },
@@ -6418,6 +7015,7 @@ class GameScene extends Phaser.Scene {
     // Go downed — partner has a chance to revive
     player.hp = 0;
     player.isDowned = true;
+    player.atkAnimUntil = 0;
     this._log(`${player.charData.player} (${player.charData.id}) DOWNED  day=${this.dayNum}`, 'player');
     player.downTimer = CFG.DOWN_TIME;
     player.spr.setTint(0xaa0000);
@@ -8626,6 +9224,7 @@ class GameScene extends Phaser.Scene {
       } else {
         player.dir = 'side';
       }
+      if (this.time.now < (player.atkAnimUntil || 0)) return;
       player.walkTimer = (player.walkTimer + 1) % 20;
       const step = player.walkTimer < 10 ? '' : '_step';
       const dirSuffix = (player.dir === 'side') ? '' : ('_' + player.dir);
@@ -8637,6 +9236,7 @@ class GameScene extends Phaser.Scene {
         player.spr.setFlipX(false);
       }
     } else {
+      if (this.time.now < (player.atkAnimUntil || 0)) return;
       player.walkTimer = 0;
       const dirSuffix = (player.dir === 'side') ? '' : ('_' + player.dir);
       player.spr.setTexture(id + dirSuffix);
@@ -8664,12 +9264,26 @@ class GameScene extends Phaser.Scene {
     player.spr.setFlipX(flip);
     // Store precise aim angle for attacks
     player.aimAngle = angle;
+    if (this.time.now < (player.atkAnimUntil || 0)) return;
     // Update sprite — preserve walk cycle step frame
     const id = player.charData.id;
     const dirSuffix = player.dir === 'side' ? '' : ('_' + player.dir);
     const moving = player.spr.body.velocity.x !== 0 || player.spr.body.velocity.y !== 0;
     const step = (moving && player.walkTimer >= 10) ? '_step' : '';
     player.spr.setTexture(id + dirSuffix + step);
+  }
+
+  _triggerAtkAnim(player, dur) {
+    const id = player.charData.id;
+    const atkKey = (player.dir === 'side') ? id + '_atk' : id + '_atk_' + player.dir;
+    player.spr.setTexture(atkKey);
+    player.atkAnimUntil = this.time.now + dur;
+    player.walkTimer = 0;
+    this.tweens.add({
+      targets: player.spr,
+      scaleX: 1.75, scaleY: 1.25,
+      duration: 70, yoyo: true, ease: 'Quad.Out',
+    });
   }
 
   getAimAngle(player) {
@@ -8727,6 +9341,7 @@ class GameScene extends Phaser.Scene {
         // Pistol whip — melee fallback when out of ammo in clip
         SFX.wrench();
         player.atkCooldown = 500;
+        this._triggerAtkAnim(player, 225);
         this.meleeSwing(player, 38, 0xcc8833, 0.22, 0);
         this._showStatus('Out of ammo! Pistol whip!', 1200);
         return;
@@ -8756,15 +9371,18 @@ class GameScene extends Phaser.Scene {
       }
       this.time.delayedCall(1200, () => { if (blt.active) blt.destroy(); });
       player.atkCooldown = 350;
+      this._triggerAtkAnim(player, 140);
     } else if (id === 'knight') {
       SFX.sword();
       player.atkCooldown = 500;
+      this._triggerAtkAnim(player, 225);
       this.meleeSwing(player, 55, 0xdddddd, 0.18, 0);
       if (player._knightUpgraded) this._fireShieldThrow(player);
     } else if (id === 'charmer') {
       // Pirouette — 360° AoE spin
       SFX._play(660, 'sine', 0.12, 0.4);
       player.atkCooldown = 1500;
+      this._triggerAtkAnim(player, 675);
       this._log(`${player.charData.player} Pirouette  hp=${player.hp}/${player.maxHp}`, 'player');
       const pfx = this.add.graphics().setDepth(20);
       if (this.hudCam) this.hudCam.ignore(pfx);
@@ -8788,12 +9406,14 @@ class GameScene extends Phaser.Scene {
       // Bow shot — ranged arrow, infinite ammo
       SFX._play(280, 'triangle', 0.08, 0.2);
       player.atkCooldown = 800;
+      this._triggerAtkAnim(player, 320);
       this._log(`${player.charData.player} bow shot  hp=${player.hp}/${player.maxHp}`, 'player');
       this._fireArrow(player);
     } else {
       // Architect
       SFX.wrench();
       player.atkCooldown = 450;
+      this._triggerAtkAnim(player, 202);
       this.meleeSwing(player, 45, 0xcc8833, 0.2, 350);
       if (player._architectUpgraded) this._fireNailGun(player);
     }
@@ -9010,6 +9630,7 @@ class GameScene extends Phaser.Scene {
       this.tickCooldown(player, 'knifeCooldown', 500);
       SFX._play(400, 'square', 0.06, 0.12);
       player.atkCooldown = 500;
+      this._triggerAtkAnim(player, 225);
       this._log(`${player.charData.player} Knife Strike  hp=${player.hp}/${player.maxHp}`, 'player');
       this.meleeSwing(player, 35, 0x886633, 0.15, 0);
     }
