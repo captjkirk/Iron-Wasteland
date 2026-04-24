@@ -11603,10 +11603,14 @@ class GameScene extends Phaser.Scene {
           if (this.hudCam) this.hudCam.ignore(spr);
           this.physics.add.collider(spr, this.obstacles);
           const aggroR = { wolf:220, rat:140, bear:320 }[type] * 1.3; // very aggressive
+          // Bigger guards are slower (matches _spawnGroup at game.js:12288).
+          // Previously speed was multiplied by sizeMult, so a 1.5x rat hit
+          // 217 px/s and outran the charmer (175) — the "light speed rat" bug.
+          const sizeSpeedMult = sizeMult < 0.85 ? 1.3 : sizeMult > 1.2 ? 0.8 : 1;
           const eGuard = {
             spr, type: t.key,
             hp: Math.floor(t.hp * sizeMult * guardDiff), maxHp: Math.floor(t.hp * sizeMult * guardDiff),
-            speed: t.speed * sizeMult * guardDiff, dmg: Math.max(1, Math.floor(t.dmg * sizeMult * guardDiff)),
+            speed: t.speed * sizeSpeedMult * guardDiff, dmg: Math.max(1, Math.floor(t.dmg * sizeMult * guardDiff)),
             attackTimer: 0, wanderTimer: 0,
             aggroRange: aggroR, attackRange: (30 + t.w / 2) * sizeMult,
             sizeMult, structureGuard: true,
@@ -11637,10 +11641,11 @@ class GameScene extends Phaser.Scene {
         spr.body.setSize(t.w, t.h);
         if (this.hudCam) this.hudCam.ignore(spr);
         this.physics.add.collider(spr, this.obstacles);
+        const sizeSpeedMult = sizeMult < 0.85 ? 1.3 : sizeMult > 1.2 ? 0.8 : 1;
         const eGuard = {
           spr, type: t.key,
           hp: Math.floor(t.hp * sizeMult * towerDiff), maxHp: Math.floor(t.hp * sizeMult * towerDiff),
-          speed: t.speed * sizeMult * towerDiff, dmg: Math.max(1, Math.floor(t.dmg * sizeMult * towerDiff)),
+          speed: t.speed * sizeSpeedMult * towerDiff, dmg: Math.max(1, Math.floor(t.dmg * sizeMult * towerDiff)),
           attackTimer: 0, wanderTimer: 0,
           aggroRange: 260, attackRange: 35 * sizeMult,
           sizeMult, towerGuard: true,
