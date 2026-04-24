@@ -51,6 +51,8 @@ const CFG = {
 // Format: [item_key, base_chance, flags]  flags: 0=plain, 1=multiply by foodMult, 2=rare (skip if hc.rareDropsBossOnly)
 // Chance > 1 = always drops (e.g. bears always drop metal, boss_wolf always drops food).
 const _RAIDER_LOOT = [['item_ammo', 0.6, 0], ['item_metal', 0.4, 0], ['item_food', 0.3, 1]];
+// Hoisted so the per-frame charmer AI doesn't re-allocate this array each tick.
+const HUMAN_ENEMY_TYPES = ['raider_brawler', 'raider_shooter', 'raider_heavy'];
 const ENEMY_LOOT = {
   // ── Grass / common wildlife ──────────────────────────────────
   wolf:         [['item_fiber', 0.6, 0],   // pelt
@@ -267,15 +269,20 @@ const STATE = {
 
 // ── CHIPTUNE MUSIC (Web Audio, no files needed) ───────────────
 const Music = {
-  ctx: null, gain: null, playing: false, mode: 'day',
+  ctx: null, gain: null, playing: false, mode: 'day', _loopTimer: null,
   start() {
     if (this.playing) return;
     try {
-      this.ctx = new (window.AudioContext || window.webkitAudioContext)();
-      this.ctx.resume();
-      this.gain = this.ctx.createGain();
-      this.gain.gain.value = 0.07;
-      this.gain.connect(this.ctx.destination);
+      // Reuse a single AudioContext across runs — iOS/Safari can't resume a freshly
+      // created context without a new user gesture, so we keep one alive and just
+      // suspend/resume it. gain stays connected across pauses.
+      if (!this.ctx) {
+        this.ctx = new (window.AudioContext || window.webkitAudioContext)();
+        this.gain = this.ctx.createGain();
+        this.gain.gain.value = 0.07;
+        this.gain.connect(this.ctx.destination);
+      }
+      if (this.ctx.state === 'suspended') this.ctx.resume();
       this.playing = true;
       this.mode = 'day';
       this._dayLoop(this.ctx.currentTime);
@@ -283,7 +290,11 @@ const Music = {
   },
   stop() {
     this.playing = false;
-    if (this.ctx) { this.ctx.close(); this.ctx = null; }
+    // Cancel any scheduled loop callback — otherwise queued setTimeouts keep firing
+    // and re-enter _*Loop against a stopped/suspended context.
+    if (this._loopTimer) { clearTimeout(this._loopTimer); this._loopTimer = null; }
+    // Suspend rather than close, so the same ctx can be resumed on restart (iOS).
+    if (this.ctx && this.ctx.state === 'running') { try { this.ctx.suspend(); } catch(e) {} }
   },
   switchToNight() {
     if (this.mode === 'night' || this.mode === 'boss') return;
@@ -375,7 +386,8 @@ const Music = {
     // Schedule next loop using audio clock so browser throttling can't cause drift
     const nextStart = startAt + len;
     const delay = Math.max(50, (nextStart - 0.5 - this.ctx.currentTime) * 1000);
-    setTimeout(() => this._dayLoop(nextStart), delay);
+    if (this._loopTimer) clearTimeout(this._loopTimer);
+    this._loopTimer = setTimeout(() => this._dayLoop(nextStart), delay);
   },
   _nightLoop(startAt) {
     if (!this.playing || !this.ctx) return;
@@ -418,7 +430,8 @@ const Music = {
     // Schedule next loop using audio clock so browser throttling can't cause drift
     const nextStart = startAt + len;
     const delay = Math.max(50, (nextStart - 0.5 - this.ctx.currentTime) * 1000);
-    setTimeout(() => this._nightLoop(nextStart), delay);
+    if (this._loopTimer) clearTimeout(this._loopTimer);
+    this._loopTimer = setTimeout(() => this._nightLoop(nextStart), delay);
   },
 
   // ── BOSS BATTLE LOOP ─────────────────────────────────────────
@@ -466,7 +479,8 @@ const Music = {
 
     const nextStart = startAt + len;
     const delay = Math.max(50, (nextStart - 0.5 - this.ctx.currentTime) * 1000);
-    setTimeout(() => this._bossLoop(nextStart), delay);
+    if (this._loopTimer) clearTimeout(this._loopTimer);
+    this._loopTimer = setTimeout(() => this._bossLoop(nextStart), delay);
   },
 };
 
@@ -710,6 +724,9 @@ function makeScaleProxy(g, s) {
 
 // ── TEXTURE GENERATION ────────────────────────────────────────
 function buildTextures(scene) {
+  // Textures are keyed by name in Phaser's global TextureManager and persist
+  // across scene restarts; regenerating them every time leaks memory.
+  if (scene.textures.exists('grass')) return;
   const g = scene.make.graphics({ x: 0, y: 0, add: false });
 
   // Ground — grass (natural, no grid lines)
@@ -4283,9 +4300,22 @@ class ControlsScene extends Phaser.Scene {
           let keyName = Object.keys(KC).find(k => KC[k] === event.keyCode);
           if (!keyName) keyName = event.key.toUpperCase();
           const cur = getBindings();
+          // If this key is already bound to a different action, clear that old
+          // action first so we never persist duplicate bindings (which would
+          // leave one of the two actions silently non-functional).
+          for (const [otherAction, otherKey] of Object.entries(cur)) {
+            if (otherAction !== actionKey && otherKey === keyName) cur[otherAction] = '';
+          }
           cur[actionKey] = keyName;
           saveSettings({ bindings: cur });
           redraw(false, false);
+          // Other boxes may have been cleared by the duplicate-stealing logic
+          // above — refresh their labels too so the UI reflects the new state.
+          if (this._keyBoxes) {
+            for (const kb of this._keyBoxes) {
+              if (kb.actionKey !== actionKey) kb.redraw(false, false);
+            }
+          }
           checkDupes();
         };
         this._listening = { actionKey, redraw, handler };
@@ -5234,6 +5264,9 @@ class GameScene extends Phaser.Scene {
     this.buildMode = false;
     this.buildGhost = null;
     this.builtWalls = [];
+    // Spatial bucket: tile-coord key -> array of walls. Keeps LOS/steering/placement
+    // checks O(1) per sample instead of O(walls).
+    this._wallBuckets = new Map();
     this.craftBenchPlaced = false;
     this.beds = [];
     this.sleepSpeedMult = 1;   // 8x when all players are sleeping through night
@@ -5642,6 +5675,31 @@ class GameScene extends Phaser.Scene {
       const { TILE } = CFG;
       for (const s of this._structureLocs) {
         if (Math.abs(s.x / TILE - tx) < 10 && Math.abs(s.y / TILE - ty) < 10) return true;
+      }
+    }
+    // Also reject if the tile is already water or ice — prevents caches, dens,
+    // and late placements from landing inside a pond or lake.
+    const { MAP_W } = CFG;
+    const i = tx + ty * MAP_W;
+    if (this._waterMap && this._waterMap[i]) return true;
+    if (this._iceMap && this._iceMap[i]) return true;
+    return false;
+  }
+
+  // Returns true if any tile in the (W×H) footprint centered on (cx, cy) lies
+  // on water or ice. Used to filter biome-structure positions picked before
+  // ponds/lakes were built.
+  _footprintOnWaterOrIce(cx, cy, W, H) {
+    if (!this._waterMap && !this._iceMap) return false;
+    const { MAP_W, MAP_H } = CFG;
+    const x0 = cx - Math.floor(W / 2), y0 = cy - Math.floor(H / 2);
+    for (let dx = 0; dx < W; dx++) {
+      for (let dy = 0; dy < H; dy++) {
+        const tx = x0 + dx, ty = y0 + dy;
+        if (tx < 0 || tx >= MAP_W || ty < 0 || ty >= MAP_H) continue;
+        const i = tx + ty * MAP_W;
+        if (this._waterMap && this._waterMap[i]) return true;
+        if (this._iceMap && this._iceMap[i]) return true;
       }
     }
     return false;
@@ -6554,13 +6612,18 @@ class GameScene extends Phaser.Scene {
     for (const { biome, wallKey, floorKey, label } of biomeConfig) {
       // Use pre-computed positions (fjord-protected + tree-clear guaranteed).
       // Fall back to random if pre-computation returned nothing for this biome.
-      const _prePos = (this._preStructureTiles && this._preStructureTiles[biome]) || [];
+      // Filter pre-computed positions whose footprint landed on water/ice — these
+      // are picked before _buildPonds/_buildLakes, so tundra/swamp structures can
+      // fall on top of a lake otherwise.
+      const _prePos = ((this._preStructureTiles && this._preStructureTiles[biome]) || [])
+        .filter(p => !this._footprintOnWaterOrIce(p.tx, p.ty, W, H));
       const _positions = _prePos.length ? _prePos : (() => {
         const fb = [];
         for (let att = 0; att < 120 && fb.length < 2; att++) {
           const tx = Phaser.Math.Between(12, MAP_W - 12), ty = Phaser.Math.Between(12, MAP_H - 12);
           if (getBiome(tx, ty) !== biome) continue;
           if (Math.abs(tx - stx) < SAFE_R + 12 && Math.abs(ty - sty) < SAFE_R + 12) continue;
+          if (this._footprintOnWaterOrIce(tx, ty, W, H)) continue;
           fb.push({ tx, ty });
         }
         return fb;
@@ -6683,16 +6746,33 @@ class GameScene extends Phaser.Scene {
     const TILE = CFG.TILE;
     const cam = this.cameras.main;
 
-    // Reveal around players (radius-bounded, wall-blocked) — reset per-tick visible set
-    this._fogVisibleBuilding = false;
-    const revealP = (p) => {
-      if (!p || !p.spr.active || p.isDowned) return;
-      const ptx = Math.floor(p.spr.x / TILE), pty = Math.floor(p.spr.y / TILE);
-      this.revealFog(ptx, pty);
-    };
-    revealP(this.p1);
-    if (this.p2) revealP(this.p2);
-    this._fogVisibleBuilding = false;
+    // Reveal around players (radius-bounded, wall-blocked) — skip the reveal pass
+    // entirely if neither player has moved tiles since the last update. This is
+    // the biggest win on the fog hot path (otherwise O(r²) LOS rays every tick).
+    const tileOf = (p) => (p && p.spr && p.spr.active && !p.isDowned)
+      ? { tx: Math.floor(p.spr.x / TILE), ty: Math.floor(p.spr.y / TILE), active: true }
+      : { tx: -1, ty: -1, active: false };
+    const p1t = tileOf(this.p1);
+    const p2t = tileOf(this.p2);
+    const p1Same = p1t.active && this._lastFogP1
+      && this._lastFogP1.tx === p1t.tx && this._lastFogP1.ty === p1t.ty
+      && this._lastFogP1.active === p1t.active;
+    const p2Same = (!this.p2) || (p2t.active && this._lastFogP2
+      && this._lastFogP2.tx === p2t.tx && this._lastFogP2.ty === p2t.ty
+      && this._lastFogP2.active === p2t.active);
+    const skipReveal = p1Same && p2Same && this.fogVisible;
+    if (!skipReveal) {
+      this._fogVisibleBuilding = false;
+      const revealP = (p, t) => {
+        if (!t.active) return;
+        this.revealFog(t.tx, t.ty);
+      };
+      revealP(this.p1, p1t);
+      if (this.p2) revealP(this.p2, p2t);
+      this._fogVisibleBuilding = false;
+      this._lastFogP1 = p1t;
+      this._lastFogP2 = p2t;
+    }
 
     // Only draw fog tiles in camera viewport
     this.fogGfx.clear();
@@ -6857,6 +6937,32 @@ class GameScene extends Phaser.Scene {
   _renderMinimapBase() {
     // Radar is now fully dynamic (player-centered, fog-aware) — no static pre-render needed.
     if (this.minimapGfx) this.minimapGfx.clear();
+  }
+
+  // Paint a single tile on the cached minimap color map. Used by player-placed
+  // structures so they show up on the radar immediately instead of being hidden
+  // by the original biome color.
+  _paintMinimapTile(worldX, worldY, color) {
+    if (!this._mmColorMap) return;
+    const { TILE, MAP_W, MAP_H } = CFG;
+    const tx = Math.floor(worldX / TILE), ty = Math.floor(worldY / TILE);
+    if (tx < 0 || tx >= MAP_W || ty < 0 || ty >= MAP_H) return;
+    this._mmColorMap[tx + ty * MAP_W] = color;
+  }
+
+  // Reset a minimap tile to its biome color. Used when a player-built structure
+  // is destroyed so the radar stops showing it.
+  _unpaintMinimapTile(worldX, worldY) {
+    if (!this._mmColorMap) return;
+    const { TILE, MAP_W, MAP_H } = CFG;
+    const tx = Math.floor(worldX / TILE), ty = Math.floor(worldY / TILE);
+    if (tx < 0 || tx >= MAP_W || ty < 0 || ty >= MAP_H) return;
+    const i = tx + ty * MAP_W;
+    // Prefer water/ice colors if the tile was water — walls can't be placed on
+    // water, so in practice this falls through to the biome color.
+    if (this._waterMap && this._waterMap[i]) { this._mmColorMap[i] = 0x2255aa; return; }
+    if (this._iceMap && this._iceMap[i])     { this._mmColorMap[i] = 0x88aadd; return; }
+    this._mmColorMap[i] = BIOME_COLORS[getBiome(tx, ty)] || 0x333333;
   }
 
   // Build a full-map color lookup (Uint32Array, one entry per tile).
@@ -7341,6 +7447,12 @@ class GameScene extends Phaser.Scene {
       this.ctrlObjs.forEach(o => o.setVisible(false));
       this.controlsVis = false;
     }
+    // Close any overlays that register input listeners — otherwise those
+    // listeners leak into subsequent scenes and the next run.
+    if (this.craftMenuOpen) this.closeCraftMenu();
+    if (this.barrackOpen) this.closeBarrack();
+    // Drop any queued hints so they don't surface on the next run.
+    if (this._hintQueue) this._hintQueue.length = 0;
 
     this.p1.spr.setVelocity(0, 0);
     if (this.p2) this.p2.spr.setVelocity(0, 0);
@@ -7467,6 +7579,10 @@ class GameScene extends Phaser.Scene {
 
   openPauseSettings() {
     this._log('game paused — settings opened', 'player');
+    // Close any open overlays first so their pointer/wheel listeners don't
+    // keep firing while paused / through the Settings overlay.
+    if (this.craftMenuOpen) this.closeCraftMenu();
+    if (this.barrackOpen) this.closeBarrack();
     // Pause immediately so the world freezes mid-frame; Settings overlays on top.
     // We deliberately do NOT fade the world to black — Settings now uses a
     // semi-transparent background so the paused world peeks through.
@@ -7680,6 +7796,9 @@ class GameScene extends Phaser.Scene {
     this.bObjs.forEach(o => o.setVisible(true));
     this.refreshBarrackCards();
 
+    // Remove any stale handler first — guards against openBarrack being called
+    // twice without an intervening closeBarrack (e.g. both players interact same frame).
+    if (this._barrackPointerFn) this.input.off('pointerdown', this._barrackPointerFn);
     this._barrackPointerFn = (ptr) => {
       if (!this.barrackOpen) return;
       for (let i = 0; i < this.bCards.length; i++) {
@@ -7715,6 +7834,17 @@ class GameScene extends Phaser.Scene {
     player.hp        = Math.max(1, Math.round(player.maxHp * hpPct));
     player.spr.setTexture(newCh.id);
     player.lbl.setText(newCh.player);
+
+    // Reset transient debuffs/status so effects from the previous class don't
+    // carry over. Upgrade flags are left alone — they're per-character and
+    // remain active if the player swaps back to that class later.
+    player._speedMult = 1;
+    player._frostSlowed = false;
+    player._webbed = false;
+    player._webSlowCd = 0;
+    player._allyTarget = null;
+    player.atkAnimUntil = 0;
+    if (player.spr?.active) player.spr.clearTint();
     if (newCh.id==='gunslinger') {
       player.ammo = 8;
       const maxReserve = 40 - player.ammo;
@@ -9236,7 +9366,7 @@ class GameScene extends Phaser.Scene {
       // Damage
       players.forEach(p => {
         if (Phaser.Math.Distance.Between(b.spr.x, b.spr.y, p.spr.x, p.spr.y) < 130) {
-          const slamDmg = Math.round(b.dmg * 0.85);
+          const slamDmg = this._knightShieldBlock(p, b.spr.x, b.spr.y, Math.round(b.dmg * 0.85));
           p.hp = Math.max(0, p.hp - slamDmg);
           this._log(`${p.charData.player} boss stomp  dmg=${slamDmg}  hp=${p.hp}/${p.maxHp}`, 'combat');
           SFX.playerHurt();
@@ -9261,7 +9391,7 @@ class GameScene extends Phaser.Scene {
         b.spr.setVelocity(0, 0);
         players.forEach(p => {
           if (Phaser.Math.Distance.Between(b.spr.x, b.spr.y, p.spr.x, p.spr.y) < 55) {
-            const chargeDmg = Math.round(b.dmg * 1.3);
+            const chargeDmg = this._knightShieldBlock(p, b.spr.x, b.spr.y, Math.round(b.dmg * 1.3));
             p.hp = Math.max(0, p.hp - chargeDmg);
             this._log(`${p.charData.player} troll charge  dmg=${chargeDmg}  hp=${p.hp}/${p.maxHp}`, 'combat');
             SFX.playerHurt();
@@ -9294,8 +9424,9 @@ class GameScene extends Phaser.Scene {
         players.forEach(p => {
           this.physics.add.overlap(p.spr, blt, () => {
             if (!blt.active) return;
+            const bx = blt.x, by = blt.y;
             blt.destroy();
-            const sprayDmg = Math.round(b.dmg * 0.75);
+            const sprayDmg = this._knightShieldBlock(p, bx, by, Math.round(b.dmg * 0.75));
             p.hp = Math.max(0, p.hp - sprayDmg);
             this._log(`${p.charData.player} boss spray  dmg=${sprayDmg}  hp=${p.hp}/${p.maxHp}`, 'combat');
             SFX.playerHurt();
@@ -9643,7 +9774,7 @@ class GameScene extends Phaser.Scene {
         this.physics.add.overlap(arrow, e.spr, () => {
           if (!arrow.active || e.dying) return;
           arrow.destroy();
-          const dmg = player._rangerUpgraded ? 35 : 35;
+          const dmg = player._rangerUpgraded ? 50 : 35;
           this._hurtEnemy(e, dmg, arrow.x, arrow.y, 0x886633, player);
           if (player._rangerUpgraded) {
             // Explosive arrow: splash damage to nearby enemies
@@ -9995,14 +10126,19 @@ class GameScene extends Phaser.Scene {
     if (e.hp <= 0) this.killEnemy(e, owner);
   }
 
-  // Brief physics-world freeze (ms) for impact weight. No-op if a prior
-  // pause is still in flight — prevents cumulative stutter on multi-hit frames.
+  // Brief physics-world freeze (ms) for impact weight. Rate-limited to once per
+  // 300ms to prevent sustained stutter during multi-enemy engagements and
+  // suppressed entirely on mobile where the freeze reads as frame-drop.
   _hitPause(ms) {
     if (this._hitPauseActive || this.isOver || !this.physics || !this.physics.world) return;
+    if (_isMobile) return;
+    const now = this.time.now;
+    if (this._lastHitPauseEnd && now - this._lastHitPauseEnd < 260) return;
     this._hitPauseActive = true;
     try { this.physics.world.pause(); } catch(e) {}
     this.time.delayedCall(ms, () => {
       this._hitPauseActive = false;
+      this._lastHitPauseEnd = this.time.now;
       try { this.physics.world.resume(); } catch(e) {}
     });
   }
@@ -10118,7 +10254,12 @@ class GameScene extends Phaser.Scene {
     const ts = `${Math.floor(t/60).toString().padStart(2,'0')}:${(t%60).toString().padStart(2,'0')}`;
     const tag = (cat || 'info').toUpperCase().padEnd(6).slice(0, 6);
     this._dbgEntries.push(`T${ts} [${tag}] ${msg}`);
-    // No hard cap — full history is kept for download. Overlay shows last 28 lines.
+    // Soft cap so multi-hour sessions don't accumulate GB of log lines. FIFO
+    // drop from the front keeps the most recent activity — still useful for
+    // bug reports. Overlay shows last 28 lines either way.
+    if (this._dbgEntries.length > 50000) {
+      this._dbgEntries.splice(0, this._dbgEntries.length - 50000);
+    }
     this._dbgRefresh(true);
   }
 
@@ -10225,9 +10366,14 @@ class GameScene extends Phaser.Scene {
     this.kills++;
     if (owner) owner.kills++;
     this._log('Enemy killed  type=' + e.type + '  kills=' + this.kills, 'combat');
-    // Remove from update loop immediately — splice avoids reallocating the whole array
-    const _ei = this.enemies.indexOf(e);
-    if (_ei !== -1) this.enemies.splice(_ei, 1);
+    // Remove from update loop — defer splice if iteration is active to avoid
+    // Array.forEach skipping the element after the removed index.
+    if (this._enemyIterActive) {
+      (this._pendingEnemyRemovals ||= []).push(e);
+    } else {
+      const _ei = this.enemies.indexOf(e);
+      if (_ei !== -1) this.enemies.splice(_ei, 1);
+    }
     SFX.enemyDie();
     // Stop movement immediately — prevent corpse from drifting
     if (e.spr.body) { e.spr.body.setVelocity(0, 0); e.spr.body.enable = false; }
@@ -10423,7 +10569,8 @@ class GameScene extends Phaser.Scene {
       for (const e of this.enemies) {
         if (e.dying || !e.spr.active) continue;
         if (Phaser.Math.Distance.Between(e.spr.x, e.spr.y, st.x, st.y) < 26) {
-          this._hurtEnemy(e, 35, st.x, st.y);
+          // Credit the trap's builder so kill counts track correctly in HUD / game-over.
+          this._hurtEnemy(e, 35, st.x, st.y, 0xff2233, st._builder || null);
           st.destroy();
           this.spikeTraps.splice(si, 1);
           break; // trap gone — move to next trap
@@ -10690,7 +10837,7 @@ class GameScene extends Phaser.Scene {
       const realBiome = biome === 'grass_near' ? 'grass' : biome;
       // Pick center tile in correct biome
       let cx = -1, cy = -1;
-      for (let attempt = 0; attempt < 60; attempt++) {
+      for (let attempt = 0; attempt < 120; attempt++) {
         let tx, ty;
         if (biome === 'grass_near') {
           // Place in a ring 12–22 tiles from spawn — use seeded RNG
@@ -10802,7 +10949,7 @@ class GameScene extends Phaser.Scene {
     for (const biome of LAKE_SPECS) {
       // Pick a center tile — lakes stay farther from spawn than ponds
       let cx = -1, cy = -1;
-      for (let attempt = 0; attempt < 80; attempt++) {
+      for (let attempt = 0; attempt < 150; attempt++) {
         const tx = _ri(12, MAP_W - 12);
         const ty = _ri(12, MAP_H - 12);
         if (getBiome(tx, ty) !== biome) continue;
@@ -11347,13 +11494,33 @@ class GameScene extends Phaser.Scene {
         ? (this.hotkeys.p1use.isDown || touchHeld)
         : (this.hotkeys.p2use ? this.hotkeys.p2use.isDown : false);
 
-      // Find nearest tree within range
+      // Find nearest tree within range. Throttled: full scan at most every
+      // 200ms per player, otherwise re-validate the cached tree. This avoids
+      // iterating all ~300 obstacles every frame while the harvest key is held.
       let nearestTree = null, nearDist = Infinity;
       if (keyHeld && this.obstacles) {
-        for (const obj of this.obstacles.getChildren()) {
-          if (!obj.isTree || !obj.active) continue;
-          const d = Phaser.Math.Distance.Between(player.spr.x, player.spr.y, obj.x, obj.y);
-          if (d < HARVEST_RANGE && d < nearDist) { nearDist = d; nearestTree = obj; }
+        player._treeScanCd = (player._treeScanCd || 0) - delta;
+        const cached = player._cachedTree;
+        if (cached && cached.active && cached.isTree) {
+          const cdx = player.spr.x - cached.x, cdy = player.spr.y - cached.y;
+          const cd2 = cdx * cdx + cdy * cdy;
+          if (cd2 < HARVEST_RANGE * HARVEST_RANGE) {
+            nearestTree = cached;
+            nearDist = Math.sqrt(cd2);
+          }
+        }
+        if (!nearestTree || player._treeScanCd <= 0) {
+          player._treeScanCd = 200;
+          for (const obj of this.obstacles.getChildren()) {
+            if (!obj.isTree || !obj.active) continue;
+            const odx = player.spr.x - obj.x, ody = player.spr.y - obj.y;
+            const od2 = odx * odx + ody * ody;
+            if (od2 < HARVEST_RANGE * HARVEST_RANGE && od2 < nearDist * nearDist) {
+              nearDist = Math.sqrt(od2);
+              nearestTree = obj;
+            }
+          }
+          player._cachedTree = nearestTree;
         }
       }
 
@@ -11432,6 +11599,72 @@ class GameScene extends Phaser.Scene {
     }
   }
 
+  // ── Wall spatial hash ────────────────────────────────────────
+  // Bucket walls by tile coord so LOS/steering/placement probes check only
+  // the 3×3 tiles around a sample, not the entire builtWalls array.
+  _wallBucketKey(tx, ty) { return tx + ',' + ty; }
+  _addWallToBuckets(w) {
+    const T = CFG.TILE;
+    const tx = Math.floor(w.x / T), ty = Math.floor(w.y / T);
+    const k = this._wallBucketKey(tx, ty);
+    let arr = this._wallBuckets.get(k);
+    if (!arr) { arr = []; this._wallBuckets.set(k, arr); }
+    arr.push(w);
+    w._bucketKey = k;
+  }
+  _removeWallFromBuckets(w) {
+    if (!w._bucketKey) return;
+    const arr = this._wallBuckets.get(w._bucketKey);
+    if (!arr) return;
+    const i = arr.indexOf(w);
+    if (i !== -1) arr.splice(i, 1);
+    if (arr.length === 0) this._wallBuckets.delete(w._bucketKey);
+    w._bucketKey = null;
+  }
+  // Returns true if any active wall is within `radius` px of (x, y). Checks only
+  // the 3×3 tile buckets around the sample, so this is O(1) regardless of wall count.
+  _wallNearby(x, y, radius) {
+    if (!this._wallBuckets || this._wallBuckets.size === 0) return false;
+    const T = CFG.TILE;
+    const tx = Math.floor(x / T), ty = Math.floor(y / T);
+    const r2 = radius * radius;
+    for (let dy = -1; dy <= 1; dy++) {
+      for (let dx = -1; dx <= 1; dx++) {
+        const arr = this._wallBuckets.get(this._wallBucketKey(tx + dx, ty + dy));
+        if (!arr) continue;
+        for (const w of arr) {
+          if (!w.active) continue;
+          const ddx = w.x - x, ddy = w.y - y;
+          if (ddx*ddx + ddy*ddy < r2) return true;
+        }
+      }
+    }
+    return false;
+  }
+
+  // Recompute `_clusterCount` (active walls within 130px) for every wall within
+  // 130px of (x, y). Called on wall placement/destruction only — the per-frame
+  // AI loop reads the cached value instead of a fresh O(walls²) filter.
+  _refreshWallClustersNear(x, y) {
+    if (!this.builtWalls) return;
+    const R = 130, R2 = R * R;
+    const touched = [];
+    for (const w of this.builtWalls) {
+      if (!w.active) continue;
+      const dx = w.x - x, dy = w.y - y;
+      if (dx*dx + dy*dy < R2) touched.push(w);
+    }
+    for (const w of touched) {
+      let c = 0;
+      for (const n of this.builtWalls) {
+        if (!n.active) continue;
+        const dx = w.x - n.x, dy = w.y - n.y;
+        if (dx*dx + dy*dy < R2) c++;
+      }
+      w._clusterCount = c;
+    }
+  }
+
   // ── Structure damage ─────────────────────────────────────────
   // Subtract dmg from a player-built wall/gate. Updates tint to reflect health.
   // Destroys the wall with a fade when hp reaches 0.
@@ -11441,7 +11674,11 @@ class GameScene extends Phaser.Scene {
     const pct = wall.hp / (wall.maxHp || 200);
     this._log(`Wall hit  dmg=${Math.round(dmg)}  hp=${wall.hp}/${wall.maxHp || 200}`, 'combat');
     if (wall.hp <= 0) {
+      const wx = wall.x, wy = wall.y;
+      this._removeWallFromBuckets(wall);
       this.builtWalls = this.builtWalls.filter(w => w !== wall);
+      this._refreshWallClustersNear(wx, wy);
+      this._unpaintMinimapTile(wx, wy);
       if (wall._hpBg && wall._hpBg.active) wall._hpBg.destroy();
       if (wall._hpBar && wall._hpBar.active) wall._hpBar.destroy();
       this.tweens.add({ targets: wall, alpha: 0, duration: 200, onComplete: () => { if (wall.active) wall.destroy(); } });
@@ -11476,18 +11713,30 @@ class GameScene extends Phaser.Scene {
   }
 
   // Find the nearest player-built wall that sits between (ex,ey) and (px,py)
-  // and is within 80px of the enemy. Returns the wall, or null.
+  // and is within 80px of the enemy. Returns the wall, or null. Uses the wall
+  // spatial hash so cost scales with nearby walls, not total wall count.
   _findWallOnPath(ex, ey, px, py) {
-    if (!this.builtWalls || this.builtWalls.length === 0) return null;
+    if (!this._wallBuckets || this._wallBuckets.size === 0) return null;
     const playerAngDeg = Phaser.Math.RadToDeg(Phaser.Math.Angle.Between(ex, ey, px, py));
+    const T = CFG.TILE;
+    const ctx = Math.floor(ex / T), cty = Math.floor(ey / T);
+    // 80px radius → 3 tiles out (80/32 ≈ 2.5, round up for safety)
+    const RAD_T = 3;
     let best = null, bestDist = Infinity;
-    for (const w of this.builtWalls) {
-      if (!w.active) continue;
-      const wd = Phaser.Math.Distance.Between(ex, ey, w.x, w.y);
-      if (wd > 80) continue;
-      const wallAngDeg = Phaser.Math.RadToDeg(Phaser.Math.Angle.Between(ex, ey, w.x, w.y));
-      const diff = Math.abs(Phaser.Math.Angle.ShortestBetween(wallAngDeg, playerAngDeg));
-      if (diff < 70 && wd < bestDist) { best = w; bestDist = wd; }
+    for (let dy = -RAD_T; dy <= RAD_T; dy++) {
+      for (let dx = -RAD_T; dx <= RAD_T; dx++) {
+        const arr = this._wallBuckets.get(this._wallBucketKey(ctx + dx, cty + dy));
+        if (!arr) continue;
+        for (const w of arr) {
+          if (!w.active) continue;
+          const ddx = w.x - ex, ddy = w.y - ey;
+          const wd2 = ddx*ddx + ddy*ddy;
+          if (wd2 > 80 * 80) continue;
+          const wallAngDeg = Phaser.Math.RadToDeg(Phaser.Math.Angle.Between(ex, ey, w.x, w.y));
+          const diff = Math.abs(Phaser.Math.Angle.ShortestBetween(wallAngDeg, playerAngDeg));
+          if (diff < 70 && wd2 < bestDist) { best = w; bestDist = wd2; }
+        }
+      }
     }
     return best;
   }
@@ -11498,20 +11747,19 @@ class GameScene extends Phaser.Scene {
   _hasLOS(x1, y1, x2, y2) {
     if (!this._solidTileSet) return true;
     const T = CFG.TILE;
-    const dist = Phaser.Math.Distance.Between(x1, y1, x2, y2);
-    if (dist < 24) return true;
+    // Inline sqrt — hotter than Phaser.Math.Distance.Between on the per-frame LOS path.
+    const ddx = x2 - x1, ddy = y2 - y1;
+    const d2 = ddx * ddx + ddy * ddy;
+    if (d2 < 576) return true; // 24²
+    const dist = Math.sqrt(d2);
     const steps = Math.ceil(dist / 28); // sample every ~28 px
     const dx = (x2 - x1) / steps, dy = (y2 - y1) / steps;
     for (let i = 1; i < steps; i++) {
       const sx = x1 + dx * i, sy = y1 + dy * i;
       const tx = Math.round(sx / T), ty = Math.round(sy / T);
       if (this._solidTileSet.has(tx + ',' + ty)) return false;
-      // Also check player-built walls
-      if (this.builtWalls) {
-        for (const w of this.builtWalls) {
-          if (w.active && Math.abs(sx - w.x) < 20 && Math.abs(sy - w.y) < 20) return false;
-        }
-      }
+      // Also check player-built walls — spatial hash keeps this O(1) per sample
+      if (this._wallNearby(sx, sy, 20)) return false;
     }
     return true;
   }
@@ -11531,11 +11779,7 @@ class GameScene extends Phaser.Scene {
       const py = e.spr.y + Math.sin(ang) * PROBE;
       const tx = Math.round(px / T), ty = Math.round(py / T);
       if (this._solidTileSet.has(tx + ',' + ty)) return false;
-      if (this.builtWalls) {
-        for (const w of this.builtWalls) {
-          if (w.active && Math.abs(px - w.x) < 24 && Math.abs(py - w.y) < 24) return false;
-        }
-      }
+      if (this._wallNearby(px, py, 24)) return false;
       return true;
     };
     // Try direct angle, then ±37°, ±75°, ±112°, ±150°, 180° until a clear heading is found
@@ -11555,9 +11799,11 @@ class GameScene extends Phaser.Scene {
     const _cam = this.cameras.main;
     const _view = _cam.worldView;
     const _VIEW_BUF = 400; // px buffer outside viewport before hiding sprite
-    // Single pass: count active enemies AND build pack index (was two separate O(n) loops)
+    // Single pass: count active enemies AND build pack index (was two separate O(n) loops).
+    // Reuse the Map and its array values across frames so we don't allocate them every tick.
     let _activeCount = 0;
-    const _packIndex = new Map();
+    const _packIndex = this._packIndex || (this._packIndex = new Map());
+    for (const _arr of _packIndex.values()) _arr.length = 0;
     for (const _e of this.enemies) {
       if (_e.spr?.active && !_e._dormant) _activeCount++;
       if (_e._packId !== undefined && _e.spr?.active) {
@@ -11567,14 +11813,15 @@ class GameScene extends Phaser.Scene {
       }
     }
     this._activeEnemyCount = _activeCount;
-    this._packIndex = _packIndex;
 
-    // Hoist per-frame constants outside the per-enemy forEach — these don't change mid-loop
-    const HUMAN_ENEMY_TYPES = ['raider_brawler', 'raider_shooter', 'raider_heavy'];
+    // HUMAN_ENEMY_TYPES hoisted to module scope so we don't reallocate per frame.
     const charmerPlayer = [this.p1, this.p2].find(
       p => p && p.charData && p.charData.id === 'charmer' && !p.isDowned && p.spr && p.spr.active
     );
 
+    // Enable deferred-removal guard: killEnemy() splices would otherwise skip
+    // the next element during this forEach.
+    this._enemyIterActive = true;
     this.enemies.forEach(e => {
       if (e.dying || !e.spr.active) return;
       if (e.isBoss) return; // boss movement/attack handled by updateBoss
@@ -11676,12 +11923,21 @@ class GameScene extends Phaser.Scene {
           if (charmed) {
             if (!e._charmTinted) { e._charmTinted = true; e.spr.setTint(0xffaacc); }
             if (isHumanEnemy) {
-              // Ally AI: protect Lauren — find nearest non-human enemy and attack it
-              const allyTarget = this.enemies.find(t =>
-                t !== e && !t.dying && t.spr && t.spr.active &&
-                !HUMAN_ENEMY_TYPES.includes(t.type) &&
-                Phaser.Math.Distance.Between(e.spr.x, e.spr.y, t.spr.x, t.spr.y) < 350
-              );
+              // Ally AI: protect Lauren — find nearest non-human enemy and attack it.
+              // Retargeting scans all enemies, so throttle to ~4×/sec per ally and cache.
+              e._allyRetargetCd = (e._allyRetargetCd || 0) - delta;
+              const cached = e._allyTarget;
+              const cachedValid = cached && !cached.dying && cached.spr && cached.spr.active &&
+                Phaser.Math.Distance.Between(e.spr.x, e.spr.y, cached.spr.x, cached.spr.y) < 400;
+              if (!cachedValid || e._allyRetargetCd <= 0) {
+                e._allyRetargetCd = 250;
+                e._allyTarget = this.enemies.find(t =>
+                  t !== e && !t.dying && t.spr && t.spr.active &&
+                  !HUMAN_ENEMY_TYPES.includes(t.type) &&
+                  Phaser.Math.Distance.Between(e.spr.x, e.spr.y, t.spr.x, t.spr.y) < 350
+                ) || null;
+              }
+              const allyTarget = e._allyTarget;
               if (allyTarget) {
                 const spd = e.speed * 0.85;
                 const vel = this._steerToward(e, allyTarget.spr.x, allyTarget.spr.y, spd);
@@ -11731,9 +11987,11 @@ class GameScene extends Phaser.Scene {
       // Bog Lurker: stays hidden until player is within 90px, then bursts
       if (e.type === 'bog_lurker') {
         if (e._lurking) {
-          const closePlayer = [this.p1, this.p2].find(p =>
-            p && !p.isDowned && Phaser.Math.Distance.Between(e.spr.x, e.spr.y, p.spr.x, p.spr.y) < 90
-          );
+          const closePlayer = [this.p1, this.p2].find(p => {
+            if (!p || p.isDowned) return false;
+            const dx = e.spr.x - p.spr.x, dy = e.spr.y - p.spr.y;
+            return dx*dx + dy*dy < 8100; // 90²
+          });
           if (closePlayer) {
             e._lurking = false;
             e.spr.setAlpha(1);
@@ -11753,9 +12011,11 @@ class GameScene extends Phaser.Scene {
       } else if (e.type === 'water_lurker') {
         // Lurks nearly invisible until player steps within 110px, then bursts
         if (e._lurking) {
-          const closePlayer = [this.p1, this.p2].find(p =>
-            p && !p.isDowned && Phaser.Math.Distance.Between(e.spr.x, e.spr.y, p.spr.x, p.spr.y) < 110
-          );
+          const closePlayer = [this.p1, this.p2].find(p => {
+            if (!p || p.isDowned) return false;
+            const dx = e.spr.x - p.spr.x, dy = e.spr.y - p.spr.y;
+            return dx*dx + dy*dy < 12100; // 110²
+          });
           if (closePlayer) {
             e._lurking = false;
             e.spr.setAlpha(1);
@@ -11821,9 +12081,9 @@ class GameScene extends Phaser.Scene {
           if (blockingWall) {
             const wallDist = Phaser.Math.Distance.Between(e.spr.x, e.spr.y, blockingWall.x, blockingWall.y);
             if (wallDist < 58) {
-              // Count walls clustered near the blocker — 3+ nearby = enclosed space → always attack
-              const clusterCount = this.builtWalls.filter(w => w.active &&
-                Phaser.Math.Distance.Between(w.x, w.y, blockingWall.x, blockingWall.y) < 130).length;
+              // Count walls clustered near the blocker — 3+ nearby = enclosed space → always attack.
+              // Cached by _refreshWallClustersNear on placement/destruction to avoid O(walls²) per frame.
+              const clusterCount = blockingWall._clusterCount || 1;
               if (clusterCount >= 3) {
                 attackingWall = true; // enclosure — break through
               } else {
@@ -11935,6 +12195,15 @@ class GameScene extends Phaser.Scene {
         }
       }
     });
+    this._enemyIterActive = false;
+    // Drain deferred removals now that iteration is over.
+    if (this._pendingEnemyRemovals && this._pendingEnemyRemovals.length) {
+      for (const dead of this._pendingEnemyRemovals) {
+        const _ei = this.enemies.indexOf(dead);
+        if (_ei !== -1) this.enemies.splice(_ei, 1);
+      }
+      this._pendingEnemyRemovals.length = 0;
+    }
   }
 
   updateDayNight(delta) {
@@ -12171,7 +12440,7 @@ class GameScene extends Phaser.Scene {
       if (this._toxicTileIndex && this._toxicTileIndex.has(tx + ',' + ty)) {
         this.hint("Can't build on toxic ground!", 2000); return;
       }
-      if (this.builtWalls && this.builtWalls.some(w => w.active && Phaser.Math.Distance.Between(w.x, w.y, x, y) < 24)) {
+      if (this._wallNearby(x, y, 24)) {
         this.hint("Too close to existing structure!", 2000); return;
       }
     }
@@ -12210,6 +12479,9 @@ class GameScene extends Phaser.Scene {
       w.refreshBody();
       w.hp = 200; w.maxHp = 200; // destructible
       this.builtWalls.push(w);
+      this._addWallToBuckets(w);
+      this._refreshWallClustersNear(w.x, w.y);
+      this._paintMinimapTile(w.x, w.y, 0xeeeeff);
       if (this.hudCam) this.hudCam.ignore(w);
     } else if (this.buildType === 'gate') {
       const gate = this.physics.add.image(x, y, 'wall').setDepth(5).setTint(0x88aaff);
@@ -12221,6 +12493,9 @@ class GameScene extends Phaser.Scene {
       if (this.hudCam) this.hudCam.ignore(gate);
       // Players can open/close by walking near
       this.builtWalls.push(gate);
+      this._addWallToBuckets(gate);
+      this._refreshWallClustersNear(gate.x, gate.y);
+      this._paintMinimapTile(gate.x, gate.y, 0x88aaff);
       // Enemies collide with gate
       this.enemies.forEach(e => { if (e.spr.active) this.physics.add.collider(e.spr, gate); });
       this.physics.add.collider(this.p1.spr, gate, () => this.openGate(gate));
@@ -12233,6 +12508,7 @@ class GameScene extends Phaser.Scene {
       // Register as minimap POI
       const cfTX = Math.floor(x / CFG.TILE), cfTY = Math.floor(y / CFG.TILE);
       this.pois.push({ type: 'campfire', tx: cfTX, ty: cfTY, spr: cf });
+      this._paintMinimapTile(x, y, 0xff8833);
       // Campfire heals nearby players over time
       this.time.addEvent({
         delay: 2000, loop: true,
@@ -12255,6 +12531,7 @@ class GameScene extends Phaser.Scene {
       });
     } else if (this.buildType === 'torch') {
       this._spawnTorch(x, y);
+      this._paintMinimapTile(x, y, 0xffaa33);
     } else if (this.buildType === 'craftbench') {
       const cb = this.add.image(x, y, 'craftbench').setScale(2).setDepth(5);
       if (this.hudCam) this.hudCam.ignore(cb);
@@ -12264,6 +12541,7 @@ class GameScene extends Phaser.Scene {
       // Register as minimap POI
       const cbTX = Math.floor(x / CFG.TILE), cbTY = Math.floor(y / CFG.TILE);
       this.pois.push({ type: 'craftbench', tx: cbTX, ty: cbTY, spr: cb });
+      this._paintMinimapTile(x, y, 0xddcc44);
     } else if (this.buildType === 'bed') {
       const bd = this.add.image(x, y, 'bed').setScale(2).setDepth(5);
       if (this.hudCam) this.hudCam.ignore(bd);
@@ -12271,6 +12549,7 @@ class GameScene extends Phaser.Scene {
       const bedTX = Math.floor(x / CFG.TILE), bedTY = Math.floor(y / CFG.TILE);
       this.beds.push({ x, y, spr: bd });
       this.pois.push({ type: 'bed', tx: bedTX, ty: bedTY, spr: bd });
+      this._paintMinimapTile(x, y, 0xaa88ff);
       // Show E prompt when players are nearby
       const bedPrompt = this._w(this.add.text(x, y - 30, 'E / Enter \u2014 sleep', {
         fontFamily: 'monospace', fontSize: '11px', color: '#ccaaff', backgroundColor: '#110022'
@@ -12287,7 +12566,9 @@ class GameScene extends Phaser.Scene {
       this._w(st);
       // NOTE: st is a non-physics image — detection handled by updateSpikeTraps() each frame
       // so it works for enemies that spawn after placement too.
+      st._builder = this.buildOwner || p;
       this.spikeTraps.push(st);
+      this._paintMinimapTile(x, y, 0xdd2233);
       SFX._play(300, 'triangle', 0.08, 0.15);
       this.hint('Spike trap placed!', 1200);
       this.exitBuildMode(); return;
@@ -12299,6 +12580,9 @@ class GameScene extends Phaser.Scene {
       w.setAngle(this.buildRotation * 90); w.refreshBody();
       w.hp = 300; w.maxHp = 300;
       this.builtWalls.push(w);
+      this._addWallToBuckets(w);
+      this._refreshWallClustersNear(w.x, w.y);
+      this._paintMinimapTile(w.x, w.y, 0xccccff);
       if (this.hudCam) this.hudCam.ignore(w);
       SFX._play(400, 'triangle', 0.08, 0.2);
       this.hint('Reinforced Wall placed!', 1500);
@@ -12369,6 +12653,8 @@ class GameScene extends Phaser.Scene {
     this.craftMenuOwner = player;
     this.craftMenuSel = 0;
     this.craftMenuScroll = 0;
+    // Recompute in case selection was restored — no-op on a fresh open at index 0.
+    this._craftScrollToSel();
     // Contextual tip: first time opening crafting menu
     if (!this._ctx.firstCraft) {
       this._ctx.firstCraft = true;
@@ -12429,10 +12715,13 @@ class GameScene extends Phaser.Scene {
 
   _craftScrollToSel() {
     const N_VISIBLE = Math.floor(((_isMobile ? 330 : 380) - 94) / 25);
+    const maxScroll = Math.max(0, GameScene.RECIPES.length - N_VISIBLE);
     let s = this.craftMenuScroll || 0;
     if (this.craftMenuSel < s) s = this.craftMenuSel;
     else if (this.craftMenuSel >= s + N_VISIBLE) s = this.craftMenuSel - N_VISIBLE + 1;
-    this.craftMenuScroll = s;
+    // Clamp so we never scroll past the final row — otherwise the view leaves
+    // an empty gap at the bottom when the selection is near the tail of the list.
+    this.craftMenuScroll = Phaser.Math.Clamp(s, 0, maxScroll);
   }
 
   closeCraftMenu() {
@@ -12699,7 +12988,7 @@ class GameScene extends Phaser.Scene {
 
   getTeamInv() {
     const inv = { wood:0, metal:0, fiber:0, food:0 };
-    [this.p1, this.p2].filter(Boolean).forEach(p => {
+    [this.p1, this.p2].filter(p => p && p.inv).forEach(p => {
       for (const k of Object.keys(inv)) inv[k] += (p.inv[k] || 0);
     });
     return inv;
@@ -12745,8 +13034,18 @@ class GameOverScene extends Phaser.Scene {
     this._htmlInp    = null;
     this._defaultName = this.p2Name ? this.p1Name + ' & ' + this.p2Name : this.p1Name;
 
-    // Clean up HTML inputs if scene is stopped by any means (back button, etc.)
-    this.events.on('shutdown', () => { this._cleanupInput(); this._cleanupFeedback(); });
+    // Clean up HTML inputs AND keyboard listeners if scene is stopped by any
+    // means (back button, restart, etc.) — Key objects outlive the scene
+    // otherwise and accumulate stacked callbacks across restarts.
+    this.events.on('shutdown', () => {
+      this._cleanupInput();
+      this._cleanupFeedback();
+      if (this._keys) {
+        if (this._keys.enter) this._keys.enter.removeAllListeners();
+        if (this._keys.space) this._keys.space.removeAllListeners();
+        if (this._keys.esc)   this._keys.esc.removeAllListeners();
+      }
+    });
 
     // Background
     const bg = this.add.graphics();
@@ -13099,9 +13398,13 @@ class GameOverScene extends Phaser.Scene {
     });
     y += 16;
     const _lb = this._loadLeaderboard(); // includes current run — already saved above
-    const _myRank = _lb.findIndex(e => e.score === this._score && e.name === (this._savedName || this._defaultName));
+    // Prefer the stable runId that was attached when this run was persisted; fall
+    // back to name+score matching for legacy entries saved before runId existed.
+    const _myRank = (this._runId && _lb.findIndex(e => e.runId === this._runId));
+    const _fallbackRank = _lb.findIndex(e => e.score === this._score && e.name === (this._savedName || this._defaultName));
+    const _highlightRank = (_myRank !== undefined && _myRank >= 0) ? _myRank : _fallbackRank;
     _lb.slice(0, 5).forEach((entry, i) => {
-      const isMe = _myRank >= 0 && i === _myRank;
+      const isMe = _highlightRank >= 0 && i === _highlightRank;
       const col = isMe ? '#ffdd44' : '#778899';
       const datePart = entry.date ? '  ' + entry.date : '';
       const txt = (i + 1) + '.  ' + entry.name.padEnd(14) + entry.score.toLocaleString() + '  Day ' + entry.days + datePart;
@@ -13123,7 +13426,8 @@ class GameOverScene extends Phaser.Scene {
       const name = (this._htmlInp ? this._htmlInp.value.trim() : '') || this._defaultName || 'Player';
       const lb = this._loadLeaderboard();
       const dateStr = new Date().toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
-      lb.push({ name, score: this._score, days: this.days, time: Math.floor(this.timeAlive), date: dateStr });
+      const _runId = (this._runId ||= Date.now() + ':' + Math.random().toString(36).slice(2, 8));
+      lb.push({ name, score: this._score, days: this.days, time: Math.floor(this.timeAlive), date: dateStr, runId: _runId });
       lb.sort((a, b) => b.score - a.score);
       lb.splice(10);
       try {
