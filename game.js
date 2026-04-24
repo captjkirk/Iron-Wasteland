@@ -12156,7 +12156,7 @@ class GameScene extends Phaser.Scene {
       }
       this._log('Wave ' + this.waveNum + ' day=' + this.dayNum + ' diff=' + this._diffMult().toFixed(1) + 'x  w=' + w + ' r=' + r + ' b=' + b, 'world');
       this.hint('Wave ' + this.waveNum + '! Enemies approaching from the wastes!', 3000);
-      SFX._play(200, 'sawtooth', 0.3, 0.4, 'drop');
+      SFX._play(150, 'triangle', 0.55, 0.12, 'drop');
     }
   }
 
@@ -13000,10 +13000,10 @@ class GameScene extends Phaser.Scene {
       this._log(`Night ${this.dayNum} begins  active_enemies=${(this.enemies||[]).filter(e=>e.spr?.active&&!e._dormant).length}`, 'world');
       // Brief camera flash + low horn so the transition has punctuation.
       try {
-        this.cameras.main.flash(260, 20, 10, 50, true);
+        this.cameras.main.flash(140, 18, 14, 40, false);
         if (typeof SFX !== 'undefined' && SFX._play) {
-          SFX._play(120, 'sawtooth', 0.22, 0.5, 'drop');
-          SFX._play(90,  'triangle', 0.18, 0.7);
+          SFX._play(110, 'triangle', 0.35, 0.14, 'drop');
+          SFX._play(85,  'sine',     0.45, 0.10);
         }
       } catch(e) {}
       if (!this._ctx.firstNight) {
