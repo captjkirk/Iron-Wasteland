@@ -10313,20 +10313,30 @@ class GameScene extends Phaser.Scene {
     const id = player.charData.id;
     if (id === 'gunslinger') {
       const clipSize = player._gunslingerClip || 8;
-      if (player.ammo < clipSize && !player.reloading && player.reserveAmmo > 0) {
+      // Pull from team pool if the personal reserve is empty \u2014 otherwise P2's
+      // ammo crate pickups are unreachable and gunslinger gets starved in co-op.
+      const totalAvailable = (player.reserveAmmo || 0) + (this.teamAmmoPool || 0);
+      if (player.ammo < clipSize && !player.reloading && totalAvailable > 0) {
         player.reloading = true;
         SFX.reload();
-        this.hint('Reloading\u2026 (' + player.reserveAmmo + ' in reserve)', 1500);
+        this.hint('Reloading\u2026 (' + totalAvailable + ' available)', 1500);
         this.time.delayedCall(1500, () => {
           const needed = clipSize - player.ammo;
-          const fill = Math.min(needed, player.reserveAmmo);
+          let fill = Math.min(needed, player.reserveAmmo);
           player.ammo += fill;
           player.reserveAmmo -= fill;
+          // Top up from the shared team pool if still short.
+          const stillNeeded = (clipSize - player.ammo);
+          if (stillNeeded > 0 && this.teamAmmoPool > 0) {
+            const fromPool = Math.min(stillNeeded, this.teamAmmoPool);
+            player.ammo += fromPool;
+            this.teamAmmoPool -= fromPool;
+          }
           player.reloading = false;
-          this._log(`${player.charData.player} reloaded  ammo=${player.ammo}  reserve=${player.reserveAmmo}`, 'player');
+          this._log(`${player.charData.player} reloaded  ammo=${player.ammo}  reserve=${player.reserveAmmo}  pool=${this.teamAmmoPool}`, 'player');
           this.redrawHUD(); SFX.reload();
         });
-      } else if (player.reserveAmmo <= 0 && player.ammo < clipSize) {
+      } else if (totalAvailable <= 0 && player.ammo < clipSize) {
         this.hint('No ammo left! Find more drops.', 2000);
       }
     } else if (id === 'knight') {
@@ -11865,9 +11875,15 @@ class GameScene extends Phaser.Scene {
   _diffMult() {
     const hc = this.hc || { diffBase: 1.0, diffRamp: 0.10, diffCap: 3.0 };
     const day = Math.max(1, this.dayNum || 1);
-    const dayScale = hc.diffBase + (day - 1) * hc.diffRamp;
+    const rawDayScale = hc.diffBase + (day - 1) * hc.diffRamp;
+    // Soft post-cap: once rawDayScale hits the cap, keep adding ~1/3 of the
+    // daily ramp so late-game tension never flatlines. Prevents the
+    // day-21+ plateau the audit flagged without making numbers runaway.
+    const capped = Math.min(hc.diffCap, rawDayScale);
+    const overflow = Math.max(0, rawDayScale - hc.diffCap) * 0.33;
+    const dayScale = capped + overflow;
     const relicScale = 1 + (this.relicsDeposited || 0) * 0.2;
-    return Math.min(hc.diffCap, dayScale * relicScale);
+    return dayScale * relicScale;
   }
 
   _relicPressure() {
@@ -12795,10 +12811,34 @@ class GameScene extends Phaser.Scene {
       this._log(`Day ${this.dayNum} begins  diff=${this._diffMult().toFixed(1)}x  kills_so_far=${this.kills||0}  enemies=${(this.enemies||[]).filter(e=>e.spr?.active).length}`, 'world');
       this.hint('Dawn of Day ' + this.dayNum + ' \u2014 enemies grow stronger!', 3000);
       if (this.dayNum === 2) this._tutTrigger('caches');
+      // Player defense scaling — +8 max HP every 3 days. Heals the granted
+      // amount so the buff reads immediately. Keeps players in rough parity
+      // with the enemy diffMult ramp so late game isn't pure camping.
+      if (this.dayNum >= 3 && this.dayNum % 3 === 0) {
+        const boost = 8;
+        const bump = p => {
+          if (!p || p.isPermanentlyDead) return;
+          p.maxHp += boost;
+          p.hp = Math.min(p.maxHp, p.hp + boost);
+          this._log(`${p.charData.player} endurance +${boost}  maxHp=${p.maxHp}`, 'player');
+        };
+        bump(this.p1); bump(this.p2);
+        this.hint('Endurance grows — max HP +' + boost, 2600);
+      }
       // Periodic hunting party — separate cadence from raid camp respawn.
-      if (this.dayNum >= (this.huntNextDay || 0) && this.dayNum >= this.hc.huntingPartyStartDay) {
+      // Suppress during an active boss fight so players don't get double-squeezed.
+      const bossActive = !!(this.boss && this.boss.spr?.active && this.boss.hp > 0);
+      if (!bossActive && this.dayNum >= (this.huntNextDay || 0) && this.dayNum >= this.hc.huntingPartyStartDay) {
         this.huntNextDay = this.dayNum + Phaser.Math.Between(2, 3);
-        this.time.delayedCall(6000, () => { if (!this.isOver) this.spawnHuntingParty(); });
+        this.time.delayedCall(6000, () => {
+          if (this.isOver) return;
+          // Re-check at spawn time — boss could spawn during the 6s delay.
+          if (this.boss && this.boss.spr?.active && this.boss.hp > 0) {
+            this.huntNextDay = this.dayNum + 1;
+            return;
+          }
+          this.spawnHuntingParty();
+        });
       }
       // Raider respawn check
       if (this.raidRespawnDay !== null && this.dayNum >= this.raidRespawnDay) {
