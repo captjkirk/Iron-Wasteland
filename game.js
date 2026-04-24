@@ -5232,6 +5232,9 @@ class GameScene extends Phaser.Scene {
     this._fogVisibleBuilding = false;
     this._activePlayers = null;
     this._sleepIndicator = null;
+    this._fireGlows = [];
+    this._glowFlicker = { t: 0 };
+    this._glowFrame = 0;
     this.reviving = false;
     this.reviveProgress = 0;
     this.reviveTarget = null;
@@ -8569,11 +8572,11 @@ class GameScene extends Phaser.Scene {
       if (this._perfBudget && this._perfBudget.n > 0) {
         const _n = this._perfBudget.n;
         const _av = k => (this._perfBudget[k] / _n).toFixed(2);
-        this._log(`frame budget (${_n}fr avg)  terrain=${_av('terrain')}ms  enemies=${_av('enemies')}ms  waves=${_av('waves')}ms  dens=${_av('dens')}ms  raiders=${_av('raiders')}ms  boss=${_av('boss')}ms  daynight=${_av('daynight')}ms`, 'perf');
+        this._log(`frame budget (${_n}fr avg)  terrain=${_av('terrain')}ms  enemies=${_av('enemies')}ms  waves=${_av('waves')}ms  dens=${_av('dens')}ms  raiders=${_av('raiders')}ms  boss=${_av('boss')}ms  daynight=${_av('daynight')}ms  glows=${_av('glows')}ms`, 'perf');
         this._perfBudget = null;
       }
     }
-    if (!this._perfBudget) this._perfBudget = { terrain: 0, enemies: 0, waves: 0, dens: 0, raiders: 0, boss: 0, daynight: 0, n: 0 };
+    if (!this._perfBudget) this._perfBudget = { terrain: 0, enemies: 0, waves: 0, dens: 0, raiders: 0, boss: 0, daynight: 0, glows: 0, n: 0 };
 
     // _onIce, _inShallowWater, and toxic pool detection are now all computed per-frame
     // inside applyTerrainEffects via Uint8Array map lookups — no reset needed here.
@@ -8688,6 +8691,7 @@ class GameScene extends Phaser.Scene {
     { const _t = performance.now(); this.updateBoss(delta); this._perfBudget.boss += performance.now() - _t; }
     this.updateSleep(delta);
     { const _t = performance.now(); this.updateDayNight(delta); this._perfBudget.daynight += performance.now() - _t; }
+    { const _t = performance.now(); this._updateFireGlows(delta); this._perfBudget.glows += performance.now() - _t; }
     this._perfBudget.n++;
     // Post-updateDayNight stages — wrapped so a throw or stall is attributable.
     // _stageTrace is armed briefly around the Day-5 boss transition to give
@@ -10833,25 +10837,94 @@ class GameScene extends Phaser.Scene {
     });
   }
 
-  // Attach a pulsating warm-glow halo to a campfire, campsite, or torch.
-  // baseScale controls the radius: 1.6 = campfire/campsite (expanded), 0.45 = torch.
+  // Three-layer additive glow stack rendered ABOVE the night overlay (depth 49),
+  // so warm photons add directly to the darkened terrain instead of being dimmed
+  // by it. Zero tweens are created per glow — a single shared driver in
+  // _updateFireGlows drives alpha/scale for every active glow, and dormancy
+  // culling hides distant glows (mirrors enemy dormancy at CFG.DORMANT_RADIUS).
+  // baseScale controls radius: 1.6 = campfire/campsite, 0.45 = torch.
   _addFireGlow(x, y, baseScale = 1.6) {
-    const glow = this.add.image(x, y, 'fire_glow')
-      .setScale(baseScale).setAlpha(0.55).setDepth(3)
-      .setBlendMode(Phaser.BlendModes.ADD);
-    this._w(glow);
-    if (this.hudCam) this.hudCam.ignore(glow);
-    // Pulse scale
-    this.tweens.add({
-      targets: glow, scale: baseScale * 1.35, duration: 1400,
-      ease: 'Sine.InOut', yoyo: true, loop: -1,
-    });
-    // Pulse alpha (slightly offset phase for organic feel)
-    this.tweens.add({
-      targets: glow, alpha: 0.80, duration: 1100,
-      ease: 'Sine.InOut', yoyo: true, loop: -1, delay: 200,
-    });
-    return glow;
+    const mkLayer = (depth, baseAlpha, scaleMult, tint) => {
+      const s = this.add.image(x, y, 'fire_glow')
+        .setScale(baseScale * scaleMult)
+        .setAlpha(0)
+        .setDepth(depth)
+        .setBlendMode(Phaser.BlendModes.ADD)
+        .setVisible(false);
+      if (tint != null) s.setTint(tint);
+      s._baseAlpha = baseAlpha;
+      s._baseScale = baseScale * scaleMult;
+      this._w(s);
+      if (this.hudCam) this.hudCam.ignore(s);
+      return s;
+    };
+    const ground = mkLayer(50, 0.18, 0.9,  0xffaa55); // warm wash on terrain
+    const main   = mkLayer(51, 0.55, 1.0,  null);     // primary bloom
+    const core   = mkLayer(52, 0.45, 0.35, 0xffeecc); // hot core
+    const rec = {
+      sprites: [ground, main, core],
+      x, y,
+      phase: Math.random() * Math.PI * 2,
+      _active: false,
+    };
+    if (!this._fireGlows) this._fireGlows = [];
+    this._fireGlows.push(rec);
+    return main; // preserve prior return type for any call-site assumptions
+  }
+
+  // Single shared driver for all fire glows. Per-frame cost scales linearly
+  // with active (non-dormant) glow count: ~2 sin + 3 sprite writes per glow.
+  // Dormancy check is throttled to every 3rd frame since player positions
+  // change slowly relative to frame rate.
+  _updateFireGlows(delta) {
+    const arr = this._fireGlows;
+    if (!arr || arr.length === 0) return;
+    const ap = this._activePlayers;
+    if (!ap || ap.length === 0) return;
+
+    this._glowFlicker.t += delta;
+    const t = this._glowFlicker.t * 0.001;
+    const nightAlpha = (this.nightOverlay && this.nightOverlay.alpha) || 0;
+    const nightNorm = Math.min(1, nightAlpha / 0.6);
+    const nightBoost = 0.15 + 0.85 * nightNorm;
+
+    const dormR2 = CFG.DORMANT_RADIUS * CFG.DORMANT_RADIUS;
+    const wakeR2 = CFG.WAKE_RADIUS * CFG.WAKE_RADIUS;
+    this._glowFrame = (this._glowFrame | 0) + 1;
+    const doCull = (this._glowFrame % 3) === 0;
+
+    for (let i = arr.length - 1; i >= 0; i--) {
+      const g = arr[i];
+      // Lazy prune: if underlying sprites were destroyed by world reset, drop the record.
+      if (!g.sprites[0] || !g.sprites[0].active) { arr.splice(i, 1); continue; }
+
+      if (doCull) {
+        let min2 = Infinity;
+        for (let j = 0; j < ap.length; j++) {
+          const p = ap[j]; if (!p || !p.spr) continue;
+          const dx = p.spr.x - g.x, dy = p.spr.y - g.y;
+          const d2 = dx * dx + dy * dy;
+          if (d2 < min2) min2 = d2;
+        }
+        if (g._active && min2 > dormR2) {
+          g._active = false;
+          for (let k = 0; k < g.sprites.length; k++) g.sprites[k].setVisible(false);
+        } else if (!g._active && min2 < wakeR2) {
+          g._active = true;
+          for (let k = 0; k < g.sprites.length; k++) g.sprites[k].setVisible(true);
+        }
+      }
+      if (!g._active) continue;
+
+      const wobble = 0.85 + 0.15 * Math.sin(t * 5.3 + g.phase);
+      const breathe = 1 + 0.08 * Math.sin(t * 1.4 + g.phase);
+      const aMul = nightBoost * wobble;
+      for (let k = 0; k < g.sprites.length; k++) {
+        const sp = g.sprites[k];
+        sp.alpha = sp._baseAlpha * aMul;
+        sp.setScale(sp._baseScale * breathe);
+      }
+    }
   }
 
   // Spawn a wall-mounted torch sprite + glow at world position (x, y).
