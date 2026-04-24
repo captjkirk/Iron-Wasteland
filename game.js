@@ -11376,7 +11376,7 @@ class GameScene extends Phaser.Scene {
           this._log(`${player.charData.player} +1 ${item.itemType}  inv=${JSON.stringify(player.inv)}`, 'player');
           label = '+1 ' + item.itemType.charAt(0).toUpperCase() + item.itemType.slice(1);
         }
-        SFX._play(600, 'triangle', 0.06, 0.2);
+        SFX._play(720, 'sine', 0.1, 0.08);
         this._floatPickup(item.x, item.y, label);
         item.destroy();
       };
@@ -12261,7 +12261,7 @@ class GameScene extends Phaser.Scene {
               if (!item.active) return;
               p.inv.wood = (p.inv.wood || 0) + 1;
               this.resourcesGathered++;
-              SFX._play(600, 'triangle', 0.06, 0.2);
+              SFX._play(720, 'sine', 0.1, 0.08);
               this._floatPickup(item.x, item.y, '+1 Wood');
               if (!this._ctx.firstHarvest) {
                 this._ctx.firstHarvest = true;
@@ -12708,7 +12708,17 @@ class GameScene extends Phaser.Scene {
               }
               return;
             } else {
-              e.spr.setVelocity(0, 0);
+              // Charmed non-human: wander peacefully instead of freezing in place
+              e.wanderTimer = (e.wanderTimer || 0) - delta;
+              if (e.wanderTimer <= 0) {
+                const ang = Math.random() * Math.PI * 2;
+                const wspd = (e._effectiveSpeed !== undefined ? e._effectiveSpeed : e.speed) * 0.3;
+                const wx = e.spr.x + Math.cos(ang) * 200;
+                const wy = e.spr.y + Math.sin(ang) * 200;
+                const vel = this._steerToward(e, wx, wy, wspd);
+                e.spr.setVelocity(vel.x, vel.y);
+                e.wanderTimer = Phaser.Math.Between(1500, 3500);
+              }
               return;
             }
           }
@@ -12722,7 +12732,17 @@ class GameScene extends Phaser.Scene {
       // Flower-charm: brief suppress from Flower Toss hit
       if ((e._charmedTimer || 0) > 0 && !e._aggroOverride) {
         e._charmedTimer -= delta;
-        e.spr.setVelocity(0, 0);
+        // Wander peacefully instead of freezing
+        e.wanderTimer = (e.wanderTimer || 0) - delta;
+        if (e.wanderTimer <= 0) {
+          const ang = Math.random() * Math.PI * 2;
+          const wspd = (e._effectiveSpeed !== undefined ? e._effectiveSpeed : e.speed) * 0.3;
+          const wx = e.spr.x + Math.cos(ang) * 200;
+          const wy = e.spr.y + Math.sin(ang) * 200;
+          const vel = this._steerToward(e, wx, wy, wspd);
+          e.spr.setVelocity(vel.x, vel.y);
+          e.wanderTimer = Phaser.Math.Between(1500, 3500);
+        }
         if (!e._charmTinted) { e._charmTinted = true; e.spr.setTint(0xffaacc); }
         return;
       } else if (e._charmedTimer <= 0 && e._charmTinted && !e._aggroOverride) {
@@ -13164,7 +13184,7 @@ class GameScene extends Phaser.Scene {
           this.resourcesGathered += 2;
           this._log(`${player.charData.player} crate ${crate.itemType}  inv=${JSON.stringify(player.inv)}`, 'player');
         }
-        SFX._play(600, 'triangle', 0.06, 0.2);
+        SFX._play(720, 'sine', 0.1, 0.08);
         crate.destroy();
       };
       this.physics.add.overlap(this.p1.spr, crate, () => { if(crate.active) pickupCrate(this.p1); });
