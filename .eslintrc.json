@@ -1,0 +1,25 @@
+{
+  "env": { "browser": true, "es2022": true },
+  "parserOptions": {
+    "ecmaVersion": 2022,
+    "sourceType": "script"
+  },
+  "globals": {
+    "Phaser": "readonly",
+    "AudioContext": "readonly",
+    "webkitAudioContext": "readonly"
+  },
+  "rules": {
+    "no-undef": "error",
+    "no-unused-vars": ["warn", { "args": "none", "varsIgnorePattern": "^_" }],
+    "no-redeclare": "error",
+    "no-const-assign": "error",
+    "no-dupe-keys": "error",
+    "no-dupe-args": "error",
+    "no-unreachable": "error",
+    "no-var": "off",
+    "eqeqeq": ["warn", "always", { "null": "ignore" }],
+    "semi": ["warn", "always"]
+  },
+  "ignorePatterns": ["lib/**", "node_modules/**"]
+}

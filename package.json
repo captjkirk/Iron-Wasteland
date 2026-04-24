@@ -1,0 +1,11 @@
+{
+  "name": "iron-wasteland",
+  "private": true,
+  "version": "0.0.0",
+  "description": "Single-file Phaser 3 browser game (game.js). Edit and refresh — no build step.",
+  "scripts": {
+    "serve": "node server.js",
+    "check": "node --check game.js",
+    "lint": "npx --yes eslint --no-eslintrc --config .eslintrc.json game.js"
+  }
+}
