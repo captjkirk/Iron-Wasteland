@@ -7,7 +7,7 @@
 // ── VERSION ───────────────────────────────────────────────────
 // Update this each commit so the title screen reflects the build date.
 // Stored as UTC ISO so it can be displayed in each player's local timezone.
-const VERSION = '2026-04-23T23:00:00Z';
+const VERSION = '2026-04-24T00:00:00Z';
 // Format VERSION into the viewer's local time with abbreviated tz name (EDT, PDT, BST, etc.)
 function _fmtVersion(iso) {
   try {
@@ -5280,6 +5280,10 @@ class GameScene extends Phaser.Scene {
     this.altarPos        = null;
     this.altarDiscovered = false;
     this._relicHintShown = false;
+    // Track who actually picked up a relic so the aura/apocalypse converge on
+    // the real carrier, not just "first alive player". Critical for co-op —
+    // otherwise P2 runs free while P1 gets swarmed.
+    this._relicCarrierPlayer = null;
     this.raiders = [];
     this.raidCamp = null;
     this.raidRespawnDay = null;
@@ -6340,15 +6344,30 @@ class GameScene extends Phaser.Scene {
   buildPOIs(stx, sty, TILE) {
     const MAP_W = CFG.MAP_W, MAP_H = CFG.MAP_H;
 
+    // Reject tiles the player can't stand on — water (shallow or deep) and
+    // mountain-cluster tiles. Without this, a POI can land somewhere the
+    // player physically can't reach and the interaction never fires.
+    const _isImpassable = (tx, ty) => {
+      if (this._waterMap && this._waterMap[tx + ty * MAP_W]) return true;
+      if (this._solidTileSet && this._solidTileSet.has(tx + ',' + ty)) return true;
+      return false;
+    };
+
     // Helper to find a position in a specific biome
     const findInBiome = (targetBiome, attempts) => {
       for (let i = 0; i < attempts; i++) {
         const tx = Phaser.Math.Between(10, MAP_W - 10);
         const ty = Phaser.Math.Between(10, MAP_H - 10);
         if (Math.abs(tx - stx) < CFG.SAFE_R + 8 && Math.abs(ty - sty) < CFG.SAFE_R + 8) continue;
+        if (_isImpassable(tx, ty)) continue;
         if (getBiome(tx, ty) === targetBiome) return { tx, ty };
       }
-      // Fallback
+      // Fallback — still avoid impassable tiles if possible
+      for (let i = 0; i < 40; i++) {
+        const tx = Phaser.Math.Between(20, MAP_W - 20);
+        const ty = Phaser.Math.Between(20, MAP_H - 20);
+        if (!_isImpassable(tx, ty)) return { tx, ty };
+      }
       return { tx: Phaser.Math.Between(20, MAP_W - 20), ty: Phaser.Math.Between(20, MAP_H - 20) };
     };
 
@@ -6466,9 +6485,10 @@ class GameScene extends Phaser.Scene {
         const ty = Phaser.Math.Between(12, MAP_H - 12);
         const dx = tx - stx, dy = ty - sty;
         if (dx*dx + dy*dy < ALTAR_MIN_DIST*ALTAR_MIN_DIST) continue;
+        if (_isImpassable(tx, ty)) continue;
         if (ALTAR_BIOMES.includes(getBiome(tx, ty))) altarPos = { tx, ty };
       }
-      if (!altarPos) altarPos = { tx: Phaser.Math.Clamp(stx + 50, 12, MAP_W-12), ty: Phaser.Math.Clamp(sty + 50, 12, MAP_H-12) };
+      if (!altarPos) altarPos = findInBiome(ALTAR_BIOMES[Phaser.Math.Between(0, ALTAR_BIOMES.length - 1)], 80);
       const ax = altarPos.tx * TILE, ay = altarPos.ty * TILE;
       const altarSpr = this._w(this.add.image(ax, ay, 'altar_struct').setScale(2.5).setDepth(6));
       // No visible label — player must discover it
@@ -6481,9 +6501,18 @@ class GameScene extends Phaser.Scene {
     {
       const RELIC_BIOMES = ['waste', 'swamp', 'tundra', 'ruins', 'fungal'];
       const D = this._diffMult();
+      const RELIC_ALTAR_MIN = 18; // tiles — keep relics away from the altar so E doesn't conflict
       this._relicPOIs = [];
       for (const biome of RELIC_BIOMES) {
-        const pos = findInBiome(biome, 80);
+        // Reroll if the candidate lands too close to the altar (same biome coincidence)
+        let pos = findInBiome(biome, 80);
+        if (this.altarPos) {
+          for (let _tries = 0; _tries < 8; _tries++) {
+            const dtx = pos.tx - this.altarPos.tx, dty = pos.ty - this.altarPos.ty;
+            if (dtx*dtx + dty*dty >= RELIC_ALTAR_MIN*RELIC_ALTAR_MIN) break;
+            pos = findInBiome(biome, 80);
+          }
+        }
         const px = pos.tx * TILE, py = pos.ty * TILE;
         const spr = this._w(this.add.image(px, py, 'item_relic').setScale(3).setDepth(7));
         this.tweens.add({ targets: spr, alpha: 0.45, duration: 1000, yoyo: true, repeat: -1, ease: 'Sine.easeInOut' });
@@ -7842,6 +7871,7 @@ class GameScene extends Phaser.Scene {
     this._relicPOIs.splice(idx, 1);
     this.pois = this.pois.filter(p => !(p.type === 'relic' && p.tx === rel.tx && p.ty === rel.ty));
     this.relicsHeld++;
+    this._relicCarrierPlayer = player;
 
     this._floatPickup(rel.x, rel.y - 10, 'Relic acquired!');
     this.hint('⬛ Relic in hand — find the Ancient Altar and deposit it!', 5000);
@@ -7876,6 +7906,13 @@ class GameScene extends Phaser.Scene {
   _depositRelic() {
     this.relicsDeposited += this.relicsHeld;
     this.relicsHeld = 0;
+    this._relicCarrierPlayer = null;
+    // Clear the target override on every enemy — otherwise anything that was
+    // tagged by the aura keeps chasing the former carrier forever because
+    // updateEnemies honors e.target even when no relic is currently held.
+    if (this.enemies) {
+      for (const _e of this.enemies) if (_e) _e.target = null;
+    }
     const dep = this.relicsDeposited;
 
     // Visual: tint altar progressively violet as relics are deposited
@@ -7897,8 +7934,13 @@ class GameScene extends Phaser.Scene {
 
   _relicCarrier() {
     if (!this.relicsHeld) return null;
-    const alive = [this.p1, this.p2].filter(p => p && p.spr?.active && !p.isDowned && p.hp > 0);
-    return alive[0] || null;
+    const isAlive = p => p && p.spr?.active && !p.isDowned && p.hp > 0;
+    // Prefer the actual picker. If they died/downed while carrying, the relic
+    // effectively transfers to the surviving teammate so aggro still funnels.
+    if (isAlive(this._relicCarrierPlayer)) return this._relicCarrierPlayer;
+    const other = (this._relicCarrierPlayer === this.p1) ? this.p2 : this.p1;
+    if (isAlive(other)) { this._relicCarrierPlayer = other; return other; }
+    return [this.p1, this.p2].find(isAlive) || null;
   }
 
   _showRelicHint(msg) {
