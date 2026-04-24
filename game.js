@@ -5249,6 +5249,9 @@ class GameScene extends Phaser.Scene {
     this.buildMode = false;
     this.buildGhost = null;
     this.builtWalls = [];
+    // Spatial bucket: tile-coord key -> array of walls. Keeps LOS/steering/placement
+    // checks O(1) per sample instead of O(walls).
+    this._wallBuckets = new Map();
     this.craftBenchPlaced = false;
     this.beds = [];
     this.sleepSpeedMult = 1;   // 8x when all players are sleeping through night
@@ -11448,6 +11451,72 @@ class GameScene extends Phaser.Scene {
     }
   }
 
+  // ── Wall spatial hash ────────────────────────────────────────
+  // Bucket walls by tile coord so LOS/steering/placement probes check only
+  // the 3×3 tiles around a sample, not the entire builtWalls array.
+  _wallBucketKey(tx, ty) { return tx + ',' + ty; }
+  _addWallToBuckets(w) {
+    const T = CFG.TILE;
+    const tx = Math.floor(w.x / T), ty = Math.floor(w.y / T);
+    const k = this._wallBucketKey(tx, ty);
+    let arr = this._wallBuckets.get(k);
+    if (!arr) { arr = []; this._wallBuckets.set(k, arr); }
+    arr.push(w);
+    w._bucketKey = k;
+  }
+  _removeWallFromBuckets(w) {
+    if (!w._bucketKey) return;
+    const arr = this._wallBuckets.get(w._bucketKey);
+    if (!arr) return;
+    const i = arr.indexOf(w);
+    if (i !== -1) arr.splice(i, 1);
+    if (arr.length === 0) this._wallBuckets.delete(w._bucketKey);
+    w._bucketKey = null;
+  }
+  // Returns true if any active wall is within `radius` px of (x, y). Checks only
+  // the 3×3 tile buckets around the sample, so this is O(1) regardless of wall count.
+  _wallNearby(x, y, radius) {
+    if (!this._wallBuckets || this._wallBuckets.size === 0) return false;
+    const T = CFG.TILE;
+    const tx = Math.floor(x / T), ty = Math.floor(y / T);
+    const r2 = radius * radius;
+    for (let dy = -1; dy <= 1; dy++) {
+      for (let dx = -1; dx <= 1; dx++) {
+        const arr = this._wallBuckets.get(this._wallBucketKey(tx + dx, ty + dy));
+        if (!arr) continue;
+        for (const w of arr) {
+          if (!w.active) continue;
+          const ddx = w.x - x, ddy = w.y - y;
+          if (ddx*ddx + ddy*ddy < r2) return true;
+        }
+      }
+    }
+    return false;
+  }
+
+  // Recompute `_clusterCount` (active walls within 130px) for every wall within
+  // 130px of (x, y). Called on wall placement/destruction only — the per-frame
+  // AI loop reads the cached value instead of a fresh O(walls²) filter.
+  _refreshWallClustersNear(x, y) {
+    if (!this.builtWalls) return;
+    const R = 130, R2 = R * R;
+    const touched = [];
+    for (const w of this.builtWalls) {
+      if (!w.active) continue;
+      const dx = w.x - x, dy = w.y - y;
+      if (dx*dx + dy*dy < R2) touched.push(w);
+    }
+    for (const w of touched) {
+      let c = 0;
+      for (const n of this.builtWalls) {
+        if (!n.active) continue;
+        const dx = w.x - n.x, dy = w.y - n.y;
+        if (dx*dx + dy*dy < R2) c++;
+      }
+      w._clusterCount = c;
+    }
+  }
+
   // ── Structure damage ─────────────────────────────────────────
   // Subtract dmg from a player-built wall/gate. Updates tint to reflect health.
   // Destroys the wall with a fade when hp reaches 0.
@@ -11457,7 +11526,10 @@ class GameScene extends Phaser.Scene {
     const pct = wall.hp / (wall.maxHp || 200);
     this._log(`Wall hit  dmg=${Math.round(dmg)}  hp=${wall.hp}/${wall.maxHp || 200}`, 'combat');
     if (wall.hp <= 0) {
+      const wx = wall.x, wy = wall.y;
+      this._removeWallFromBuckets(wall);
       this.builtWalls = this.builtWalls.filter(w => w !== wall);
+      this._refreshWallClustersNear(wx, wy);
       if (wall._hpBg && wall._hpBg.active) wall._hpBg.destroy();
       if (wall._hpBar && wall._hpBar.active) wall._hpBar.destroy();
       this.tweens.add({ targets: wall, alpha: 0, duration: 200, onComplete: () => { if (wall.active) wall.destroy(); } });
@@ -11492,18 +11564,30 @@ class GameScene extends Phaser.Scene {
   }
 
   // Find the nearest player-built wall that sits between (ex,ey) and (px,py)
-  // and is within 80px of the enemy. Returns the wall, or null.
+  // and is within 80px of the enemy. Returns the wall, or null. Uses the wall
+  // spatial hash so cost scales with nearby walls, not total wall count.
   _findWallOnPath(ex, ey, px, py) {
-    if (!this.builtWalls || this.builtWalls.length === 0) return null;
+    if (!this._wallBuckets || this._wallBuckets.size === 0) return null;
     const playerAngDeg = Phaser.Math.RadToDeg(Phaser.Math.Angle.Between(ex, ey, px, py));
+    const T = CFG.TILE;
+    const ctx = Math.floor(ex / T), cty = Math.floor(ey / T);
+    // 80px radius → 3 tiles out (80/32 ≈ 2.5, round up for safety)
+    const RAD_T = 3;
     let best = null, bestDist = Infinity;
-    for (const w of this.builtWalls) {
-      if (!w.active) continue;
-      const wd = Phaser.Math.Distance.Between(ex, ey, w.x, w.y);
-      if (wd > 80) continue;
-      const wallAngDeg = Phaser.Math.RadToDeg(Phaser.Math.Angle.Between(ex, ey, w.x, w.y));
-      const diff = Math.abs(Phaser.Math.Angle.ShortestBetween(wallAngDeg, playerAngDeg));
-      if (diff < 70 && wd < bestDist) { best = w; bestDist = wd; }
+    for (let dy = -RAD_T; dy <= RAD_T; dy++) {
+      for (let dx = -RAD_T; dx <= RAD_T; dx++) {
+        const arr = this._wallBuckets.get(this._wallBucketKey(ctx + dx, cty + dy));
+        if (!arr) continue;
+        for (const w of arr) {
+          if (!w.active) continue;
+          const ddx = w.x - ex, ddy = w.y - ey;
+          const wd2 = ddx*ddx + ddy*ddy;
+          if (wd2 > 80 * 80) continue;
+          const wallAngDeg = Phaser.Math.RadToDeg(Phaser.Math.Angle.Between(ex, ey, w.x, w.y));
+          const diff = Math.abs(Phaser.Math.Angle.ShortestBetween(wallAngDeg, playerAngDeg));
+          if (diff < 70 && wd2 < bestDist) { best = w; bestDist = wd2; }
+        }
+      }
     }
     return best;
   }
@@ -11522,12 +11606,8 @@ class GameScene extends Phaser.Scene {
       const sx = x1 + dx * i, sy = y1 + dy * i;
       const tx = Math.round(sx / T), ty = Math.round(sy / T);
       if (this._solidTileSet.has(tx + ',' + ty)) return false;
-      // Also check player-built walls
-      if (this.builtWalls) {
-        for (const w of this.builtWalls) {
-          if (w.active && Math.abs(sx - w.x) < 20 && Math.abs(sy - w.y) < 20) return false;
-        }
-      }
+      // Also check player-built walls — spatial hash keeps this O(1) per sample
+      if (this._wallNearby(sx, sy, 20)) return false;
     }
     return true;
   }
@@ -11547,11 +11627,7 @@ class GameScene extends Phaser.Scene {
       const py = e.spr.y + Math.sin(ang) * PROBE;
       const tx = Math.round(px / T), ty = Math.round(py / T);
       if (this._solidTileSet.has(tx + ',' + ty)) return false;
-      if (this.builtWalls) {
-        for (const w of this.builtWalls) {
-          if (w.active && Math.abs(px - w.x) < 24 && Math.abs(py - w.y) < 24) return false;
-        }
-      }
+      if (this._wallNearby(px, py, 24)) return false;
       return true;
     };
     // Try direct angle, then ±37°, ±75°, ±112°, ±150°, 180° until a clear heading is found
@@ -11837,9 +11913,9 @@ class GameScene extends Phaser.Scene {
           if (blockingWall) {
             const wallDist = Phaser.Math.Distance.Between(e.spr.x, e.spr.y, blockingWall.x, blockingWall.y);
             if (wallDist < 58) {
-              // Count walls clustered near the blocker — 3+ nearby = enclosed space → always attack
-              const clusterCount = this.builtWalls.filter(w => w.active &&
-                Phaser.Math.Distance.Between(w.x, w.y, blockingWall.x, blockingWall.y) < 130).length;
+              // Count walls clustered near the blocker — 3+ nearby = enclosed space → always attack.
+              // Cached by _refreshWallClustersNear on placement/destruction to avoid O(walls²) per frame.
+              const clusterCount = blockingWall._clusterCount || 1;
               if (clusterCount >= 3) {
                 attackingWall = true; // enclosure — break through
               } else {
@@ -12187,7 +12263,7 @@ class GameScene extends Phaser.Scene {
       if (this._toxicTileIndex && this._toxicTileIndex.has(tx + ',' + ty)) {
         this.hint("Can't build on toxic ground!", 2000); return;
       }
-      if (this.builtWalls && this.builtWalls.some(w => w.active && Phaser.Math.Distance.Between(w.x, w.y, x, y) < 24)) {
+      if (this._wallNearby(x, y, 24)) {
         this.hint("Too close to existing structure!", 2000); return;
       }
     }
@@ -12226,6 +12302,8 @@ class GameScene extends Phaser.Scene {
       w.refreshBody();
       w.hp = 200; w.maxHp = 200; // destructible
       this.builtWalls.push(w);
+      this._addWallToBuckets(w);
+      this._refreshWallClustersNear(w.x, w.y);
       if (this.hudCam) this.hudCam.ignore(w);
     } else if (this.buildType === 'gate') {
       const gate = this.physics.add.image(x, y, 'wall').setDepth(5).setTint(0x88aaff);
@@ -12237,6 +12315,8 @@ class GameScene extends Phaser.Scene {
       if (this.hudCam) this.hudCam.ignore(gate);
       // Players can open/close by walking near
       this.builtWalls.push(gate);
+      this._addWallToBuckets(gate);
+      this._refreshWallClustersNear(gate.x, gate.y);
       // Enemies collide with gate
       this.enemies.forEach(e => { if (e.spr.active) this.physics.add.collider(e.spr, gate); });
       this.physics.add.collider(this.p1.spr, gate, () => this.openGate(gate));
@@ -12315,6 +12395,8 @@ class GameScene extends Phaser.Scene {
       w.setAngle(this.buildRotation * 90); w.refreshBody();
       w.hp = 300; w.maxHp = 300;
       this.builtWalls.push(w);
+      this._addWallToBuckets(w);
+      this._refreshWallClustersNear(w.x, w.y);
       if (this.hudCam) this.hudCam.ignore(w);
       SFX._play(400, 'triangle', 0.08, 0.2);
       this.hint('Reinforced Wall placed!', 1500);
