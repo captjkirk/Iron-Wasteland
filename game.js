@@ -7445,6 +7445,9 @@ class GameScene extends Phaser.Scene {
     player.hp = 0;
     player.isDowned = true;
     player.atkAnimUntil = 0;
+    // If this player owned the craft menu, close it so input routing doesn't
+    // reference a downed player and strand the menu on screen.
+    if (this.craftMenuOpen && this.craftMenuOwner === player) this.closeCraftMenu();
     this._log(`${player.charData.player} (${player.charData.id}) DOWNED  day=${this.dayNum}`, 'player');
     player.downTimer = CFG.DOWN_TIME;
     player.spr.setTint(0xaa0000);
@@ -7506,8 +7509,8 @@ class GameScene extends Phaser.Scene {
   }
 
   checkBothDead() {
-    const p1dead = !this.p1.spr.visible || (!this.p1.isDowned && this.p1.hp <= 0);
-    const p2dead = !this.p2 || !this.p2.spr.visible || (!this.p2.isDowned && this.p2.hp <= 0);
+    const p1dead = !this.p1 || !this.p1.spr || !this.p1.spr.visible || (!this.p1.isDowned && this.p1.hp <= 0);
+    const p2dead = !this.p2 || !this.p2.spr || !this.p2.spr.visible || (!this.p2.isDowned && this.p2.hp <= 0);
     if (p1dead && p2dead) this.triggerGameOver('Both survivors have fallen.');
   }
 
@@ -7562,7 +7565,7 @@ class GameScene extends Phaser.Scene {
       this.reviveProgress = 0;
       this.reviving = false;
       this.reviveTarget = null;
-      this.revBar.setVisible(false);
+      if (this.revBar) this.revBar.setVisible(false);
     }
   }
 
@@ -7578,7 +7581,7 @@ class GameScene extends Phaser.Scene {
     if (player.downText) { player.downText.destroy(); player.downText = null; }
     this.reviveProgress = 0;
     this.reviving = false;
-    this.revBar.setVisible(false);
+    if (this.revBar) this.revBar.setVisible(false);
     this._revivePromptShown = false;
     this.redrawHUD();
     this.hint(player.charData.player + ' is back up! (' + player.hp + ' HP)', 3000);
@@ -7602,8 +7605,8 @@ class GameScene extends Phaser.Scene {
     // Drop any queued hints so they don't surface on the next run.
     if (this._hintQueue) this._hintQueue.length = 0;
 
-    this.p1.spr.setVelocity(0, 0);
-    if (this.p2) this.p2.spr.setVelocity(0, 0);
+    if (this.p1 && this.p1.spr && this.p1.spr.body) this.p1.spr.setVelocity(0, 0);
+    if (this.p2 && this.p2.spr && this.p2.spr.body) this.p2.spr.setVelocity(0, 0);
 
     Music.stop();
     this.cameras.main.fadeOut(800, 0, 0, 0);
@@ -7635,8 +7638,8 @@ class GameScene extends Phaser.Scene {
       this.ctrlObjs.forEach(o => o.setVisible(false));
       this.controlsVis = false;
     }
-    this.p1.spr.setVelocity(0, 0);
-    if (this.p2) this.p2.spr.setVelocity(0, 0);
+    if (this.p1 && this.p1.spr && this.p1.spr.body) this.p1.spr.setVelocity(0, 0);
+    if (this.p2 && this.p2.spr && this.p2.spr.body) this.p2.spr.setVelocity(0, 0);
     Music.stop();
     this.cameras.main.fadeOut(800, 0, 0, 0);
     this.time.delayedCall(900, () => {
@@ -8502,10 +8505,10 @@ class GameScene extends Phaser.Scene {
     }
     else this.p1.spr.setVelocity(0,0);
 
-    if (this.p2) {
+    if (this.p2 && this.p2.spr) {
       const p2CraftHalt = this.craftMenuOpen && this.craftMenuOwner === this.p2;
-      if (!this.p2.isDowned && !this.p2.isSleeping && !p2CraftHalt) this.movePlayer(this.p2, this.p2keys.left, this.p2keys.right, this.p2keys.up, this.p2keys.down);
-      else this.p2.spr.setVelocity(0,0);
+      if (!this.p2.isDowned && !this.p2.isSleeping && !p2CraftHalt && this.p2keys) this.movePlayer(this.p2, this.p2keys.left, this.p2keys.right, this.p2keys.up, this.p2keys.down);
+      else if (this.p2.spr.body) this.p2.spr.setVelocity(0,0);
     }
 
     // Tick attack cooldowns
@@ -8779,6 +8782,7 @@ class GameScene extends Phaser.Scene {
 
   applyTerrainEffects(player) {
     if (!player || player.isDowned) return;
+    if (!player.spr || !player.spr.body) return;
 
     // Shallow water + ice + toxic pools — all computed per-frame via Uint8Array maps
     const TILE = CFG.TILE, MW = CFG.MAP_W;
@@ -9926,9 +9930,11 @@ class GameScene extends Phaser.Scene {
 
   aimAtMouse(player) {
     const cam = this.cameras.main;
-    const pointer = this.input.activePointer;
+    const pointer = this.input && this.input.activePointer;
+    if (!pointer || !player || !player.spr) return;
     const worldX = pointer.x / cam.zoom + cam.worldView.x;
     const worldY = pointer.y / cam.zoom + cam.worldView.y;
+    if (!Number.isFinite(worldX) || !Number.isFinite(worldY)) return;
     const angle = Phaser.Math.Angle.Between(player.spr.x, player.spr.y, worldX, worldY);
     // 8-directional facing from mouse angle (8 sectors of 45°)
     const PI8 = Math.PI / 8;  // 22.5°
@@ -11722,7 +11728,8 @@ class GameScene extends Phaser.Scene {
   // Applies to enemy HP, damage, speed, and attack rate at spawn time.
   _diffMult() {
     const hc = this.hc || { diffBase: 1.0, diffRamp: 0.10, diffCap: 3.0 };
-    const dayScale = hc.diffBase + (this.dayNum - 1) * hc.diffRamp;
+    const day = Math.max(1, this.dayNum || 1);
+    const dayScale = hc.diffBase + (day - 1) * hc.diffRamp;
     const relicScale = 1 + (this.relicsDeposited || 0) * 0.2;
     return Math.min(hc.diffCap, dayScale * relicScale);
   }
