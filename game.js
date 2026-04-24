@@ -7525,6 +7525,16 @@ class GameScene extends Phaser.Scene {
     // reference a downed player and strand the menu on screen.
     if (this.craftMenuOpen && this.craftMenuOwner === player) this.closeCraftMenu();
     this._log(`${player.charData.player} (${player.charData.id}) DOWNED  day=${this.dayNum}`, 'player');
+    // Audible + visual cue — partners need to register the down even if they
+    // aren't looking at the HUD hint.
+    try {
+      if (typeof SFX !== 'undefined' && SFX._play) {
+        SFX._play(200, 'sawtooth', 0.25, 0.35, 'drop');
+        SFX._play(140, 'triangle', 0.20, 0.50, 'drop');
+      }
+      this.cameras.main.flash(260, 90, 10, 10, true);
+      this.cameras.main.shake(200, 0.004);
+    } catch(e) {}
     player.downTimer = CFG.DOWN_TIME;
     player.spr.setTint(0xaa0000);
     player.spr.setAlpha(0.7);
@@ -7668,7 +7678,7 @@ class GameScene extends Phaser.Scene {
     this.isOver = true;
     this._log(`GAME OVER — ${reason}  day=${this.dayNum}  kills=${this.kills||0}  T=${Math.floor(this.timeAlive||0)}s`, 'world');
     // Auto-download log so players can share/report without remembering to copy
-    this.time.delayedCall(800, () => this._downloadLog());
+    this.time.delayedCall(800, () => this._downloadLog(true));
     // Close controls overlay if it was open when game ended
     if (this.controlsVis && this.ctrlObjs) {
       this.ctrlObjs.forEach(o => o.setVisible(false));
@@ -7711,7 +7721,7 @@ class GameScene extends Phaser.Scene {
     if (this.isOver) return;
     this.isOver = true;
     this._log(`VICTORY: all 5 relics deposited  day=${this.dayNum}  kills=${this.kills||0}  T=${Math.floor(this.timeAlive||0)}s`, 'world');
-    this.time.delayedCall(800, () => this._downloadLog());
+    this.time.delayedCall(800, () => this._downloadLog(true));
     if (this.controlsVis && this.ctrlObjs) {
       this.ctrlObjs.forEach(o => o.setVisible(false));
       this.controlsVis = false;
@@ -10858,8 +10868,19 @@ class GameScene extends Phaser.Scene {
   }
 
   // Trigger a .txt download of the full session log.
-  _downloadLog() {
+  // auto=true means the caller is an auto-trigger (game over, crash); those
+  // respect the settings opt-out so fullscreen/kiosk sessions aren't spammed
+  // with a download prompt. Manual calls (G in overlay) always download.
+  _downloadLog(auto) {
     if (!this._dbgEntries) return;
+    if (auto) {
+      try {
+        if (loadSettings().autoDownloadLog === false) {
+          this._log('auto log download suppressed by setting', 'world');
+          return;
+        }
+      } catch(e) {}
+    }
     const t    = Math.floor(this.timeAlive || 0);
     const mode = `${this.solo ? 'Solo' : '2P'} ${this.hardcore ? 'Hardcore' : 'Survival'}`;
     const p1s  = this.p1 ? `P1 (${this.p1.charData?.id||'?'}): HP ${this.p1.hp}/${this.p1.maxHp}` : '';
@@ -12944,7 +12965,7 @@ class GameScene extends Phaser.Scene {
           // scheduler, so the 5s spawnBoss delayedCall never fired. Using
           // setTimeout (not Phaser.time) so the flush still fires even if the
           // game clock stalls.
-          setTimeout(() => { try { this._downloadLog(); } catch (e) {} }, 250);
+          setTimeout(() => { try { this._downloadLog(true); } catch (e) {} }, 250);
           this.time.delayedCall(5000, () => {
             if (!this.isOver && !this.bossSpawned) this.spawnBoss();
           });
