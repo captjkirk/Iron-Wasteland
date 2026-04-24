@@ -4298,9 +4298,22 @@ class ControlsScene extends Phaser.Scene {
           let keyName = Object.keys(KC).find(k => KC[k] === event.keyCode);
           if (!keyName) keyName = event.key.toUpperCase();
           const cur = getBindings();
+          // If this key is already bound to a different action, clear that old
+          // action first so we never persist duplicate bindings (which would
+          // leave one of the two actions silently non-functional).
+          for (const [otherAction, otherKey] of Object.entries(cur)) {
+            if (otherAction !== actionKey && otherKey === keyName) cur[otherAction] = '';
+          }
           cur[actionKey] = keyName;
           saveSettings({ bindings: cur });
           redraw(false, false);
+          // Other boxes may have been cleared by the duplicate-stealing logic
+          // above — refresh their labels too so the UI reflects the new state.
+          if (this._keyBoxes) {
+            for (const kb of this._keyBoxes) {
+              if (kb.actionKey !== actionKey) kb.redraw(false, false);
+            }
+          }
           checkDupes();
         };
         this._listening = { actionKey, redraw, handler };
@@ -7436,6 +7449,8 @@ class GameScene extends Phaser.Scene {
     // listeners leak into subsequent scenes and the next run.
     if (this.craftMenuOpen) this.closeCraftMenu();
     if (this.barrackOpen) this.closeBarrack();
+    // Drop any queued hints so they don't surface on the next run.
+    if (this._hintQueue) this._hintQueue.length = 0;
 
     this.p1.spr.setVelocity(0, 0);
     if (this.p2) this.p2.spr.setVelocity(0, 0);
@@ -7817,6 +7832,17 @@ class GameScene extends Phaser.Scene {
     player.hp        = Math.max(1, Math.round(player.maxHp * hpPct));
     player.spr.setTexture(newCh.id);
     player.lbl.setText(newCh.player);
+
+    // Reset transient debuffs/status so effects from the previous class don't
+    // carry over. Upgrade flags are left alone — they're per-character and
+    // remain active if the player swaps back to that class later.
+    player._speedMult = 1;
+    player._frostSlowed = false;
+    player._webbed = false;
+    player._webSlowCd = 0;
+    player._allyTarget = null;
+    player.atkAnimUntil = 0;
+    if (player.spr?.active) player.spr.clearTint();
     if (newCh.id==='gunslinger') {
       player.ammo = 8;
       const maxReserve = 40 - player.ammo;
@@ -10809,7 +10835,7 @@ class GameScene extends Phaser.Scene {
       const realBiome = biome === 'grass_near' ? 'grass' : biome;
       // Pick center tile in correct biome
       let cx = -1, cy = -1;
-      for (let attempt = 0; attempt < 60; attempt++) {
+      for (let attempt = 0; attempt < 120; attempt++) {
         let tx, ty;
         if (biome === 'grass_near') {
           // Place in a ring 12–22 tiles from spawn — use seeded RNG
@@ -10921,7 +10947,7 @@ class GameScene extends Phaser.Scene {
     for (const biome of LAKE_SPECS) {
       // Pick a center tile — lakes stay farther from spawn than ponds
       let cx = -1, cy = -1;
-      for (let attempt = 0; attempt < 80; attempt++) {
+      for (let attempt = 0; attempt < 150; attempt++) {
         const tx = _ri(12, MAP_W - 12);
         const ty = _ri(12, MAP_H - 12);
         if (getBiome(tx, ty) !== biome) continue;
@@ -11466,13 +11492,33 @@ class GameScene extends Phaser.Scene {
         ? (this.hotkeys.p1use.isDown || touchHeld)
         : (this.hotkeys.p2use ? this.hotkeys.p2use.isDown : false);
 
-      // Find nearest tree within range
+      // Find nearest tree within range. Throttled: full scan at most every
+      // 200ms per player, otherwise re-validate the cached tree. This avoids
+      // iterating all ~300 obstacles every frame while the harvest key is held.
       let nearestTree = null, nearDist = Infinity;
       if (keyHeld && this.obstacles) {
-        for (const obj of this.obstacles.getChildren()) {
-          if (!obj.isTree || !obj.active) continue;
-          const d = Phaser.Math.Distance.Between(player.spr.x, player.spr.y, obj.x, obj.y);
-          if (d < HARVEST_RANGE && d < nearDist) { nearDist = d; nearestTree = obj; }
+        player._treeScanCd = (player._treeScanCd || 0) - delta;
+        const cached = player._cachedTree;
+        if (cached && cached.active && cached.isTree) {
+          const cdx = player.spr.x - cached.x, cdy = player.spr.y - cached.y;
+          const cd2 = cdx * cdx + cdy * cdy;
+          if (cd2 < HARVEST_RANGE * HARVEST_RANGE) {
+            nearestTree = cached;
+            nearDist = Math.sqrt(cd2);
+          }
+        }
+        if (!nearestTree || player._treeScanCd <= 0) {
+          player._treeScanCd = 200;
+          for (const obj of this.obstacles.getChildren()) {
+            if (!obj.isTree || !obj.active) continue;
+            const odx = player.spr.x - obj.x, ody = player.spr.y - obj.y;
+            const od2 = odx * odx + ody * ody;
+            if (od2 < HARVEST_RANGE * HARVEST_RANGE && od2 < nearDist * nearDist) {
+              nearDist = Math.sqrt(od2);
+              nearestTree = obj;
+            }
+          }
+          player._cachedTree = nearestTree;
         }
       }
 
@@ -11699,8 +11745,11 @@ class GameScene extends Phaser.Scene {
   _hasLOS(x1, y1, x2, y2) {
     if (!this._solidTileSet) return true;
     const T = CFG.TILE;
-    const dist = Phaser.Math.Distance.Between(x1, y1, x2, y2);
-    if (dist < 24) return true;
+    // Inline sqrt — hotter than Phaser.Math.Distance.Between on the per-frame LOS path.
+    const ddx = x2 - x1, ddy = y2 - y1;
+    const d2 = ddx * ddx + ddy * ddy;
+    if (d2 < 576) return true; // 24²
+    const dist = Math.sqrt(d2);
     const steps = Math.ceil(dist / 28); // sample every ~28 px
     const dx = (x2 - x1) / steps, dy = (y2 - y1) / steps;
     for (let i = 1; i < steps; i++) {
@@ -11936,9 +11985,11 @@ class GameScene extends Phaser.Scene {
       // Bog Lurker: stays hidden until player is within 90px, then bursts
       if (e.type === 'bog_lurker') {
         if (e._lurking) {
-          const closePlayer = [this.p1, this.p2].find(p =>
-            p && !p.isDowned && Phaser.Math.Distance.Between(e.spr.x, e.spr.y, p.spr.x, p.spr.y) < 90
-          );
+          const closePlayer = [this.p1, this.p2].find(p => {
+            if (!p || p.isDowned) return false;
+            const dx = e.spr.x - p.spr.x, dy = e.spr.y - p.spr.y;
+            return dx*dx + dy*dy < 8100; // 90²
+          });
           if (closePlayer) {
             e._lurking = false;
             e.spr.setAlpha(1);
@@ -11958,9 +12009,11 @@ class GameScene extends Phaser.Scene {
       } else if (e.type === 'water_lurker') {
         // Lurks nearly invisible until player steps within 110px, then bursts
         if (e._lurking) {
-          const closePlayer = [this.p1, this.p2].find(p =>
-            p && !p.isDowned && Phaser.Math.Distance.Between(e.spr.x, e.spr.y, p.spr.x, p.spr.y) < 110
-          );
+          const closePlayer = [this.p1, this.p2].find(p => {
+            if (!p || p.isDowned) return false;
+            const dx = e.spr.x - p.spr.x, dy = e.spr.y - p.spr.y;
+            return dx*dx + dy*dy < 12100; // 110²
+          });
           if (closePlayer) {
             e._lurking = false;
             e.spr.setAlpha(1);
@@ -12598,6 +12651,8 @@ class GameScene extends Phaser.Scene {
     this.craftMenuOwner = player;
     this.craftMenuSel = 0;
     this.craftMenuScroll = 0;
+    // Recompute in case selection was restored — no-op on a fresh open at index 0.
+    this._craftScrollToSel();
     // Contextual tip: first time opening crafting menu
     if (!this._ctx.firstCraft) {
       this._ctx.firstCraft = true;
@@ -12658,10 +12713,13 @@ class GameScene extends Phaser.Scene {
 
   _craftScrollToSel() {
     const N_VISIBLE = Math.floor(((_isMobile ? 330 : 380) - 94) / 25);
+    const maxScroll = Math.max(0, GameScene.RECIPES.length - N_VISIBLE);
     let s = this.craftMenuScroll || 0;
     if (this.craftMenuSel < s) s = this.craftMenuSel;
     else if (this.craftMenuSel >= s + N_VISIBLE) s = this.craftMenuSel - N_VISIBLE + 1;
-    this.craftMenuScroll = s;
+    // Clamp so we never scroll past the final row — otherwise the view leaves
+    // an empty gap at the bottom when the selection is near the tail of the list.
+    this.craftMenuScroll = Phaser.Math.Clamp(s, 0, maxScroll);
   }
 
   closeCraftMenu() {
@@ -12928,7 +12986,7 @@ class GameScene extends Phaser.Scene {
 
   getTeamInv() {
     const inv = { wood:0, metal:0, fiber:0, food:0 };
-    [this.p1, this.p2].filter(Boolean).forEach(p => {
+    [this.p1, this.p2].filter(p => p && p.inv).forEach(p => {
       for (const k of Object.keys(inv)) inv[k] += (p.inv[k] || 0);
     });
     return inv;
@@ -13338,9 +13396,13 @@ class GameOverScene extends Phaser.Scene {
     });
     y += 16;
     const _lb = this._loadLeaderboard(); // includes current run — already saved above
-    const _myRank = _lb.findIndex(e => e.score === this._score && e.name === (this._savedName || this._defaultName));
+    // Prefer the stable runId that was attached when this run was persisted; fall
+    // back to name+score matching for legacy entries saved before runId existed.
+    const _myRank = (this._runId && _lb.findIndex(e => e.runId === this._runId));
+    const _fallbackRank = _lb.findIndex(e => e.score === this._score && e.name === (this._savedName || this._defaultName));
+    const _highlightRank = (_myRank !== undefined && _myRank >= 0) ? _myRank : _fallbackRank;
     _lb.slice(0, 5).forEach((entry, i) => {
-      const isMe = _myRank >= 0 && i === _myRank;
+      const isMe = _highlightRank >= 0 && i === _highlightRank;
       const col = isMe ? '#ffdd44' : '#778899';
       const datePart = entry.date ? '  ' + entry.date : '';
       const txt = (i + 1) + '.  ' + entry.name.padEnd(14) + entry.score.toLocaleString() + '  Day ' + entry.days + datePart;
@@ -13362,7 +13424,8 @@ class GameOverScene extends Phaser.Scene {
       const name = (this._htmlInp ? this._htmlInp.value.trim() : '') || this._defaultName || 'Player';
       const lb = this._loadLeaderboard();
       const dateStr = new Date().toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
-      lb.push({ name, score: this._score, days: this.days, time: Math.floor(this.timeAlive), date: dateStr });
+      const _runId = (this._runId ||= Date.now() + ':' + Math.random().toString(36).slice(2, 8));
+      lb.push({ name, score: this._score, days: this.days, time: Math.floor(this.timeAlive), date: dateStr, runId: _runId });
       lb.sort((a, b) => b.score - a.score);
       lb.splice(10);
       try {
