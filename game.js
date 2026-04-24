@@ -8012,7 +8012,7 @@ class GameScene extends Phaser.Scene {
     this._relicCarrierPlayer = player;
 
     this._floatPickup(rel.x, rel.y - 10, 'Relic acquired!');
-    this.hint('⬛ Relic in hand — find the Ancient Altar and deposit it!', 5000);
+    this.hint('⬛ Relic in hand…', 5000);
     this._log(`${player.charData.player} picked up relic  biome=${rel.biome}  held=${this.relicsHeld}  remaining=${this._relicPOIs.length}`, 'player');
     this.redrawHUD();
 
