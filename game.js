@@ -7701,6 +7701,8 @@ class GameScene extends Phaser.Scene {
         p1Kills: this.p1 ? this.p1.kills : 0,
         p2Kills: this.p2 ? this.p2.kills : 0,
         dbgEntries: this._dbgEntries,
+        seed: this._worldSeed,
+        version: VERSION,
       });
     });
   }
@@ -7735,6 +7737,8 @@ class GameScene extends Phaser.Scene {
         p1Kills: this.p1 ? this.p1.kills : 0,
         p2Kills: this.p2 ? this.p2.kills : 0,
         dbgEntries: this._dbgEntries,
+        seed: this._worldSeed,
+        version: VERSION,
       });
     });
   }
@@ -10849,13 +10853,22 @@ class GameScene extends Phaser.Scene {
     // Also save to ./logs/ via dev server — same-origin so it works whether served
     // as localhost, 127.0.0.1, or LAN IP. No-op if running from file:// (no server).
     if (location.protocol !== 'file:') {
-      fetch('/save-log', {
+      const body = JSON.stringify({ filename: fname, content: lines });
+      const tryPost = (attempt) => fetch('/save-log', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ filename: fname, content: lines }),
+        body,
       })
-      .then(r => { if (!r.ok) console.warn('[save-log] server returned', r.status); })
-      .catch(e => console.warn('[save-log] failed:', e));
+      .then(r => {
+        if (r.ok) return;
+        if (attempt < 2) { setTimeout(() => tryPost(attempt + 1), 800); return; }
+        console.warn('[save-log] server returned', r.status, 'after', attempt + 1, 'tries');
+      })
+      .catch(e => {
+        if (attempt < 2) { setTimeout(() => tryPost(attempt + 1), 800); return; }
+        console.warn('[save-log] failed after', attempt + 1, 'tries:', e);
+      });
+      tryPost(0);
     } else {
       console.warn('[save-log] skipped — running from file://; run `node server.js` to save logs to disk');
     }
@@ -13609,6 +13622,8 @@ class GameOverScene extends Phaser.Scene {
     this._dbgEntries   = data.dbgEntries    || null;
     this.won           = data.won           || false;
     this.relicsDeposited = data.relicsDeposited ?? 0;
+    this.seed          = data.seed          || null;
+    this.version       = data.version       || null;
   }
 
   _calcScore() {
@@ -14034,7 +14049,16 @@ class GameOverScene extends Phaser.Scene {
       const lb = this._loadLeaderboard();
       const dateStr = new Date().toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
       const _runId = (this._runId ||= Date.now() + ':' + Math.random().toString(36).slice(2, 8));
-      lb.push({ name, score: this._score, days: this.days, time: Math.floor(this.timeAlive), date: dateStr, runId: _runId });
+      lb.push({
+        name, score: this._score, days: this.days,
+        time: Math.floor(this.timeAlive), date: dateStr, runId: _runId,
+        // Verifiability metadata — lets top-score runs be reproduced/inspected
+        // later (same seed replays the same world) and tagged by game build.
+        difficulty: this.difficulty || null,
+        seed: this.seed || null,
+        version: this.version || null,
+        won: this.won || false,
+      });
       lb.sort((a, b) => b.score - a.score);
       lb.splice(10);
       try {
