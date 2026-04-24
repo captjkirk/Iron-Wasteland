@@ -9346,7 +9346,20 @@ class GameScene extends Phaser.Scene {
       { key: 'boss_troll',  name: 'Frost Troll',   biome: 'tundra', hp: 700, speed: 65,  dmg: 28, specialType: 'slam',   specialInterval: 6500 },
       { key: 'boss_hydra',  name: 'Bog Hydra',     biome: 'swamp',  hp: 540, speed: 65,  dmg: 20, specialType: 'spray',  specialInterval: 5500 },
     ];
-    const bt = bossTypes[Phaser.Math.Between(0, bossTypes.length - 1)];
+    // Biome-anchored pick — prefer a boss whose biome matches where the
+    // players currently are, so the boss reads as something emerging from
+    // the surrounding world instead of a random spawn. Falls back to random
+    // if the current biome has no matching boss type.
+    let bt;
+    try {
+      const anchor = (this.p1 && this.p1.spr) ? this.p1 : (this.p2 && this.p2.spr ? this.p2 : null);
+      const pbiome = anchor ? getBiome(Math.floor(anchor.spr.x / TILE), Math.floor(anchor.spr.y / TILE)) : null;
+      const matches = pbiome ? bossTypes.filter(b => b.biome === pbiome) : [];
+      bt = matches.length ? matches[Phaser.Math.Between(0, matches.length - 1)]
+                          : bossTypes[Phaser.Math.Between(0, bossTypes.length - 1)];
+    } catch(e) {
+      bt = bossTypes[Phaser.Math.Between(0, bossTypes.length - 1)];
+    }
 
     // Spawn at a random map edge
     let bx, by;
@@ -9583,6 +9596,33 @@ class GameScene extends Phaser.Scene {
       const d = Phaser.Math.Distance.Between(b.spr.x, b.spr.y, p.spr.x, p.spr.y);
       if (d < nearDist) { nearDist = d; nearest = p; }
     });
+
+    // ── HP-THRESHOLD PHASES ──────────────────────────────────────
+    // Unlock two enrage tiers as the boss loses HP. Each tier bumps
+    // aggression so the fight has arcs instead of a flat DPS race.
+    const _hpPct = b.hp / b.maxHp;
+    if (!b._phase2 && _hpPct <= 0.66) {
+      b._phase2 = true;
+      b.specialInterval = Math.max(2200, Math.floor(b.specialInterval * 0.75));
+      b.speed = Math.floor(b.speed * 1.15);
+      b.dmg   = Math.ceil(b.dmg * 1.10);
+      this._log(`boss enraged (66%)  type=${b.type}  newSpeed=${b.speed}  newDmg=${b.dmg}`, 'world');
+      this.hint('⚠ ' + b.name.toUpperCase() + ' is ENRAGED!', 2500);
+      if (typeof SFX !== 'undefined' && SFX._play) SFX._play(130, 'sawtooth', 0.3, 0.4, 'drop');
+      b.spr.setTint(0xffbb88);
+      this.time.delayedCall(240, () => { if (b.spr && b.spr.active) b.spr.clearTint(); });
+    }
+    if (!b._phase3 && _hpPct <= 0.33) {
+      b._phase3 = true;
+      b.specialInterval = Math.max(1600, Math.floor(b.specialInterval * 0.65));
+      b.speed = Math.floor(b.speed * 1.20);
+      b.dmg   = Math.ceil(b.dmg * 1.15);
+      this._log(`boss FERAL (33%)  type=${b.type}  newSpeed=${b.speed}  newDmg=${b.dmg}`, 'world');
+      this.hint('⚠ ' + b.name.toUpperCase() + ' is FERAL!', 2500);
+      if (typeof SFX !== 'undefined' && SFX._play) SFX._play(100, 'sawtooth', 0.4, 0.6, 'drop');
+      b.spr.setTint(0xff5533);
+      this.time.delayedCall(320, () => { if (b.spr && b.spr.active) b.spr.clearTint(); });
+    }
 
     // ── SPECIAL ATTACK STATE MACHINE ─────────────────────────────
     b.specialTimer -= delta;
@@ -12813,11 +12853,29 @@ class GameScene extends Phaser.Scene {
     if (this.isNight && !wasNight) {
       Music.switchToNight();
       this._log(`Night ${this.dayNum} begins  active_enemies=${(this.enemies||[]).filter(e=>e.spr?.active&&!e._dormant).length}`, 'world');
+      // Brief camera flash + low horn so the transition has punctuation.
+      try {
+        this.cameras.main.flash(260, 20, 10, 50, true);
+        if (typeof SFX !== 'undefined' && SFX._play) {
+          SFX._play(120, 'sawtooth', 0.22, 0.5, 'drop');
+          SFX._play(90,  'triangle', 0.18, 0.7);
+        }
+      } catch(e) {}
       if (!this._ctx.firstNight) {
         this._ctx.firstNight = true;
         this._tutTrigger('nightfall');
         if (this._tutShown?.has('nightfall')) this.hint('Night falls — enemies are faster and more dangerous! Build Walls or sleep in a Bed.', 6000);
       }
+    }
+    // Dawn cue — subtle warm flash + rising chime.
+    if (!this.isNight && wasNight) {
+      try {
+        this.cameras.main.flash(240, 70, 50, 20, true);
+        if (typeof SFX !== 'undefined' && SFX._play) {
+          SFX._play(520, 'triangle', 0.12, 0.35);
+          SFX._play(780, 'sine',     0.10, 0.35);
+        }
+      } catch(e) {}
     }
 
     const newDay = Math.floor(this.dayTimer / this.DAY_DUR) + 1;
