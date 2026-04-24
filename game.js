@@ -5232,8 +5232,27 @@ class GameScene extends Phaser.Scene {
           this.input.off('pointerupoutside', this._onTouchUp,   this);
         }
         if (this.tweens) this.tweens.killAll();
+        if (this._onVisibilityChange) {
+          document.removeEventListener('visibilitychange', this._onVisibilityChange);
+          window.removeEventListener('blur',  this._onBlur);
+          window.removeEventListener('focus', this._onFocus);
+          this._onVisibilityChange = null;
+        }
       });
     }
+
+    // Auto-pause when the tab is hidden or window loses focus. Without this the
+    // physics loop keeps running in the background; on refocus Phaser delivers
+    // a multi-second delta that teleports enemies and desyncs co-op.
+    this._onVisibilityChange = () => {
+      if (document.hidden) this._autoPause('hidden');
+      else                 this._autoResume();
+    };
+    this._onBlur  = () => this._autoPause('blur');
+    this._onFocus = () => this._autoResume();
+    document.addEventListener('visibilitychange', this._onVisibilityChange);
+    window.addEventListener('blur',  this._onBlur);
+    window.addEventListener('focus', this._onFocus);
 
     const worldW = CFG.MAP_W * CFG.TILE, worldH = CFG.MAP_H * CFG.TILE;
     const cx = worldW/2, cy = worldH/2;
@@ -8452,6 +8471,11 @@ class GameScene extends Phaser.Scene {
     if (!this._worldReady) return; // deferred world init not yet complete
     if (this.isOver) return;
 
+    // Clamp delta — a backgrounded tab, long GC pause, or debugger break can
+    // produce multi-second deltas that teleport enemies across walls and
+    // desync co-op. 50ms matches a 20 FPS floor; physics/AI stays stable.
+    if (delta > 50) delta = 50;
+
     // Heartbeat — wall-clock, so it shows even if the game clock stalls.
     const _hbNow = Date.now();
     if (!this._lastHeartbeat || _hbNow - this._lastHeartbeat > 5000) {
@@ -10628,6 +10652,30 @@ class GameScene extends Phaser.Scene {
     const tc = this._w(this.add.image(x, y, 'torch').setScale(2).setDepth(5));
     if (this.hudCam) this.hudCam.ignore(tc);
     return tc;
+  }
+
+  _autoPause(reason) {
+    if (this.isOver || this._autoPaused) return;
+    this._autoPaused = true;
+    this._log(`auto-pause (${reason})`, 'world');
+    if (this.scene && !this.scene.isPaused('Game')) this.scene.pause('Game');
+    // Suspend the shared AudioContext so background-tab CPU stays near zero.
+    try {
+      if (typeof Music !== 'undefined' && Music.ctx && Music.ctx.state === 'running') {
+        Music.ctx.suspend();
+      }
+    } catch(e) {}
+  }
+  _autoResume() {
+    if (!this._autoPaused) return;
+    this._autoPaused = false;
+    this._log('auto-resume', 'world');
+    if (this.scene && this.scene.isPaused('Game')) this.scene.resume('Game');
+    try {
+      if (typeof Music !== 'undefined' && Music.ctx && Music.ctx.state === 'suspended' && Music.playing) {
+        Music.ctx.resume();
+      }
+    } catch(e) {}
   }
 
   // Push a timestamped event entry to the in-game debug log (` key to show/hide).
