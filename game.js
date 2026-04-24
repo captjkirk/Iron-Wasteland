@@ -6924,6 +6924,32 @@ class GameScene extends Phaser.Scene {
     if (this.minimapGfx) this.minimapGfx.clear();
   }
 
+  // Paint a single tile on the cached minimap color map. Used by player-placed
+  // structures so they show up on the radar immediately instead of being hidden
+  // by the original biome color.
+  _paintMinimapTile(worldX, worldY, color) {
+    if (!this._mmColorMap) return;
+    const { TILE, MAP_W, MAP_H } = CFG;
+    const tx = Math.floor(worldX / TILE), ty = Math.floor(worldY / TILE);
+    if (tx < 0 || tx >= MAP_W || ty < 0 || ty >= MAP_H) return;
+    this._mmColorMap[tx + ty * MAP_W] = color;
+  }
+
+  // Reset a minimap tile to its biome color. Used when a player-built structure
+  // is destroyed so the radar stops showing it.
+  _unpaintMinimapTile(worldX, worldY) {
+    if (!this._mmColorMap) return;
+    const { TILE, MAP_W, MAP_H } = CFG;
+    const tx = Math.floor(worldX / TILE), ty = Math.floor(worldY / TILE);
+    if (tx < 0 || tx >= MAP_W || ty < 0 || ty >= MAP_H) return;
+    const i = tx + ty * MAP_W;
+    // Prefer water/ice colors if the tile was water — walls can't be placed on
+    // water, so in practice this falls through to the biome color.
+    if (this._waterMap && this._waterMap[i]) { this._mmColorMap[i] = 0x2255aa; return; }
+    if (this._iceMap && this._iceMap[i])     { this._mmColorMap[i] = 0x88aadd; return; }
+    this._mmColorMap[i] = BIOME_COLORS[getBiome(tx, ty)] || 0x333333;
+  }
+
   // Build a full-map color lookup (Uint32Array, one entry per tile).
   // Called once at end of world-gen; each updateMinimap() call reads it in O(1).
   // Layer order: biome → water → ice → deep water → trees → rocks → building floors → walls → mountains.
@@ -7406,6 +7432,10 @@ class GameScene extends Phaser.Scene {
       this.ctrlObjs.forEach(o => o.setVisible(false));
       this.controlsVis = false;
     }
+    // Close any overlays that register input listeners — otherwise those
+    // listeners leak into subsequent scenes and the next run.
+    if (this.craftMenuOpen) this.closeCraftMenu();
+    if (this.barrackOpen) this.closeBarrack();
 
     this.p1.spr.setVelocity(0, 0);
     if (this.p2) this.p2.spr.setVelocity(0, 0);
@@ -7532,6 +7562,10 @@ class GameScene extends Phaser.Scene {
 
   openPauseSettings() {
     this._log('game paused — settings opened', 'player');
+    // Close any open overlays first so their pointer/wheel listeners don't
+    // keep firing while paused / through the Settings overlay.
+    if (this.craftMenuOpen) this.closeCraftMenu();
+    if (this.barrackOpen) this.closeBarrack();
     // Pause immediately so the world freezes mid-frame; Settings overlays on top.
     // We deliberately do NOT fade the world to black — Settings now uses a
     // semi-transparent background so the paused world peeks through.
@@ -7745,6 +7779,9 @@ class GameScene extends Phaser.Scene {
     this.bObjs.forEach(o => o.setVisible(true));
     this.refreshBarrackCards();
 
+    // Remove any stale handler first — guards against openBarrack being called
+    // twice without an intervening closeBarrack (e.g. both players interact same frame).
+    if (this._barrackPointerFn) this.input.off('pointerdown', this._barrackPointerFn);
     this._barrackPointerFn = (ptr) => {
       if (!this.barrackOpen) return;
       for (let i = 0; i < this.bCards.length; i++) {
@@ -10061,14 +10098,19 @@ class GameScene extends Phaser.Scene {
     if (e.hp <= 0) this.killEnemy(e, owner);
   }
 
-  // Brief physics-world freeze (ms) for impact weight. No-op if a prior
-  // pause is still in flight — prevents cumulative stutter on multi-hit frames.
+  // Brief physics-world freeze (ms) for impact weight. Rate-limited to once per
+  // 300ms to prevent sustained stutter during multi-enemy engagements and
+  // suppressed entirely on mobile where the freeze reads as frame-drop.
   _hitPause(ms) {
     if (this._hitPauseActive || this.isOver || !this.physics || !this.physics.world) return;
+    if (_isMobile) return;
+    const now = this.time.now;
+    if (this._lastHitPauseEnd && now - this._lastHitPauseEnd < 260) return;
     this._hitPauseActive = true;
     try { this.physics.world.pause(); } catch(e) {}
     this.time.delayedCall(ms, () => {
       this._hitPauseActive = false;
+      this._lastHitPauseEnd = this.time.now;
       try { this.physics.world.resume(); } catch(e) {}
     });
   }
@@ -10184,7 +10226,12 @@ class GameScene extends Phaser.Scene {
     const ts = `${Math.floor(t/60).toString().padStart(2,'0')}:${(t%60).toString().padStart(2,'0')}`;
     const tag = (cat || 'info').toUpperCase().padEnd(6).slice(0, 6);
     this._dbgEntries.push(`T${ts} [${tag}] ${msg}`);
-    // No hard cap — full history is kept for download. Overlay shows last 28 lines.
+    // Soft cap so multi-hour sessions don't accumulate GB of log lines. FIFO
+    // drop from the front keeps the most recent activity — still useful for
+    // bug reports. Overlay shows last 28 lines either way.
+    if (this._dbgEntries.length > 50000) {
+      this._dbgEntries.splice(0, this._dbgEntries.length - 50000);
+    }
     this._dbgRefresh(true);
   }
 
@@ -10494,7 +10541,8 @@ class GameScene extends Phaser.Scene {
       for (const e of this.enemies) {
         if (e.dying || !e.spr.active) continue;
         if (Phaser.Math.Distance.Between(e.spr.x, e.spr.y, st.x, st.y) < 26) {
-          this._hurtEnemy(e, 35, st.x, st.y);
+          // Credit the trap's builder so kill counts track correctly in HUD / game-over.
+          this._hurtEnemy(e, 35, st.x, st.y, 0xff2233, st._builder || null);
           st.destroy();
           this.spikeTraps.splice(si, 1);
           break; // trap gone — move to next trap
@@ -11582,6 +11630,7 @@ class GameScene extends Phaser.Scene {
       this._removeWallFromBuckets(wall);
       this.builtWalls = this.builtWalls.filter(w => w !== wall);
       this._refreshWallClustersNear(wx, wy);
+      this._unpaintMinimapTile(wx, wy);
       if (wall._hpBg && wall._hpBg.active) wall._hpBg.destroy();
       if (wall._hpBar && wall._hpBar.active) wall._hpBar.destroy();
       this.tweens.add({ targets: wall, alpha: 0, duration: 200, onComplete: () => { if (wall.active) wall.destroy(); } });
@@ -12377,6 +12426,7 @@ class GameScene extends Phaser.Scene {
       this.builtWalls.push(w);
       this._addWallToBuckets(w);
       this._refreshWallClustersNear(w.x, w.y);
+      this._paintMinimapTile(w.x, w.y, 0xeeeeff);
       if (this.hudCam) this.hudCam.ignore(w);
     } else if (this.buildType === 'gate') {
       const gate = this.physics.add.image(x, y, 'wall').setDepth(5).setTint(0x88aaff);
@@ -12390,6 +12440,7 @@ class GameScene extends Phaser.Scene {
       this.builtWalls.push(gate);
       this._addWallToBuckets(gate);
       this._refreshWallClustersNear(gate.x, gate.y);
+      this._paintMinimapTile(gate.x, gate.y, 0x88aaff);
       // Enemies collide with gate
       this.enemies.forEach(e => { if (e.spr.active) this.physics.add.collider(e.spr, gate); });
       this.physics.add.collider(this.p1.spr, gate, () => this.openGate(gate));
@@ -12402,6 +12453,7 @@ class GameScene extends Phaser.Scene {
       // Register as minimap POI
       const cfTX = Math.floor(x / CFG.TILE), cfTY = Math.floor(y / CFG.TILE);
       this.pois.push({ type: 'campfire', tx: cfTX, ty: cfTY, spr: cf });
+      this._paintMinimapTile(x, y, 0xff8833);
       // Campfire heals nearby players over time
       this.time.addEvent({
         delay: 2000, loop: true,
@@ -12424,6 +12476,7 @@ class GameScene extends Phaser.Scene {
       });
     } else if (this.buildType === 'torch') {
       this._spawnTorch(x, y);
+      this._paintMinimapTile(x, y, 0xffaa33);
     } else if (this.buildType === 'craftbench') {
       const cb = this.add.image(x, y, 'craftbench').setScale(2).setDepth(5);
       if (this.hudCam) this.hudCam.ignore(cb);
@@ -12433,6 +12486,7 @@ class GameScene extends Phaser.Scene {
       // Register as minimap POI
       const cbTX = Math.floor(x / CFG.TILE), cbTY = Math.floor(y / CFG.TILE);
       this.pois.push({ type: 'craftbench', tx: cbTX, ty: cbTY, spr: cb });
+      this._paintMinimapTile(x, y, 0xddcc44);
     } else if (this.buildType === 'bed') {
       const bd = this.add.image(x, y, 'bed').setScale(2).setDepth(5);
       if (this.hudCam) this.hudCam.ignore(bd);
@@ -12440,6 +12494,7 @@ class GameScene extends Phaser.Scene {
       const bedTX = Math.floor(x / CFG.TILE), bedTY = Math.floor(y / CFG.TILE);
       this.beds.push({ x, y, spr: bd });
       this.pois.push({ type: 'bed', tx: bedTX, ty: bedTY, spr: bd });
+      this._paintMinimapTile(x, y, 0xaa88ff);
       // Show E prompt when players are nearby
       const bedPrompt = this._w(this.add.text(x, y - 30, 'E / Enter \u2014 sleep', {
         fontFamily: 'monospace', fontSize: '11px', color: '#ccaaff', backgroundColor: '#110022'
@@ -12456,7 +12511,9 @@ class GameScene extends Phaser.Scene {
       this._w(st);
       // NOTE: st is a non-physics image — detection handled by updateSpikeTraps() each frame
       // so it works for enemies that spawn after placement too.
+      st._builder = this.buildOwner || p;
       this.spikeTraps.push(st);
+      this._paintMinimapTile(x, y, 0xdd2233);
       SFX._play(300, 'triangle', 0.08, 0.15);
       this.hint('Spike trap placed!', 1200);
       this.exitBuildMode(); return;
@@ -12470,6 +12527,7 @@ class GameScene extends Phaser.Scene {
       this.builtWalls.push(w);
       this._addWallToBuckets(w);
       this._refreshWallClustersNear(w.x, w.y);
+      this._paintMinimapTile(w.x, w.y, 0xccccff);
       if (this.hudCam) this.hudCam.ignore(w);
       SFX._play(400, 'triangle', 0.08, 0.2);
       this.hint('Reinforced Wall placed!', 1500);
@@ -12916,8 +12974,18 @@ class GameOverScene extends Phaser.Scene {
     this._htmlInp    = null;
     this._defaultName = this.p2Name ? this.p1Name + ' & ' + this.p2Name : this.p1Name;
 
-    // Clean up HTML inputs if scene is stopped by any means (back button, etc.)
-    this.events.on('shutdown', () => { this._cleanupInput(); this._cleanupFeedback(); });
+    // Clean up HTML inputs AND keyboard listeners if scene is stopped by any
+    // means (back button, restart, etc.) — Key objects outlive the scene
+    // otherwise and accumulate stacked callbacks across restarts.
+    this.events.on('shutdown', () => {
+      this._cleanupInput();
+      this._cleanupFeedback();
+      if (this._keys) {
+        if (this._keys.enter) this._keys.enter.removeAllListeners();
+        if (this._keys.space) this._keys.space.removeAllListeners();
+        if (this._keys.esc)   this._keys.esc.removeAllListeners();
+      }
+    });
 
     // Background
     const bg = this.add.graphics();
