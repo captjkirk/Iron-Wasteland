@@ -7458,6 +7458,32 @@ class GameScene extends Phaser.Scene {
     this.revBar = this._w(this.add.graphics().setDepth(20).setVisible(false));
   }
 
+  _emitCharmSparkle(x, y) {
+    // Pink mote rising from the target marks the charm transition.
+    const t = this.add.text(x, y - 8, '♥', {
+      fontFamily: 'monospace', fontSize: '13px', color: '#ffaacc',
+      stroke: '#330022', strokeThickness: 2,
+    }).setOrigin(0.5).setDepth(22);
+    if (this.hudCam) this.hudCam.ignore(t);
+    this.tweens.add({
+      targets: t, y: y - 30, alpha: 0, duration: 620, ease: 'Sine.Out',
+      onComplete: () => t.destroy(),
+    });
+  }
+
+  _emitLurkerBubble(x, y) {
+    // Small expanding ripple to telegraph a water_lurker ambush.
+    const g = this.add.graphics().setDepth(9);
+    g.lineStyle(2, 0x66ccff, 0.9);
+    g.strokeCircle(0, 0, 4);
+    g.setPosition(x + Phaser.Math.Between(-8, 8), y + Phaser.Math.Between(-4, 4));
+    if (this.hudCam) this.hudCam.ignore(g);
+    this.tweens.add({
+      targets: g, scaleX: 4, scaleY: 4, alpha: 0, duration: 600, ease: 'Sine.Out',
+      onComplete: () => g.destroy(),
+    });
+  }
+
   drawReviveBar(x, y, pct) {
     this.revBar.clear();
     this.revBar.fillStyle(0x000000, 0.7);  this.revBar.fillRect(x-30, y-8, 60, 10);
@@ -9478,14 +9504,24 @@ class GameScene extends Phaser.Scene {
     // Defensive: if the HP graphics were destroyed out-of-band (tween or
     // restart edge case) skip the draw rather than crash on .clear().
     if (!b.hpBg || !b.hpBg.active || !b.hpBar || !b.hpBar.active) return;
+    // Interpolate a displayed HP so the bar lerps toward the true value
+    // instead of snapping — readable progress on big HP pools.
+    if (b._hpDisplay === undefined) b._hpDisplay = b.hp;
+    b._hpDisplay += (b.hp - b._hpDisplay) * Math.min(1, delta / 120);
     b.hpBg.clear();
     b.hpBg.fillStyle(0x220000, 0.85);
     b.hpBg.fillRect(bx - barW/2 - 1, by - 90, barW + 2, barH + 2);
     b.hpBar.clear();
-    const pct = Math.max(0, b.hp / b.maxHp);
-    const col = pct > 0.5 ? 0xff3300 : pct > 0.25 ? 0xff8800 : 0xff0000;
+    const truePct = Math.max(0, b.hp / b.maxHp);
+    const dispPct = Math.max(0, Math.min(1, b._hpDisplay / b.maxHp));
+    const col = truePct > 0.5 ? 0xff3300 : truePct > 0.25 ? 0xff8800 : 0xff0000;
+    // Ghost (damage-taken) segment behind the live bar — fades as _hpDisplay catches up.
+    if (dispPct > truePct) {
+      b.hpBar.fillStyle(0xffee88, 0.55);
+      b.hpBar.fillRect(bx - barW/2, by - 89, barW * dispPct, barH);
+    }
     b.hpBar.fillStyle(col, 1);
-    b.hpBar.fillRect(bx - barW/2, by - 89, barW * pct, barH);
+    b.hpBar.fillRect(bx - barW/2, by - 89, barW * truePct, barH);
     // Boss name label above bar
     b.hpBg.fillStyle(0x440000, 0.7);
     b.hpBg.fillRect(bx - barW/2 - 1, by - 103, barW + 2, 14);
@@ -10053,6 +10089,25 @@ class GameScene extends Phaser.Scene {
         const col = pct > 0.5 ? 0x33dd33 : pct > 0.25 ? 0xeeaa00 : 0xdd2222;
         p.hpBar.fillStyle(col); p.hpBar.fillRect(bx, by, Math.floor(bw*pct), bh);
       }
+      // Cooldown readout — only shown when an ability is on cd, so it doesn't
+      // clutter the HUD for characters that don't use timed abilities.
+      const parts = [];
+      if ((p.rallyCooldown  || 0) > 250) parts.push('R ' + Math.ceil(p.rallyCooldown  / 1000) + 's');
+      if ((p.turretCooldown || 0) > 250) parts.push('T ' + Math.ceil(p.turretCooldown / 1000) + 's');
+      if (parts.length) {
+        if (!p._cdText) {
+          p._cdText = this.add.text(0, 0, '', {
+            fontFamily: 'monospace', fontSize: '9px', color: '#ccddff',
+            stroke: '#000', strokeThickness: 2,
+          }).setOrigin(0.5, 0).setDepth(21);
+          if (this.hudCam) this.hudCam.ignore(p._cdText);
+        }
+        p._cdText.setText(parts.join('  '));
+        p._cdText.setPosition(p.spr.x, by + bh + 1);
+        p._cdText.setVisible(true);
+      } else if (p._cdText) {
+        p._cdText.setVisible(false);
+      }
     };
     sync(this.p1);
     if (this.p2) sync(this.p2);
@@ -10160,7 +10215,9 @@ class GameScene extends Phaser.Scene {
       SFX.wrench();
       player.atkCooldown = 450;
       this._triggerAtkAnim(player, 202);
-      this.meleeSwing(player, 45, 0xcc8833, 0.2, 350);
+      // Architect melee gets extra knockback — tuned to ~2x the default bullet
+      // impulse so it feels heavier without launching enemies across the screen.
+      this.meleeSwing(player, 45, 0xcc8833, 0.2, 100);
       if (player._architectUpgraded) this._fireNailGun(player);
     }
   }
@@ -12389,7 +12446,14 @@ class GameScene extends Phaser.Scene {
             }
           }
           if (charmed) {
-            if (!e._charmTinted) { e._charmTinted = true; e.spr.setTint(0xffaacc); }
+            if (!e._charmTinted) {
+              e._charmTinted = true;
+              e.spr.setTint(0xffaacc);
+              // One-shot tell on charm transition — sparkle + soft chime so
+              // the charmer's core mechanic isn't silent.
+              this._emitCharmSparkle(e.spr.x, e.spr.y);
+              if (typeof SFX !== 'undefined' && SFX._play) SFX._play(880, 'sine', 0.05, 0.18);
+            }
             if (isHumanEnemy) {
               // Ally AI: protect Lauren — find nearest non-human enemy and attack it.
               // Retargeting scans all enemies, so throttle to ~4×/sec per ally and cache.
@@ -12477,19 +12541,32 @@ class GameScene extends Phaser.Scene {
           e._effectiveSpeed = e.speed;
         }
       } else if (e.type === 'water_lurker') {
-        // Lurks nearly invisible until player steps within 110px, then bursts
+        // Lurks nearly invisible until player steps within 110px, then bursts.
+        // Between 110-170px we telegraph with a bubble ripple + low tone so
+        // the ambush reads as skill-testable rather than cheap.
         if (e._lurking) {
-          const closePlayer = [this.p1, this.p2].find(p => {
-            if (!p || p.isDowned) return false;
+          let minDistSq = Infinity, closePlayer = null;
+          for (const p of [this.p1, this.p2]) {
+            if (!p || p.isDowned) continue;
             const dx = e.spr.x - p.spr.x, dy = e.spr.y - p.spr.y;
-            return dx*dx + dy*dy < 12100; // 110²
-          });
-          if (closePlayer) {
+            const d2 = dx*dx + dy*dy;
+            if (d2 < minDistSq) { minDistSq = d2; closePlayer = p; }
+          }
+          if (closePlayer && minDistSq < 12100) { // 110² — ambush triggers
             e._lurking = false;
             e.spr.setAlpha(1);
             e._ambushTimer = 2000;
             this._log(`water_lurker ambush  target=${closePlayer.charData.player}  pos=(${Math.floor(e.spr.x/CFG.TILE)},${Math.floor(e.spr.y/CFG.TILE)})`, 'combat');
             SFX._play(160, 'sawtooth', 0.12, 0.4, 'drop');
+          } else if (closePlayer && minDistSq < 28900) { // 170² — telegraph band
+            e._bubbleTimer = (e._bubbleTimer || 0) - delta;
+            if (e._bubbleTimer <= 0) {
+              e._bubbleTimer = 480;
+              this._emitLurkerBubble(e.spr.x, e.spr.y);
+              SFX._play(90, 'sine', 0.04, 0.25);
+            }
+            e.spr.setVelocity(0, 0);
+            return;
           } else {
             e.spr.setVelocity(0, 0);
             return;
