@@ -51,6 +51,8 @@ const CFG = {
 // Format: [item_key, base_chance, flags]  flags: 0=plain, 1=multiply by foodMult, 2=rare (skip if hc.rareDropsBossOnly)
 // Chance > 1 = always drops (e.g. bears always drop metal, boss_wolf always drops food).
 const _RAIDER_LOOT = [['item_ammo', 0.6, 0], ['item_metal', 0.4, 0], ['item_food', 0.3, 1]];
+// Hoisted so the per-frame charmer AI doesn't re-allocate this array each tick.
+const HUMAN_ENEMY_TYPES = ['raider_brawler', 'raider_shooter', 'raider_heavy'];
 const ENEMY_LOOT = {
   // ── Grass / common wildlife ──────────────────────────────────
   wolf:         [['item_fiber', 0.6, 0],   // pelt
@@ -11797,9 +11799,11 @@ class GameScene extends Phaser.Scene {
     const _cam = this.cameras.main;
     const _view = _cam.worldView;
     const _VIEW_BUF = 400; // px buffer outside viewport before hiding sprite
-    // Single pass: count active enemies AND build pack index (was two separate O(n) loops)
+    // Single pass: count active enemies AND build pack index (was two separate O(n) loops).
+    // Reuse the Map and its array values across frames so we don't allocate them every tick.
     let _activeCount = 0;
-    const _packIndex = new Map();
+    const _packIndex = this._packIndex || (this._packIndex = new Map());
+    for (const _arr of _packIndex.values()) _arr.length = 0;
     for (const _e of this.enemies) {
       if (_e.spr?.active && !_e._dormant) _activeCount++;
       if (_e._packId !== undefined && _e.spr?.active) {
@@ -11809,10 +11813,8 @@ class GameScene extends Phaser.Scene {
       }
     }
     this._activeEnemyCount = _activeCount;
-    this._packIndex = _packIndex;
 
-    // Hoist per-frame constants outside the per-enemy forEach — these don't change mid-loop
-    const HUMAN_ENEMY_TYPES = ['raider_brawler', 'raider_shooter', 'raider_heavy'];
+    // HUMAN_ENEMY_TYPES hoisted to module scope so we don't reallocate per frame.
     const charmerPlayer = [this.p1, this.p2].find(
       p => p && p.charData && p.charData.id === 'charmer' && !p.isDowned && p.spr && p.spr.active
     );
