@@ -10770,7 +10770,11 @@ class GameScene extends Phaser.Scene {
       if (this._dbgRefreshCd > 0) return;
       this._dbgRefreshCd = 500; // refresh stats header 2× per second
     }
-    const fps    = Math.round(this.game.loop.actualFps);
+    // Smoothed FPS — the raw actualFps jitters wildly on variable-refresh
+    // displays; a trailing average makes real regressions readable.
+    const rawFps = this.game.loop.actualFps || 60;
+    this._fpsAvg = this._fpsAvg ? (this._fpsAvg * 0.88 + rawFps * 0.12) : rawFps;
+    const fps    = Math.round(this._fpsAvg);
     // Log FPS warnings (throttled: at most once every 10 s)
     if (fps < 30 && (!this._lastFpsWarn || (this.timeAlive||0) - this._lastFpsWarn > 10)) {
       this._lastFpsWarn = this.timeAlive || 0;
