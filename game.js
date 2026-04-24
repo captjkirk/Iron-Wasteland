@@ -5356,6 +5356,8 @@ class GameScene extends Phaser.Scene {
     this.raiders = [];
     this.raidCamp = null;
     this.raidRespawnDay = null;
+    // Per-player relic pickup channel — 3s hold of Interact key to acquire.
+    this._relicChannels = new Map();
     // First hunting party arrives on day 2-3; every 2-3 days after.
     this.huntNextDay = 2 + Phaser.Math.Between(0, 1);
     this.enemies = [];
@@ -7947,6 +7949,12 @@ class GameScene extends Phaser.Scene {
 
   tryInteract(player) {
     this._log(`${player.charData.player} interact  pos=(${Math.floor(player.spr.x/CFG.TILE)},${Math.floor(player.spr.y/CFG.TILE)})`, 'player');
+    // In build mode, Interact tears down the nearest own wall/gate within ~40px
+    // and refunds 50% of its cost. Lets the player undo misclicks without a
+    // separate keybind.
+    if (this.buildMode && this.buildOwner === player) {
+      if (this._tryTeardownBuild(player)) return;
+    }
     const dist = Phaser.Math.Distance.Between(player.spr.x, player.spr.y, this.bPos.x, this.bPos.y);
     if (dist < 110) { this.openBarrack(player); return; }
 
@@ -7977,14 +7985,16 @@ class GameScene extends Phaser.Scene {
       }
     }
 
-    // Relic pickup
+    // Relic pickup now requires a 3-second hold of the Interact key — handled
+    // per-frame in updateRelicChannels so cancel conditions (out of range, key
+    // released, downed, damaged) can be checked continuously. tryInteract only
+    // logs that the player is in range of a relic if they're tapping.
     if (this._relicPOIs && this._relicPOIs.length > 0) {
-      for (let _ri = this._relicPOIs.length - 1; _ri >= 0; _ri--) {
-        const _rel = this._relicPOIs[_ri];
+      for (const _rel of this._relicPOIs) {
         if (!_rel.spr || !_rel.spr.active) continue;
         const _rd = Phaser.Math.Distance.Between(player.spr.x, player.spr.y, _rel.x, _rel.y);
         if (_rd < 70) {
-          this._pickupRelic(_rel, _ri, player);
+          this.hint('Hold Interact for 3s to retrieve relic', 1800);
           return;
         }
       }
@@ -8001,6 +8011,92 @@ class GameScene extends Phaser.Scene {
 
     // Nothing interactable in range — log so we can diagnose "E key not working" reports
     this._log(`${player.charData.player} interact: nothing in range  pos=(${Math.floor(player.spr.x/CFG.TILE)},${Math.floor(player.spr.y/CFG.TILE)})`, 'player');
+  }
+
+  // Per-frame relic pickup channel. Mirrors checkRadioTowerRange — requires
+  // Interact key held for 3s, cancels on out-of-range / release / downed /
+  // damage taken mid-channel. Completes into _pickupRelic.
+  updateRelicChannels(delta) {
+    const RANGE = 70, RANGE2 = RANGE * RANGE;
+    const HOLD_DUR = 3000;
+    const BAR_W = 70, BAR_H = 6;
+    const list = [
+      { p: this.p1, keyName: 'p1use' },
+      { p: this.p2, keyName: 'p2use' },
+    ];
+    for (const { p, keyName } of list) {
+      if (!p || !p.spr || !p.spr.active) { this._cancelRelicChannel(p); continue; }
+      const key = this.hotkeys && this.hotkeys[keyName];
+      const keyDown = !!(key && key.isDown);
+      const blocked = p.isDowned || p.isSleeping || this.barrackOpen || this.craftMenuOpen || this.isOver;
+      if (blocked || !keyDown) { this._cancelRelicChannel(p); continue; }
+
+      let nearest = null, bestD2 = RANGE2;
+      const pool = this._relicPOIs || [];
+      for (const r of pool) {
+        if (!r.spr || !r.spr.active) continue;
+        const dx = p.spr.x - r.x, dy = p.spr.y - r.y;
+        const d2 = dx * dx + dy * dy;
+        if (d2 < bestD2) { bestD2 = d2; nearest = r; }
+      }
+      if (!nearest) { this._cancelRelicChannel(p); continue; }
+
+      let state = this._relicChannels.get(p);
+      if (state && state.rel !== nearest) { this._cancelRelicChannel(p); state = null; }
+      if (state && state.lastHp != null && p.hp < state.lastHp) {
+        this._cancelRelicChannel(p);
+        this.hint('Retrieval cancelled — hit!', 1500);
+        continue;
+      }
+      if (!state) {
+        state = {
+          rel: nearest,
+          progress: 0,
+          lastHp: p.hp,
+          bar: this._w(this.add.graphics().setDepth(25)),
+          label: this._w(this.add.text(nearest.x, nearest.y - 36, 'Retrieving... 3.0s', {
+            fontFamily: 'monospace', fontSize: '10px', color: '#cc88ff', stroke: '#000', strokeThickness: 2,
+          }).setOrigin(0.5, 0.5).setDepth(25)),
+        };
+        if (this.hudCam) { this.hudCam.ignore(state.bar); this.hudCam.ignore(state.label); }
+        this._relicChannels.set(p, state);
+        this._log(`${p.charData.player} started retrieving relic  biome=${nearest.biome || '?'}`, 'player');
+      }
+
+      state.progress += (delta || 0);
+      state.lastHp = p.hp;
+      const pct = Math.min(state.progress / HOLD_DUR, 1);
+      const remaining = Math.max(0, (HOLD_DUR - state.progress) / 1000).toFixed(1);
+      const bx = nearest.x - BAR_W / 2, by = nearest.y - 28;
+      state.bar.clear();
+      state.bar.fillStyle(0x111122, 0.85);
+      state.bar.fillRect(bx - 1, by - 1, BAR_W + 2, BAR_H + 2);
+      state.bar.fillStyle(0xcc44ff, 1);
+      state.bar.fillRect(bx, by, Math.floor(BAR_W * pct), BAR_H);
+      state.bar.lineStyle(1, 0x7733aa);
+      state.bar.strokeRect(bx - 1, by - 1, BAR_W + 2, BAR_H + 2);
+      state.label.setPosition(nearest.x, nearest.y - 36);
+      state.label.setText(`Retrieving... ${remaining}s`);
+
+      if (state.progress >= HOLD_DUR) {
+        const rel = state.rel;
+        this._cancelRelicChannel(p);
+        const idx = this._relicPOIs.indexOf(rel);
+        if (idx !== -1 && rel.spr && rel.spr.active) {
+          this._log(`${p.charData.player} finished retrieving relic  biome=${rel.biome || '?'}`, 'player');
+          this._pickupRelic(rel, idx, p);
+        }
+      }
+    }
+  }
+
+  _cancelRelicChannel(player) {
+    if (!player) return;
+    const s = this._relicChannels.get(player);
+    if (!s) return;
+    if (s.bar && s.bar.active) s.bar.destroy();
+    if (s.label && s.label.active) s.label.destroy();
+    this._relicChannels.delete(player);
   }
 
   _pickupRelic(rel, idx, player) {
@@ -8680,6 +8776,7 @@ class GameScene extends Phaser.Scene {
     this.updateCamera();
     this.checkBarrackRange();
     this.checkRadioTowerRange(delta);
+    this.updateRelicChannels(delta);
     this.checkRaidCacheRange();
     this.checkDeaths();
     this.updateDowned(delta);
@@ -13071,6 +13168,17 @@ class GameScene extends Phaser.Scene {
     }
   }
 
+  _updateDayLabel() {
+    if (!this.dayText) return;
+    const night = !!this.isNight;
+    const day = this.dayNum || 1;
+    if (this._lastDayLabelPhase === night && this._lastDayLabelDay === day) return;
+    this._lastDayLabelPhase = night;
+    this._lastDayLabelDay = day;
+    this.dayText.setText((night ? 'NIGHT ' : 'DAY ') + day);
+    this.dayText.setColor(night ? '#88aaff' : '#ffee44');
+  }
+
   updateDayNight(delta) {
     this.dayTimer += delta * (this.sleepSpeedMult || 1);
     const cycle = this.dayTimer % this.DAY_DUR;
@@ -13086,6 +13194,7 @@ class GameScene extends Phaser.Scene {
     this.isNight = nightAlpha > 0.2;
     // nightOverlay geometry is filled once at startup; only modulate alpha per frame.
     this.nightOverlay.alpha = nightAlpha;
+    this._updateDayLabel();
 
     // Music transitions + first-night contextual tip
     if (this.isNight && !wasNight) {
@@ -13193,7 +13302,7 @@ class GameScene extends Phaser.Scene {
       }
     }
 
-    if (this.dayText) this.dayText.setText('DAY ' + this.dayNum);
+    this._updateDayLabel();
 
     // Draw clock arc indicator — only refresh when pct crosses a 0.5% step
     // (≈ 200 redraws per in-game day instead of 60fps × DAY_DUR).
@@ -13292,7 +13401,7 @@ class GameScene extends Phaser.Scene {
     if (this.buildGhost) this.buildGhost.destroy();
     this.buildGhost = this.add.image(player.spr.x + 40, player.spr.y, 'build_ghost').setDepth(50).setAlpha(0.6);
     if (this.hudCam) this.hudCam.ignore(this.buildGhost);
-    this.hint('BUILD: Q/0=cycle | Attack=place | R/1=rotate | Cost: 3 wood', 3000);
+    this.hint('BUILD: Q/0=cycle | Attack=place | R/1=rotate | Interact=teardown (50% refund)', 3400);
     this.buildRotKey1 = this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.R);
     this.buildRotKey2 = this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.ONE);
   }
@@ -13328,6 +13437,46 @@ class GameScene extends Phaser.Scene {
     }
   }
 
+  // Tear down the nearest player-built wall/gate within ~40px of the player
+  // and refund 50% of its build cost. Enemy-caused destruction goes through
+  // damageStructure directly and is unaffected. Called from tryInteract when
+  // the player is in build mode. Returns true if something was torn down.
+  _tryTeardownBuild(player) {
+    if (!player || !player.spr || !player.spr.active) return false;
+    const R2 = 40 * 40;
+    let best = null, bestD2 = R2;
+    for (const w of (this.builtWalls || [])) {
+      if (!w || !w.active) continue;
+      const dx = w.x - player.spr.x, dy = w.y - player.spr.y;
+      const d2 = dx * dx + dy * dy;
+      if (d2 < bestD2) { bestD2 = d2; best = w; }
+    }
+    if (!best) return false;
+
+    const wx = best.x, wy = best.y;
+    const kind = best.isGate ? 'gate' : 'wall';
+    const cost = this.getBuildCost(kind);
+    const refund = {};
+    for (const [res, amt] of Object.entries(cost)) {
+      const give = Math.max(0, Math.floor(amt * 0.5));
+      if (give > 0) {
+        player.inv[res] = (player.inv[res] || 0) + give;
+        refund[res] = give;
+      }
+    }
+
+    // Reuse the existing destroy path (bucket + cluster + minimap + fade tween).
+    this.damageStructure(best, (best.hp || 1) + 1);
+
+    let oy = 0;
+    for (const [res, amt] of Object.entries(refund)) {
+      this._floatPickup(wx, wy - 10 - oy, '+' + amt + ' ' + res);
+      oy += 12;
+    }
+    this._log(`${player.charData.player} tore down ${kind}  refund=${JSON.stringify(refund)}`, 'build');
+    return true;
+  }
+
   placeBuild() {
     if (!this.buildMode || !this.buildGhost) return;
     const p = this.buildOwner;
@@ -13350,6 +13499,16 @@ class GameScene extends Phaser.Scene {
       }
       if (this._wallNearby(x, y, 24)) {
         this.hint("Too close to existing structure!", 2000); return;
+      }
+      // Enemy overlap — refuse if an active enemy is within ~24px of the placement point.
+      const _eArr = this.enemies || [];
+      for (let _ei = 0; _ei < _eArr.length; _ei++) {
+        const _e = _eArr[_ei];
+        if (!_e || !_e.spr || !_e.spr.active || _e._dormant) continue;
+        const _edx = _e.spr.x - x, _edy = _e.spr.y - y;
+        if (_edx * _edx + _edy * _edy < 24 * 24) {
+          this.hint("Can't build on top of an enemy!", 2000); return;
+        }
       }
     }
 
