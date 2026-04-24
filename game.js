@@ -5220,6 +5220,56 @@ class GameScene extends Phaser.Scene {
     // update() running against stale state before the deferred init fires.
     this._worldReady = false;
 
+    // Drop stale references from the previous run before buildWorld repopulates them.
+    // Most of these are re-assigned during world-gen, but explicit clearing here
+    // prevents update() from seeing last-run data during the staged init window.
+    this._toxicTileIndex = null;
+    this._waterMap = null;
+    this._iceMap = null;
+    this._packIndex = null;
+    this.fogRevealed = null;
+    this.fogVisible = null;
+    this._fogVisibleBuilding = false;
+    this._activePlayers = null;
+    this._sleepIndicator = null;
+    this.reviving = false;
+    this.reviveProgress = 0;
+    this.reviveTarget = null;
+
+    // One-time shutdown hook: remove touch listeners (guards against double-add
+    // if scene restarts mid-session) and kill any leftover scene-owned tweens.
+    if (!this._shutdownRegistered) {
+      this._shutdownRegistered = true;
+      this.events.on('shutdown', () => {
+        if (this.input) {
+          this.input.off('pointerdown',      this._onTouchDown, this);
+          this.input.off('pointermove',      this._onTouchMove, this);
+          this.input.off('pointerup',        this._onTouchUp,   this);
+          this.input.off('pointerupoutside', this._onTouchUp,   this);
+        }
+        if (this.tweens) this.tweens.killAll();
+        if (this._onVisibilityChange) {
+          document.removeEventListener('visibilitychange', this._onVisibilityChange);
+          window.removeEventListener('blur',  this._onBlur);
+          window.removeEventListener('focus', this._onFocus);
+          this._onVisibilityChange = null;
+        }
+      });
+    }
+
+    // Auto-pause when the tab is hidden or window loses focus. Without this the
+    // physics loop keeps running in the background; on refocus Phaser delivers
+    // a multi-second delta that teleports enemies and desyncs co-op.
+    this._onVisibilityChange = () => {
+      if (document.hidden) this._autoPause('hidden');
+      else                 this._autoResume();
+    };
+    this._onBlur  = () => this._autoPause('blur');
+    this._onFocus = () => this._autoResume();
+    document.addEventListener('visibilitychange', this._onVisibilityChange);
+    window.addEventListener('blur',  this._onBlur);
+    window.addEventListener('focus', this._onFocus);
+
     const worldW = CFG.MAP_W * CFG.TILE, worldH = CFG.MAP_H * CFG.TILE;
     const cx = worldW/2, cy = worldH/2;
 
@@ -7451,6 +7501,32 @@ class GameScene extends Phaser.Scene {
     this.revBar = this._w(this.add.graphics().setDepth(20).setVisible(false));
   }
 
+  _emitCharmSparkle(x, y) {
+    // Pink mote rising from the target marks the charm transition.
+    const t = this.add.text(x, y - 8, '♥', {
+      fontFamily: 'monospace', fontSize: '13px', color: '#ffaacc',
+      stroke: '#330022', strokeThickness: 2,
+    }).setOrigin(0.5).setDepth(22);
+    if (this.hudCam) this.hudCam.ignore(t);
+    this.tweens.add({
+      targets: t, y: y - 30, alpha: 0, duration: 620, ease: 'Sine.Out',
+      onComplete: () => t.destroy(),
+    });
+  }
+
+  _emitLurkerBubble(x, y) {
+    // Small expanding ripple to telegraph a water_lurker ambush.
+    const g = this.add.graphics().setDepth(9);
+    g.lineStyle(2, 0x66ccff, 0.9);
+    g.strokeCircle(0, 0, 4);
+    g.setPosition(x + Phaser.Math.Between(-8, 8), y + Phaser.Math.Between(-4, 4));
+    if (this.hudCam) this.hudCam.ignore(g);
+    this.tweens.add({
+      targets: g, scaleX: 4, scaleY: 4, alpha: 0, duration: 600, ease: 'Sine.Out',
+      onComplete: () => g.destroy(),
+    });
+  }
+
   drawReviveBar(x, y, pct) {
     this.revBar.clear();
     this.revBar.fillStyle(0x000000, 0.7);  this.revBar.fillRect(x-30, y-8, 60, 10);
@@ -7488,9 +7564,20 @@ class GameScene extends Phaser.Scene {
     player.hp = 0;
     player.isDowned = true;
     player.atkAnimUntil = 0;
-    // Audible cue for going down (enemies play SFX on death; players were silent).
-    SFX._play(180, 'sawtooth', 0.35, 0.45, 'drop');
+    // If this player owned the craft menu, close it so input routing doesn't
+    // reference a downed player and strand the menu on screen.
+    if (this.craftMenuOpen && this.craftMenuOwner === player) this.closeCraftMenu();
     this._log(`${player.charData.player} (${player.charData.id}) DOWNED  day=${this.dayNum}`, 'player');
+    // Audible + visual cue — partners need to register the down even if they
+    // aren't looking at the HUD hint.
+    try {
+      if (typeof SFX !== 'undefined' && SFX._play) {
+        SFX._play(200, 'sawtooth', 0.25, 0.35, 'drop');
+        SFX._play(140, 'triangle', 0.20, 0.50, 'drop');
+      }
+      this.cameras.main.flash(260, 90, 10, 10, true);
+      this.cameras.main.shake(200, 0.004);
+    } catch(e) {}
     player.downTimer = CFG.DOWN_TIME;
     player.spr.setTint(0xaa0000);
     player.spr.setAlpha(0.7);
@@ -7551,8 +7638,8 @@ class GameScene extends Phaser.Scene {
   }
 
   checkBothDead() {
-    const p1dead = !this.p1.spr.visible || (!this.p1.isDowned && this.p1.hp <= 0);
-    const p2dead = !this.p2 || !this.p2.spr.visible || (!this.p2.isDowned && this.p2.hp <= 0);
+    const p1dead = !this.p1 || !this.p1.spr || !this.p1.spr.visible || (!this.p1.isDowned && this.p1.hp <= 0);
+    const p2dead = !this.p2 || !this.p2.spr || !this.p2.spr.visible || (!this.p2.isDowned && this.p2.hp <= 0);
     if (p1dead && p2dead) this.triggerGameOver('Both survivors have fallen.');
   }
 
@@ -7609,7 +7696,7 @@ class GameScene extends Phaser.Scene {
       this.reviveProgress = 0;
       this.reviving = false;
       this.reviveTarget = null;
-      this.revBar.setVisible(false);
+      if (this.revBar) this.revBar.setVisible(false);
     }
   }
 
@@ -7625,7 +7712,7 @@ class GameScene extends Phaser.Scene {
     if (player.downText) { player.downText.destroy(); player.downText = null; }
     this.reviveProgress = 0;
     this.reviving = false;
-    this.revBar.setVisible(false);
+    if (this.revBar) this.revBar.setVisible(false);
     player._revivePromptShown = false;
     this.redrawHUD();
     this.hint(player.charData.player + ' is back up! (' + player.hp + ' HP)', 3000);
@@ -7636,7 +7723,7 @@ class GameScene extends Phaser.Scene {
     this.isOver = true;
     this._log(`GAME OVER — ${reason}  day=${this.dayNum}  kills=${this.kills||0}  T=${Math.floor(this.timeAlive||0)}s`, 'world');
     // Auto-download log so players can share/report without remembering to copy
-    this.time.delayedCall(800, () => this._downloadLog());
+    this.time.delayedCall(800, () => this._downloadLog(true));
     // Close controls overlay if it was open when game ended
     if (this.controlsVis && this.ctrlObjs) {
       this.ctrlObjs.forEach(o => o.setVisible(false));
@@ -7649,8 +7736,8 @@ class GameScene extends Phaser.Scene {
     // Drop any queued hints so they don't surface on the next run.
     if (this._hintQueue) this._hintQueue.length = 0;
 
-    this.p1.spr.setVelocity(0, 0);
-    if (this.p2) this.p2.spr.setVelocity(0, 0);
+    if (this.p1 && this.p1.spr && this.p1.spr.body) this.p1.spr.setVelocity(0, 0);
+    if (this.p2 && this.p2.spr && this.p2.spr.body) this.p2.spr.setVelocity(0, 0);
 
     Music.stop();
     this.cameras.main.fadeOut(800, 0, 0, 0);
@@ -7669,6 +7756,8 @@ class GameScene extends Phaser.Scene {
         p1Kills: this.p1 ? this.p1.kills : 0,
         p2Kills: this.p2 ? this.p2.kills : 0,
         dbgEntries: this._dbgEntries,
+        seed: this._worldSeed,
+        version: VERSION,
       });
     });
   }
@@ -7677,13 +7766,13 @@ class GameScene extends Phaser.Scene {
     if (this.isOver) return;
     this.isOver = true;
     this._log(`VICTORY: all 5 relics deposited  day=${this.dayNum}  kills=${this.kills||0}  T=${Math.floor(this.timeAlive||0)}s`, 'world');
-    this.time.delayedCall(800, () => this._downloadLog());
+    this.time.delayedCall(800, () => this._downloadLog(true));
     if (this.controlsVis && this.ctrlObjs) {
       this.ctrlObjs.forEach(o => o.setVisible(false));
       this.controlsVis = false;
     }
-    this.p1.spr.setVelocity(0, 0);
-    if (this.p2) this.p2.spr.setVelocity(0, 0);
+    if (this.p1 && this.p1.spr && this.p1.spr.body) this.p1.spr.setVelocity(0, 0);
+    if (this.p2 && this.p2.spr && this.p2.spr.body) this.p2.spr.setVelocity(0, 0);
     Music.stop();
     this.cameras.main.fadeOut(800, 0, 0, 0);
     this.time.delayedCall(900, () => {
@@ -7703,6 +7792,8 @@ class GameScene extends Phaser.Scene {
         p1Kills: this.p1 ? this.p1.kills : 0,
         p2Kills: this.p2 ? this.p2.kills : 0,
         dbgEntries: this._dbgEntries,
+        seed: this._worldSeed,
+        version: VERSION,
       });
     });
   }
@@ -8465,6 +8556,11 @@ class GameScene extends Phaser.Scene {
     if (!this._worldReady) return; // deferred world init not yet complete
     if (this.isOver) return;
 
+    // Clamp delta — a backgrounded tab, long GC pause, or debugger break can
+    // produce multi-second deltas that teleport enemies across walls and
+    // desync co-op. 50ms matches a 20 FPS floor; physics/AI stays stable.
+    if (delta > 50) delta = 50;
+
     // Heartbeat — wall-clock, so it shows even if the game clock stalls.
     const _hbNow = Date.now();
     if (!this._lastHeartbeat || _hbNow - this._lastHeartbeat > 5000) {
@@ -8549,10 +8645,10 @@ class GameScene extends Phaser.Scene {
     }
     else this.p1.spr.setVelocity(0,0);
 
-    if (this.p2) {
+    if (this.p2 && this.p2.spr) {
       const p2CraftHalt = this.craftMenuOpen && this.craftMenuOwner === this.p2;
-      if (!this.p2.isDowned && !this.p2.isSleeping && !p2CraftHalt) this.movePlayer(this.p2, this.p2keys.left, this.p2keys.right, this.p2keys.up, this.p2keys.down);
-      else this.p2.spr.setVelocity(0,0);
+      if (!this.p2.isDowned && !this.p2.isSleeping && !p2CraftHalt && this.p2keys) this.movePlayer(this.p2, this.p2keys.left, this.p2keys.right, this.p2keys.up, this.p2keys.down);
+      else if (this.p2.spr.body) this.p2.spr.setVelocity(0,0);
     }
 
     // Tick attack cooldowns
@@ -8833,6 +8929,7 @@ class GameScene extends Phaser.Scene {
 
   applyTerrainEffects(player) {
     if (!player || player.isDowned) return;
+    if (!player.spr || !player.spr.body) return;
 
     // Shallow water + ice + toxic pools — all computed per-frame via Uint8Array maps
     const TILE = CFG.TILE, MW = CFG.MAP_W;
@@ -9334,7 +9431,20 @@ class GameScene extends Phaser.Scene {
       { key: 'boss_troll',  name: 'Frost Troll',   biome: 'tundra', hp: 700, speed: 65,  dmg: 28, specialType: 'slam',   specialInterval: 6500 },
       { key: 'boss_hydra',  name: 'Bog Hydra',     biome: 'swamp',  hp: 540, speed: 65,  dmg: 20, specialType: 'spray',  specialInterval: 5500 },
     ];
-    const bt = bossTypes[Phaser.Math.Between(0, bossTypes.length - 1)];
+    // Biome-anchored pick — prefer a boss whose biome matches where the
+    // players currently are, so the boss reads as something emerging from
+    // the surrounding world instead of a random spawn. Falls back to random
+    // if the current biome has no matching boss type.
+    let bt;
+    try {
+      const anchor = (this.p1 && this.p1.spr) ? this.p1 : (this.p2 && this.p2.spr ? this.p2 : null);
+      const pbiome = anchor ? getBiome(Math.floor(anchor.spr.x / TILE), Math.floor(anchor.spr.y / TILE)) : null;
+      const matches = pbiome ? bossTypes.filter(b => b.biome === pbiome) : [];
+      bt = matches.length ? matches[Phaser.Math.Between(0, matches.length - 1)]
+                          : bossTypes[Phaser.Math.Between(0, bossTypes.length - 1)];
+    } catch(e) {
+      bt = bossTypes[Phaser.Math.Between(0, bossTypes.length - 1)];
+    }
 
     // Spawn at a random map edge
     let bx, by;
@@ -9511,17 +9621,29 @@ class GameScene extends Phaser.Scene {
     // Defensive: if the HP graphics were destroyed out-of-band (tween or
     // restart edge case) skip the draw rather than crash on .clear().
     if (!b.hpBg || !b.hpBg.active || !b.hpBar || !b.hpBar.active) return;
+    // Position-track every frame (cheap). The fill inside the bar is redrawn
+    // only when the display HP changes, combining HEAD's dirty-step
+    // optimization with the smooth-lerp ghost segment from the review branch.
     b.hpBg.setPosition(bx, by);
-    const pct = Math.max(0, b.hp / b.maxHp);
-    const pctStep = Math.round(pct * 100);
-    if (b._lastHpStep !== pctStep) {
-      b._lastHpStep = pctStep;
-      const col = pct > 0.5 ? 0xff3300 : pct > 0.25 ? 0xff8800 : 0xff0000;
-      b.hpBar.clear();
-      b.hpBar.fillStyle(col, 1);
-      b.hpBar.fillRect(-barW/2, -89, barW * pct, barH);
-    }
     b.hpBar.setPosition(bx, by);
+    if (b._hpDisplay === undefined) b._hpDisplay = b.hp;
+    b._hpDisplay += (b.hp - b._hpDisplay) * Math.min(1, delta / 120);
+    const truePct = Math.max(0, b.hp / b.maxHp);
+    const dispPct = Math.max(0, Math.min(1, b._hpDisplay / b.maxHp));
+    const trueStep = Math.round(truePct * 100);
+    const dispStep = Math.round(dispPct * 100);
+    if (b._lastTrueStep !== trueStep || b._lastDispStep !== dispStep) {
+      b._lastTrueStep = trueStep;
+      b._lastDispStep = dispStep;
+      const col = truePct > 0.5 ? 0xff3300 : truePct > 0.25 ? 0xff8800 : 0xff0000;
+      b.hpBar.clear();
+      if (dispPct > truePct) {
+        b.hpBar.fillStyle(0xffee88, 0.55);
+        b.hpBar.fillRect(-barW/2, -89, barW * dispPct, barH);
+      }
+      b.hpBar.fillStyle(col, 1);
+      b.hpBar.fillRect(-barW/2, -89, barW * truePct, barH);
+    }
     // (we'll draw text via label instead of graphics)
     if (!b.nameLabel) {
       b.nameLabel = this.add.text(0, 0, '\u2620 ' + b.name.toUpperCase(), {
@@ -9577,6 +9699,33 @@ class GameScene extends Phaser.Scene {
       const d = Phaser.Math.Distance.Between(b.spr.x, b.spr.y, p.spr.x, p.spr.y);
       if (d < nearDist) { nearDist = d; nearest = p; }
     });
+
+    // ── HP-THRESHOLD PHASES ──────────────────────────────────────
+    // Unlock two enrage tiers as the boss loses HP. Each tier bumps
+    // aggression so the fight has arcs instead of a flat DPS race.
+    const _hpPct = b.hp / b.maxHp;
+    if (!b._phase2 && _hpPct <= 0.66) {
+      b._phase2 = true;
+      b.specialInterval = Math.max(2200, Math.floor(b.specialInterval * 0.75));
+      b.speed = Math.floor(b.speed * 1.15);
+      b.dmg   = Math.ceil(b.dmg * 1.10);
+      this._log(`boss enraged (66%)  type=${b.type}  newSpeed=${b.speed}  newDmg=${b.dmg}`, 'world');
+      this.hint('⚠ ' + b.name.toUpperCase() + ' is ENRAGED!', 2500);
+      if (typeof SFX !== 'undefined' && SFX._play) SFX._play(130, 'sawtooth', 0.3, 0.4, 'drop');
+      b.spr.setTint(0xffbb88);
+      this.time.delayedCall(240, () => { if (b.spr && b.spr.active) b.spr.clearTint(); });
+    }
+    if (!b._phase3 && _hpPct <= 0.33) {
+      b._phase3 = true;
+      b.specialInterval = Math.max(1600, Math.floor(b.specialInterval * 0.65));
+      b.speed = Math.floor(b.speed * 1.20);
+      b.dmg   = Math.ceil(b.dmg * 1.15);
+      this._log(`boss FERAL (33%)  type=${b.type}  newSpeed=${b.speed}  newDmg=${b.dmg}`, 'world');
+      this.hint('⚠ ' + b.name.toUpperCase() + ' is FERAL!', 2500);
+      if (typeof SFX !== 'undefined' && SFX._play) SFX._play(100, 'sawtooth', 0.4, 0.6, 'drop');
+      b.spr.setTint(0xff5533);
+      this.time.delayedCall(320, () => { if (b.spr && b.spr.active) b.spr.clearTint(); });
+    }
 
     // ── SPECIAL ATTACK STATE MACHINE ─────────────────────────────
     b.specialTimer -= delta;
@@ -10014,9 +10163,11 @@ class GameScene extends Phaser.Scene {
 
   aimAtMouse(player) {
     const cam = this.cameras.main;
-    const pointer = this.input.activePointer;
+    const pointer = this.input && this.input.activePointer;
+    if (!pointer || !player || !player.spr) return;
     const worldX = pointer.x / cam.zoom + cam.worldView.x;
     const worldY = pointer.y / cam.zoom + cam.worldView.y;
+    if (!Number.isFinite(worldX) || !Number.isFinite(worldY)) return;
     const angle = Phaser.Math.Angle.Between(player.spr.x, player.spr.y, worldX, worldY);
     // 8-directional facing from mouse angle (8 sectors of 45°)
     const PI8 = Math.PI / 8;  // 22.5°
@@ -10079,6 +10230,25 @@ class GameScene extends Phaser.Scene {
       if (pct > 0) {
         const col = pct > 0.5 ? 0x33dd33 : pct > 0.25 ? 0xeeaa00 : 0xdd2222;
         p.hpBar.fillStyle(col); p.hpBar.fillRect(bx, by, Math.floor(bw*pct), bh);
+      }
+      // Cooldown readout — only shown when an ability is on cd, so it doesn't
+      // clutter the HUD for characters that don't use timed abilities.
+      const parts = [];
+      if ((p.rallyCooldown  || 0) > 250) parts.push('R ' + Math.ceil(p.rallyCooldown  / 1000) + 's');
+      if ((p.turretCooldown || 0) > 250) parts.push('T ' + Math.ceil(p.turretCooldown / 1000) + 's');
+      if (parts.length) {
+        if (!p._cdText) {
+          p._cdText = this.add.text(0, 0, '', {
+            fontFamily: 'monospace', fontSize: '9px', color: '#ccddff',
+            stroke: '#000', strokeThickness: 2,
+          }).setOrigin(0.5, 0).setDepth(21);
+          if (this.hudCam) this.hudCam.ignore(p._cdText);
+        }
+        p._cdText.setText(parts.join('  '));
+        p._cdText.setPosition(p.spr.x, by + bh + 1);
+        p._cdText.setVisible(true);
+      } else if (p._cdText) {
+        p._cdText.setVisible(false);
       }
     };
     sync(this.p1);
@@ -10187,7 +10357,9 @@ class GameScene extends Phaser.Scene {
       SFX.wrench();
       player.atkCooldown = 450;
       this._triggerAtkAnim(player, 202);
-      this.meleeSwing(player, 45, 0xcc8833, 0.2, 350);
+      // Architect melee gets extra knockback — tuned to ~2x the default bullet
+      // impulse so it feels heavier without launching enemies across the screen.
+      this.meleeSwing(player, 45, 0xcc8833, 0.2, 100);
       if (player._architectUpgraded) this._fireNailGun(player);
     }
   }
@@ -10283,20 +10455,30 @@ class GameScene extends Phaser.Scene {
     const id = player.charData.id;
     if (id === 'gunslinger') {
       const clipSize = player._gunslingerClip || 8;
-      if (player.ammo < clipSize && !player.reloading && player.reserveAmmo > 0) {
+      // Pull from team pool if the personal reserve is empty \u2014 otherwise P2's
+      // ammo crate pickups are unreachable and gunslinger gets starved in co-op.
+      const totalAvailable = (player.reserveAmmo || 0) + (this.teamAmmoPool || 0);
+      if (player.ammo < clipSize && !player.reloading && totalAvailable > 0) {
         player.reloading = true;
         SFX.reload();
-        this.hint('Reloading\u2026 (' + player.reserveAmmo + ' in reserve)', 1500);
+        this.hint('Reloading\u2026 (' + totalAvailable + ' available)', 1500);
         this.time.delayedCall(1500, () => {
           const needed = clipSize - player.ammo;
-          const fill = Math.min(needed, player.reserveAmmo);
+          let fill = Math.min(needed, player.reserveAmmo);
           player.ammo += fill;
           player.reserveAmmo -= fill;
+          // Top up from the shared team pool if still short.
+          const stillNeeded = (clipSize - player.ammo);
+          if (stillNeeded > 0 && this.teamAmmoPool > 0) {
+            const fromPool = Math.min(stillNeeded, this.teamAmmoPool);
+            player.ammo += fromPool;
+            this.teamAmmoPool -= fromPool;
+          }
           player.reloading = false;
-          this._log(`${player.charData.player} reloaded  ammo=${player.ammo}  reserve=${player.reserveAmmo}`, 'player');
+          this._log(`${player.charData.player} reloaded  ammo=${player.ammo}  reserve=${player.reserveAmmo}  pool=${this.teamAmmoPool}`, 'player');
           this.redrawHUD(); SFX.reload();
         });
-      } else if (player.reserveAmmo <= 0 && player.ammo < clipSize) {
+      } else if (totalAvailable <= 0 && player.ammo < clipSize) {
         this.hint('No ammo left! Find more drops.', 2000);
       }
     } else if (id === 'knight') {
@@ -10681,6 +10863,30 @@ class GameScene extends Phaser.Scene {
     return tc;
   }
 
+  _autoPause(reason) {
+    if (this.isOver || this._autoPaused) return;
+    this._autoPaused = true;
+    this._log(`auto-pause (${reason})`, 'world');
+    if (this.scene && !this.scene.isPaused('Game')) this.scene.pause('Game');
+    // Suspend the shared AudioContext so background-tab CPU stays near zero.
+    try {
+      if (typeof Music !== 'undefined' && Music.ctx && Music.ctx.state === 'running') {
+        Music.ctx.suspend();
+      }
+    } catch(e) {}
+  }
+  _autoResume() {
+    if (!this._autoPaused) return;
+    this._autoPaused = false;
+    this._log('auto-resume', 'world');
+    if (this.scene && this.scene.isPaused('Game')) this.scene.resume('Game');
+    try {
+      if (typeof Music !== 'undefined' && Music.ctx && Music.ctx.state === 'suspended' && Music.playing) {
+        Music.ctx.resume();
+      }
+    } catch(e) {}
+  }
+
   // Push a timestamped event entry to the in-game debug log (` key to show/hide).
   // cat (optional): 'world' | 'player' | 'combat' | 'build'
   _log(msg, cat) {
@@ -10706,7 +10912,11 @@ class GameScene extends Phaser.Scene {
       if (this._dbgRefreshCd > 0) return;
       this._dbgRefreshCd = 500; // refresh stats header 2× per second
     }
-    const fps    = Math.round(this.game.loop.actualFps);
+    // Smoothed FPS — the raw actualFps jitters wildly on variable-refresh
+    // displays; a trailing average makes real regressions readable.
+    const rawFps = this.game.loop.actualFps || 60;
+    this._fpsAvg = this._fpsAvg ? (this._fpsAvg * 0.88 + rawFps * 0.12) : rawFps;
+    const fps    = Math.round(this._fpsAvg);
     // Log FPS warnings (throttled: at most once every 10 s)
     if (fps < 30 && (!this._lastFpsWarn || (this.timeAlive||0) - this._lastFpsWarn > 10)) {
       this._lastFpsWarn = this.timeAlive || 0;
@@ -10746,8 +10956,19 @@ class GameScene extends Phaser.Scene {
   }
 
   // Trigger a .txt download of the full session log.
-  _downloadLog() {
+  // auto=true means the caller is an auto-trigger (game over, crash); those
+  // respect the settings opt-out so fullscreen/kiosk sessions aren't spammed
+  // with a download prompt. Manual calls (G in overlay) always download.
+  _downloadLog(auto) {
     if (!this._dbgEntries) return;
+    if (auto) {
+      try {
+        if (loadSettings().autoDownloadLog === false) {
+          this._log('auto log download suppressed by setting', 'world');
+          return;
+        }
+      } catch(e) {}
+    }
     const t    = Math.floor(this.timeAlive || 0);
     const mode = `${this.solo ? 'Solo' : '2P'} ${this.hardcore ? 'Hardcore' : 'Survival'}`;
     const p1s  = this.p1 ? `P1 (${this.p1.charData?.id||'?'}): HP ${this.p1.hp}/${this.p1.maxHp}` : '';
@@ -10781,13 +11002,22 @@ class GameScene extends Phaser.Scene {
     // Also save to ./logs/ via dev server — same-origin so it works whether served
     // as localhost, 127.0.0.1, or LAN IP. No-op if running from file:// (no server).
     if (location.protocol !== 'file:') {
-      fetch('/save-log', {
+      const body = JSON.stringify({ filename: fname, content: lines });
+      const tryPost = (attempt) => fetch('/save-log', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ filename: fname, content: lines }),
+        body,
       })
-      .then(r => { if (!r.ok) console.warn('[save-log] server returned', r.status); })
-      .catch(e => console.warn('[save-log] failed:', e));
+      .then(r => {
+        if (r.ok) return;
+        if (attempt < 2) { setTimeout(() => tryPost(attempt + 1), 800); return; }
+        console.warn('[save-log] server returned', r.status, 'after', attempt + 1, 'tries');
+      })
+      .catch(e => {
+        if (attempt < 2) { setTimeout(() => tryPost(attempt + 1), 800); return; }
+        console.warn('[save-log] failed after', attempt + 1, 'tries:', e);
+      });
+      tryPost(0);
     } else {
       console.warn('[save-log] skipped — running from file://; run `node server.js` to save logs to disk');
     }
@@ -11795,9 +12025,16 @@ class GameScene extends Phaser.Scene {
   // Applies to enemy HP, damage, speed, and attack rate at spawn time.
   _diffMult() {
     const hc = this.hc || { diffBase: 1.0, diffRamp: 0.10, diffCap: 3.0 };
-    const dayScale = hc.diffBase + (this.dayNum - 1) * hc.diffRamp;
+    const day = Math.max(1, this.dayNum || 1);
+    const rawDayScale = hc.diffBase + (day - 1) * hc.diffRamp;
+    // Soft post-cap: once rawDayScale hits the cap, keep adding ~1/3 of the
+    // daily ramp so late-game tension never flatlines. Prevents the
+    // day-21+ plateau the audit flagged without making numbers runaway.
+    const capped = Math.min(hc.diffCap, rawDayScale);
+    const overflow = Math.max(0, rawDayScale - hc.diffCap) * 0.33;
+    const dayScale = capped + overflow;
     const relicScale = 1 + (this.relicsDeposited || 0) * 0.2;
-    return Math.min(hc.diffCap, dayScale * relicScale);
+    return dayScale * relicScale;
   }
 
   _relicPressure() {
@@ -12423,7 +12660,14 @@ class GameScene extends Phaser.Scene {
             }
           }
           if (charmed) {
-            if (!e._charmTinted) { e._charmTinted = true; e.spr.setTint(0xffaacc); }
+            if (!e._charmTinted) {
+              e._charmTinted = true;
+              e.spr.setTint(0xffaacc);
+              // One-shot tell on charm transition — sparkle + soft chime so
+              // the charmer's core mechanic isn't silent.
+              this._emitCharmSparkle(e.spr.x, e.spr.y);
+              if (typeof SFX !== 'undefined' && SFX._play) SFX._play(880, 'sine', 0.05, 0.18);
+            }
             if (isHumanEnemy) {
               // Ally AI: protect Lauren — find nearest non-human enemy and attack it.
               // Retargeting scans all enemies, so throttle to ~4×/sec per ally and cache.
@@ -12512,19 +12756,32 @@ class GameScene extends Phaser.Scene {
           e._effectiveSpeed = e.speed;
         }
       } else if (e.type === 'water_lurker') {
-        // Lurks nearly invisible until player steps within 110px, then bursts
+        // Lurks nearly invisible until player steps within 110px, then bursts.
+        // Between 110-170px we telegraph with a bubble ripple + low tone so
+        // the ambush reads as skill-testable rather than cheap.
         if (e._lurking) {
-          const closePlayer = [this.p1, this.p2].find(p => {
-            if (!p || p.isDowned) return false;
+          let minDistSq = Infinity, closePlayer = null;
+          for (const p of [this.p1, this.p2]) {
+            if (!p || p.isDowned) continue;
             const dx = e.spr.x - p.spr.x, dy = e.spr.y - p.spr.y;
-            return dx*dx + dy*dy < 12100; // 110²
-          });
-          if (closePlayer) {
+            const d2 = dx*dx + dy*dy;
+            if (d2 < minDistSq) { minDistSq = d2; closePlayer = p; }
+          }
+          if (closePlayer && minDistSq < 12100) { // 110² — ambush triggers
             e._lurking = false;
             e.spr.setAlpha(1);
             e._ambushTimer = 2000;
             this._log(`water_lurker ambush  target=${closePlayer.charData.player}  pos=(${Math.floor(e.spr.x/CFG.TILE)},${Math.floor(e.spr.y/CFG.TILE)})`, 'combat');
             SFX._play(160, 'sawtooth', 0.12, 0.4, 'drop');
+          } else if (closePlayer && minDistSq < 28900) { // 170² — telegraph band
+            e._bubbleTimer = (e._bubbleTimer || 0) - delta;
+            if (e._bubbleTimer <= 0) {
+              e._bubbleTimer = 480;
+              this._emitLurkerBubble(e.spr.x, e.spr.y);
+              SFX._play(90, 'sine', 0.04, 0.25);
+            }
+            e.spr.setVelocity(0, 0);
+            return;
           } else {
             e.spr.setVelocity(0, 0);
             return;
@@ -12741,11 +12998,29 @@ class GameScene extends Phaser.Scene {
     if (this.isNight && !wasNight) {
       Music.switchToNight();
       this._log(`Night ${this.dayNum} begins  active_enemies=${(this.enemies||[]).filter(e=>e.spr?.active&&!e._dormant).length}`, 'world');
+      // Brief camera flash + low horn so the transition has punctuation.
+      try {
+        this.cameras.main.flash(260, 20, 10, 50, true);
+        if (typeof SFX !== 'undefined' && SFX._play) {
+          SFX._play(120, 'sawtooth', 0.22, 0.5, 'drop');
+          SFX._play(90,  'triangle', 0.18, 0.7);
+        }
+      } catch(e) {}
       if (!this._ctx.firstNight) {
         this._ctx.firstNight = true;
         this._tutTrigger('nightfall');
         if (this._tutShown?.has('nightfall')) this.hint('Night falls — enemies are faster and more dangerous! Build Walls or sleep in a Bed.', 6000);
       }
+    }
+    // Dawn cue — subtle warm flash + rising chime.
+    if (!this.isNight && wasNight) {
+      try {
+        this.cameras.main.flash(240, 70, 50, 20, true);
+        if (typeof SFX !== 'undefined' && SFX._play) {
+          SFX._play(520, 'triangle', 0.12, 0.35);
+          SFX._play(780, 'sine',     0.10, 0.35);
+        }
+      } catch(e) {}
     }
 
     const newDay = Math.floor(this.dayTimer / this.DAY_DUR) + 1;
@@ -12756,10 +13031,34 @@ class GameScene extends Phaser.Scene {
       this._log(`Day ${this.dayNum} begins  diff=${this._diffMult().toFixed(1)}x  kills_so_far=${this.kills||0}  enemies=${(this.enemies||[]).filter(e=>e.spr?.active).length}`, 'world');
       this.hint('Dawn of Day ' + this.dayNum + ' \u2014 enemies grow stronger!', 3000);
       if (this.dayNum === 2) this._tutTrigger('caches');
+      // Player defense scaling — +8 max HP every 3 days. Heals the granted
+      // amount so the buff reads immediately. Keeps players in rough parity
+      // with the enemy diffMult ramp so late game isn't pure camping.
+      if (this.dayNum >= 3 && this.dayNum % 3 === 0) {
+        const boost = 8;
+        const bump = p => {
+          if (!p || p.isPermanentlyDead) return;
+          p.maxHp += boost;
+          p.hp = Math.min(p.maxHp, p.hp + boost);
+          this._log(`${p.charData.player} endurance +${boost}  maxHp=${p.maxHp}`, 'player');
+        };
+        bump(this.p1); bump(this.p2);
+        this.hint('Endurance grows — max HP +' + boost, 2600);
+      }
       // Periodic hunting party — separate cadence from raid camp respawn.
-      if (this.dayNum >= (this.huntNextDay || 0) && this.dayNum >= this.hc.huntingPartyStartDay) {
+      // Suppress during an active boss fight so players don't get double-squeezed.
+      const bossActive = !!(this.boss && this.boss.spr?.active && this.boss.hp > 0);
+      if (!bossActive && this.dayNum >= (this.huntNextDay || 0) && this.dayNum >= this.hc.huntingPartyStartDay) {
         this.huntNextDay = this.dayNum + Phaser.Math.Between(2, 3);
-        this.time.delayedCall(6000, () => { if (!this.isOver) this.spawnHuntingParty(); });
+        this.time.delayedCall(6000, () => {
+          if (this.isOver) return;
+          // Re-check at spawn time — boss could spawn during the 6s delay.
+          if (this.boss && this.boss.spr?.active && this.boss.hp > 0) {
+            this.huntNextDay = this.dayNum + 1;
+            return;
+          }
+          this.spawnHuntingParty();
+        });
       }
       // Raider respawn check
       if (this.raidRespawnDay !== null && this.dayNum >= this.raidRespawnDay) {
@@ -12790,7 +13089,7 @@ class GameScene extends Phaser.Scene {
           // scheduler, so the 5s spawnBoss delayedCall never fired. Using
           // setTimeout (not Phaser.time) so the flush still fires even if the
           // game clock stalls.
-          setTimeout(() => { try { this._downloadLog(); } catch (e) {} }, 250);
+          setTimeout(() => { try { this._downloadLog(true); } catch (e) {} }, 250);
           this.time.delayedCall(5000, () => {
             if (!this.isOver && !this.bossSpawned) this.spawnBoss();
           });
@@ -13533,6 +13832,8 @@ class GameOverScene extends Phaser.Scene {
     this._dbgEntries   = data.dbgEntries    || null;
     this.won           = data.won           || false;
     this.relicsDeposited = data.relicsDeposited ?? 0;
+    this.seed          = data.seed          || null;
+    this.version       = data.version       || null;
   }
 
   _calcScore() {
@@ -13958,7 +14259,16 @@ class GameOverScene extends Phaser.Scene {
       const lb = this._loadLeaderboard();
       const dateStr = new Date().toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
       const _runId = (this._runId ||= Date.now() + ':' + Math.random().toString(36).slice(2, 8));
-      lb.push({ name, score: this._score, days: this.days, time: Math.floor(this.timeAlive), date: dateStr, runId: _runId });
+      lb.push({
+        name, score: this._score, days: this.days,
+        time: Math.floor(this.timeAlive), date: dateStr, runId: _runId,
+        // Verifiability metadata — lets top-score runs be reproduced/inspected
+        // later (same seed replays the same world) and tagged by game build.
+        difficulty: this.difficulty || null,
+        seed: this.seed || null,
+        version: this.version || null,
+        won: this.won || false,
+      });
       lb.sort((a, b) => b.score - a.score);
       lb.splice(10);
       try {
