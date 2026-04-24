@@ -6516,7 +6516,11 @@ class GameScene extends Phaser.Scene {
           };
           guardspr.setVisible(false);
           if (guardspr.body) { guardspr.body.enable = false; this.physics.world.bodies.delete(guardspr.body); }
-          this.enemies.push(eg);
+          if (this.enemies.length < CFG.MAX_ENEMIES) {
+            this.enemies.push(eg);
+          } else {
+            guardspr.destroy();
+          }
         }
         this._log(`Relic placed  biome=${biome}  tx=${pos.tx}  ty=${pos.ty}`, 'world');
       }
@@ -7845,12 +7849,14 @@ class GameScene extends Phaser.Scene {
     this.redrawHUD();
 
     // 5th relic: all enemies converge — apocalypse
+    // Wake up to MAX_ACTIVE_ENEMIES immediately; the aggro aura wakes the rest each frame
     if (this._relicPOIs.length === 0) {
       this._log('RELIC ALERT: final relic collected — all enemies converging!', 'world');
       const carrier = this._relicCarrier();
+      let _woken = this._activeEnemyCount || 0;
       for (const _e of (this.enemies || [])) {
         if (!_e.spr?.active) continue;
-        if (_e._dormant) {
+        if (_e._dormant && _woken < CFG.MAX_ACTIVE_ENEMIES) {
           _e._dormant = false;
           if (_e.spr.body && !_e.spr.body.destroyed) {
             this.physics.world.bodies.set(_e.spr.body);
@@ -7858,6 +7864,7 @@ class GameScene extends Phaser.Scene {
             _e.spr.body.reset(_e.spr.x, _e.spr.y);
           }
           _e.spr.setVisible(true);
+          _woken++;
         }
         if (carrier) _e.target = carrier;
       }
@@ -7900,6 +7907,7 @@ class GameScene extends Phaser.Scene {
       fontFamily: 'monospace', fontSize: '14px', color: '#ccccaa',
       stroke: '#000', strokeThickness: 3, align: 'center', wordWrap: { width: 340 },
     }).setOrigin(0.5).setDepth(300).setAlpha(0).setScrollFactor(0);
+    if (this.hudCam) this.hudCam.ignore(t);
     this.tweens.add({
       targets: t, alpha: 0.9, duration: 1200, ease: 'Sine.In',
       onComplete: () => this.tweens.add({
@@ -12391,6 +12399,11 @@ class GameScene extends Phaser.Scene {
         const d = Phaser.Math.Distance.Between(e.spr.x, e.spr.y, p.spr.x, p.spr.y);
         if (d < nearDist) { nearDist = d; nearest = p; }
       });
+      // Relic carrier beacon — override nearest so movement actually chases carrier
+      if (e.target && e.target.spr?.active && !e.target.isDowned && e.target.hp > 0) {
+        nearest = e.target;
+        nearDist = Phaser.Math.Distance.Between(e.spr.x, e.spr.y, nearest.spr.x, nearest.spr.y);
+      }
       if (!nearest) { e.spr.setVelocity(0,0); return; }
       const nightMult = (this.isNight) ? this.hc.nightMult : 1;
       const aggroRange = e.aggroRange * nightMult * _rp.aggroMult;
