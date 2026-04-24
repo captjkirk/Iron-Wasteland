@@ -267,15 +267,20 @@ const STATE = {
 
 // ── CHIPTUNE MUSIC (Web Audio, no files needed) ───────────────
 const Music = {
-  ctx: null, gain: null, playing: false, mode: 'day',
+  ctx: null, gain: null, playing: false, mode: 'day', _loopTimer: null,
   start() {
     if (this.playing) return;
     try {
-      this.ctx = new (window.AudioContext || window.webkitAudioContext)();
-      this.ctx.resume();
-      this.gain = this.ctx.createGain();
-      this.gain.gain.value = 0.07;
-      this.gain.connect(this.ctx.destination);
+      // Reuse a single AudioContext across runs — iOS/Safari can't resume a freshly
+      // created context without a new user gesture, so we keep one alive and just
+      // suspend/resume it. gain stays connected across pauses.
+      if (!this.ctx) {
+        this.ctx = new (window.AudioContext || window.webkitAudioContext)();
+        this.gain = this.ctx.createGain();
+        this.gain.gain.value = 0.07;
+        this.gain.connect(this.ctx.destination);
+      }
+      if (this.ctx.state === 'suspended') this.ctx.resume();
       this.playing = true;
       this.mode = 'day';
       this._dayLoop(this.ctx.currentTime);
@@ -283,7 +288,11 @@ const Music = {
   },
   stop() {
     this.playing = false;
-    if (this.ctx) { this.ctx.close(); this.ctx = null; }
+    // Cancel any scheduled loop callback — otherwise queued setTimeouts keep firing
+    // and re-enter _*Loop against a stopped/suspended context.
+    if (this._loopTimer) { clearTimeout(this._loopTimer); this._loopTimer = null; }
+    // Suspend rather than close, so the same ctx can be resumed on restart (iOS).
+    if (this.ctx && this.ctx.state === 'running') { try { this.ctx.suspend(); } catch(e) {} }
   },
   switchToNight() {
     if (this.mode === 'night' || this.mode === 'boss') return;
@@ -375,7 +384,8 @@ const Music = {
     // Schedule next loop using audio clock so browser throttling can't cause drift
     const nextStart = startAt + len;
     const delay = Math.max(50, (nextStart - 0.5 - this.ctx.currentTime) * 1000);
-    setTimeout(() => this._dayLoop(nextStart), delay);
+    if (this._loopTimer) clearTimeout(this._loopTimer);
+    this._loopTimer = setTimeout(() => this._dayLoop(nextStart), delay);
   },
   _nightLoop(startAt) {
     if (!this.playing || !this.ctx) return;
@@ -418,7 +428,8 @@ const Music = {
     // Schedule next loop using audio clock so browser throttling can't cause drift
     const nextStart = startAt + len;
     const delay = Math.max(50, (nextStart - 0.5 - this.ctx.currentTime) * 1000);
-    setTimeout(() => this._nightLoop(nextStart), delay);
+    if (this._loopTimer) clearTimeout(this._loopTimer);
+    this._loopTimer = setTimeout(() => this._nightLoop(nextStart), delay);
   },
 
   // ── BOSS BATTLE LOOP ─────────────────────────────────────────
@@ -466,7 +477,8 @@ const Music = {
 
     const nextStart = startAt + len;
     const delay = Math.max(50, (nextStart - 0.5 - this.ctx.currentTime) * 1000);
-    setTimeout(() => this._bossLoop(nextStart), delay);
+    if (this._loopTimer) clearTimeout(this._loopTimer);
+    this._loopTimer = setTimeout(() => this._bossLoop(nextStart), delay);
   },
 };
 
@@ -710,6 +722,9 @@ function makeScaleProxy(g, s) {
 
 // ── TEXTURE GENERATION ────────────────────────────────────────
 function buildTextures(scene) {
+  // Textures are keyed by name in Phaser's global TextureManager and persist
+  // across scene restarts; regenerating them every time leaks memory.
+  if (scene.textures.exists('grass')) return;
   const g = scene.make.graphics({ x: 0, y: 0, add: false });
 
   // Ground — grass (natural, no grid lines)
@@ -9236,7 +9251,7 @@ class GameScene extends Phaser.Scene {
       // Damage
       players.forEach(p => {
         if (Phaser.Math.Distance.Between(b.spr.x, b.spr.y, p.spr.x, p.spr.y) < 130) {
-          const slamDmg = Math.round(b.dmg * 0.85);
+          const slamDmg = this._knightShieldBlock(p, b.spr.x, b.spr.y, Math.round(b.dmg * 0.85));
           p.hp = Math.max(0, p.hp - slamDmg);
           this._log(`${p.charData.player} boss stomp  dmg=${slamDmg}  hp=${p.hp}/${p.maxHp}`, 'combat');
           SFX.playerHurt();
@@ -9261,7 +9276,7 @@ class GameScene extends Phaser.Scene {
         b.spr.setVelocity(0, 0);
         players.forEach(p => {
           if (Phaser.Math.Distance.Between(b.spr.x, b.spr.y, p.spr.x, p.spr.y) < 55) {
-            const chargeDmg = Math.round(b.dmg * 1.3);
+            const chargeDmg = this._knightShieldBlock(p, b.spr.x, b.spr.y, Math.round(b.dmg * 1.3));
             p.hp = Math.max(0, p.hp - chargeDmg);
             this._log(`${p.charData.player} troll charge  dmg=${chargeDmg}  hp=${p.hp}/${p.maxHp}`, 'combat');
             SFX.playerHurt();
@@ -9294,8 +9309,9 @@ class GameScene extends Phaser.Scene {
         players.forEach(p => {
           this.physics.add.overlap(p.spr, blt, () => {
             if (!blt.active) return;
+            const bx = blt.x, by = blt.y;
             blt.destroy();
-            const sprayDmg = Math.round(b.dmg * 0.75);
+            const sprayDmg = this._knightShieldBlock(p, bx, by, Math.round(b.dmg * 0.75));
             p.hp = Math.max(0, p.hp - sprayDmg);
             this._log(`${p.charData.player} boss spray  dmg=${sprayDmg}  hp=${p.hp}/${p.maxHp}`, 'combat');
             SFX.playerHurt();
@@ -9643,7 +9659,7 @@ class GameScene extends Phaser.Scene {
         this.physics.add.overlap(arrow, e.spr, () => {
           if (!arrow.active || e.dying) return;
           arrow.destroy();
-          const dmg = player._rangerUpgraded ? 35 : 35;
+          const dmg = player._rangerUpgraded ? 50 : 35;
           this._hurtEnemy(e, dmg, arrow.x, arrow.y, 0x886633, player);
           if (player._rangerUpgraded) {
             // Explosive arrow: splash damage to nearby enemies
