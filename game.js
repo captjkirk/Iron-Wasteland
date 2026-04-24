@@ -5204,6 +5204,37 @@ class GameScene extends Phaser.Scene {
     // update() running against stale state before the deferred init fires.
     this._worldReady = false;
 
+    // Drop stale references from the previous run before buildWorld repopulates them.
+    // Most of these are re-assigned during world-gen, but explicit clearing here
+    // prevents update() from seeing last-run data during the staged init window.
+    this._toxicTileIndex = null;
+    this._waterMap = null;
+    this._iceMap = null;
+    this._packIndex = null;
+    this.fogRevealed = null;
+    this.fogVisible = null;
+    this._fogVisibleBuilding = false;
+    this._activePlayers = null;
+    this._sleepIndicator = null;
+    this.reviving = false;
+    this.reviveProgress = 0;
+    this.reviveTarget = null;
+
+    // One-time shutdown hook: remove touch listeners (guards against double-add
+    // if scene restarts mid-session) and kill any leftover scene-owned tweens.
+    if (!this._shutdownRegistered) {
+      this._shutdownRegistered = true;
+      this.events.on('shutdown', () => {
+        if (this.input) {
+          this.input.off('pointerdown',      this._onTouchDown, this);
+          this.input.off('pointermove',      this._onTouchMove, this);
+          this.input.off('pointerup',        this._onTouchUp,   this);
+          this.input.off('pointerupoutside', this._onTouchUp,   this);
+        }
+        if (this.tweens) this.tweens.killAll();
+      });
+    }
+
     const worldW = CFG.MAP_W * CFG.TILE, worldH = CFG.MAP_H * CFG.TILE;
     const cx = worldW/2, cy = worldH/2;
 
