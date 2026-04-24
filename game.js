@@ -5662,6 +5662,31 @@ class GameScene extends Phaser.Scene {
         if (Math.abs(s.x / TILE - tx) < 10 && Math.abs(s.y / TILE - ty) < 10) return true;
       }
     }
+    // Also reject if the tile is already water or ice — prevents caches, dens,
+    // and late placements from landing inside a pond or lake.
+    const { MAP_W } = CFG;
+    const i = tx + ty * MAP_W;
+    if (this._waterMap && this._waterMap[i]) return true;
+    if (this._iceMap && this._iceMap[i]) return true;
+    return false;
+  }
+
+  // Returns true if any tile in the (W×H) footprint centered on (cx, cy) lies
+  // on water or ice. Used to filter biome-structure positions picked before
+  // ponds/lakes were built.
+  _footprintOnWaterOrIce(cx, cy, W, H) {
+    if (!this._waterMap && !this._iceMap) return false;
+    const { MAP_W, MAP_H } = CFG;
+    const x0 = cx - Math.floor(W / 2), y0 = cy - Math.floor(H / 2);
+    for (let dx = 0; dx < W; dx++) {
+      for (let dy = 0; dy < H; dy++) {
+        const tx = x0 + dx, ty = y0 + dy;
+        if (tx < 0 || tx >= MAP_W || ty < 0 || ty >= MAP_H) continue;
+        const i = tx + ty * MAP_W;
+        if (this._waterMap && this._waterMap[i]) return true;
+        if (this._iceMap && this._iceMap[i]) return true;
+      }
+    }
     return false;
   }
 
@@ -6572,13 +6597,18 @@ class GameScene extends Phaser.Scene {
     for (const { biome, wallKey, floorKey, label } of biomeConfig) {
       // Use pre-computed positions (fjord-protected + tree-clear guaranteed).
       // Fall back to random if pre-computation returned nothing for this biome.
-      const _prePos = (this._preStructureTiles && this._preStructureTiles[biome]) || [];
+      // Filter pre-computed positions whose footprint landed on water/ice — these
+      // are picked before _buildPonds/_buildLakes, so tundra/swamp structures can
+      // fall on top of a lake otherwise.
+      const _prePos = ((this._preStructureTiles && this._preStructureTiles[biome]) || [])
+        .filter(p => !this._footprintOnWaterOrIce(p.tx, p.ty, W, H));
       const _positions = _prePos.length ? _prePos : (() => {
         const fb = [];
         for (let att = 0; att < 120 && fb.length < 2; att++) {
           const tx = Phaser.Math.Between(12, MAP_W - 12), ty = Phaser.Math.Between(12, MAP_H - 12);
           if (getBiome(tx, ty) !== biome) continue;
           if (Math.abs(tx - stx) < SAFE_R + 12 && Math.abs(ty - sty) < SAFE_R + 12) continue;
+          if (this._footprintOnWaterOrIce(tx, ty, W, H)) continue;
           fb.push({ tx, ty });
         }
         return fb;
@@ -6701,16 +6731,33 @@ class GameScene extends Phaser.Scene {
     const TILE = CFG.TILE;
     const cam = this.cameras.main;
 
-    // Reveal around players (radius-bounded, wall-blocked) — reset per-tick visible set
-    this._fogVisibleBuilding = false;
-    const revealP = (p) => {
-      if (!p || !p.spr.active || p.isDowned) return;
-      const ptx = Math.floor(p.spr.x / TILE), pty = Math.floor(p.spr.y / TILE);
-      this.revealFog(ptx, pty);
-    };
-    revealP(this.p1);
-    if (this.p2) revealP(this.p2);
-    this._fogVisibleBuilding = false;
+    // Reveal around players (radius-bounded, wall-blocked) — skip the reveal pass
+    // entirely if neither player has moved tiles since the last update. This is
+    // the biggest win on the fog hot path (otherwise O(r²) LOS rays every tick).
+    const tileOf = (p) => (p && p.spr && p.spr.active && !p.isDowned)
+      ? { tx: Math.floor(p.spr.x / TILE), ty: Math.floor(p.spr.y / TILE), active: true }
+      : { tx: -1, ty: -1, active: false };
+    const p1t = tileOf(this.p1);
+    const p2t = tileOf(this.p2);
+    const p1Same = p1t.active && this._lastFogP1
+      && this._lastFogP1.tx === p1t.tx && this._lastFogP1.ty === p1t.ty
+      && this._lastFogP1.active === p1t.active;
+    const p2Same = (!this.p2) || (p2t.active && this._lastFogP2
+      && this._lastFogP2.tx === p2t.tx && this._lastFogP2.ty === p2t.ty
+      && this._lastFogP2.active === p2t.active);
+    const skipReveal = p1Same && p2Same && this.fogVisible;
+    if (!skipReveal) {
+      this._fogVisibleBuilding = false;
+      const revealP = (p, t) => {
+        if (!t.active) return;
+        this.revealFog(t.tx, t.ty);
+      };
+      revealP(this.p1, p1t);
+      if (this.p2) revealP(this.p2, p2t);
+      this._fogVisibleBuilding = false;
+      this._lastFogP1 = p1t;
+      this._lastFogP2 = p2t;
+    }
 
     // Only draw fog tiles in camera viewport
     this.fogGfx.clear();
@@ -10244,9 +10291,14 @@ class GameScene extends Phaser.Scene {
     this.kills++;
     if (owner) owner.kills++;
     this._log('Enemy killed  type=' + e.type + '  kills=' + this.kills, 'combat');
-    // Remove from update loop immediately — splice avoids reallocating the whole array
-    const _ei = this.enemies.indexOf(e);
-    if (_ei !== -1) this.enemies.splice(_ei, 1);
+    // Remove from update loop — defer splice if iteration is active to avoid
+    // Array.forEach skipping the element after the removed index.
+    if (this._enemyIterActive) {
+      (this._pendingEnemyRemovals ||= []).push(e);
+    } else {
+      const _ei = this.enemies.indexOf(e);
+      if (_ei !== -1) this.enemies.splice(_ei, 1);
+    }
     SFX.enemyDie();
     // Stop movement immediately — prevent corpse from drifting
     if (e.spr.body) { e.spr.body.setVelocity(0, 0); e.spr.body.enable = false; }
@@ -11667,6 +11719,9 @@ class GameScene extends Phaser.Scene {
       p => p && p.charData && p.charData.id === 'charmer' && !p.isDowned && p.spr && p.spr.active
     );
 
+    // Enable deferred-removal guard: killEnemy() splices would otherwise skip
+    // the next element during this forEach.
+    this._enemyIterActive = true;
     this.enemies.forEach(e => {
       if (e.dying || !e.spr.active) return;
       if (e.isBoss) return; // boss movement/attack handled by updateBoss
@@ -11768,12 +11823,21 @@ class GameScene extends Phaser.Scene {
           if (charmed) {
             if (!e._charmTinted) { e._charmTinted = true; e.spr.setTint(0xffaacc); }
             if (isHumanEnemy) {
-              // Ally AI: protect Lauren — find nearest non-human enemy and attack it
-              const allyTarget = this.enemies.find(t =>
-                t !== e && !t.dying && t.spr && t.spr.active &&
-                !HUMAN_ENEMY_TYPES.includes(t.type) &&
-                Phaser.Math.Distance.Between(e.spr.x, e.spr.y, t.spr.x, t.spr.y) < 350
-              );
+              // Ally AI: protect Lauren — find nearest non-human enemy and attack it.
+              // Retargeting scans all enemies, so throttle to ~4×/sec per ally and cache.
+              e._allyRetargetCd = (e._allyRetargetCd || 0) - delta;
+              const cached = e._allyTarget;
+              const cachedValid = cached && !cached.dying && cached.spr && cached.spr.active &&
+                Phaser.Math.Distance.Between(e.spr.x, e.spr.y, cached.spr.x, cached.spr.y) < 400;
+              if (!cachedValid || e._allyRetargetCd <= 0) {
+                e._allyRetargetCd = 250;
+                e._allyTarget = this.enemies.find(t =>
+                  t !== e && !t.dying && t.spr && t.spr.active &&
+                  !HUMAN_ENEMY_TYPES.includes(t.type) &&
+                  Phaser.Math.Distance.Between(e.spr.x, e.spr.y, t.spr.x, t.spr.y) < 350
+                ) || null;
+              }
+              const allyTarget = e._allyTarget;
               if (allyTarget) {
                 const spd = e.speed * 0.85;
                 const vel = this._steerToward(e, allyTarget.spr.x, allyTarget.spr.y, spd);
@@ -12027,6 +12091,15 @@ class GameScene extends Phaser.Scene {
         }
       }
     });
+    this._enemyIterActive = false;
+    // Drain deferred removals now that iteration is over.
+    if (this._pendingEnemyRemovals && this._pendingEnemyRemovals.length) {
+      for (const dead of this._pendingEnemyRemovals) {
+        const _ei = this.enemies.indexOf(dead);
+        if (_ei !== -1) this.enemies.splice(_ei, 1);
+      }
+      this._pendingEnemyRemovals.length = 0;
+    }
   }
 
   updateDayNight(delta) {
