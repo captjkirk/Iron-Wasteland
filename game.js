@@ -13324,9 +13324,9 @@ class GameScene extends Phaser.Scene {
     if (this.isNight && !wasNight) {
       Music.switchToNight();
       this._log(`Night ${this.dayNum} begins  active_enemies=${(this.enemies||[]).filter(e=>e.spr?.active&&!e._dormant).length}`, 'world');
-      // Brief camera flash + low horn so the transition has punctuation.
+      // Low horn punctuates the transition — camera flash was removed
+      // (felt too aggressive; SFX alone is enough to register nightfall).
       try {
-        this.cameras.main.flash(140, 18, 14, 40, false);
         if (typeof SFX !== 'undefined' && SFX._play) {
           SFX._play(110, 'triangle', 0.35, 0.14, 'drop');
           SFX._play(85,  'sine',     0.45, 0.10);
@@ -13338,10 +13338,9 @@ class GameScene extends Phaser.Scene {
         if (this._tutShown?.has('nightfall')) this.hint('Night falls — enemies are faster and more dangerous! Build Walls or sleep in a Bed.', 6000);
       }
     }
-    // Dawn cue — subtle warm flash + rising chime.
+    // Dawn cue — rising chime only (camera flash removed, felt too aggressive).
     if (!this.isNight && wasNight) {
       try {
-        this.cameras.main.flash(240, 70, 50, 20, true);
         if (typeof SFX !== 'undefined' && SFX._play) {
           SFX._play(520, 'triangle', 0.12, 0.35);
           SFX._play(780, 'sine',     0.10, 0.35);
