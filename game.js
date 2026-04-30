@@ -226,6 +226,33 @@ function _buildBiomeMap() {
   }
 }
 
+// Chunked variant of _buildBiomeMap. The synchronous version blocks the JS
+// thread for ~300 ms on a 300×300 map (1.6M Voronoi distance ops); driving it
+// in row-chunks lets the loading bar actually paint while it runs.
+//   onProgress(frac) — called after each chunk with frac in [0..1]
+//   onDone()        — called when the full map is built
+// Uses setTimeout(0) instead of scene.time.delayedCall so it does not depend
+// on the scene's update loop running during init.
+function _buildBiomeMapChunked(onProgress, onDone) {
+  const { MAP_W, MAP_H } = CFG;
+  _biomeMap = new Uint8Array(MAP_W * MAP_H);
+  const ROWS_PER_CHUNK = 30; // 300 / 30 = 10 chunks → ~30 ms each on a slow phone
+  let ty = 0;
+  const step = () => {
+    const end = Math.min(ty + ROWS_PER_CHUNK, MAP_H);
+    for (; ty < end; ty++) {
+      const row = ty * MAP_W;
+      for (let tx = 0; tx < MAP_W; tx++) {
+        _biomeMap[row + tx] = _BIOME_IDX[_computeBiomeRaw(tx, ty)] || 0;
+      }
+    }
+    if (typeof onProgress === 'function') onProgress(ty / MAP_H);
+    if (ty < MAP_H) setTimeout(step, 0);
+    else if (typeof onDone === 'function') onDone();
+  };
+  setTimeout(step, 0);
+}
+
 // Biome color map for minimap
 const BIOME_COLORS = {
   grass:  0x4a7c2f,
@@ -5445,10 +5472,22 @@ class GameScene extends Phaser.Scene {
         this._initBiomeSeeds();
       } catch (err) { _initFail(err); return; }
 
-      // ── Stage 1 (t≈80 ms): world generation ─────────────────
+      // ── Stage 0.5: chunked biome map build ───────────────────
+      // The biome map is 90 000 tiles × ~18 Voronoi distance ops each. Done
+      // sync this blocks for hundreds of ms — the user-reported "5% hang."
+      // Drive it across frames so the bar moves 5% → 28% smoothly.
+      _buildBiomeMapChunked(
+        (frac) => {
+          const pct = 5 + Math.floor(frac * 23); // 5 → 28
+          _setProgress(pct, 'Painting biomes...');
+        },
+        () => {
+          this._log('World init: biome map ready', 'world');
+
+      // ── Stage 1: world generation ───────────────────────────
       this.time.delayedCall(16, () => {
         try {
-          _setProgress(12, 'Building world...');
+          _setProgress(30, 'Building world...');
           this._log('World init: buildWorld start', 'world');
           this.buildWorld(worldW, worldH, cx, cy);
           this._log(`World init: buildWorld done  enemies_placed=${(this.enemies||[]).length}`, 'world');
@@ -5657,6 +5696,8 @@ class GameScene extends Phaser.Scene {
           });
         });
       });
+        }  // end _buildBiomeMapChunked onDone
+      ); // end _buildBiomeMapChunked
     }); // end deferred world init
   }
 
@@ -5769,8 +5810,10 @@ class GameScene extends Phaser.Scene {
         });
       }
     });
-    // Pre-compute biome map once — O(1) getBiome lookups for rest of world gen
-    _buildBiomeMap();
+    // NOTE: the heavy 90 000-tile _buildBiomeMap() call used to live here, but
+    // it was the cause of the loading-bar "5% hang" — it blocked the JS thread
+    // for hundreds of ms in one frame. The caller now drives the chunked
+    // variant (_buildBiomeMapChunked) so the bar can paint between chunks.
   }
 
   // Returns true if (tx,ty) is within the spawn safe zone or overlaps a structure.
@@ -7083,6 +7126,10 @@ class GameScene extends Phaser.Scene {
     this.dayText = this._h(this.add.text(W/2, 10, 'DAY 1', { fontFamily:'monospace', fontSize:'13px', color:'#ffee44' }).setOrigin(0.5,0).setDepth(101));
     this.clockGfx = this._h(this.add.graphics().setDepth(102));
 
+    // Off-screen threat indicators — issue #81. Drawn in HUD space; redrawn each frame
+    // by _drawThreatIndicators() so the arrows track the camera as it pans.
+    this.threatGfx = this._h(this.add.graphics().setDepth(103));
+
     const diffColor = this.hardcore ? '#ff4444' : '#44cc66';
     const diffLabel = this.hardcore ? '\u2620 HARDCORE' : '\u2665 SURVIVAL';
     this._h(this.add.text(W/2, 42, diffLabel, { fontFamily:'monospace', fontSize:'9px', color:diffColor }).setOrigin(0.5,0).setDepth(101));
@@ -7449,6 +7496,82 @@ class GameScene extends Phaser.Scene {
       icons.push(ic);
     }
     return icons;
+  }
+
+  // Off-screen threat indicators (issue #81). Draws small triangles on the
+  // viewport edge for active enemies that are near a player but outside the
+  // visible camera. Capped to 8 to avoid clutter during swarms.
+  _drawThreatIndicators() {
+    const g = this.threatGfx;
+    if (!g || !g.active) return;
+    g.clear();
+    if (this.isOver || !this.enemies || this.enemies.length === 0) return;
+
+    const cam = this.cameras.main;
+    if (!cam) return;
+    const view = cam.worldView;
+    const { W, H } = CFG;
+    // Inset a few px so triangles sit just inside the viewport edge.
+    const PAD = 12;
+    const RANGE = 400, RANGE2 = RANGE * RANGE;
+
+    const players = [this.p1, this.p2].filter(p => p && p.spr && p.spr.active);
+    if (players.length === 0) return;
+
+    // Collect candidate threats (off-screen + near a player), tag with distance
+    // to the closer player so we can keep the most relevant ones.
+    const threats = [];
+    const enemies = this.enemies;
+    for (let i = 0; i < enemies.length; i++) {
+      const e = enemies[i];
+      if (!e || !e.spr || !e.spr.active || e._dormant) continue;
+      const ex = e.spr.x, ey = e.spr.y;
+      if (view.contains(ex, ey)) continue;
+      let bestD2 = Infinity;
+      for (let j = 0; j < players.length; j++) {
+        const dx = players[j].spr.x - ex, dy = players[j].spr.y - ey;
+        const d2 = dx * dx + dy * dy;
+        if (d2 < bestD2) bestD2 = d2;
+      }
+      if (bestD2 > RANGE2) continue;
+      threats.push({ ex, ey, d2: bestD2 });
+    }
+    if (threats.length === 0) return;
+
+    // Closest first; cap at 8 so a swarm doesn't paint the whole frame.
+    threats.sort((a, b) => a.d2 - b.d2);
+    const cap = Math.min(8, threats.length);
+
+    // Project each threat from the camera centre onto the viewport rectangle.
+    const cxw = view.x + view.width / 2;
+    const cyw = view.y + view.height / 2;
+    const halfW = W / 2 - PAD;
+    const halfH = H / 2 - PAD;
+
+    for (let k = 0; k < cap; k++) {
+      const t = threats[k];
+      const dxw = t.ex - cxw, dyw = t.ey - cyw;
+      // Scale so the larger axis hits the viewport edge.
+      const ax = Math.abs(dxw), ay = Math.abs(dyw);
+      const s = (ax * halfH > ay * halfW) ? halfW / ax : halfH / ay;
+      const sx = W / 2 + dxw * s;
+      const sy = H / 2 + dyw * s;
+      const angle = Math.atan2(dyw, dxw);
+      const dist = Math.sqrt(t.d2);
+      const a = Math.max(0.3, 1 - dist / RANGE);
+      // Simple triangle pointing outward.
+      const SIZE = 9;
+      const c1x = sx + Math.cos(angle) * SIZE;
+      const c1y = sy + Math.sin(angle) * SIZE;
+      const c2x = sx + Math.cos(angle + 2.5) * SIZE;
+      const c2y = sy + Math.sin(angle + 2.5) * SIZE;
+      const c3x = sx + Math.cos(angle - 2.5) * SIZE;
+      const c3y = sy + Math.sin(angle - 2.5) * SIZE;
+      g.fillStyle(0xff4444, a);
+      g.fillTriangle(c1x, c1y, c2x, c2y, c3x, c3y);
+      g.lineStyle(1, 0x000000, a * 0.8);
+      g.strokeTriangle(c1x, c1y, c2x, c2y, c3x, c3y);
+    }
   }
 
   redrawHUD() {
@@ -8804,6 +8927,7 @@ class GameScene extends Phaser.Scene {
     _safe('updateMinimap',    () => this.updateMinimap());
     _safe('updateTreeSeeds',  () => this.updateTreeSeeds(delta));
     _safe('redrawHUD',        () => this.redrawHUD());
+    _safe('threatIndicators', () => this._drawThreatIndicators());
     _safe('_updateScoutPanel', () => this._updateScoutPanel());
     if (this._touchActive) _safe('_drawTouchHUD', () => this._drawTouchHUD());
   }
@@ -13200,9 +13324,9 @@ class GameScene extends Phaser.Scene {
     if (this.isNight && !wasNight) {
       Music.switchToNight();
       this._log(`Night ${this.dayNum} begins  active_enemies=${(this.enemies||[]).filter(e=>e.spr?.active&&!e._dormant).length}`, 'world');
-      // Brief camera flash + low horn so the transition has punctuation.
+      // Low horn punctuates the transition — camera flash was removed
+      // (felt too aggressive; SFX alone is enough to register nightfall).
       try {
-        this.cameras.main.flash(140, 18, 14, 40, false);
         if (typeof SFX !== 'undefined' && SFX._play) {
           SFX._play(110, 'triangle', 0.35, 0.14, 'drop');
           SFX._play(85,  'sine',     0.45, 0.10);
@@ -13214,10 +13338,9 @@ class GameScene extends Phaser.Scene {
         if (this._tutShown?.has('nightfall')) this.hint('Night falls — enemies are faster and more dangerous! Build Walls or sleep in a Bed.', 6000);
       }
     }
-    // Dawn cue — subtle warm flash + rising chime.
+    // Dawn cue — rising chime only (camera flash removed, felt too aggressive).
     if (!this.isNight && wasNight) {
       try {
-        this.cameras.main.flash(240, 70, 50, 20, true);
         if (typeof SFX !== 'undefined' && SFX._play) {
           SFX._play(520, 'triangle', 0.12, 0.35);
           SFX._play(780, 'sine',     0.10, 0.35);
