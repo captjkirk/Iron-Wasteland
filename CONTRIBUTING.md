@@ -31,7 +31,34 @@ constant in `game.js` with the current UTC time before each commit. You don't ne
 to touch it manually — just commit and the timestamp updates itself.
 
 Players see the timestamp converted to their own local timezone (EDT, PDT, BST, etc.)
-via `_fmtVersion()` at the top of `game.js`.
+via `_fmtVersion()` at the top of `game.js`. It's rendered prominently on the title
+screen as "Last updated …".
+
+## CI checks (run on every PR)
+
+`.github/workflows/checks.yml` runs two required checks. Both must pass before merge.
+
+### `version-bump`
+Fails the PR if `VERSION` in `game.js` is identical to `main`. The pre-commit hook
+normally handles this, but CI is the hard guarantee. If it flags you:
+
+```bash
+sed -i "s|const VERSION = '[^']*';|const VERSION = '$(date -u +%Y-%m-%dT%H:%M:%SZ)';|" game.js
+git commit --amend --no-edit
+```
+
+### `manifest-sync`
+The top of `game.js` contains a **MANIFEST** comment block that indexes every
+gameplay system. CI fails the PR if the manifest references any function name,
+`CFG.*` key, or state variable that no longer exists in the file (catches
+renames, deletions, typos).
+
+Whenever you rename, remove, or add a manifest-listed symbol, update the
+manifest in the same commit. Run the check locally:
+
+```bash
+node scripts/check-manifest.js
+```
 
 ## Debug log
 
