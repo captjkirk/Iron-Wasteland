@@ -35,7 +35,8 @@
 //           _initBiomeSeeds, _buildBiomeMap, _buildBiomeMapChunked
 //    placement: _isBlockedForPlacement, _footprintOnWaterOrIce
 //    cfg:  MAP_W, MAP_H, TILE, SAFE_R, POND_SPECS, LAKE_SPECS,
-//          RIVER_COUNT, RIVER_WANDER, RIVER_WIDTH_MIN/MAX, PLACEMENT, ROCKS, TREES
+//          RIVER_COUNT, RIVER_WANDER, RIVER_WIDTH_MIN, RIVER_WIDTH_MAX,
+//          PLACEMENT, ROCKS
 //    data: _biomeSeeds, _waterMap, _iceMap, waterTiles, iceTiles,
 //          deepWaterTiles, mountainTiles, obstacles
 //    log:  [WORLD ]
@@ -58,7 +59,7 @@
 //    fns:  updateWaves, updateBoss, spawnBoss, _bossExecuteSpecial,
 //          _bossTelegraph, _fireRaiderShot, _fireArrow, _fireNailGun,
 //          _fireShieldThrow
-//    data: waveNum, waveTimer, boss, _bossChance, _huntingParty
+//    data: waveNum, waveTimer, boss, _bossChance, huntNextDay
 //    log:  [WORLD ], [COMBAT]
 //
 // 5. PLAYER MOVEMENT & INPUT
@@ -93,19 +94,19 @@
 //    barracks: openBarrack, closeBarrack, barrackNav, barrackConfirm,
 //              refreshBarrackCards, buildBarrackOverlay, checkBarrackRange
 //    data: buildType, buildRotation, buildOwner, RECIPES,
-//          buildStructures, teamWoodPool, teamAmmoPool
+//          structures, teamAmmoPool
 //    log:  [BUILD ], [PLAYER]
 //
 // 9. WALLS / SPIKES / STRUCTURE DAMAGE
 //    fns:  updateSpikeTraps, damageStructure, _addWallToBuckets,
 //          _removeWallFromBuckets, _wallBucketKey, _wallNearby,
 //          _refreshWallClustersNear, _addFireGlow
-//    data: structures, walls, spikes, _wallBuckets, _wallClusters
+//    data: structures, spikes, _wallBuckets, _wallTileSet
 //    log:  [COMBAT], [BUILD ]
 //
 // 10. DAY/NIGHT & DIFFICULTY
 //     fns:  updateDayNight, _diffMult, _updateDayLabel
-//     data: dayNum, nightNum, timeAlive, hardcore, this.hc (modifiers)
+//     data: dayNum, dayTimer, isNight, timeAlive, hardcore, hc
 //
 // 11. RELICS / RADIO TOWERS / ALTAR / CAMPFIRES
 //     fns:  updateRelicChannels, checkRadioTowerRange, _relicCarrier,
@@ -118,27 +119,24 @@
 // 12. RAIDERS (camps + raid events)
 //     fns:  updateRaiders, placeRaiderCamp, spawnRaiders,
 //           checkRaidCacheRange, openRaidCache
-//     data: raiderCamps, _raiderCampDay, _raidCacheClaimed
+//     data: raidCamp, raidRespawnDay, raiders
 //
 // 13. HARVESTING & RESOURCES
-//     fns:  updateHarvest, harvest, drawHarvestUI, setupCratePickups,
-//           dropResource, _floatPickup, updateTreeSeeds, _plantTreeSeed
-//     data: treeSeeds, crates, items, itemDrops
+//     fns:  setupCratePickups, dropResource, _floatPickup
+//     data: crates, items
 //     cfg:  ITEM_DESPAWN_MS
 //
 // 14. CAMERAS (dual-cam: world + HUD)
-//     fns:  updateCamera, syncLabels
-//     data: gameCam, hudCam, _camDist, _camCenterX, _camCenterY
+//     The world camera is `this.cameras.main`; the HUD camera is `this.hudCam`.
 //     cfg:  W, H, CAM_PAD, CAM_ZOOM_MIN, CAM_ZOOM_MAX
 //     NOTE: any new world object MUST be ignored by hudCam.
 //
 // 15. HUD / MINIMAP / THREAT INDICATORS
-//     fns:  buildHUD, redrawHUD, _showStatus, _showScoutPanel,
-//           _hideScoutPanel, _updateScoutPanel, _drawThreatIndicators, hint
-//     minimap: buildMinimapBase, _renderMinimapBase, updateMinimap,
-//              _paintMinimapTile, _unpaintMinimapTile, _buildMinimapColorMap
-//     cfg:  MINIMAP_HINT_DELAY_MS
-//     data: hudTexts, minimapBase, minimapGraphics, _minimapVisible
+//     fns:  _showStatus, _hideScoutPanel, _updateScoutPanel,
+//           _drawThreatIndicators, hint
+//     minimap: _renderMinimapBase, _paintMinimapTile, _unpaintMinimapTile,
+//              _buildMinimapColorMap
+//     data: hudCam, hudRelicText, minimapGfx, minimapDots, mmBounds, _scoutPanel
 //
 // 16. FOG OF WAR
 //     fns:  revealFog, updateFog, _hasLOS, _losBlocked
@@ -160,7 +158,7 @@
 // 19. INPUT MODES (kbd / gamepad / touch)
 //     fns:  getControls, activeInputMode, isTouchDevice,
 //           _onBtnPress, keyDisplayName
-//     data: wasd, p2keys, mouseBtn, _joy
+//     data: wasd, p2keys, _joy, _tcBtns
 //
 // 20. DEBUG LOG & PERF
 //     fns:  _log, _qlog, _dbgRefresh, _downloadLog, hint
@@ -173,7 +171,7 @@
 //     fns:  startTutorial, _tutTrigger, _showNextTutTip,
 //           _clearTutObjs, _endTutorial
 //     cfg:  TUT_AUTO_ADVANCE_MS
-//     data: _tutShown, _tutObjects, _tutQueue
+//     data: _tutShown, _tutObjs, _tutQueue
 //
 // 22. GAME OVER / VICTORY
 //     fns:  triggerGameOver, _triggerVictory, checkBothDead, handleDeath
@@ -196,7 +194,7 @@
 // ── VERSION ───────────────────────────────────────────────────
 // Update this each commit so the title screen reflects the build date.
 // Stored as UTC ISO so it can be displayed in each player's local timezone.
-const VERSION = '2026-04-30T00:20:17Z';
+const VERSION = '2026-05-04T12:59:12Z';
 // Format VERSION into the viewer's local time with abbreviated tz name (EDT, PDT, BST, etc.)
 function _fmtVersion(iso) {
   try {
@@ -4702,6 +4700,13 @@ class ModeSelectScene extends Phaser.Scene {
       shadow:{offsetX:4, offsetY:4, color:'#000', blur:8, fill:true},
     }).setOrigin(0.5);
 
+    // Build/version stamp — placed under the title so the date the player
+    // is currently running is always visible at a glance.
+    this.add.text(W/2, H*0.20, 'Last updated ' + _fmtVersion(VERSION), {
+      fontFamily:'monospace', fontSize:'14px', color:'#d4a06a',
+      stroke:'#000', strokeThickness:2,
+    }).setOrigin(0.5);
+
     // ── PLAYERS row ──
     this.add.text(W/2, H*0.28, 'PLAYERS', {
       fontFamily:'monospace', fontSize:'15px', color:'#556655',
@@ -4767,10 +4772,6 @@ class ModeSelectScene extends Phaser.Scene {
     this.add.text(W/2, H*0.93, 'Built for Hudson, Zachary & Jared', {
       fontFamily:'monospace', fontSize:'12px', color:'#334433',
     }).setOrigin(0.5);
-
-    this.add.text(W - 8, H - 8, 'Last updated ' + _fmtVersion(VERSION), {
-      fontFamily:'monospace', fontSize:'10px', color:'#2a3a2a',
-    }).setOrigin(1, 1);
 
     // Settings button — bottom left
     const settingsTxt = this.add.text(16, H - 16, '\u2699 Settings', {

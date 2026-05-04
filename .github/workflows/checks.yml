@@ -1,0 +1,54 @@
+name: PR checks
+
+on:
+  pull_request:
+    branches: [main]
+
+jobs:
+  version-bump:
+    name: VERSION must be bumped vs base
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Compare VERSION constant with base branch
+        run: |
+          set -euo pipefail
+          base_ref="${{ github.base_ref }}"
+          git fetch origin "$base_ref" --depth=1
+          base_version=$(git show "origin/${base_ref}:game.js" | grep -E "^const VERSION = " || true)
+          head_version=$(grep -E "^const VERSION = " game.js || true)
+          echo "base: $base_version"
+          echo "head: $head_version"
+          if [ -z "$head_version" ]; then
+            echo "::error::VERSION constant not found in game.js"
+            exit 1
+          fi
+          if [ "$base_version" = "$head_version" ]; then
+            echo "::error::VERSION was not bumped from base branch ($base_ref)."
+            echo "The 'Last updated' line on the title screen will be stale."
+            echo ""
+            echo "Fix locally with the pre-commit hook:"
+            echo "  bash setup.sh   # one-time, configures git to run .githooks/pre-commit"
+            echo "  git commit --amend --no-edit   # re-runs the hook and stamps VERSION"
+            echo ""
+            echo "Or stamp manually:"
+            echo "  sed -i \"s|const VERSION = '[^']*';|const VERSION = '\$(date -u +%Y-%m-%dT%H:%M:%SZ)';|\" game.js"
+            exit 1
+          fi
+          echo "VERSION bumped — OK."
+
+  manifest-sync:
+    name: MANIFEST must reference real symbols
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Run manifest sync check
+        run: node scripts/check-manifest.js
