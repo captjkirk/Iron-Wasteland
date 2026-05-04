@@ -2,6 +2,195 @@
 // IRON WASTELAND  |  Local Co-op Survival
 // Made for Hudson, Zachary & Jared
 // ============================================================
+//
+// ============================================================
+// MANIFEST — NAVIGATION GUIDE FOR THIS FILE
+// ============================================================
+// This file is a single-file Phaser 3 game. Use the anchors below
+// (function names, CFG keys, class names, log tags) as grep targets
+// instead of line numbers, which drift with every edit.
+//
+//   grep -n "functionName" game.js     # find a definition
+//   grep -n "CFG\.KEY_NAME" game.js    # find all uses of a config key
+//   grep -n "_log('\\[BUILD" game.js   # find all build log entries
+//
+// ── FILE STRUCTURE ───────────────────────────────────────────
+//   Top-level constants:    VERSION, _isMobile, CFG, ENEMY_STATS, ENEMY_LOOT, RECIPES
+//   Phaser scenes (classes):
+//     BootScene          — boot/loader
+//     ControlsScene      — keybind display
+//     ModeSelectScene    — solo/co-op + survival/hardcore
+//     SettingsScene      — audio/video toggles
+//     CharSelectScene    — knight/gunslinger/architect/charmer
+//     GameScene          — main gameplay (the bulk of this file)
+//     GameOverScene      — death + stats screen
+//
+// ── GAMEPLAY SYSTEMS ─────────────────────────────────────────
+// Each system lists its primary functions and relevant CFG keys.
+//
+// 1. WORLD / TERRAIN GENERATION
+//    fns:  buildWorld, _buildPonds, _buildLakes, _buildRivers,
+//          buildPOIs, buildRuinsCity, buildBiomeStructures
+//    biome: getBiome, _biomeHash, _biomeNoise, _computeBiomeRaw,
+//           _initBiomeSeeds, _buildBiomeMap, _buildBiomeMapChunked
+//    placement: _isBlockedForPlacement, _footprintOnWaterOrIce
+//    cfg:  MAP_W, MAP_H, TILE, SAFE_R, POND_SPECS, LAKE_SPECS,
+//          RIVER_COUNT, RIVER_WANDER, RIVER_WIDTH_MIN/MAX, PLACEMENT, ROCKS, TREES
+//    data: _biomeSeeds, _waterMap, _iceMap, waterTiles, iceTiles,
+//          deepWaterTiles, mountainTiles, obstacles
+//    log:  [WORLD ]
+//
+// 2. ENEMY AI / PATHFINDING / DAMAGE
+//    fns:  updateEnemies, _steerToward, _hasLOS, _losBlocked,
+//          _findWallOnPath, applyTerrainEffects, _hurtEnemy,
+//          killEnemy, _startDormantIfFar
+//    spawn: spawnEnemies, _spawnGroup, _spawnBiomeEnemy,
+//           _spawnWaterLurker, spawnHuntingParty
+//    cfg:  MAX_ENEMIES, MAX_ACTIVE_ENEMIES, DORMANT_RADIUS, WAKE_RADIUS
+//    data: enemies[], ENEMY_STATS, ENEMY_LOOT
+//    log:  [COMBAT], [WORLD ]
+//
+// 3. ENEMY DENS / RESPAWN
+//    fns:  updateEnemyDens, updateWaterDens
+//    data: enemyDens[], waterDens[]   (each: liveCount, type, pos, timer)
+//
+// 4. WAVES & BOSSES
+//    fns:  updateWaves, updateBoss, spawnBoss, _bossExecuteSpecial,
+//          _bossTelegraph, _fireRaiderShot, _fireArrow, _fireNailGun,
+//          _fireShieldThrow
+//    data: waveNum, waveTimer, boss, _bossChance, _huntingParty
+//    log:  [WORLD ], [COMBAT]
+//
+// 5. PLAYER MOVEMENT & INPUT
+//    fns:  movePlayer, aimAtMouse, applyTouchInput, applyTerrainEffects,
+//          getControls, initTouchControls, _onTouchDown/Move/Up,
+//          openPauseSettings
+//    data: p1, p2 (spr, hp, maxHp, charData, inv), _joy, _tcBtns, wasd, p2keys
+//    cfg:  CAM_PAD, CAM_ZOOM_MIN, CAM_ZOOM_MAX
+//
+// 6. PLAYER COMBAT (per-character abilities)
+//    fns:  doAttack, doAlt, meleeSwing, _triggerAtkAnim, _hitPause,
+//          _floatDamage, _knightShieldBlock, _dropSpiderWeb,
+//          _emitCharmSparkle, _emitLurkerBubble
+//    chars by id: knight, gunslinger, architect, charmer,
+//                 raider, spider, lurker, troll
+//    data: player.atkCooldown, player.ammo, player.reserveAmmo, teamAmmoPool
+//    log:  [COMBAT], [PLAYER]
+//
+// 7. DEATH & REVIVE
+//    fns:  handleDeath, checkDeaths, updateDowned, updateRevive,
+//          revivePlayer, checkBothDead, buildReviveBar, drawReviveBar,
+//          _showSleepIndicator, _hideSleepIndicator
+//    cfg:  DOWN_TIME, REVIVE_TIME, REVIVE_RANGE
+//    data: player.isDowned, player.downedTimer, reviving, reviveProgress
+//    log:  [PLAYER]
+//
+// 8. BUILDING & CRAFTING
+//    build: toggleBuildMode, updateBuildMode, placeBuild, exitBuildMode,
+//           tryInteract, _tryTeardownBuild, deployTurret
+//    craft: openCraftMenu, closeCraftMenu, updateCraftMenu, craftSelected,
+//           renderCraftMenu, _craftScrollToSel
+//    barracks: openBarrack, closeBarrack, barrackNav, barrackConfirm,
+//              refreshBarrackCards, buildBarrackOverlay, checkBarrackRange
+//    data: buildType, buildRotation, buildOwner, RECIPES,
+//          buildStructures, teamWoodPool, teamAmmoPool
+//    log:  [BUILD ], [PLAYER]
+//
+// 9. WALLS / SPIKES / STRUCTURE DAMAGE
+//    fns:  updateSpikeTraps, damageStructure, _addWallToBuckets,
+//          _removeWallFromBuckets, _wallBucketKey, _wallNearby,
+//          _refreshWallClustersNear, _addFireGlow
+//    data: structures, walls, spikes, _wallBuckets, _wallClusters
+//    log:  [COMBAT], [BUILD ]
+//
+// 10. DAY/NIGHT & DIFFICULTY
+//     fns:  updateDayNight, _diffMult, _updateDayLabel
+//     data: dayNum, nightNum, timeAlive, hardcore, this.hc (modifiers)
+//
+// 11. RELICS / RADIO TOWERS / ALTAR / CAMPFIRES
+//     fns:  updateRelicChannels, checkRadioTowerRange, _relicCarrier,
+//           _relicPressure, _cancelRelicChannel, _depositRelic,
+//           _pickupRelic, _showRelicHint, _processHintQueue,
+//           _spawnTorch, _addFireGlow, _updateFireGlows
+//     cfg:  FOG_REVEAL_R, FOG_UPDATE_INTERVAL
+//     data: _relicPOIs, relicsHeld, altarPos, altarDiscovered, _fireGlows
+//
+// 12. RAIDERS (camps + raid events)
+//     fns:  updateRaiders, placeRaiderCamp, spawnRaiders,
+//           checkRaidCacheRange, openRaidCache
+//     data: raiderCamps, _raiderCampDay, _raidCacheClaimed
+//
+// 13. HARVESTING & RESOURCES
+//     fns:  updateHarvest, harvest, drawHarvestUI, setupCratePickups,
+//           dropResource, _floatPickup, updateTreeSeeds, _plantTreeSeed
+//     data: treeSeeds, crates, items, itemDrops
+//     cfg:  ITEM_DESPAWN_MS
+//
+// 14. CAMERAS (dual-cam: world + HUD)
+//     fns:  updateCamera, syncLabels
+//     data: gameCam, hudCam, _camDist, _camCenterX, _camCenterY
+//     cfg:  W, H, CAM_PAD, CAM_ZOOM_MIN, CAM_ZOOM_MAX
+//     NOTE: any new world object MUST be ignored by hudCam.
+//
+// 15. HUD / MINIMAP / THREAT INDICATORS
+//     fns:  buildHUD, redrawHUD, _showStatus, _showScoutPanel,
+//           _hideScoutPanel, _updateScoutPanel, _drawThreatIndicators, hint
+//     minimap: buildMinimapBase, _renderMinimapBase, updateMinimap,
+//              _paintMinimapTile, _unpaintMinimapTile, _buildMinimapColorMap
+//     cfg:  MINIMAP_HINT_DELAY_MS
+//     data: hudTexts, minimapBase, minimapGraphics, _minimapVisible
+//
+// 16. FOG OF WAR
+//     fns:  revealFog, updateFog, _hasLOS, _losBlocked
+//     cfg:  FOG_REVEAL_R, FOG_UPDATE_INTERVAL
+//     data: fogRevealed (Uint8Array), fogVisible, _fogVisibleBuilding
+//
+// 17. AUDIO (Web Audio API)
+//     class: Music         (background + boss switch via Music.switchToBoss)
+//     SFX wired into combat/pickup/build callsites.
+//
+// 18. PROCEDURAL TEXTURES (no image files)
+//     fns:  buildTextures, makeScaleProxy
+//     enemy draws: drawWolf, drawRat, drawBear, drawIceCrawler,
+//                  drawSpiderRuins, drawBogLurker, drawDustHound, drawWaterLurker
+//     character draws: drawKnight*, drawGunslinger*, drawArchitect*,
+//                      drawLauren* (charmer), drawAbigail* (charmer alt)
+//                      directional variants: Step/Front/Back/FSide/BSide/Atk
+//
+// 19. INPUT MODES (kbd / gamepad / touch)
+//     fns:  getControls, activeInputMode, isTouchDevice,
+//           _onBtnPress, keyDisplayName
+//     data: wasd, p2keys, mouseBtn, _joy
+//
+// 20. DEBUG LOG & PERF
+//     fns:  _log, _qlog, _dbgRefresh, _downloadLog, hint
+//     log tags: [WORLD ], [PLAYER], [COMBAT], [BUILD ], [perf], [error]
+//     data: _dbgEntries (persists across runs), _perfBudget
+//     in-game: backtick ` toggles overlay; C copies, G downloads.
+//     CLAUDE.md: ALWAYS ASK FOR THE LOG when investigating bugs.
+//
+// 21. TUTORIAL
+//     fns:  startTutorial, _tutTrigger, _showNextTutTip,
+//           _clearTutObjs, _endTutorial
+//     cfg:  TUT_AUTO_ADVANCE_MS
+//     data: _tutShown, _tutObjects, _tutQueue
+//
+// 22. GAME OVER / VICTORY
+//     fns:  triggerGameOver, _triggerVictory, checkBothDead, handleDeath
+//     scene: GameOverScene
+//     win condition: relicsHeld === 5 (deposited at altar)
+//
+// 23. SETTINGS / SAVE
+//     fns:  loadSettings, saveSettings, toggleSleep
+//     data: STATE (mode/difficulty), persisted via localStorage
+//
+// ── COMMON GOTCHAS ───────────────────────────────────────────
+// • Two cameras: new world objects must call hudCam.ignore(obj).
+// • Water detection uses _waterTileSet (Set of "tx,ty"), NOT physics overlap.
+// • Enemy dormancy: enemies > DORMANT_RADIUS are physics-disabled and hidden;
+//   they re-enable inside WAKE_RADIUS (hysteresis).
+// • Edits must also land in the canonical iCloud folder (see CLAUDE.md).
+// ============================================================
 'use strict';
 
 // ── VERSION ───────────────────────────────────────────────────
