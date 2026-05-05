@@ -105,7 +105,7 @@
 //    log:  [COMBAT], [BUILD ]
 //
 // 10. DAY/NIGHT & DIFFICULTY
-//     fns:  updateDayNight, _diffMult, _updateDayLabel
+//     fns:  updateDayNight, _diffMult, _diffSpeedMult, _updateDayLabel
 //     data: dayNum, dayTimer, isNight, timeAlive, hardcore, hc
 //
 // 11. RELICS / RADIO TOWERS / ALTAR / CAMPFIRES
@@ -194,7 +194,7 @@
 // ── VERSION ───────────────────────────────────────────────────
 // Update this each commit so the title screen reflects the build date.
 // Stored as UTC ISO so it can be displayed in each player's local timezone.
-const VERSION = '2026-05-04T12:59:12Z';
+const VERSION = '2026-05-05T23:32:28Z';
 // Format VERSION into the viewer's local time with abbreviated tz name (EDT, PDT, BST, etc.)
 function _fmtVersion(iso) {
   try {
@@ -257,50 +257,76 @@ const ENEMY_STATS = {
   bog_lurker:   { hp:55,  speed:55,  dmg:13, baseScale:1.8, w:20, h:14, atkInterval:2000, aggro: 80 },
   dust_hound:   { hp:28,  speed:118, dmg:5,  baseScale:1.3, w:18, h:12, atkInterval:1500, aggro:200 },
 };
+// Per-type loot tables (#116). Each entry: [item_key, chance, flags].
+// flags: 0 = plain rdm, 1 = foodMult-scaled, 2 = rare (hardcore can lock to bosses only).
+// Universal food roll has been removed — every enemy controls its own food chance.
+// Fallback for unrecognised types lives inline in dropResource.
 const ENEMY_LOOT = {
   // ── Grass / common wildlife ──────────────────────────────────
-  wolf:         [['item_fiber', 0.6, 0],   // pelt
-                 ['item_food',  0.5, 1],   // meat — wolves are hunted for food
-                 ['item_metal', 0.15, 0]], // canine teeth (small scrap chance)
+  wolf:         [['item_fiber', 0.7,  0],   // primary pelt
+                 ['item_fiber', 0.35, 0],   // double-pelt roll on big specimens
+                 ['item_food',  0.25, 1],   // meat (food-scaled)
+                 ['item_metal', 0.2,  0]],  // canine teeth scrap
 
-  rat:          [['item_fiber', 0.6, 0],   // fur
-                 ['item_ammo',  0.3, 0],   // gnaws through ammo boxes
-                 ['item_wood',  0.2, 0]],  // nesting scraps
+  // Larger wolf variant — same loot mix but everything bumped slightly.
+  dire_wolf:    [['item_fiber', 0.7,  0],
+                 ['item_fiber', 0.35, 0],
+                 ['item_food',  0.25, 1],
+                 ['item_metal', 0.2,  0]],
 
-  bear:         [['item_metal', 1e9, 0],   // claws — always drops metal
-                 ['item_food',  0.85, 1],  // massive animal = big meat haul
-                 ['item_wood',  0.5, 0],   // clawed-up logs
-                 ['item_fiber', 0.4, 0]],  // dense fur
+  rat:          [['item_fiber', 0.75, 0],   // fur
+                 ['item_ammo',  0.3,  0],   // gnawed-open ammo boxes
+                 ['item_food',  0.12, 1]],  // sparse meat (food-scaled)
 
-  // ── Raider camps ────────────────────────────────────────────
-  brawler:      _RAIDER_LOOT,
-  shooter:      _RAIDER_LOOT,
-  heavy:        _RAIDER_LOOT,
+  bear:         [['item_metal', 1e9,  0],   // claws — always drops metal
+                 ['item_food',  0.8,  1],   // massive animal = big meat haul
+                 ['item_wood',  0.5,  0],   // clawed-up logs
+                 ['item_fiber', 0.5,  0]],  // dense fur
 
-  // ── Tundra: rare items + ammo from frozen caches ─────────────
-  ice_crawler:  [['item_fiber', 0.55, 0],  // chitinous fibers
-                 ['item_ammo',  0.3,  0],  // frozen military cache
-                 ['item_rare',  0.25, 2]], // tundra ice crystal shard
+  // ── Raider camps — first non-boss source of rares (med kits) ──
+  brawler:      [['item_ammo',  0.7,  0],
+                 ['item_metal', 0.45, 0],
+                 ['item_rare',  0.08, 2],   // looted med kit
+                 ['item_food',  0.25, 1]],
+  shooter:      [['item_ammo',  0.7,  0],
+                 ['item_metal', 0.45, 0],
+                 ['item_rare',  0.08, 2],
+                 ['item_food',  0.25, 1]],
+  heavy:        [['item_ammo',  0.7,  0],
+                 ['item_metal', 0.45, 0],
+                 ['item_rare',  0.08, 2],
+                 ['item_food',  0.25, 1]],
 
-  // ── Ruins: THE fiber biome; spiders hoard ancient relics ─────
-  spider_ruins: [['item_fiber', 0.8,  0],  // webbing
-                 ['item_metal', 0.3,  0],  // hoarded scrap
-                 ['item_rare',  0.15, 2]], // ancient artifact snagged in web
+  // ── Tundra ───────────────────────────────────────────────────
+  ice_crawler:  [['item_fiber', 0.55, 0],   // chitinous fibers
+                 ['item_rare',  0.25, 2],   // ice crystal shard
+                 ['item_food',  0.2,  1]],
 
-  // ── Swamp / Fungal: food + bioluminescent rares ──────────────
-  bog_lurker:   [['item_food',  0.65, 1],  // large creature = lots of meat
-                 ['item_fiber', 0.35, 0],  // leathery hide
-                 ['item_rare',  0.12, 2]], // bioluminescent gland
+  // ── Ruins / arachnids — fiber biome, no food (carapace-only) ─
+  spider_ruins: [['item_fiber', 0.7,  0],
+                 ['item_metal', 0.25, 0],
+                 ['item_rare',  0.1,  2]],
+  spitter:      [['item_fiber', 0.7,  0],
+                 ['item_metal', 0.25, 0],
+                 ['item_rare',  0.1,  2]],
+  acid_toad:    [['item_fiber', 0.7,  0],
+                 ['item_metal', 0.25, 0],
+                 ['item_rare',  0.1,  2]],
 
-  // ── Waste / Desert: ammo scavenging + food ───────────────────
-  dust_hound:   [['item_food',  0.5,  1],  // pack animal, decent meat
-                 ['item_fiber', 0.4,  0],  // tough wasteland hide
-                 ['item_ammo',  0.3,  0]], // scavenged from ruins
+  // ── Swamp / Fungal: food-leaning ─────────────────────────────
+  bog_lurker:   [['item_food',  0.55, 1],   // large creature = lots of meat
+                 ['item_fiber', 0.35, 0],   // leathery hide
+                 ['item_rare',  0.15, 2]],  // bioluminescent gland
+
+  // ── Waste / Desert: thin meat, fiber, scavenged ammo ─────────
+  dust_hound:   [['item_food',  0.25, 1],
+                 ['item_fiber', 0.55, 0],
+                 ['item_ammo',  0.2,  0]],
 
   // ── Lakes: aquatic food + water pearls ───────────────────────
-  water_lurker: [['item_food',  0.7,  1],  // rich aquatic meat
-                 ['item_fiber', 0.45, 0],  // scales/membrane
-                 ['item_rare',  0.15, 2]], // iridescent water pearl
+  water_lurker: [['item_food',  0.7,  1],   // rich aquatic meat
+                 ['item_fiber', 0.45, 0],   // scales/membrane
+                 ['item_rare',  0.15, 2]],  // iridescent water pearl
 
   // ── Biome bosses (on top of the guaranteed rare+metal+ammo) ──
   boss_golem:   [['item_ammo',  0.9,  0],  // wasteland warlord stockpile
@@ -6406,6 +6432,112 @@ class GameScene extends Phaser.Scene {
     this._buildLakes(stx, sty);
     this._log(`buildWorld: _buildLakes done  water=${(this.waterTiles||[]).length} ice=${(this.iceTiles||[]).length} dens=${(this.waterDens||[]).length}`, 'world');
 
+    // ── POST-WATER CLEANUP (issue #109) ──────────────────────
+    // Trees, rocks, and pre-computed POI tiles are chosen before water is
+    // carved out, so lake/pond tiles can land on top of them. Sweep every
+    // obstacle now sitting in water and relocate any POI that ended up
+    // submerged so the radio tower / dens / caches / campsites / biome
+    // structures spawn on dry, reachable ground. River-overlap obstacles
+    // are caught by the existing terrain pass after _buildRivers.
+    {
+      const _MW = CFG.MAP_W, _MH = CFG.MAP_H;
+      const _anyWaterMap = new Uint8Array(_MW * _MH);
+      if (this._waterMap) {
+        for (let i = 0; i < _anyWaterMap.length; i++) if (this._waterMap[i]) _anyWaterMap[i] = 1;
+      }
+      if (this.deepWaterTiles) {
+        for (const t of this.deepWaterTiles) {
+          const tx = Math.round(t.x / TILE), ty = Math.round(t.y / TILE);
+          if (tx >= 0 && tx < _MW && ty >= 0 && ty < _MH) _anyWaterMap[tx + ty * _MW] = 1;
+        }
+      }
+      const _isWater = (tx, ty) =>
+        tx >= 0 && tx < _MW && ty >= 0 && ty < _MH && _anyWaterMap[tx + ty * _MW] === 1;
+
+      // 1. Destroy underwater trees / rocks / spires (mountains preserved).
+      const _SUNKEN = new Set(['rock','rock2','ice_rock','rock_desert','ice_spire','rock_spire','mangrove_roots']);
+      let _treesSunk = 0, _rocksSunk = 0;
+      this.obstacles.getChildren().slice().forEach(ob => {
+        if (!ob || !ob.active) return;
+        const k = ob.texture && ob.texture.key;
+        if (k === 'mountain' || k === 'mountain2') return;
+        if (!ob.isTree && !_SUNKEN.has(k)) return;
+        const tx = Math.floor(ob.x / TILE), ty = Math.floor(ob.y / TILE);
+        if (!_isWater(tx, ty)) return;
+        if (ob.isTree) _treesSunk++; else _rocksSunk++;
+        ob.destroy();
+      });
+
+      // 2. Relocate underwater POIs to nearest dry tile (12-tile ring search).
+      const _findDry = (tx, ty) => {
+        if (!_isWater(tx, ty)) return { tx, ty };
+        for (let r = 1; r <= 12; r++) {
+          for (let dx = -r; dx <= r; dx++) {
+            for (let dy = -r; dy <= r; dy++) {
+              if (Math.max(Math.abs(dx), Math.abs(dy)) !== r) continue;
+              if (!_isWater(tx + dx, ty + dy)) return { tx: tx + dx, ty: ty + dy };
+            }
+          }
+        }
+        return null;
+      };
+      const _relocateArr = (arr) => {
+        let moved = 0, dropped = 0;
+        if (!arr) return { moved, dropped };
+        for (let i = arr.length - 1; i >= 0; i--) {
+          const p = arr[i];
+          if (!p) continue;
+          const dry = _findDry(p.tx, p.ty);
+          if (!dry) { arr.splice(i, 1); dropped++; continue; }
+          if (dry.tx !== p.tx || dry.ty !== p.ty) {
+            p.tx = dry.tx; p.ty = dry.ty;
+            // Recompute fjord gap toward map center from the new position.
+            if (typeof p.gapAngle === 'number') p.gapAngle = Math.atan2(sty - p.ty, stx - p.tx);
+            moved++;
+          }
+        }
+        return { moved, dropped };
+      };
+      const cR = _relocateArr(this._preCacheTiles_caches);
+      const dR = _relocateArr(this._preDenTiles);
+      const cmR = _relocateArr(this._preCampsiteTiles);
+      let twM = 0, twD = 0;
+      if (this._preTowerTile) {
+        const dry = _findDry(this._preTowerTile.tx, this._preTowerTile.ty);
+        if (!dry) { this._preTowerTile = null; twD = 1; }
+        else if (dry.tx !== this._preTowerTile.tx || dry.ty !== this._preTowerTile.ty) {
+          this._preTowerTile.tx = dry.tx;
+          this._preTowerTile.ty = dry.ty;
+          if (typeof this._preTowerTile.gapAngle === 'number') {
+            this._preTowerTile.gapAngle = Math.atan2(sty - this._preTowerTile.ty, stx - this._preTowerTile.tx);
+          }
+          twM = 1;
+        }
+      }
+      let stM = 0, stD = 0;
+      if (this._preStructureTiles) {
+        for (const arr of Object.values(this._preStructureTiles)) {
+          const r = _relocateArr(arr);
+          stM += r.moved; stD += r.dropped;
+        }
+      }
+      // Rebuild the unified _preCacheTiles list (read by mountain fjord protection
+      // and the post-buildPOIs clearance pass) from the (possibly relocated) parts.
+      const newCache = [];
+      if (this._preCacheTiles_caches) newCache.push(...this._preCacheTiles_caches);
+      if (this._preDenTiles)          newCache.push(...this._preDenTiles);
+      if (this._preTowerTile)         newCache.push(this._preTowerTile);
+      if (this._preCampsiteTiles)     newCache.push(...this._preCampsiteTiles);
+      if (this._preStructureTiles) {
+        for (const arr of Object.values(this._preStructureTiles)) newCache.push(...arr);
+      }
+      this._preCacheTiles = newCache;
+
+      this._log(`post-water cleanup  sunk_trees=${_treesSunk} sunk_rocks=${_rocksSunk}  ` +
+        `relocated caches=${cR.moved}/${cR.dropped} dens=${dR.moved}/${dR.dropped} ` +
+        `camps=${cmR.moved}/${cmR.dropped} tower=${twM}/${twD} structs=${stM}/${stD} (moved/dropped)`, 'world');
+    }
+
     // _preCacheTiles already populated above (all POI positions, before tree/rock placement)
 
     // Mountain ranges — impassable ridgelines with walkable gaps
@@ -9838,13 +9970,15 @@ class GameScene extends Phaser.Scene {
     const worldW = CFG.MAP_W * CFG.TILE, worldH = CFG.MAP_H * CFG.TILE;
     const { TILE } = CFG;
 
-    // Pick boss type based on biome spread — random for now
+    // Pick boss type based on biome spread — random for now.
+    // Base hp/dmg bumped (#111). Armor is flat mitigation per hit (#110).
+    // Special intervals tightened (#113) so bosses don't feel like they're waiting their turn.
     const bossTypes = [
-      { key: 'boss_golem',  name: 'Iron Golem',   biome: 'waste',  hp: 600, speed: 55,  dmg: 22, specialType: 'slam',   specialInterval: 5500 },
-      { key: 'boss_wolf',   name: 'Alpha Wolf',    biome: 'grass',  hp: 420, speed: 100, dmg: 16, specialType: 'charge', specialInterval: 4000 },
-      { key: 'boss_spider', name: 'Spider Queen',  biome: 'ruins',  hp: 480, speed: 85,  dmg: 18, specialType: 'spray',  specialInterval: 5000 },
-      { key: 'boss_troll',  name: 'Frost Troll',   biome: 'tundra', hp: 700, speed: 65,  dmg: 28, specialType: 'slam',   specialInterval: 6500 },
-      { key: 'boss_hydra',  name: 'Bog Hydra',     biome: 'swamp',  hp: 540, speed: 65,  dmg: 20, specialType: 'spray',  specialInterval: 5500 },
+      { key: 'boss_golem',  name: 'Iron Golem',   biome: 'waste',  hp: 780,  speed: 55,  dmg: 28, armor: 4, specialType: 'slam',   specialInterval: 5000 },
+      { key: 'boss_wolf',   name: 'Alpha Wolf',    biome: 'grass',  hp: 600,  speed: 100, dmg: 22, armor: 1, specialType: 'charge', specialInterval: 3500 },
+      { key: 'boss_spider', name: 'Spider Queen',  biome: 'ruins',  hp: 720,  speed: 85,  dmg: 24, armor: 2, specialType: 'spray',  specialInterval: 4200 },
+      { key: 'boss_troll',  name: 'Frost Troll',   biome: 'tundra', hp: 1050, speed: 65,  dmg: 36, armor: 5, specialType: 'slam',   specialInterval: 5800 },
+      { key: 'boss_hydra',  name: 'Bog Hydra',     biome: 'swamp',  hp: 900,  speed: 65,  dmg: 26, armor: 2, specialType: 'spray',  specialInterval: 4800 },
     ];
     // Biome-anchored pick — prefer a boss whose biome matches where the
     // players currently are, so the boss reads as something emerging from
@@ -9901,13 +10035,17 @@ class GameScene extends Phaser.Scene {
       hpBg.fillRect(-_bw/2 - 1, -103, _bw + 2, 14);
     }
 
-    const _bossHp  = Math.max(1, Math.round(bt.hp  * this.hc.bossHpMult));
-    const _bossDmg = Math.max(1, Math.round(bt.dmg * this.hc.bossDmgMult));
+    // Boss day-cycle HP/dmg scaling (#111) — +15% per 5 days starting day 6, capped at 2.0×.
+    const _bossCycle = Math.max(0, Math.floor(((this.dayNum || 1) - 5) / 5));
+    const _bossScale = Math.min(2.0, 1 + _bossCycle * 0.15);
+    const _bossHp  = Math.max(1, Math.round(bt.hp  * _bossScale * this.hc.bossHpMult));
+    const _bossDmg = Math.max(1, Math.round(bt.dmg * _bossScale * this.hc.bossDmgMult));
     this.boss = {
       spr, hp: _bossHp, maxHp: _bossHp,
       speed: bt.speed, dmg: _bossDmg, name: bt.name,
+      armor: bt.armor || 0, // flat mitigation; 1-dmg floor enforced in _hurtEnemy (#110)
       isBoss: true, type: bt.key,
-      attackTimer: 0, atkInterval: 2200,
+      attackTimer: 0, atkInterval: 1900, // base interval tightened from 2200ms (#113)
       aggroRange: 99999, attackRange: 70, wanderTimer: 0, sizeMult: 1,
       hpBg, hpBar,
       shadow, baseScale: BOSS_SCALE, _hitTweenUntil: 0,
@@ -9924,7 +10062,7 @@ class GameScene extends Phaser.Scene {
     this.boss._indicator = _bossInd;
 
     // Announce arrival
-    this._log(`Boss spawned: ${bt.name}  hp=${_bossHp}  dmg=${_bossDmg}  day=${this.dayNum}  diff=${this._diffMult().toFixed(1)}x`, 'world');
+    this._log(`Boss spawned: ${bt.name}  hp=${_bossHp}  dmg=${_bossDmg}  armor=${bt.armor||0}  day=${this.dayNum}  cycle=${_bossCycle} scale=${_bossScale.toFixed(2)}x  diff=${this._diffMult().toFixed(2)}x`, 'world');
     this.hint('\u2620 ' + bt.name.toUpperCase() + ' APPROACHES! \u2620', 6000);
     SFX.bossRoar();
     this._log('spawnBoss: roar done', 'world');
@@ -9997,10 +10135,10 @@ class GameScene extends Phaser.Scene {
       return;
     }
 
-    // Bog Hydra passive HP regen — 5 HP/s. Suppress while flinching from a
+    // Bog Hydra passive HP regen — 8 HP/s (#113, was 5). Suppress while flinching from a
     // recent hit so sustained DPS actually drops HP instead of racing regen.
     if (b.type === 'boss_hydra' && b.hp < b.maxHp && b.hp > 0 && !(b._flinchTimer > 0)) {
-      b.hp = Math.min(b.maxHp, b.hp + 5 * (delta / 1000));
+      b.hp = Math.min(b.maxHp, b.hp + 8 * (delta / 1000));
     }
 
     // ── Animation: shadow, idle breathing, walk bob ─────────────
@@ -10195,8 +10333,8 @@ class GameScene extends Phaser.Scene {
         this._bossTelegraph(b, nearest);
       }
 
-      // Alpha Wolf howl — summon 2 wolves when below 50% HP, every 12s
-      if (b.type === 'boss_wolf' && b.hp < b.maxHp * 0.5) {
+      // Alpha Wolf howl — summon 2 wolves when below 65% HP, every 12s (#113, was 50%)
+      if (b.type === 'boss_wolf' && b.hp < b.maxHp * 0.65) {
         if (!b._howlTimer) b._howlTimer = 12000;
         b._howlTimer -= delta;
         if (b._howlTimer <= 0) {
@@ -10495,9 +10633,10 @@ class GameScene extends Phaser.Scene {
         if (this.hudCam) this.hudCam.ignore(spr);
         this.physics.add.collider(spr, this.obstacles);
         const D = this._diffMult();
+        const Dspd = this._diffSpeedMult();
         const hp  = Math.floor(t.hp  * sizeMult * D);
         const dmg = Math.max(1, Math.floor(t.dmg * sizeMult * D));
-        const spd = t.speed * D * (sizeMult < 0.85 ? 1.3 : sizeMult > 1.2 ? 0.8 : 1);
+        const spd = t.speed * Dspd * (sizeMult < 0.85 ? 1.3 : sizeMult > 1.2 ? 0.8 : 1);
         const atkInterval = Math.max(500, Math.round(({ wolf:1600, rat:1200, bear:2400 }[type] || 1400) / D));
         const denBaseAggro = { wolf: 190, rat: 110, bear: 290 }[type] || 160;
         const e = { spr, hp, maxHp:hp, speed:spd, dmg, atkInterval, type, attackTimer:0, wanderTimer:0, aggroRange:denBaseAggro, attackRange:30*sizeMult, sizeMult, _den: den };
@@ -11129,8 +11268,14 @@ class GameScene extends Phaser.Scene {
   // hit-flash tint, SFX, and kill check. Use instead of inline e.hp -= X everywhere.
   _hurtEnemy(e, dmg, fromX, fromY, tint = 0xff6644, owner = null) {
     if (!e || e.dying) return;
-    e.hp -= dmg;
-    e._flinchTimer = 220;
+    // Boss armor mitigation (#110) — flat reduction with a 1-dmg floor so no
+    // weapon ever deals zero. Trash enemies skip this entirely.
+    const eff = e.isBoss ? Math.max(1, dmg - (e.armor || 0)) : dmg;
+    e.hp -= eff;
+    if (e.isBoss) {
+      this._log(`boss hit ${e.type || ''} dmg=${eff} (raw=${dmg} armor=${e.armor || 0}) hp=${Math.max(0, Math.round(e.hp))}/${e.maxHp}`, 'combat');
+    }
+    e._flinchTimer = 132;
     if (e._dormant) { e._dormant = false; if (e.spr.body) { this.physics.world.bodies.set(e.spr.body); e.spr.body.enable = true; e.spr.body.reset(e.spr.x, e.spr.y); } }
     if (fromX !== undefined && e.spr.body) {
       const ang = Phaser.Math.Angle.Between(fromX, fromY, e.spr.x, e.spr.y);
@@ -11804,18 +11949,20 @@ class GameScene extends Phaser.Scene {
       drops.push('item_ammo');
     } else {
       // Food drops scale down each day so mid-game survival stays tense.
+      // Steeper post-#116: -15%/day, floor 25% (was -12%/day, floor 35%).
       // Hardcore additionally multiplies every roll by hc.resourceDropMult (0.75).
       const rdm      = this.hc.resourceDropMult;
-      const foodMult = Math.max(0.35, 1 - 0.12 * ((this.dayNum || 1) - 1));
-      // All enemies drop food sometimes
-      if (Math.random() < 0.4 * foodMult * rdm) drops.push('item_food');
-      // Type-specific drops via lookup table (flags: 0=plain rdm, 1=foodMult*rdm, 2=rare/hc-blocked)
-      const _loot = ENEMY_LOOT[enemyType];
-      if (_loot) {
-        for (const [item, chance, flags] of _loot) {
-          if (flags === 2 && this.hc.rareDropsBossOnly) continue;
-          if (Math.random() < chance * (flags === 1 ? foodMult : 1) * rdm) drops.push(item);
-        }
+      const foodMult = Math.max(0.25, 1 - 0.15 * ((this.dayNum || 1) - 1));
+      // No universal food roll — each type's own table controls its food chance.
+      // Type-specific drops via lookup table (flags: 0=plain rdm, 1=foodMult*rdm, 2=rare/hc-blocked).
+      // Unknown types fall through to a small generic drop so new enemies always give something.
+      const _loot = ENEMY_LOOT[enemyType] || [
+        ['item_food',  0.4, 1],
+        ['item_fiber', 0.3, 0],
+      ];
+      for (const [item, chance, flags] of _loot) {
+        if (flags === 2 && this.hc.rareDropsBossOnly) continue;
+        if (Math.random() < chance * (flags === 1 ? foodMult : 1) * rdm) drops.push(item);
       }
     }
     drops.forEach((key, i) => {
@@ -12427,9 +12574,10 @@ class GameScene extends Phaser.Scene {
     const sizeMult = Phaser.Math.FloatBetween(1.0, 1.4);
     const sc = 2.0 * sizeMult;
     const D = this._diffMult();
+    const Dspd = this._diffSpeedMult();
     const hp  = Math.floor(75 * sizeMult * D);
     const dmg = Math.max(1, Math.floor(14 * sizeMult * D));
-    const spd = 52 * D;
+    const spd = 52 * Dspd;
     const spr = this.physics.add.image(x, y, 'water_lurker').setScale(sc).setDepth(8);
     spr.setCollideWorldBounds(true);
     spr.body.setSize(22, 12);
@@ -12450,6 +12598,7 @@ class GameScene extends Phaser.Scene {
   _spawnBiomeEnemy(type, biome, count, packSize) {
     const { TILE, SAFE_R } = CFG;
     const D = this._diffMult();
+    const Dspd = this._diffSpeedMult();
     const worldW = this.enemyWorldW, worldH = this.enemyWorldH;
     const cx = this.enemyCX, cy = this.enemyCY;
     const t = ENEMY_STATS[type];
@@ -12478,7 +12627,7 @@ class GameScene extends Phaser.Scene {
         const sc = t.baseScale * sizeMult;
         const hp  = Math.floor(t.hp  * sizeMult * D);
         const dmg = Math.max(1, Math.floor(t.dmg * sizeMult * D));
-        const spd = t.speed * D * (sizeMult > 1.2 ? 0.85 : 1);
+        const spd = t.speed * Dspd * (sizeMult > 1.2 ? 0.85 : 1);
         const atkInterval = Math.max(500, Math.round(t.atkInterval / D));
         const spr = this.physics.add.image(
           Phaser.Math.Clamp(ex, TILE*3, worldW-TILE*3),
@@ -12503,22 +12652,27 @@ class GameScene extends Phaser.Scene {
     this._nextPackId = packId;
   }
 
-  // Day-based difficulty multiplier.
-  // Survival: base 1.0, +10% per day, cap 3.0× on day 21+.
-  // Hardcore: base 1.15, +15% per day, cap 3.5× (see this.hc).
-  // Applies to enemy HP, damage, speed, and attack rate at spawn time.
+  // Day-based difficulty multiplier (#117 — piecewise, no cap).
+  // Day 1–5 ramps at 1.5× the per-day step; day 6+ ramps at 2.0×. No cap, so
+  // long runs keep tightening. Speed has its own cap via _diffSpeedMult().
+  // Applies to enemy HP, damage, and attack rate at spawn time.
   _diffMult() {
-    const hc = this.hc || { diffBase: 1.0, diffRamp: 0.10, diffCap: 3.0 };
+    const hc = this.hc || { diffBase: 1.0, diffRamp: 0.10 };
     const day = Math.max(1, this.dayNum || 1);
-    const rawDayScale = hc.diffBase + (day - 1) * hc.diffRamp;
-    // Soft post-cap: once rawDayScale hits the cap, keep adding ~1/3 of the
-    // daily ramp so late-game tension never flatlines. Prevents the
-    // day-21+ plateau the audit flagged without making numbers runaway.
-    const capped = Math.min(hc.diffCap, rawDayScale);
-    const overflow = Math.max(0, rawDayScale - hc.diffCap) * 0.33;
-    const dayScale = capped + overflow;
+    const earlyRamp = hc.diffRamp * 1.5;
+    const lateRamp  = hc.diffRamp * 2.0;
+    const earlyEnd  = hc.diffBase + 4 * earlyRamp; // value at day 5
+    const dayScale  = (day <= 5)
+      ? hc.diffBase + (day - 1) * earlyRamp
+      : earlyEnd + (day - 5) * lateRamp;
     const relicScale = 1 + (this.relicsDeposited || 0) * 0.2;
     return dayScale * relicScale;
+  }
+
+  // Speed multiplier — same as _diffMult but capped at 2.0× so late-game
+  // enemies can't physically outrun the player even as HP/dmg climb (#114).
+  _diffSpeedMult() {
+    return Math.min(2.0, this._diffMult());
   }
 
   _relicPressure() {
@@ -12559,6 +12713,7 @@ class GameScene extends Phaser.Scene {
   _spawnGroup(worldW, worldH, cx, cy, counts, fromEdges) {
     const { TILE, SAFE_R } = CFG;
     const D = this._diffMult();
+    const Dspd = this._diffSpeedMult();
     // Canonical stats live at module top (ENEMY_STATS). atkInterval is divided
     // by D so enemies attack faster on later days.
     const keys = Object.keys(counts);
@@ -12599,7 +12754,7 @@ class GameScene extends Phaser.Scene {
         const sc = t.baseScale * sizeMult;
         const hp  = Math.floor(t.hp    * sizeMult * D);
         const dmg = Math.max(1, Math.floor(t.dmg  * sizeMult * D));
-        const spd = t.speed * D * (sizeMult < 0.85 ? 1.3 : sizeMult > 1.2 ? 0.8 : 1);
+        const spd = t.speed * Dspd * (sizeMult < 0.85 ? 1.3 : sizeMult > 1.2 ? 0.8 : 1);
         const atkInterval = Math.max(500, Math.round(t.atkInterval / D));
         const spr = this.physics.add.image(ex, ey, key).setScale(sc).setDepth(8);
         spr.setCollideWorldBounds(true);
@@ -12638,7 +12793,7 @@ class GameScene extends Phaser.Scene {
         this._spawnBiomeEnemy('bog_lurker',   'swamp',  Math.min(1 + wn, 4),  1);
         this._spawnBiomeEnemy('dust_hound',   'waste',  Math.min(3 * wn, 9),  3);
       }
-      this._log('Wave ' + this.waveNum + ' day=' + this.dayNum + ' diff=' + this._diffMult().toFixed(1) + 'x  w=' + w + ' r=' + r + ' b=' + b, 'world');
+      this._log('Wave ' + this.waveNum + ' day=' + this.dayNum + ' diff=' + this._diffMult().toFixed(2) + 'x speed=' + this._diffSpeedMult().toFixed(2) + 'x  w=' + w + ' r=' + r + ' b=' + b, 'world');
       this.hint('Wave ' + this.waveNum + '! Enemies approaching from the wastes!', 3000);
       SFX._play(150, 'triangle', 0.55, 0.12, 'drop');
     }
