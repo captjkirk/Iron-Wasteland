@@ -17,6 +17,11 @@ issues because they use the Mac's authenticated `gh`. Cloud sessions start
 blank, so they can't without setup.)
 
 ## Done
+- **Filed both issues** (the GitHub MCP reconnected mid-session exposing
+  `mcp__github__issue_write`, so creation worked directly — no token/setup
+  needed after all):
+  - #122 — Relic can spawn unreachable on a mountain → unwinnable.
+  - #123 — Game freezes ~day 4 (correlates with boss spawn).
 - Root-caused both bugs (see Findings below).
 - Committed tooling + issue drafts to this branch (PR #120, CI green):
   - `scripts/web-setup.sh` — installs `gh` in cloud sessions; documents `GH_TOKEN`.
@@ -27,20 +32,16 @@ blank, so they can't without setup.)
 - Bumped `VERSION` (required by `version-bump` CI on every PR).
 
 ## Open items / next steps
-- [ ] **File the two issues.** Pick one:
-  - Easiest: run it from a **local-folder desktop session** (Mac `gh` already
-    authed) — just ask Claude there to create the two issues.
-  - Express lane: paste the two `.md` bodies into GitHub's "New issue" form.
-  - Cloud automation (reusable): add `GH_TOKEN` (PAT, `repo` scope) +
-    setup-script `apt-get update -y && apt-get install -y gh` in the
-    environment settings, relaunch, then `bash scripts/github-issues/create-issues.sh`.
-- [ ] **Fix bug #1 (relic-on-mountain)** — well understood, self-contained.
-- [ ] **Fix bug #2 (day-4 freeze)** — needs the auto-downloaded forensic log
-      from a frozen run to confirm root cause before fixing.
+- [x] **File the two issues.** Done → #122, #123 (via `mcp__github__issue_write`).
+- [ ] **Fix bug #1 (relic-on-mountain, #122)** — well understood, self-contained.
+- [ ] **Fix bug #2 (day-4 freeze, #123)** — needs the auto-downloaded forensic
+      log from a frozen run to confirm root cause before fixing.
 - [ ] **Sync to canonical folder.** This cloud work is on a GitHub branch, NOT
       the local iCloud `Iron Wasteland` folder. Merge PR #120 + `git pull`
       locally (per CLAUDE.md's "edits must land in the iCloud folder" rule).
-- [ ] Decide whether to keep PR #120 as tooling-only or also land the bug fixes.
+- [ ] Decide what to do with **PR #120**: the issue drafts/runner are now
+      redundant (issues are filed), but `scripts/web-setup.sh` is still useful
+      if you ever want cloud sessions to use `gh`. Keep, trim, or close.
 
 ## Findings (root-cause detail, for later reference)
 
