@@ -18,4 +18,4 @@ echo "  ✓ .githooks/pre-commit marked executable"
 
 echo ""
 echo "Setup complete. You're ready to go!"
-echo "  Edit game.js, open index.html in a browser, no build step needed."
+echo "  Edit a file in src/, open index.html in a browser, no build step needed."
