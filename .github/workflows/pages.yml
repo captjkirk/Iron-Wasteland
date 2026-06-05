@@ -1,0 +1,56 @@
+name: Deploy to GitHub Pages
+
+# Deploys the game to GitHub Pages on every push to main, and stamps the
+# VERSION constant with the ACTUAL publish time at deploy. That way the
+# "Last updated …" line on the live title screen always reflects when the
+# site was really published — not when a commit happened to be made — so a
+# glance at the loading page confirms you're on the latest published build.
+#
+# Local development is unaffected: there's still no build step — edit game.js
+# and refresh. This stamping happens only in the deployed copy, in CI.
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch: {}
+
+# Least-privilege perms required by the Pages deploy actions.
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+# Never run two deploys at once; let an in-flight deploy finish.
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Stamp VERSION with the actual publish time
+        run: |
+          set -euo pipefail
+          NEW_VERSION="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+          perl -i -pe "s|const VERSION = '[^']*';|const VERSION = '${NEW_VERSION}';|" game.js
+          echo "Published VERSION → ${NEW_VERSION}"
+          grep -m1 "const VERSION" game.js
+
+      - name: Configure Pages
+        uses: actions/configure-pages@v5
+
+      - name: Upload site artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: '.'
+
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4

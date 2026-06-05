@@ -13,8 +13,11 @@ fi
 # Current time as UTC ISO 8601 (e.g. 2026-04-15T13:43:00Z)
 NEW_VERSION=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
 
-# Replace the VERSION constant — matches the ISO format we now use
-sed -i "s|const VERSION = '[0-9T:Z-]*';|const VERSION = '${NEW_VERSION}';|" "$GAME_FILE"
+# Replace the VERSION constant — matches the ISO format we now use.
+# Uses `perl -i` (not `sed -i`) for portability: GNU `sed -i` works on the Linux
+# CI runner, but BSD/macOS `sed -i` requires a backup-suffix argument and would
+# abort the commit here under `set -euo pipefail`. perl -i behaves the same on both.
+perl -i -pe "s|const VERSION = '[^']*';|const VERSION = '${NEW_VERSION}';|" "$GAME_FILE"
 
 # Re-stage the file so the updated timestamp is included in this commit
 git add "$GAME_FILE"
