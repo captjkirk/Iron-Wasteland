@@ -194,7 +194,7 @@
 // ── VERSION ───────────────────────────────────────────────────
 // Update this each commit so the title screen reflects the build date.
 // Stored as UTC ISO so it can be displayed in each player's local timezone.
-const VERSION = '2026-06-05T15:24:44Z';
+const VERSION = '2026-06-05T19:07:38Z';
 // Format VERSION into the viewer's local time with abbreviated tz name (EDT, PDT, BST, etc.)
 function _fmtVersion(iso) {
   try {
