@@ -1,7 +1,9 @@
 #!/usr/bin/env node
-// Verifies that the MANIFEST comment block at the top of game.js does not
-// reference symbols (function names or CFG keys) that no longer exist in
-// the file. Run by CI on every PR; also runnable locally:
+// Verifies that the MANIFEST comment block (top of src/config.js) does not
+// reference symbols (function names or CFG keys) that no longer exist in the
+// codebase. The game was split from game.js into src/*.js, so the manifest is
+// validated against ALL of those files concatenated. Run by CI on every PR;
+// also runnable locally:
 //
 //   node scripts/check-manifest.js
 //
@@ -11,20 +13,35 @@
 const fs = require('fs');
 const path = require('path');
 
-const GAME_FILE = path.join(__dirname, '..', 'game.js');
-const src = fs.readFileSync(GAME_FILE, 'utf8');
+const SRC_DIR = path.join(__dirname, '..', 'src');
+const MANIFEST_FILE = path.join(SRC_DIR, 'config.js');
+
+if (!fs.existsSync(MANIFEST_FILE)) {
+  console.error('check-manifest: ' + MANIFEST_FILE + ' not found.');
+  process.exit(1);
+}
+
+const configSrc = fs.readFileSync(MANIFEST_FILE, 'utf8');
 
 const startMarker = 'MANIFEST — NAVIGATION GUIDE';
 const endMarker = "'use strict';";
-const start = src.indexOf(startMarker);
-const end = src.indexOf(endMarker);
+const start = configSrc.indexOf(startMarker);
+const end = configSrc.indexOf(endMarker);
 if (start < 0 || end < 0 || end < start) {
-  console.error('check-manifest: MANIFEST block not found in game.js.');
+  console.error('check-manifest: MANIFEST block not found in src/config.js.');
   console.error('  Expected the marker "' + startMarker + '" before "' + endMarker + '".');
   process.exit(1);
 }
-const manifest = src.slice(start, end);
-const code = src.slice(0, start) + src.slice(end);
+const manifest = configSrc.slice(start, end);
+
+// Build the searchable code corpus: src/config.js WITHOUT its manifest block
+// (so symbols mentioned only in the manifest comment don't satisfy their own
+// check) plus every other src/*.js file in full.
+let code = configSrc.slice(0, start) + configSrc.slice(end);
+for (const f of fs.readdirSync(SRC_DIR).sort()) {
+  if (!f.endsWith('.js') || f === 'config.js') continue;
+  code += '\n' + fs.readFileSync(path.join(SRC_DIR, f), 'utf8');
+}
 
 // Labels whose values are function/state-variable identifiers.
 const FN_LABELS = new Set([
@@ -100,7 +117,7 @@ if (stale.length) {
     (stale.length === 1 ? 'y' : 'ies') + ' (referenced symbol not found in code):');
   for (const s of stale) console.error('  [' + s.kind + '] ' + s.id);
   console.error('');
-  console.error('Fix: open the MANIFEST block at the top of game.js and');
+  console.error('Fix: open the MANIFEST block at the top of src/config.js and');
   console.error('  rename or remove these entries so they match the current code.');
   process.exit(1);
 }

@@ -55,6 +55,16 @@
 <body>
   <div id="game-container"></div>
   <script src="lib/phaser.min.js"></script>
-  <script src="game.js?v=20260415_1430"></script>
+  <!-- game.js was split into focused modules. These are CLASSIC scripts (no ES
+       modules), so they share one global scope just like the old single file.
+       Load order is dependency order; main.js (the launch) must come last. -->
+  <script src="src/version.js?v=20260415_1430"></script>
+  <script src="src/config.js?v=20260415_1430"></script>
+  <script src="src/audio.js?v=20260415_1430"></script>
+  <script src="src/sprites.js?v=20260415_1430"></script>
+  <script src="src/scenes-menu.js?v=20260415_1430"></script>
+  <script src="src/scene-game.js?v=20260415_1430"></script>
+  <script src="src/scene-gameover.js?v=20260415_1430"></script>
+  <script src="src/main.js?v=20260415_1430"></script>
 </body>
 </html>

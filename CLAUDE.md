@@ -1,32 +1,44 @@
 # Iron Wasteland — Claude Code Reference
 
 ## Project Overview
-Single-file Phaser 3 browser game (`game.js`, ~14.7k lines). No build step — edit `game.js` and refresh the browser. All game logic, textures (generated via `Phaser.Graphics.generateTexture`), audio (Web Audio API), and UI live in `game.js`. `index.html` is a thin shell; `lib/phaser.min.js` is the engine.
+Phaser 3 browser game split across `src/*.js` (~14.7k lines total; formerly one `game.js`). **No build step** — edit a file in `src/` and refresh the browser. The files are CLASSIC `<script>`s (NOT ES modules), so they share one global scope exactly like the old single file. All game logic, textures (generated via `Phaser.Graphics.generateTexture`), audio (Web Audio API), and UI live in `src/`. `index.html` loads them in dependency order; `lib/phaser.min.js` is the engine.
 
-## Navigation Manifest (top of `game.js`)
-The first ~190 lines of `game.js` are a comment-block **MANIFEST** that maps every gameplay system to its primary functions, `CFG` keys, and log tags. **Read it first** before searching the file — match the user's request to a numbered system, then grep the listed function name. Do not scroll the whole file.
+File map (load order — see `index.html`):
+| File | Contents |
+|------|----------|
+| `src/version.js` | `VERSION` constant + `_fmtVersion` |
+| `src/config.js` | **MANIFEST lives here**; `CFG`, data tables, biome/RNG/log helpers, `CHARS`, `STATE` |
+| `src/audio.js` | `Music`, `SFX` (Web Audio) |
+| `src/sprites.js` | all `draw*()`, `getControls`, `makeScaleProxy`, `buildTextures` |
+| `src/scenes-menu.js` | `DEFAULT_BINDINGS` + Boot/Controls/ModeSelect/Settings/CharSelect scenes |
+| `src/scene-game.js` | `GameScene` — the bulk of the game |
+| `src/scene-gameover.js` | `GameOverScene` |
+| `src/main.js` | `new Phaser.Game(...)` launch — loads **last** |
+
+## Navigation Manifest (top of `src/config.js`)
+The first ~210 lines of `src/config.js` are a comment-block **MANIFEST** that maps every gameplay system to its primary functions, `CFG` keys, log tags, and source file. **Read it first** before searching — match the user's request to a numbered system, then grep the listed function name across `src/`. Do not scroll whole files.
 
 ### Manifest maintenance — REQUIRED on every change
-Whenever you edit `game.js`, you MUST also update the MANIFEST block in the same commit if any of the following are true:
+Whenever you edit a file in `src/`, you MUST also update the MANIFEST block (in `src/config.js`) in the same commit if any of the following are true:
 - You **add** a new gameplay system or major function (give it a numbered entry, or extend an existing one).
 - You **rename** a function, `CFG.*` key, or `this.*` state variable that is listed in the manifest.
 - You **remove** any function, `CFG.*` key, or state variable that is listed in the manifest.
 - You **deprecate** a system (mark it as deprecated in the entry, or remove the entry).
 
-CI enforces this via `.github/workflows/checks.yml` → `manifest-sync`. The check (`scripts/check-manifest.js`) parses the manifest and fails the PR if any referenced symbol is no longer present in the file. Run it locally before pushing:
+CI enforces this via `.github/workflows/checks.yml` → `manifest-sync`. The check (`scripts/check-manifest.js`) parses the manifest from `src/config.js` and validates referenced symbols against **all** `src/*.js` files; it fails the PR if any symbol is missing. Run it locally before pushing:
 ```bash
 node scripts/check-manifest.js
 ```
 
 ## VERSION constant — REQUIRED bump on every PR
-The `VERSION` constant (top of `game.js`, line ~199) is rendered prominently on the title screen as "Last updated …". It must be different on every PR vs `main`.
+The `VERSION` constant (in `src/version.js`) is rendered prominently on the title screen as "Last updated …". It must be different on every PR vs `main`.
 
-- **Local:** `bash setup.sh` once configures git to run `.githooks/pre-commit`, which auto-stamps `VERSION` to the current UTC time on every commit.
+- **Local:** `bash setup.sh` once configures git to run `.githooks/pre-commit`, which auto-stamps `VERSION` (in `src/version.js`) to the current UTC time on every commit.
 - **CI:** `.github/workflows/checks.yml` → `version-bump` fails any PR where `VERSION` matches the base branch. This is the hard guarantee — it cannot be skipped, even if the local hook isn't installed.
 
 If CI flags you, stamp manually:
 ```bash
-sed -i "s|const VERSION = '[^']*';|const VERSION = '$(date -u +%Y-%m-%dT%H:%M:%SZ)';|" game.js
+sed -i "s|const VERSION = '[^']*';|const VERSION = '$(date -u +%Y-%m-%dT%H:%M:%SZ)';|" src/version.js
 ```
 
 ## Debug Log System

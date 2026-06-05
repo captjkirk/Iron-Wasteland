@@ -6,8 +6,9 @@ name: Deploy to GitHub Pages
 # site was really published — not when a commit happened to be made — so a
 # glance at the loading page confirms you're on the latest published build.
 #
-# Local development is unaffected: there's still no build step — edit game.js
-# and refresh. This stamping happens only in the deployed copy, in CI.
+# Local development is unaffected: there's still no build step — edit the
+# relevant src/*.js file and refresh. This stamping happens only in the
+# deployed copy, in CI.
 
 on:
   push:
@@ -39,9 +40,9 @@ jobs:
         run: |
           set -euo pipefail
           NEW_VERSION="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
-          perl -i -pe "s|const VERSION = '[^']*';|const VERSION = '${NEW_VERSION}';|" game.js
+          perl -i -pe "s|const VERSION = '[^']*';|const VERSION = '${NEW_VERSION}';|" src/version.js
           echo "Published VERSION → ${NEW_VERSION}"
-          grep -m1 "const VERSION" game.js
+          grep -m1 "const VERSION" src/version.js
 
       - name: Configure Pages
         uses: actions/configure-pages@v5

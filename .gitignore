@@ -3,3 +3,4 @@ __MACOSX/
 *.icloud
 .iCloud/
 logs/
+.lint-bundle.js
