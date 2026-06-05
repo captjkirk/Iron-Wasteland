@@ -72,7 +72,11 @@ The live overlay header also shows: FPS, day/phase, difficulty multiplier, activ
 - `DORMANT_RADIUS / WAKE_RADIUS` — enemy activation thresholds in px
 
 ## Working Directory
-**All edits must target the canonical project folder:** `~/Library/Mobile Documents/com~apple~CloudDocs/Family Sharing/Iron Wasteland/`
+**All edits must target the canonical project folder:** `~/Desktop/Iron Wasteland/`
+
+> Moved out of iCloud Drive on 2026-06-05. iCloud was corrupting the git object store
+> (an interrupted fetch left a pack with no index → unreadable HEAD). The repo now lives on
+> local disk and syncs to GitHub via SSH. Do **not** put the working clone back in iCloud.
 
 Never edit files only inside a worktree. When working in a worktree, always ensure changes are committed/merged back to `main` so the canonical folder stays up to date. If the user asks to update the game, confirm edits land in this folder.
 

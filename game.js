@@ -194,7 +194,7 @@
 // ── VERSION ───────────────────────────────────────────────────
 // Update this each commit so the title screen reflects the build date.
 // Stored as UTC ISO so it can be displayed in each player's local timezone.
-const VERSION = '2026-05-04T12:59:12Z';
+const VERSION = '2026-05-24T06:35:12Z';
 // Format VERSION into the viewer's local time with abbreviated tz name (EDT, PDT, BST, etc.)
 function _fmtVersion(iso) {
   try {
@@ -6553,6 +6553,73 @@ class GameScene extends Phaser.Scene {
     for (const dt of this.deepWaterTiles) {
       const _itx = Math.floor(dt.x / TILE), _ity = Math.floor(dt.y / TILE);
       this._impassableTileSet.add(_itx + ',' + _ity);
+    }
+
+    // ── POST-WATER / POST-MOUNTAIN POI RELOCATION ────────────────────────────
+    // Pre-POI tiles were chosen before _buildPonds/_buildLakes/_buildRivers and
+    // before mountain placement. Water + mountains can now sit on top of them.
+    // Relocate any POI that landed on an impassable tile to the nearest dry,
+    // non-mountain tile via ring search. Drop POIs that can't be saved.
+    {
+      const MAP_W = CFG.MAP_W, MAP_H = CFG.MAP_H;
+      const _impass = (tx, ty) =>
+        (tx < 1 || tx > MAP_W - 2 || ty < 1 || ty > MAP_H - 2) ||
+        (this._waterMap && this._waterMap[tx + ty * MAP_W]) ||
+        (this._solidTileSet && this._solidTileSet.has(tx + ',' + ty));
+
+      const RELOC_RING = 12;
+      const _findDry = (tx0, ty0) => {
+        if (!_impass(tx0, ty0)) return { tx: tx0, ty: ty0 };
+        for (let r = 1; r <= RELOC_RING; r++) {
+          for (let dx = -r; dx <= r; dx++) {
+            for (let dy = -r; dy <= r; dy++) {
+              if (Math.abs(dx) !== r && Math.abs(dy) !== r) continue;
+              const tx = tx0 + dx, ty = ty0 + dy;
+              if (!_impass(tx, ty)) return { tx, ty };
+            }
+          }
+        }
+        return null;
+      };
+
+      let moved = 0, dropped = 0;
+
+      const _sweepArray = (arr, label) => {
+        if (!arr) return;
+        for (let i = arr.length - 1; i >= 0; i--) {
+          const p = arr[i];
+          if (!p) { arr.splice(i, 1); continue; }
+          const dst = _findDry(p.tx, p.ty);
+          if (dst === null) {
+            arr.splice(i, 1); dropped++;
+            this._log(`POI relocate: dropped ${label} @ ${p.tx},${p.ty}`, 'world');
+          } else if (dst.tx !== p.tx || dst.ty !== p.ty) {
+            p.tx = dst.tx; p.ty = dst.ty; moved++;
+          }
+        }
+      };
+
+      _sweepArray(this._preCacheTiles_caches, 'cache');
+      _sweepArray(this._preDenTiles, 'den');
+      _sweepArray(this._preCampsiteTiles, 'campsite');
+
+      if (this._preTowerTile) {
+        const dst = _findDry(this._preTowerTile.tx, this._preTowerTile.ty);
+        if (dst === null) {
+          this._preTowerTile = null; dropped++;
+          this._log('POI relocate: dropped tower', 'world');
+        } else if (dst.tx !== this._preTowerTile.tx || dst.ty !== this._preTowerTile.ty) {
+          this._preTowerTile.tx = dst.tx; this._preTowerTile.ty = dst.ty; moved++;
+        }
+      }
+
+      if (this._preStructureTiles) {
+        for (const biome of Object.keys(this._preStructureTiles)) {
+          _sweepArray(this._preStructureTiles[biome], `structure(${biome})`);
+        }
+      }
+
+      this._log(`POI relocate done  moved=${moved} dropped=${dropped}`, 'world');
     }
 
     // Pre-build minimap terrain color map — makes trees, water, rocks, and buildings
