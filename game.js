@@ -194,7 +194,7 @@
 // ── VERSION ───────────────────────────────────────────────────
 // Update this each commit so the title screen reflects the build date.
 // Stored as UTC ISO so it can be displayed in each player's local timezone.
-const VERSION = '2026-06-05T15:24:44Z';
+const VERSION = '2026-06-06T15:44:23Z';
 // Format VERSION into the viewer's local time with abbreviated tz name (EDT, PDT, BST, etc.)
 function _fmtVersion(iso) {
   try {
@@ -6435,7 +6435,7 @@ class GameScene extends Phaser.Scene {
       if (this._preStructureTiles) {
         for (const structs of Object.values(this._preStructureTiles)) {
           for (const pos of structs) {
-            if (Math.abs(tx - pos.tx) < 5 && Math.abs(ty - pos.ty) < 5) return;
+            if (Math.abs(tx - pos.tx) < 8 && Math.abs(ty - pos.ty) < 8) return;
           }
         }
       }
@@ -8981,11 +8981,11 @@ class GameScene extends Phaser.Scene {
       if (this._perfBudget && this._perfBudget.n > 0) {
         const _n = this._perfBudget.n;
         const _av = k => (this._perfBudget[k] / _n).toFixed(2);
-        this._log(`frame budget (${_n}fr avg)  terrain=${_av('terrain')}ms  enemies=${_av('enemies')}ms  waves=${_av('waves')}ms  dens=${_av('dens')}ms  raiders=${_av('raiders')}ms  boss=${_av('boss')}ms  daynight=${_av('daynight')}ms  glows=${_av('glows')}ms`, 'perf');
+        this._log(`frame budget (${_n}fr avg)  terrain=${_av('terrain')}ms  enemies=${_av('enemies')}ms  waves=${_av('waves')}ms  dens=${_av('dens')}ms  raiders=${_av('raiders')}ms  boss=${_av('boss')}ms  daynight=${_av('daynight')}ms  glows=${_av('glows')}ms  fog=${_av('fog')}ms  minimap=${_av('minimap')}ms  hud=${_av('hud')}ms  threats=${_av('threats')}ms`, 'perf');
         this._perfBudget = null;
       }
     }
-    if (!this._perfBudget) this._perfBudget = { terrain: 0, enemies: 0, waves: 0, dens: 0, raiders: 0, boss: 0, daynight: 0, glows: 0, n: 0 };
+    if (!this._perfBudget) this._perfBudget = { terrain: 0, enemies: 0, waves: 0, dens: 0, raiders: 0, boss: 0, daynight: 0, glows: 0, fog: 0, minimap: 0, hud: 0, threats: 0, n: 0 };
 
     // _onIce, _inShallowWater, and toxic pool detection are now all computed per-frame
     // inside applyTerrainEffects via Uint8Array map lookups — no reset needed here.
@@ -9113,11 +9113,11 @@ class GameScene extends Phaser.Scene {
     _safe('updateCraftMenu',  () => this.updateCraftMenu(delta));
     _safe('updateHarvest',    () => this.updateHarvest(delta));
     _safe('updateSpikeTraps', () => this.updateSpikeTraps());
-    _safe('updateFog',        () => this.updateFog());
-    _safe('updateMinimap',    () => this.updateMinimap());
+    { const _t0 = performance.now(); _safe('updateFog',        () => this.updateFog());               this._perfBudget.fog     += performance.now() - _t0; }
+    { const _t0 = performance.now(); _safe('updateMinimap',    () => this.updateMinimap());            this._perfBudget.minimap += performance.now() - _t0; }
     _safe('updateTreeSeeds',  () => this.updateTreeSeeds(delta));
-    _safe('redrawHUD',        () => this.redrawHUD());
-    _safe('threatIndicators', () => this._drawThreatIndicators());
+    { const _t0 = performance.now(); _safe('redrawHUD',        () => this.redrawHUD());               this._perfBudget.hud     += performance.now() - _t0; }
+    { const _t0 = performance.now(); _safe('threatIndicators', () => this._drawThreatIndicators());   this._perfBudget.threats += performance.now() - _t0; }
     _safe('_updateScoutPanel', () => this._updateScoutPanel());
     if (this._touchActive) _safe('_drawTouchHUD', () => this._drawTouchHUD());
   }
@@ -9626,6 +9626,7 @@ class GameScene extends Phaser.Scene {
         attackRange: stats.range, attackTimer: 0, atkInterval: stats.atkInterval,
         shootRange: stats.shootRange, rangedTimer: 0,
         aggroRange: 320, wanderTimer: Phaser.Math.Between(0, 2000), sizeMult: 1,
+        home: { x: cx, y: cy }, // leash anchor — raiders return here when not aggroed and drifting too far
       };
       this.raiders.push(raider);
       this.enemies.push(raider); // raiders participate in the normal enemy array so updateEnemies handles them
@@ -11445,6 +11446,8 @@ class GameScene extends Phaser.Scene {
   // with a download prompt. Manual calls (G in overlay) always download.
   _downloadLog(auto) {
     if (!this._dbgEntries) return;
+    const isLAN = /^(localhost|127\.|192\.168\.|10\.|172\.(1[6-9]|2\d|3[01])\.)/.test(location.hostname);
+    if (!isLAN) return;
     if (auto) {
       try {
         if (loadSettings().autoDownloadLog === false) {
@@ -13435,10 +13438,18 @@ class GameScene extends Phaser.Scene {
       } else {
         e.wanderTimer -= delta;
         if (e.wanderTimer <= 0) {
-          const ang = Math.random() * Math.PI * 2;
+          let wanderX, wanderY;
+          // Leash: raiders with a home position return to camp when they've drifted too far
+          if (e.home && Phaser.Math.Distance.Between(e.spr.x, e.spr.y, e.home.x, e.home.y) > 400) {
+            const homeAng = Phaser.Math.Angle.Between(e.spr.x, e.spr.y, e.home.x, e.home.y);
+            wanderX = e.spr.x + Math.cos(homeAng) * 200;
+            wanderY = e.spr.y + Math.sin(homeAng) * 200;
+          } else {
+            const ang = Math.random() * Math.PI * 2;
+            wanderX = e.spr.x + Math.cos(ang) * 200;
+            wanderY = e.spr.y + Math.sin(ang) * 200;
+          }
           const wspd = (e._effectiveSpeed !== undefined ? e._effectiveSpeed : e.speed) * 0.3;
-          const wanderX = e.spr.x + Math.cos(ang) * 200;
-          const wanderY = e.spr.y + Math.sin(ang) * 200;
           const vel = this._steerToward(e, wanderX, wanderY, wspd);
           e.spr.setVelocity(vel.x, vel.y);
           e.wanderTimer = Phaser.Math.Between(1500, 3500);
@@ -14743,6 +14754,8 @@ class GameOverScene extends Phaser.Scene {
   // auto-downloaded copy in ./logs/ since the server key is by filename/timestamp.
   _downloadFeedbackLog(feedbackText) {
     if (!this._dbgEntries) return;
+    const isLAN = /^(localhost|127\.|192\.168\.|10\.|172\.(1[6-9]|2\d|3[01])\.)/.test(location.hostname);
+    if (!isLAN) return;
     const t    = Math.floor(this.timeAlive || 0);
     const mode = `${this.mode === 1 ? 'Solo' : '2P'} ${this.difficulty === 'hardcore' ? 'Hardcore' : 'Survival'}`;
     const lines = [
