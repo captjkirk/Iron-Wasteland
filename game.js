@@ -194,7 +194,7 @@
 // ── VERSION ───────────────────────────────────────────────────
 // Update this each commit so the title screen reflects the build date.
 // Stored as UTC ISO so it can be displayed in each player's local timezone.
-const VERSION = '2026-06-06T15:44:23Z';
+const VERSION = '2026-06-06T22:07:15Z';
 // Format VERSION into the viewer's local time with abbreviated tz name (EDT, PDT, BST, etc.)
 function _fmtVersion(iso) {
   try {
@@ -9711,7 +9711,7 @@ class GameScene extends Phaser.Scene {
         raider.aggroRange = 320;
         raider.speed = raider.speed / 1.15; // undo the hunt speed boost
         const _huntAlive = this.raiders.filter(r => r.isHuntParty && r.hp > 0 && r.spr?.active).length;
-        this._log(`Hunt party expired  type=${raider.type}  dist=${nearDist.toFixed(0)}px  remaining_hunters=${_huntAlive}  pos=(${Math.floor(raider.spr.x/CFG.TILE)},${Math.floor(raider.spr.y/CFG.TILE)})`, 'world');
+        this._log(`Hunt party expired  type=${raider.type}  remaining_hunters=${_huntAlive}  pos=(${Math.floor(raider.spr.x/CFG.TILE)},${Math.floor(raider.spr.y/CFG.TILE)})`, 'world');
       }
 
       let nearest = null, nearDist = Infinity;
