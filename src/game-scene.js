@@ -1389,13 +1389,21 @@ class GameScene extends Phaser.Scene {
       ? this._preDenTiles
       : ['waste', 'swamp', 'tundra'].map(b => findInBiome(b, 50));
     for (const pos of denPositions) {
-      const px = pos.tx * TILE, py = pos.ty * TILE;
+      // Pre-computed den tiles are picked BEFORE mountains are placed; validate now.
+      // If the tile ended up inside a mountain or deep water, find a fresh clear spot.
+      let actualPos = pos;
+      if (this._impassableTileSet && this._impassableTileSet.has(pos.tx + ',' + pos.ty)) {
+        const fb = findInBiome(getBiome(pos.tx, pos.ty), 60);
+        if (fb) actualPos = fb;
+        this._log(`den relocated from (${pos.tx},${pos.ty}) to (${actualPos.tx},${actualPos.ty}) — was inside mountain`, 'world');
+      }
+      const px = actualPos.tx * TILE, py = actualPos.ty * TILE;
       const spr = this._w(this.add.image(px, py, 'enemy_den').setScale(2).setDepth(5));
       const lbl = this._w(this.add.text(px, py - 24, 'ENEMY DEN', {
         fontFamily:'monospace', fontSize:'8px', color:'#cc4444', stroke:'#000', strokeThickness:2
       }).setOrigin(0.5).setDepth(7));
-      this.enemyDens.push({ x: px, y: py, tx: pos.tx, ty: pos.ty, respawnTimer: 0 });
-      this.pois.push({ type:'den', tx:pos.tx, ty:pos.ty, spr });
+      this.enemyDens.push({ x: px, y: py, tx: actualPos.tx, ty: actualPos.ty, respawnTimer: 0 });
+      this.pois.push({ type:'den', tx: actualPos.tx, ty: actualPos.ty, spr });
     }
 
     // Radio Tower (1, in ruins biome) — use pre-computed position
@@ -6102,6 +6110,9 @@ class GameScene extends Phaser.Scene {
     this._autoPaused = false;
     this._log('auto-resume', 'world');
     if (this.scene && this.scene.isPaused('Game')) this.scene.resume('Game');
+    // Clear stale key-down states so nothing is "stuck" after the tab was backgrounded.
+    // Without this, a key held before the tab-switch stays .isDown = true forever.
+    try { if (this.input && this.input.keyboard) this.input.keyboard.resetKeys(); } catch(e) {}
     try {
       if (typeof Music !== 'undefined' && Music.ctx && Music.ctx.state === 'suspended' && Music.playing) {
         Music.ctx.resume();
