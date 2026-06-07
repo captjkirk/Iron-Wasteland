@@ -158,7 +158,7 @@
 //           _drawThreatIndicators, hint
 //     minimap: _renderMinimapBase, _paintMinimapTile, _unpaintMinimapTile,
 //              _buildMinimapColorMap
-//     data: hudCam, hudRelicText, minimapGfx, minimapDots, mmBounds, _scoutPanel
+//     data: hudCam, hudRelicText, minimapGfx, minimapDots, mmBounds, _scoutPanel, _hudDirty
 //
 // 16. FOG OF WAR
 //     fns:  revealFog, updateFog, _hasLOS, _losBlocked

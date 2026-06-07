@@ -1976,6 +1976,7 @@ class GameScene extends Phaser.Scene {
   // ── HUD ─────────────────────────────────────────────────────
   buildHUD() {
     const { W, H } = CFG;
+    this._hudDirty = true;
 
     this.ammoIcons = { p1:null, p2:null };
     if (STATE.p1CharId==='gunslinger') this.ammoIcons.p1 = this.makeAmmoRow(14, 14, 0x6699ff);
@@ -2717,7 +2718,7 @@ class GameScene extends Phaser.Scene {
     this.reviving = false;
     if (this.revBar) this.revBar.setVisible(false);
     player._revivePromptShown = false;
-    this.redrawHUD();
+    this._hudDirty = true;
     this.hint(player.charData.player + ' is back up! (' + player.hp + ' HP)', 3000);
   }
 
@@ -3119,7 +3120,7 @@ class GameScene extends Phaser.Scene {
     this._floatPickup(rel.x, rel.y - 10, 'Relic acquired!');
     this.hint('⬛ Relic in hand…', 5000);
     this._log(`${player.charData.player} picked up relic  biome=${rel.biome}  held=${this.relicsHeld}  remaining=${this._relicPOIs.length}`, 'player');
-    this.redrawHUD();
+    this._hudDirty = true;
 
     // 5th relic: all enemies converge — apocalypse
     // Wake up to MAX_ACTIVE_ENEMIES immediately; the aggro aura wakes the rest each frame
@@ -3165,7 +3166,7 @@ class GameScene extends Phaser.Scene {
     this.cameras.main.shake(200 + dep * 40, 0.006 + dep * 0.002);
     this._floatPickup(this.altarPos.x, this.altarPos.y - 10, dep + '/5 Relics Deposited!');
     this._log(`Relic deposited  deposited=${dep}/5  diffMult=${this._diffMult().toFixed(2)}x`, 'world');
-    this.redrawHUD();
+    this._hudDirty = true;
 
     if (dep >= 5) {
       this._triggerVictory();
@@ -3410,7 +3411,7 @@ class GameScene extends Phaser.Scene {
       this.ammoIcons[key].forEach(ic => ic.destroy()); this.ammoIcons[key] = null;
     }
 
-    this.redrawHUD(); this.closeBarrack();
+    this._hudDirty = true; this.closeBarrack();
     this.hint('Now ' + newCh.player + ' — ' + newCh.title + '!', 2500);
   }
 
@@ -3809,7 +3810,7 @@ class GameScene extends Phaser.Scene {
     { const _t0 = performance.now(); _safe('updateFog',        () => this.updateFog());               this._perfBudget.fog     += performance.now() - _t0; }
     { const _t0 = performance.now(); _safe('updateMinimap',    () => this.updateMinimap());            this._perfBudget.minimap += performance.now() - _t0; }
     _safe('updateTreeSeeds',  () => this.updateTreeSeeds(delta));
-    { const _t0 = performance.now(); _safe('redrawHUD',        () => this.redrawHUD());               this._perfBudget.hud     += performance.now() - _t0; }
+    { const _t0 = performance.now(); if (this._hudDirty) { _safe('redrawHUD', () => { this.redrawHUD(); this._hudDirty = false; }); } this._perfBudget.hud += performance.now() - _t0; }
     { const _t0 = performance.now(); _safe('threatIndicators', () => this._drawThreatIndicators());   this._perfBudget.threats += performance.now() - _t0; }
     _safe('_updateScoutPanel', () => this._updateScoutPanel());
     if (this._touchActive) _safe('_drawTouchHUD', () => this._drawTouchHUD());
@@ -5447,7 +5448,7 @@ class GameScene extends Phaser.Scene {
         return;
       }
       player.ammo--;
-      this.redrawHUD();
+      this._hudDirty = true;
       SFX.shoot();
       const angle = this.getAimAngle(player);
       const blt = this.physics.add.image(player.spr.x, player.spr.y, 'bullet').setDepth(15).setScale(1.5);
@@ -5637,7 +5638,7 @@ class GameScene extends Phaser.Scene {
           }
           player.reloading = false;
           this._log(`${player.charData.player} reloaded  ammo=${player.ammo}  reserve=${player.reserveAmmo}  pool=${this.teamAmmoPool}`, 'player');
-          this.redrawHUD(); SFX.reload();
+          this._hudDirty = true; SFX.reload();
         });
       } else if (totalAvailable <= 0 && player.ammo < clipSize) {
         this.hint('No ammo left! Find more drops.', 2000);
@@ -5876,7 +5877,7 @@ class GameScene extends Phaser.Scene {
   _hurtEnemy(e, dmg, fromX, fromY, tint = 0xff6644, owner = null) {
     if (!e || e.dying) return;
     e.hp -= dmg;
-    e._flinchTimer = 220;
+    e._flinchTimer = 132;
     if (e._dormant) { e._dormant = false; if (e.spr.body) { this.physics.world.bodies.set(e.spr.body); e.spr.body.enable = true; e.spr.body.reset(e.spr.x, e.spr.y); } }
     if (fromX !== undefined && e.spr.body) {
       const ang = Phaser.Math.Angle.Between(fromX, fromY, e.spr.x, e.spr.y);
@@ -6592,7 +6593,7 @@ class GameScene extends Phaser.Scene {
             this._log(`${player.charData.player} picked up ammo → team pool  pool=${this.teamAmmoPool}`, 'player');
             label = '+3 Ammo (Team)';
           }
-          this.redrawHUD();
+          this._hudDirty = true;
         } else if (item.itemType === 'food') {
           if (player.hp < player.maxHp) {
             const _foodHeal = Math.max(1, Math.round(15 * this.hc.foodHealMult));
@@ -8426,7 +8427,7 @@ class GameScene extends Phaser.Scene {
             this.teamAmmoPool += 4;
             this._log(`${player.charData.player} crate ammo → team pool  pool=${this.teamAmmoPool}`, 'player');
           }
-          this.redrawHUD();
+          this._hudDirty = true;
         } else if (crate.itemType === 'food') {
           if (player.hp < player.maxHp) {
             const _crateFoodHeal = Math.max(1, Math.round(20 * this.hc.foodHealMult));
@@ -9073,7 +9074,7 @@ class GameScene extends Phaser.Scene {
         charmer.flowerAmmo = (charmer.flowerAmmo || 0) + 8;
         this._log(`${charmer.charData.player} got +8 flowers  flowers=${charmer.flowerAmmo}`, 'player');
         this.hint('+8 Flowers for Lauren! (' + charmer.flowerAmmo + ' total)', 2000);
-        this.redrawHUD();
+        this._hudDirty = true;
       } else {
         this.hint('Lauren isn\'t in play — flowers wasted!', 2000);
       }
@@ -9085,7 +9086,7 @@ class GameScene extends Phaser.Scene {
         const added = Math.min(8, maxReserve - gunslinger.reserveAmmo);
         gunslinger.reserveAmmo = Math.min(maxReserve, gunslinger.reserveAmmo + 8);
         this.hint('+' + Math.max(0, added) + ' ammo (Gunslinger)', 2000);
-        this.redrawHUD();
+        this._hudDirty = true;
       } else {
         this.hint('No Gunslinger in play — ammo wasted!', 2000);
       }
@@ -9101,7 +9102,7 @@ class GameScene extends Phaser.Scene {
         else player.spr.clearTint();
       });
       this.hint(player.charData.player + ' used Med Kit: +' + _medHeal + ' HP!', 2000);
-      this.redrawHUD();
+      this._hudDirty = true;
     } else if (rec.type === 'upgrade') {
       const target = [this.p1, this.p2].filter(Boolean).find(p => p.charData.id === rec.charId);
       if (!target) { this.hint('That character isn\'t in the game!', 2000); return; }
