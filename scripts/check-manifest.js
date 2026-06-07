@@ -11,20 +11,29 @@
 const fs = require('fs');
 const path = require('path');
 
+// Read game.js (manifest lives here) plus all src/ files (code lives here).
 const GAME_FILE = path.join(__dirname, '..', 'game.js');
+const SRC_DIR   = path.join(__dirname, '..', 'src');
 const src = fs.readFileSync(GAME_FILE, 'utf8');
+const srcCode = fs.existsSync(SRC_DIR)
+  ? fs.readdirSync(SRC_DIR)
+      .filter(f => f.endsWith('.js'))
+      .map(f => fs.readFileSync(path.join(SRC_DIR, f), 'utf8'))
+      .join('\n')
+  : '';
 
 const startMarker = 'MANIFEST — NAVIGATION GUIDE';
-const endMarker = "'use strict';";
+const endMarker   = '// ── PHASER GAME INIT';
 const start = src.indexOf(startMarker);
-const end = src.indexOf(endMarker);
+const end   = src.indexOf(endMarker);
 if (start < 0 || end < 0 || end < start) {
   console.error('check-manifest: MANIFEST block not found in game.js.');
-  console.error('  Expected the marker "' + startMarker + '" before "' + endMarker + '".');
+  console.error('  Expected "' + startMarker + '" followed by "' + endMarker + '".');
   process.exit(1);
 }
 const manifest = src.slice(start, end);
-const code = src.slice(0, start) + src.slice(end);
+// Search game.js (minus the manifest block) + all src/ files.
+const code = src.slice(0, start) + src.slice(end) + '\n' + srcCode;
 
 // Labels whose values are function/state-variable identifiers.
 const FN_LABELS = new Set([

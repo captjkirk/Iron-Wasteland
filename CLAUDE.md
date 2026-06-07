@@ -1,19 +1,32 @@
 # Iron Wasteland — Claude Code Reference
 
 ## Project Overview
-Single-file Phaser 3 browser game (`game.js`, ~14.7k lines). No build step — edit `game.js` and refresh the browser. All game logic, textures (generated via `Phaser.Graphics.generateTexture`), audio (Web Audio API), and UI live in `game.js`. `index.html` is a thin shell; `lib/phaser.min.js` is the engine.
+Phaser 3 browser game. No build step — edit files in `src/` and refresh the browser. `index.html` loads scripts in dependency order; all files share global scope (no ES modules). `lib/phaser.min.js` is the engine.
+
+## File Map
+| File | Contents |
+|---|---|
+| `game.js` | Header manifest + `Phaser.Game` init only (~211 lines) |
+| `src/constants.js` | `VERSION`, `CFG`, `ENEMY_STATS`, `ENEMY_LOOT`, `CHARS`, `STATE`, `_worldRng`, `_pendingLogMsgs`, `_qlog`, biome functions |
+| `src/audio.js` | `Music` — Web Audio chiptune engine |
+| `src/textures.js` | All `draw*` functions, `buildTextures`, `buildAtlases`, `makeScaleProxy` |
+| `src/scenes.js` | `BootScene`, `ModeSelectScene`, `SettingsScene`, `ControlsScene`, `CharSelectScene`, `getControls`, `DEFAULT_BINDINGS` |
+| `src/game-scene.js` | `GameScene` — all 22 gameplay systems, `GameScene.RECIPES` |
+| `src/game-over.js` | `GameOverScene` |
+
+**To find something:** `grep -rn "functionName" src/` searches all source files. Scope with `src/game-scene.js` for gameplay, `src/constants.js` for config, `src/textures.js` for draw code.
 
 ## Navigation Manifest (top of `game.js`)
-The first ~190 lines of `game.js` are a comment-block **MANIFEST** that maps every gameplay system to its primary functions, `CFG` keys, and log tags. **Read it first** before searching the file — match the user's request to a numbered system, then grep the listed function name. Do not scroll the whole file.
+The first ~220 lines of `game.js` are a comment-block **MANIFEST** with the file map above plus a numbered breakdown of all 22 gameplay systems and their primary functions, `CFG` keys, and log tags. **Read it first** before searching — match the request to a numbered system, grep the listed function name in `src/game-scene.js`. Do not scroll the whole file.
 
 ### Manifest maintenance — REQUIRED on every change
-Whenever you edit `game.js`, you MUST also update the MANIFEST block in the same commit if any of the following are true:
+Whenever you edit any source file, you MUST also update the MANIFEST block in `game.js` in the same commit if any of the following are true:
 - You **add** a new gameplay system or major function (give it a numbered entry, or extend an existing one).
 - You **rename** a function, `CFG.*` key, or `this.*` state variable that is listed in the manifest.
 - You **remove** any function, `CFG.*` key, or state variable that is listed in the manifest.
 - You **deprecate** a system (mark it as deprecated in the entry, or remove the entry).
 
-CI enforces this via `.github/workflows/checks.yml` → `manifest-sync`. The check (`scripts/check-manifest.js`) parses the manifest and fails the PR if any referenced symbol is no longer present in the file. Run it locally before pushing:
+CI enforces this via `.github/workflows/checks.yml` → `manifest-sync`. The check (`scripts/check-manifest.js`) parses the manifest in `game.js` and verifies every referenced symbol exists across `game.js` + all `src/` files. Run locally before pushing:
 ```bash
 node scripts/check-manifest.js
 ```
@@ -57,15 +70,17 @@ The live overlay header also shows: FPS, day/phase, difficulty multiplier, activ
 - Multiplayer desync — both P1 and P2 HP tracked per event
 
 ## Architecture Notes
-- **`buildWorld()`** — world generation entry point; calls `_buildPonds`, `_buildLakes`, structure placement, enemy spawn
-- **`update(time, delta)`** — main game loop; delegates to `updateEnemies`, `updateWaves`, `updateEnemyDens`, `updateWaterDens`, `updateBoss`, etc.
-- **`_log(msg, cat)`** — debug logger; add calls here for any new system worth troubleshooting
-- **`_buildLakes(stx, sty)`** — generates 7 large lakes with water dens; each lake spawns `water_lurker` enemies
+- **`buildWorld()`** (`src/game-scene.js`) — world generation entry point; calls `_buildPonds`, `_buildLakes`, structure placement, enemy spawn
+- **`update(time, delta)`** (`src/game-scene.js`) — main game loop; delegates to `updateEnemies`, `updateWaves`, `updateEnemyDens`, `updateWaterDens`, `updateBoss`, etc.
+- **`_log(msg, cat)`** (`src/game-scene.js`) — debug logger; add calls here for any new system worth troubleshooting
+- **`_buildLakes(stx, sty)`** (`src/game-scene.js`) — generates 7 large lakes with water dens; each lake spawns `water_lurker` enemies
+- **`buildTextures(scene)`** (`src/textures.js`) — called from `BootScene.preload()` in `src/scenes.js`; generates all procedural textures then calls `buildAtlases`
+- **`getBiome / _buildBiomeMap`** (`src/constants.js`) — biome logic lives here, not in game-scene.js
 - **Two-camera setup:** `cameras.main` (world) + `hudCam` (HUD); new world objects must be ignored by `hudCam`
 - **Enemy dormancy:** enemies beyond `CFG.DORMANT_RADIUS` (800px) are hidden and physics-disabled; they wake at `CFG.WAKE_RADIUS` (700px)
 - **Water detection:** `_waterTileSet` (Set of `"tx,ty"` strings) checked per-frame in `applyTerrainEffects` — do not use physics overlap for water
 
-## Key Configuration (`CFG`, lines ~20–45)
+## Key Configuration (`CFG` in `src/constants.js`)
 - `MAP_W / MAP_H` — map size in tiles (300×300)
 - `TILE` — tile size in px (32)
 - `SAFE_R` — spawn safe radius in tiles (10)
