@@ -302,14 +302,18 @@ class GameScene extends Phaser.Scene {
 
             this.hotkeys.p1use.on('down', () => { if (!this.barrackOpen && !this.isOver) this.tryInteract(this.p1); });
             if (this.p2) this.hotkeys.p2use.on('down', () => { if (!this.barrackOpen && !this.isOver) this.tryInteract(this.p2); });
-            this.hotkeys.tab.on('down', () => { if (!this.barrackOpen && !this.craftMenuOpen && !this.isOver) this.toggleControls(); });
-            this.hotkeys.esc.on('down', () => {
+            // Tab and Escape share the same menu-dismiss priority chain.
+            // When nothing is open: Tab → show controls overlay; Esc → open pause/settings.
+            // This makes Tab a full Escape substitute on keyboards without an Esc key.
+            const _makeMenuHandler = (fallback) => () => {
               if (this.isOver) return;
               if (this.barrackOpen)   { this.closeBarrack(); return; }
               if (this.craftMenuOpen) { this.closeCraftMenu(); return; }
               if (this.controlsVis)   { this.toggleControls(); return; }
-              this.openPauseSettings();
-            });
+              fallback();
+            };
+            this.hotkeys.tab.on('down', _makeMenuHandler(() => this.toggleControls()));
+            this.hotkeys.esc.on('down', _makeMenuHandler(() => this.openPauseSettings()));
 
             // Backtick/grave (`) toggles the debug event log
             this.input.keyboard.addKey(192).on('down', () => {
@@ -5223,10 +5227,10 @@ class GameScene extends Phaser.Scene {
         const spd = t.speed * D * (sizeMult < 0.85 ? 1.3 : sizeMult > 1.2 ? 0.8 : 1);
         const atkInterval = Math.max(500, Math.round(({ wolf:1600, rat:1200, bear:2400 }[type] || 1400) / D));
         const denBaseAggro = { wolf: 190, rat: 110, bear: 290 }[type] || 160;
-        const e = { spr, hp, maxHp:hp, speed:spd, dmg, atkInterval, type, attackTimer:0, wanderTimer:0, aggroRange:denBaseAggro, attackRange:30*sizeMult, sizeMult, _den: den };
+        const e = { spr, hp, maxHp:hp, speed:spd, dmg, atkInterval, type, attackTimer:0, wanderTimer:0, aggroRange:denBaseAggro, attackRange:30*sizeMult, sizeMult, _den: den, home: { x: den.x, y: den.y } };
         den.liveCount++;
         this._startDormantIfFar(e, ex, ey);
-        this._log(`Den respawn: ${type}  total_enemies=${this.enemies.length+1}  den_pop=${den.liveCount+1}/4`, 'world');
+        this._log(`Den respawn: ${type}  total_enemies=${this.enemies.length+1}  den_pop=${den.liveCount}/4`, 'world');
         this.enemies.push(e);
       }
     });
@@ -5255,6 +5259,7 @@ class GameScene extends Phaser.Scene {
       this._log(`Water den respawn: water_lurker  total_enemies=${this.enemies.length+1}`, 'world');
       const e = this._spawnWaterLurker(ltx * CFG.TILE, lty * CFG.TILE);
       e._den = den;
+      e.home = { x: den.x, y: den.y }; // leash anchor: lurkers return toward lake after combat
       den.liveCount++;
     });
   }
@@ -6930,12 +6935,16 @@ class GameScene extends Phaser.Scene {
         this.waterDens.push({ x: denX, y: denY, respawnTimer: 0, tileSet });
         this.pois.push({ type:'den', tx: cx, ty: cy, spr });
 
-        // Spawn 2 water_lurkers lurking inside this lake at world start
+        // Spawn 2 water_lurkers lurking inside this lake at world start.
+        // Attach _den + home so they leash back toward the lake after an ambush chase ends.
+        const _thisWaterDen = this.waterDens[this.waterDens.length - 1];
         for (let i = 0; i < 2; i++) {
           const keys = Array.from(tileSet);
           const rk = keys[Phaser.Math.Between(0, keys.length - 1)];
           const [ltx, lty] = rk.split(',').map(Number);
-          this._spawnWaterLurker(ltx * TILE, lty * TILE);
+          const e = this._spawnWaterLurker(ltx * TILE, lty * TILE);
+          e._den = _thisWaterDen;
+          e.home = { x: denX, y: denY };
         }
       }
       this.lakeCenters.push({ tx: cx, ty: cy });
