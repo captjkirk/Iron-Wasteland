@@ -79,7 +79,7 @@
 //
 // 4. WAVES & BOSSES
 //    fns:  updateWaves, updateBoss, spawnBoss, _bossExecuteSpecial,
-//          _bossTelegraph, _fireRaiderShot, _fireArrow, _fireNailGun,
+//          _bossSmash, _bossTelegraph, _fireRaiderShot, _fireArrow, _fireNailGun,
 //          _fireShieldThrow
 //    data: waveNum, waveTimer, boss, _bossChance, huntNextDay
 //    log:  [WORLD ], [COMBAT]

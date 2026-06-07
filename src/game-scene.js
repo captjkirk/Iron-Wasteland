@@ -4458,7 +4458,13 @@ class GameScene extends Phaser.Scene {
     spr.body.setSize(28, 28);
     if (this.hudCam) this.hudCam.ignore(spr);
     this._log('spawnBoss: sprite created; adding collider', 'world');
-    this.physics.add.collider(spr, this.obstacles);
+    this.physics.add.collider(spr, this.obstacles, (bSpr, obstacle) => {
+        const now = this.time.now;
+        if (obstacle?.active && now > (this.boss?._smashCooldown || 0)) {
+            if (this.boss) this.boss._smashCooldown = now + 350;
+            this._bossSmash(obstacle);
+        }
+    });
     this._log('spawnBoss: collider added', 'world');
 
     // Shadow — tracks boss every frame, sits below the sprite so terrain still reads.
@@ -4563,6 +4569,51 @@ class GameScene extends Phaser.Scene {
           this._log(`spawnBoss: entourage complete  spawned=${entourageCount}  total_enemies=${this.enemies.length}`, 'world');
         }
       });
+    }
+  }
+
+  // Boss barrels through obstacles instead of getting stuck. Removes the tile from
+  // the solid set, repaints the minimap, plays a flash + debris + shake, destroys it.
+  _bossSmash(obstacle) {
+    try {
+      const ox = obstacle.x, oy = obstacle.y;
+      const tx = Math.floor(ox / CFG.TILE), ty = Math.floor(oy / CFG.TILE);
+      // Free the tile so pathfinding/placement no longer treats it as solid.
+      if (this._solidTileSet) this._solidTileSet.delete(tx + ',' + ty);
+      // Repaint the minimap cell back to its underlying terrain (takes world coords).
+      if (this._unpaintMinimapTile) this._unpaintMinimapTile(ox, oy);
+
+      // Brief orange impact flash.
+      const flash = this.add.graphics().setDepth(13);
+      if (this.hudCam) this.hudCam.ignore(flash);
+      flash.fillStyle(0xff6600, 0.6); flash.fillCircle(ox, oy, 28);
+      flash.fillStyle(0xffcc44, 0.9); flash.fillCircle(ox, oy, 18);
+      this.time.delayedCall(120, () => { if (flash && flash.active) flash.destroy(); });
+
+      // Three debris chips flung outward in different directions, fading out.
+      for (let i = 0; i < 3; i++) {
+        const ang = (Math.PI * 2 / 3) * i + Phaser.Math.FloatBetween(-0.4, 0.4);
+        const chip = this.add.graphics().setDepth(13);
+        if (this.hudCam) this.hudCam.ignore(chip);
+        chip.fillStyle(0x6b4a2a, 1); chip.fillRect(-2.5, -2.5, 5, 5);
+        chip.setPosition(ox, oy);
+        const dist = Phaser.Math.Between(14, 26);
+        this.tweens.add({
+          targets: chip,
+          x: ox + Math.cos(ang) * dist,
+          y: oy + Math.sin(ang) * dist,
+          alpha: 0,
+          duration: 350,
+          ease: 'Quad.easeOut',
+          onComplete: () => { if (chip && chip.active) chip.destroy(); },
+        });
+      }
+
+      this.cameras.main.shake(180, 0.009);
+      this._log('boss smash  type=' + (this.boss?.type || '?') + '  tile=(' + tx + ',' + ty + ')', 'world');
+      obstacle.destroy();
+    } catch (e) {
+      this._log('boss smash ERR: ' + (e && e.message || e), 'error');
     }
   }
 

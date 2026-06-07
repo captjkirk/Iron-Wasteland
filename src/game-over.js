@@ -182,8 +182,16 @@ class GameOverScene extends Phaser.Scene {
     makeBtn(W/2 - 165, '\u25b6  PLAY AGAIN', 'ENTER  /  SPACE', '#aaffaa', 0x44aa44, () => this.restart());
     makeBtn(W/2 + 165, '\u2302  MAIN MENU',  'ESC', '#aaccff', 0x4466aa, () => this.goMenu());
 
+    // ── Download Log — user gesture so Safari will honour the save ──
+    const dlTxt = this.add.text(W/2, H - 7, '↓  download log  [G]', {
+      fontFamily:'monospace', fontSize:'10px', color:'#334455',
+    }).setOrigin(0.5, 1).setInteractive({ useHandCursor: true });
+    dlTxt.on('pointerover',  () => dlTxt.setColor('#6699bb'));
+    dlTxt.on('pointerout',   () => dlTxt.setColor('#334455'));
+    dlTxt.on('pointerdown',  () => this._doDownload());
+
     const K = Phaser.Input.Keyboard.KeyCodes;
-    this._keys = this.input.keyboard.addKeys({ enter:K.ENTER, space:K.SPACE, esc:K.ESC });
+    this._keys = this.input.keyboard.addKeys({ enter:K.ENTER, space:K.SPACE, esc:K.ESC, g:K.G });
     this._keys.enter.on('down', () => {
       // Ignore if the HTML input currently has focus (its own keydown handler handles it)
       if (this._htmlInp && document.activeElement === this._htmlInp) return;
@@ -192,6 +200,37 @@ class GameOverScene extends Phaser.Scene {
     });
     this._keys.space.on('down', () => { if (this._nameSaved) this.restart(); });
     this._keys.esc.on('down',   () => this.goMenu());
+    this._keys.g.on('down',     () => this._doDownload());
+  }
+
+  // Download the session log as a .txt file.  Called from the on-screen button
+  // or G key — both are direct user gestures, so Safari allows the download.
+  _doDownload() {
+    if (!this._dbgEntries || !this._dbgEntries.length) return;
+    const t    = Math.floor(this.timeAlive || 0);
+    const mode = `${this.mode === 1 ? 'Solo' : '2P'} ${this.difficulty === 'hardcore' ? 'Hardcore' : 'Survival'}`;
+    const lines = [
+      'IRON WASTELAND SESSION LOG',
+      '─'.repeat(41),
+      `Version  : ${typeof _fmtVersion === 'function' ? _fmtVersion(VERSION) : VERSION}`,
+      `Exported : ${new Date().toLocaleString()}`,
+      `Mode     : ${mode}`,
+      `Session  : ${Math.floor(t / 60)}m ${t % 60}s`,
+      `Day      : ${this.days}`,
+      `Kills    : ${this.kills}`,
+      '─'.repeat(41),
+      `EVENT LOG (${this._dbgEntries.length} entries)`,
+      '─'.repeat(41),
+      ...this._dbgEntries,
+    ].join('\n');
+    const blob = new Blob([lines], { type: 'text/plain' });
+    const url  = URL.createObjectURL(blob);
+    const ts   = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
+    const a    = Object.assign(document.createElement('a'), {
+      href: url, download: `iron-wasteland-${ts}.txt`,
+    });
+    a.click();
+    URL.revokeObjectURL(url);
   }
 
   // Create an HTML <input> element positioned over the Phaser canvas at game-space y.
