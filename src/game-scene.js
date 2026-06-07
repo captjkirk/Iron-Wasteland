@@ -1492,6 +1492,7 @@ class GameScene extends Phaser.Scene {
     {
       const RELIC_BIOMES = ['waste', 'swamp', 'tundra', 'ruins', 'fungal'];
       const D = this._diffMult();
+      const S = this._diffSpeedMult();
       const RELIC_ALTAR_MIN = 18; // tiles — keep relics away from the altar so E doesn't conflict
       this._relicPOIs = [];
       // Find a valid relic position: right biome, clear of altar, reachable from spawn
@@ -1538,7 +1539,7 @@ class GameScene extends Phaser.Scene {
           const eg = {
             spr: guardspr, type: 'bear',
             hp: Math.floor(140 * sizeMult * D * 1.4), maxHp: Math.floor(140 * sizeMult * D * 1.4),
-            speed: 50 * D, dmg: Math.max(1, Math.floor(16 * sizeMult * D * 1.3)),
+            speed: 50 * S, dmg: Math.max(1, Math.floor(16 * sizeMult * D * 1.3)),
             atkInterval: Math.max(500, Math.round(2400 / D)), attackTimer: 0,
             wanderTimer: Phaser.Math.Between(0, 2000),
             aggroRange: 320, attackRange: (30 + 12) * sizeMult,
@@ -4535,11 +4536,11 @@ class GameScene extends Phaser.Scene {
 
     // Pick boss type based on biome spread — random for now
     const bossTypes = [
-      { key: 'boss_golem',  name: 'Iron Golem',   biome: 'waste',  hp: 600, speed: 55,  dmg: 22, specialType: 'slam',   specialInterval: 5500 },
-      { key: 'boss_wolf',   name: 'Alpha Wolf',    biome: 'grass',  hp: 420, speed: 100, dmg: 16, specialType: 'charge', specialInterval: 4000 },
-      { key: 'boss_spider', name: 'Spider Queen',  biome: 'ruins',  hp: 480, speed: 85,  dmg: 18, specialType: 'spray',  specialInterval: 5000 },
-      { key: 'boss_troll',  name: 'Frost Troll',   biome: 'tundra', hp: 700, speed: 65,  dmg: 28, specialType: 'slam',   specialInterval: 6500 },
-      { key: 'boss_hydra',  name: 'Bog Hydra',     biome: 'swamp',  hp: 540, speed: 65,  dmg: 20, specialType: 'spray',  specialInterval: 5500 },
+      { key: 'boss_golem',  name: 'Iron Golem',   biome: 'waste',  hp: 600, speed: 55,  dmg: 22, armor: 4, specialType: 'slam',   specialInterval: 5500 },
+      { key: 'boss_wolf',   name: 'Alpha Wolf',    biome: 'grass',  hp: 420, speed: 100, dmg: 16, armor: 1, specialType: 'charge', specialInterval: 4000 },
+      { key: 'boss_spider', name: 'Spider Queen',  biome: 'ruins',  hp: 480, speed: 85,  dmg: 18, armor: 2, specialType: 'spray',  specialInterval: 5000 },
+      { key: 'boss_troll',  name: 'Frost Troll',   biome: 'tundra', hp: 700, speed: 65,  dmg: 28, armor: 5, specialType: 'slam',   specialInterval: 6500 },
+      { key: 'boss_hydra',  name: 'Bog Hydra',     biome: 'swamp',  hp: 540, speed: 65,  dmg: 20, armor: 2, specialType: 'spray',  specialInterval: 5500 },
     ];
     // Biome-anchored pick — prefer a boss whose biome matches where the
     // players currently are, so the boss reads as something emerging from
@@ -4607,7 +4608,7 @@ class GameScene extends Phaser.Scene {
     this.boss = {
       spr, hp: _bossHp, maxHp: _bossHp,
       speed: bt.speed, dmg: _bossDmg, name: bt.name,
-      isBoss: true, type: bt.key,
+      isBoss: true, type: bt.key, armor: bt.armor || 0,
       attackTimer: 0, atkInterval: 2200,
       aggroRange: 99999, attackRange: 70, wanderTimer: 0, sizeMult: 1,
       hpBg, hpBar,
@@ -4625,7 +4626,7 @@ class GameScene extends Phaser.Scene {
     this.boss._indicator = _bossInd;
 
     // Announce arrival
-    this._log(`Boss spawned: ${bt.name}  hp=${_bossHp}  dmg=${_bossDmg}  day=${this.dayNum}  diff=${this._diffMult().toFixed(1)}x`, 'world');
+    this._log(`Boss spawned: ${bt.name}  hp=${_bossHp}  dmg=${_bossDmg}  armor=${bt.armor||0}  day=${this.dayNum}  diff=${this._diffMult().toFixed(1)}x`, 'world');
     this.hint('\u2620 ' + bt.name.toUpperCase() + ' APPROACHES! \u2620', 6000);
     SFX.bossRoar();
     this._log('spawnBoss: roar done', 'world');
@@ -5243,7 +5244,7 @@ class GameScene extends Phaser.Scene {
         const D = this._diffMult();
         const hp  = Math.floor(t.hp  * sizeMult * D);
         const dmg = Math.max(1, Math.floor(t.dmg * sizeMult * D));
-        const spd = t.speed * D * (sizeMult < 0.85 ? 1.3 : sizeMult > 1.2 ? 0.8 : 1);
+        const spd = t.speed * this._diffSpeedMult() * (sizeMult < 0.85 ? 1.3 : sizeMult > 1.2 ? 0.8 : 1);
         const atkInterval = Math.max(500, Math.round(({ wolf:1600, rat:1200, bear:2400 }[type] || 1400) / D));
         const denBaseAggro = { wolf: 190, rat: 110, bear: 290 }[type] || 160;
         const e = { spr, hp, maxHp:hp, speed:spd, dmg, atkInterval, type, attackTimer:0, wanderTimer:0, aggroRange:denBaseAggro, attackRange:30*sizeMult, sizeMult, _den: den, home: { x: den.x, y: den.y } };
@@ -5876,7 +5877,8 @@ class GameScene extends Phaser.Scene {
   // hit-flash tint, SFX, and kill check. Use instead of inline e.hp -= X everywhere.
   _hurtEnemy(e, dmg, fromX, fromY, tint = 0xff6644, owner = null) {
     if (!e || e.dying) return;
-    e.hp -= dmg;
+    const eff = e.isBoss ? Math.max(1, dmg - (e.armor || 0)) : dmg;
+    e.hp -= eff;
     e._flinchTimer = 132;
     if (e._dormant) { e._dormant = false; if (e.spr.body) { this.physics.world.bodies.set(e.spr.body); e.spr.body.enable = true; e.spr.body.reset(e.spr.x, e.spr.y); } }
     if (fromX !== undefined && e.spr.body) {
@@ -5897,11 +5899,15 @@ class GameScene extends Phaser.Scene {
     }
     SFX.hit(e.type);
     // Floating damage number — styled by magnitude so big crits pop visually.
-    this._floatDamage(e.spr.x, e.spr.y - (e.isBoss ? 28 : 14), dmg);
+    this._floatDamage(e.spr.x, e.spr.y - (e.isBoss ? 28 : 14), eff);
     // Hit-pause: brief physics freeze on impact for weight. Guarded so
     // multiple hits in the same frame don't stack into a visible stutter.
     this._hitPause(40);
-    this._log(e.type + ' hit  dmg=' + dmg + '  hp=' + e.hp + '/' + (e.maxHp || '?'), 'combat');
+    if (e.isBoss && e.armor) {
+      this._log(e.type + ' hit  dmg=' + eff + ' (raw=' + dmg + ' armor=' + e.armor + ')  hp=' + e.hp + '/' + (e.maxHp || '?'), 'combat');
+    } else {
+      this._log(e.type + ' hit  dmg=' + eff + '  hp=' + e.hp + '/' + (e.maxHp || '?'), 'combat');
+    }
     if (e.hp <= 0) this.killEnemy(e, owner);
   }
 
@@ -6644,6 +6650,7 @@ class GameScene extends Phaser.Scene {
     // Spawn structure guards — 2-4 enemies per biome structure (high danger zone)
     if (this._structureLocs) {
       const guardDiff = this._diffMult();
+      const guardSpeed = this._diffSpeedMult();
       const biomeGuardType = { grass:'wolf', tundra:'wolf', swamp:'rat', waste:'bear', fungal:'bog_lurker', desert:'dust_hound' };
       for (const loc of this._structureLocs) {
         const type = biomeGuardType[loc.biome] || 'wolf';
@@ -6672,7 +6679,7 @@ class GameScene extends Phaser.Scene {
           const eGuard = {
             spr, type: t.key,
             hp: Math.floor(t.hp * sizeMult * guardDiff), maxHp: Math.floor(t.hp * sizeMult * guardDiff),
-            speed: t.speed * sizeMult * guardDiff, dmg: Math.max(1, Math.floor(t.dmg * sizeMult * guardDiff)),
+            speed: t.speed * sizeMult * guardSpeed, dmg: Math.max(1, Math.floor(t.dmg * sizeMult * guardDiff)),
             attackTimer: 0, wanderTimer: 0,
             aggroRange: aggroR, attackRange: (30 + t.w / 2) * sizeMult,
             sizeMult, structureGuard: true,
@@ -6687,6 +6694,7 @@ class GameScene extends Phaser.Scene {
     if (this.radioTower) {
       const t = { key:'spider_ruins', hp:55, speed:85, dmg:9, baseScale:1.8, w:18, h:12 };
       const towerDiff = this._diffMult();
+      const towerSpeed = this._diffSpeedMult();
       const count = Phaser.Math.Between(4, 6);
       for (let i = 0; i < count; i++) {
         const ang = (i / count) * Math.PI * 2;
@@ -6706,7 +6714,7 @@ class GameScene extends Phaser.Scene {
         const eGuard = {
           spr, type: t.key,
           hp: Math.floor(t.hp * sizeMult * towerDiff), maxHp: Math.floor(t.hp * sizeMult * towerDiff),
-          speed: t.speed * sizeMult * towerDiff, dmg: Math.max(1, Math.floor(t.dmg * sizeMult * towerDiff)),
+          speed: t.speed * sizeMult * towerSpeed, dmg: Math.max(1, Math.floor(t.dmg * sizeMult * towerDiff)),
           attackTimer: 0, wanderTimer: 0,
           aggroRange: 260, attackRange: 35 * sizeMult,
           sizeMult, towerGuard: true,
@@ -7185,7 +7193,7 @@ class GameScene extends Phaser.Scene {
     const D = this._diffMult();
     const hp  = Math.floor(75 * sizeMult * D);
     const dmg = Math.max(1, Math.floor(14 * sizeMult * D));
-    const spd = 52 * D;
+    const spd = 52 * this._diffSpeedMult();
     const spr = this.physics.add.image(x, y, 'water_lurker').setScale(sc).setDepth(8);
     spr.setCollideWorldBounds(true);
     spr.body.setSize(22, 12);
@@ -7206,6 +7214,7 @@ class GameScene extends Phaser.Scene {
   _spawnBiomeEnemy(type, biome, count, packSize) {
     const { TILE, SAFE_R } = CFG;
     const D = this._diffMult();
+    const S = this._diffSpeedMult();
     const worldW = this.enemyWorldW, worldH = this.enemyWorldH;
     const cx = this.enemyCX, cy = this.enemyCY;
     const t = ENEMY_STATS[type];
@@ -7234,7 +7243,7 @@ class GameScene extends Phaser.Scene {
         const sc = t.baseScale * sizeMult;
         const hp  = Math.floor(t.hp  * sizeMult * D);
         const dmg = Math.max(1, Math.floor(t.dmg * sizeMult * D));
-        const spd = t.speed * D * (sizeMult > 1.2 ? 0.85 : 1);
+        const spd = t.speed * S * (sizeMult > 1.2 ? 0.85 : 1);
         const atkInterval = Math.max(500, Math.round(t.atkInterval / D));
         const spr = this.physics.add.image(
           Phaser.Math.Clamp(ex, TILE*3, worldW-TILE*3),
@@ -7277,6 +7286,12 @@ class GameScene extends Phaser.Scene {
     return dayScale * relicScale;
   }
 
+  // Speed-specific multiplier — hard-capped at 2.0× so late-game enemies
+  // never permanently outrun the player. HP and damage keep scaling via _diffMult().
+  _diffSpeedMult() {
+    return Math.min(2.0, this._diffMult());
+  }
+
   _relicPressure() {
     const d = this.relicsDeposited || 0;
     return {
@@ -7315,6 +7330,7 @@ class GameScene extends Phaser.Scene {
   _spawnGroup(worldW, worldH, cx, cy, counts, fromEdges) {
     const { TILE, SAFE_R } = CFG;
     const D = this._diffMult();
+    const S = this._diffSpeedMult();
     // Canonical stats live at module top (ENEMY_STATS). atkInterval is divided
     // by D so enemies attack faster on later days.
     const keys = Object.keys(counts);
@@ -7355,7 +7371,7 @@ class GameScene extends Phaser.Scene {
         const sc = t.baseScale * sizeMult;
         const hp  = Math.floor(t.hp    * sizeMult * D);
         const dmg = Math.max(1, Math.floor(t.dmg  * sizeMult * D));
-        const spd = t.speed * D * (sizeMult < 0.85 ? 1.3 : sizeMult > 1.2 ? 0.8 : 1);
+        const spd = t.speed * S * (sizeMult < 0.85 ? 1.3 : sizeMult > 1.2 ? 0.8 : 1);
         const atkInterval = Math.max(500, Math.round(t.atkInterval / D));
         const spr = this.physics.add.image(ex, ey, key).setScale(sc).setDepth(8);
         spr.setCollideWorldBounds(true);
@@ -7394,7 +7410,7 @@ class GameScene extends Phaser.Scene {
         this._spawnBiomeEnemy('bog_lurker',   'swamp',  Math.min(1 + wn, 4),  1);
         this._spawnBiomeEnemy('dust_hound',   'waste',  Math.min(3 * wn, 9),  3);
       }
-      this._log('Wave ' + this.waveNum + ' day=' + this.dayNum + ' diff=' + this._diffMult().toFixed(1) + 'x  w=' + w + ' r=' + r + ' b=' + b, 'world');
+      this._log('Wave ' + this.waveNum + ' day=' + this.dayNum + ' diff=' + this._diffMult().toFixed(1) + 'x  speed=' + this._diffSpeedMult().toFixed(1) + 'x  w=' + w + ' r=' + r + ' b=' + b, 'world');
       this.hint('Wave ' + this.waveNum + '! Enemies approaching from the wastes!', 3000);
       SFX._play(150, 'triangle', 0.55, 0.12, 'drop');
     }

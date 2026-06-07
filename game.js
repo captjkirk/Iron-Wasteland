@@ -127,7 +127,7 @@
 //    log:  [COMBAT], [BUILD ]
 //
 // 10. DAY/NIGHT & DIFFICULTY
-//     fns:  updateDayNight, _diffMult, _updateDayLabel
+//     fns:  updateDayNight, _diffMult, _diffSpeedMult, _updateDayLabel
 //     data: dayNum, dayTimer, isNight, timeAlive, hardcore, hc
 //
 // 11. RELICS / RADIO TOWERS / ALTAR / CAMPFIRES
