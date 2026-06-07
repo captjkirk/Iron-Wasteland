@@ -549,13 +549,6 @@ class SettingsScene extends Phaser.Scene {
       }).setOrigin(0, 0.5);
     }
 
-    // Thin rule helper
-    const rule = (ry) => {
-      const g = this.add.graphics();
-      g.lineStyle(1, 0x2a3a2a, 0.55);
-      g.lineBetween(W * 0.08, ry, W * 0.92, ry);
-    };
-
     let y = sp(40);
 
     // TITLE
@@ -599,7 +592,7 @@ class SettingsScene extends Phaser.Scene {
     });
     y += ibH + sp(14);
 
-    rule(y); y += sp(16);
+    y += sp(16);
 
     // AUDIO
     this.add.text(W / 2, y, 'AUDIO', {
@@ -667,7 +660,7 @@ class SettingsScene extends Phaser.Scene {
     });
     y += sp(38);
 
-    rule(y); y += sp(16);
+    y += sp(16);
 
     // GAMEPLAY TOGGLES
     const makeToggle = (label, tx, ty, initial, onToggle) => {
@@ -702,7 +695,7 @@ class SettingsScene extends Phaser.Scene {
     makeToggle('MINIMAP',    W / 2,            y + sp(28), st.minimapEnabled !== false,       (v) => saveSettings({ minimapEnabled: v }));
     y += sp(62);
 
-    rule(y); y += sp(16);
+    y += sp(16);
 
     // TUTORIAL TIPS
     const tutEnabled = loadSettings().tutorial !== false;
@@ -735,7 +728,7 @@ class SettingsScene extends Phaser.Scene {
 
     // CONTROLS REFERENCE — in-game only
     if (fromGame && this._p1CharId) {
-      rule(y); y += sp(14);
+      y += sp(14);
       this.add.text(W / 2, y, 'YOUR CONTROLS', {
         fontFamily: 'monospace', fontSize: fs(10), color: '#445566', letterSpacing: 3,
       }).setOrigin(0.5);
@@ -781,7 +774,6 @@ class SettingsScene extends Phaser.Scene {
 
     // BOTTOM BUTTONS — anchored to H so they never overlap content
     const btnRuleY = H - sp(96);
-    if (y < btnRuleY - sp(8)) rule(btnRuleY);
 
     // Utility buttons row
     const utilBtns = [];
