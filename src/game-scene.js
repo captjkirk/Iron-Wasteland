@@ -299,17 +299,23 @@ class GameScene extends Phaser.Scene {
             const _hk = { p1use:K[_B.p1interact], tab:K.TAB, esc:K.ESC };
             if (this.p2) _hk.p2use = K[_B.p2interact];
             this.hotkeys = this.input.keyboard.addKeys(_hk);
+            // Prevent browser from stealing Tab (focus cycle) while the game is running
+            this.input.keyboard.addCapture(K.TAB);
 
             this.hotkeys.p1use.on('down', () => { if (!this.barrackOpen && !this.isOver) this.tryInteract(this.p1); });
             if (this.p2) this.hotkeys.p2use.on('down', () => { if (!this.barrackOpen && !this.isOver) this.tryInteract(this.p2); });
-            this.hotkeys.tab.on('down', () => { if (!this.barrackOpen && !this.craftMenuOpen && !this.isOver) this.toggleControls(); });
-            this.hotkeys.esc.on('down', () => {
+            // Tab and Escape share the same menu-dismiss priority chain.
+            // When nothing is open: Tab → show controls overlay; Esc → open pause/settings.
+            // This makes Tab a full Escape substitute on keyboards without an Esc key.
+            const _makeMenuHandler = (fallback) => () => {
               if (this.isOver) return;
               if (this.barrackOpen)   { this.closeBarrack(); return; }
               if (this.craftMenuOpen) { this.closeCraftMenu(); return; }
               if (this.controlsVis)   { this.toggleControls(); return; }
-              this.openPauseSettings();
-            });
+              fallback();
+            };
+            this.hotkeys.tab.on('down', _makeMenuHandler(() => this.openPauseSettings()));
+            this.hotkeys.esc.on('down', _makeMenuHandler(() => this.openPauseSettings()));
 
             // Backtick/grave (`) toggles the debug event log
             this.input.keyboard.addKey(192).on('down', () => {
@@ -1101,6 +1107,15 @@ class GameScene extends Phaser.Scene {
       }
     }
 
+    // Unified impassable tile set — mountains + deep water.
+    // Built here (before rivers) so terrain cleanup and POI relocation can use it.
+    // deepWaterTiles is already complete (_buildPonds is the only writer; _buildLakes and _buildRivers do not add to it).
+    this._impassableTileSet = new Set(this._solidTileSet);
+    for (const dt of this.deepWaterTiles) {
+      const _itx = Math.floor(dt.x / TILE), _ity = Math.floor(dt.y / TILE);
+      this._impassableTileSet.add(_itx + ',' + _ity);
+    }
+
     // Rivers — organic shallow-water channels connecting lakes and map edges.
     // Runs after _solidTileSet is ready (mountain avoidance) and before terrain
     // overlap cleanup (so trees/rocks on river tiles are auto-culled below).
@@ -1109,8 +1124,7 @@ class GameScene extends Phaser.Scene {
 
     // ── TERRAIN OVERLAP CLEANUP ───────────────────────────────────────────────
     // Sweep every tree, rock, and biome spire placed earlier in buildWorld and
-    // destroy any that landed on a water tile or inside a mountain collision zone.
-    // Both _waterMap and _solidTileSet are fully built by this point.
+    // destroy any that landed on water (shallow or deep) or inside a mountain zone.
     {
       const _overlapKeys = new Set(['rock', 'rock2', 'ice_rock', 'rock_desert', 'ice_spire', 'rock_spire', 'mangrove_roots']);
       let _overlapRemoved = 0;
@@ -1119,7 +1133,7 @@ class GameScene extends Phaser.Scene {
         if (k === 'mountain' || k === 'mountain2') return; // never cull mountains
         if (!ob.isTree && !_overlapKeys.has(k)) return;   // keep walls, ruin blocks
         const tx = Math.floor(ob.x / TILE), ty = Math.floor(ob.y / TILE);
-        if (this._waterMap[tx + ty * CFG.MAP_W] || this._solidTileSet.has(tx + ',' + ty)) {
+        if (this._waterMap[tx + ty * CFG.MAP_W] || this._impassableTileSet.has(tx + ',' + ty)) {
           ob.destroy();
           _overlapRemoved++;
         }
@@ -1127,12 +1141,57 @@ class GameScene extends Phaser.Scene {
       this._log(`terrain overlap cleanup  removed=${_overlapRemoved}`, 'world');
     }
 
-    // Unified impassable tile set — mountains + deep water.
-    // River routing and future path-validation use this to stay on walkable ground.
-    this._impassableTileSet = new Set(this._solidTileSet);
-    for (const dt of this.deepWaterTiles) {
-      const _itx = Math.floor(dt.x / TILE), _ity = Math.floor(dt.y / TILE);
-      this._impassableTileSet.add(_itx + ',' + _ity);
+    // Post-water POI relocation — pre-computed positions were picked before ponds/
+    // lakes/rivers, so some may now sit on water. Find nearest dry tile for each.
+    {
+      const _isDry = (tx, ty) => {
+        if (tx < 5 || tx >= CFG.MAP_W - 5 || ty < 5 || ty >= CFG.MAP_H - 5) return false;
+        const i = tx + ty * CFG.MAP_W;
+        if (this._waterMap && this._waterMap[i]) return false;
+        if (this._iceMap && this._iceMap[i]) return false; // ice is walkable but avoidable for POI placement
+        if (this._impassableTileSet && this._impassableTileSet.has(tx + ',' + ty)) return false;
+        return true;
+      };
+      const _relocateWet = (pos) => {
+        if (!pos || _isDry(pos.tx, pos.ty)) return pos;
+        for (let r = 1; r <= 14; r++) {
+          for (let dx = -r; dx <= r; dx++) {
+            for (let dy = -r; dy <= r; dy++) {
+              if (Math.abs(dx) !== r && Math.abs(dy) !== r) continue;
+              const tx = pos.tx + dx, ty = pos.ty + dy;
+              if (_isDry(tx, ty)) {
+                this._log(`POI relocated (${pos.tx},${pos.ty})→(${tx},${ty}) — was underwater`, 'world');
+                return { ...pos, tx, ty };
+              }
+            }
+          }
+        }
+        return pos;
+      };
+      let _wetCount = 0;
+      const _rel = arr => arr ? arr.map(p => { const n = _relocateWet(p); if (n !== p) _wetCount++; return n; }) : arr;
+      this._preCacheTiles_caches = _rel(this._preCacheTiles_caches);
+      this._preDenTiles = _rel(this._preDenTiles);
+      if (this._preTowerTile) {
+        const n = _relocateWet(this._preTowerTile);
+        if (n !== this._preTowerTile) _wetCount++;
+        this._preTowerTile = n;
+      }
+      this._preCampsiteTiles = _rel(this._preCampsiteTiles);
+      if (this._preStructureTiles) {
+        for (const biome of Object.keys(this._preStructureTiles)) {
+          this._preStructureTiles[biome] = _rel(this._preStructureTiles[biome]);
+        }
+      }
+      // Rebuild unified list so the post-buildPOIs clearance pass uses updated positions
+      this._preCacheTiles = [
+        ...(this._preCacheTiles_caches || []),
+        ...(this._preDenTiles || []),
+        ...(this._preTowerTile ? [this._preTowerTile] : []),
+        ...(this._preCampsiteTiles || []),
+        ...Object.values(this._preStructureTiles || {}).flat(),
+      ];
+      if (_wetCount) this._log(`post-water POI relocation  relocated=${_wetCount}`, 'world');
     }
 
     // Pre-build minimap terrain color map — makes trees, water, rocks, and buildings
@@ -1245,7 +1304,7 @@ class GameScene extends Phaser.Scene {
     // player physically can't reach and the interaction never fires.
     const _isImpassable = (tx, ty) => {
       if (this._waterMap && this._waterMap[tx + ty * MAP_W]) return true;
-      if (this._solidTileSet && this._solidTileSet.has(tx + ',' + ty)) return true;
+      if (this._impassableTileSet && this._impassableTileSet.has(tx + ',' + ty)) return true;
       return false;
     };
 
@@ -1265,6 +1324,34 @@ class GameScene extends Phaser.Scene {
         if (!_isImpassable(tx, ty)) return { tx, ty };
       }
       return { tx: Phaser.Math.Between(20, MAP_W - 20), ty: Phaser.Math.Between(20, MAP_H - 20) };
+    };
+
+    // BFS flood-fill from spawn — confirms a tile is physically walkable-to.
+    // Catches the relic-in-mountain-cluster case where _isImpassable passes the
+    // tile itself but the surrounding ring of physics bodies makes it unreachable.
+    const _reachableFromSpawn = (rtx, rty) => {
+      const visited = new Uint8Array(MAP_W * MAP_H);
+      const startIdx = stx + sty * MAP_W;
+      visited[startIdx] = 1;
+      const q = [startIdx];
+      let head = 0;
+      const target = rtx + rty * MAP_W;
+      while (head < q.length) {
+        const idx = q[head++];
+        if (idx === target) return true;
+        const tx = idx % MAP_W, ty = (idx / MAP_W) | 0;
+        for (let d = 0; d < 4; d++) {
+          const ntx = tx + (d === 0 ? -1 : d === 1 ? 1 : 0);
+          const nty = ty + (d === 2 ? -1 : d === 3 ? 1 : 0);
+          if (ntx < 0 || ntx >= MAP_W || nty < 0 || nty >= MAP_H) continue;
+          const ni = ntx + nty * MAP_W;
+          if (visited[ni]) continue;
+          if (_isImpassable(ntx, nty)) continue;
+          visited[ni] = 1;
+          q.push(ni);
+        }
+      }
+      return false;
     };
 
     // Supply Caches — use pre-computed positions (fjord + tree-clear guaranteed)
@@ -1302,13 +1389,21 @@ class GameScene extends Phaser.Scene {
       ? this._preDenTiles
       : ['waste', 'swamp', 'tundra'].map(b => findInBiome(b, 50));
     for (const pos of denPositions) {
-      const px = pos.tx * TILE, py = pos.ty * TILE;
+      // Pre-computed den tiles are picked BEFORE mountains are placed; validate now.
+      // If the tile ended up inside a mountain or deep water, find a fresh clear spot.
+      let actualPos = pos;
+      if (this._impassableTileSet && this._impassableTileSet.has(pos.tx + ',' + pos.ty)) {
+        const fb = findInBiome(getBiome(pos.tx, pos.ty), 60);
+        if (fb) actualPos = fb;
+        this._log(`den relocated from (${pos.tx},${pos.ty}) to (${actualPos.tx},${actualPos.ty}) — was inside mountain`, 'world');
+      }
+      const px = actualPos.tx * TILE, py = actualPos.ty * TILE;
       const spr = this._w(this.add.image(px, py, 'enemy_den').setScale(2).setDepth(5));
       const lbl = this._w(this.add.text(px, py - 24, 'ENEMY DEN', {
         fontFamily:'monospace', fontSize:'8px', color:'#cc4444', stroke:'#000', strokeThickness:2
       }).setOrigin(0.5).setDepth(7));
-      this.enemyDens.push({ x: px, y: py, tx: pos.tx, ty: pos.ty, respawnTimer: 0 });
-      this.pois.push({ type:'den', tx:pos.tx, ty:pos.ty, spr });
+      this.enemyDens.push({ x: px, y: py, tx: actualPos.tx, ty: actualPos.ty, respawnTimer: 0 });
+      this.pois.push({ type:'den', tx: actualPos.tx, ty: actualPos.ty, spr });
     }
 
     // Radio Tower (1, in ruins biome) — use pre-computed position
@@ -1399,16 +1494,26 @@ class GameScene extends Phaser.Scene {
       const D = this._diffMult();
       const RELIC_ALTAR_MIN = 18; // tiles — keep relics away from the altar so E doesn't conflict
       this._relicPOIs = [];
-      for (const biome of RELIC_BIOMES) {
-        // Reroll if the candidate lands too close to the altar (same biome coincidence)
-        let pos = findInBiome(biome, 80);
-        if (this.altarPos) {
-          for (let _tries = 0; _tries < 8; _tries++) {
-            const dtx = pos.tx - this.altarPos.tx, dty = pos.ty - this.altarPos.ty;
-            if (dtx*dtx + dty*dty >= RELIC_ALTAR_MIN*RELIC_ALTAR_MIN) break;
-            pos = findInBiome(biome, 80);
+      // Find a valid relic position: right biome, clear of altar, reachable from spawn
+      const _findRelicPos = (biome) => {
+        const _altarClear = (p) => {
+          if (!this.altarPos) return p;
+          for (let _t = 0; _t < 8; _t++) {
+            const dtx = p.tx - this.altarPos.tx, dty = p.ty - this.altarPos.ty;
+            if (dtx*dtx + dty*dty >= RELIC_ALTAR_MIN*RELIC_ALTAR_MIN) return p;
+            p = findInBiome(biome, 80);
           }
+          return p;
+        };
+        let p = _altarClear(findInBiome(biome, 80));
+        for (let _r = 0; _r < 5 && !_reachableFromSpawn(p.tx, p.ty); _r++) {
+          p = _altarClear(findInBiome(biome, 80));
         }
+        return p;
+      };
+
+      for (const biome of RELIC_BIOMES) {
+        let pos = _findRelicPos(biome);
         const px = pos.tx * TILE, py = pos.ty * TILE;
         const spr = this._w(this.add.image(px, py, 'item_relic').setScale(3).setDepth(7));
         this.tweens.add({ targets: spr, alpha: 0.45, duration: 1000, yoyo: true, repeat: -1, ease: 'Sine.easeInOut' });
@@ -2801,11 +2906,19 @@ class GameScene extends Phaser.Scene {
     // keep firing while paused / through the Settings overlay.
     if (this.craftMenuOpen) this.closeCraftMenu();
     if (this.barrackOpen) this.closeBarrack();
+    // Gather character data so the Settings scene can show the controls reference.
+    const p1Ch = this.p1 ? this.p1.charData : CHARS.find(c => c.id === STATE.p1CharId);
+    const p2Ch = (!this.solo && this.p2) ? this.p2.charData : null;
     // Pause immediately so the world freezes mid-frame; Settings overlays on top.
     // We deliberately do NOT fade the world to black — Settings now uses a
     // semi-transparent background so the paused world peeks through.
     this.scene.pause();
-    this.scene.launch('Settings', { returnTo: 'Game' });
+    this.scene.launch('Settings', {
+      returnTo: 'Game',
+      p1CharId: p1Ch ? p1Ch.id : null,
+      p2CharId: p2Ch ? p2Ch.id : null,
+      solo: !!this.solo,
+    });
     this.scene.bringToTop('Settings');
   }
 
@@ -5132,10 +5245,10 @@ class GameScene extends Phaser.Scene {
         const spd = t.speed * D * (sizeMult < 0.85 ? 1.3 : sizeMult > 1.2 ? 0.8 : 1);
         const atkInterval = Math.max(500, Math.round(({ wolf:1600, rat:1200, bear:2400 }[type] || 1400) / D));
         const denBaseAggro = { wolf: 190, rat: 110, bear: 290 }[type] || 160;
-        const e = { spr, hp, maxHp:hp, speed:spd, dmg, atkInterval, type, attackTimer:0, wanderTimer:0, aggroRange:denBaseAggro, attackRange:30*sizeMult, sizeMult, _den: den };
+        const e = { spr, hp, maxHp:hp, speed:spd, dmg, atkInterval, type, attackTimer:0, wanderTimer:0, aggroRange:denBaseAggro, attackRange:30*sizeMult, sizeMult, _den: den, home: { x: den.x, y: den.y } };
         den.liveCount++;
         this._startDormantIfFar(e, ex, ey);
-        this._log(`Den respawn: ${type}  total_enemies=${this.enemies.length+1}  den_pop=${den.liveCount+1}/4`, 'world');
+        this._log(`Den respawn: ${type}  total_enemies=${this.enemies.length+1}  den_pop=${den.liveCount}/4`, 'world');
         this.enemies.push(e);
       }
     });
@@ -5164,6 +5277,7 @@ class GameScene extends Phaser.Scene {
       this._log(`Water den respawn: water_lurker  total_enemies=${this.enemies.length+1}`, 'world');
       const e = this._spawnWaterLurker(ltx * CFG.TILE, lty * CFG.TILE);
       e._den = den;
+      e.home = { x: den.x, y: den.y }; // leash anchor: lurkers return toward lake after combat
       den.liveCount++;
     });
   }
@@ -5996,6 +6110,9 @@ class GameScene extends Phaser.Scene {
     this._autoPaused = false;
     this._log('auto-resume', 'world');
     if (this.scene && this.scene.isPaused('Game')) this.scene.resume('Game');
+    // Clear stale key-down states so nothing is "stuck" after the tab was backgrounded.
+    // Without this, a key held before the tab-switch stays .isDown = true forever.
+    try { if (this.input && this.input.keyboard) this.input.keyboard.resetKeys(); } catch(e) {}
     try {
       if (typeof Music !== 'undefined' && Music.ctx && Music.ctx.state === 'suspended' && Music.playing) {
         Music.ctx.resume();
@@ -6839,12 +6956,16 @@ class GameScene extends Phaser.Scene {
         this.waterDens.push({ x: denX, y: denY, respawnTimer: 0, tileSet });
         this.pois.push({ type:'den', tx: cx, ty: cy, spr });
 
-        // Spawn 2 water_lurkers lurking inside this lake at world start
+        // Spawn 2 water_lurkers lurking inside this lake at world start.
+        // Attach _den + home so they leash back toward the lake after an ambush chase ends.
+        const _thisWaterDen = this.waterDens[this.waterDens.length - 1];
         for (let i = 0; i < 2; i++) {
           const keys = Array.from(tileSet);
           const rk = keys[Phaser.Math.Between(0, keys.length - 1)];
           const [ltx, lty] = rk.split(',').map(Number);
-          this._spawnWaterLurker(ltx * TILE, lty * TILE);
+          const e = this._spawnWaterLurker(ltx * TILE, lty * TILE);
+          e._den = _thisWaterDen;
+          e.home = { x: denX, y: denY };
         }
       }
       this.lakeCenters.push({ tx: cx, ty: cy });
