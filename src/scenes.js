@@ -834,6 +834,20 @@ class CharSelectScene extends Phaser.Scene {
   create() {
     const { W, H } = CFG;
     this.cameras.main.fadeIn(300, 0, 0, 0);
+    // "Play Again" bypasses ModeSelect (the only other Music.start() site), so music
+    // stays silent on replay unless we restart it here. Music.start() is idempotent.
+    if (!Music.playing) {
+      Music.start();
+      const _as = loadSettings();
+      if (Music.gain) {
+        const _mv = _as.musicVolume !== undefined ? _as.musicVolume : (_as.musicEnabled !== false ? 50 : 0);
+        Music.gain.gain.value = (_mv / 100) * 0.14;
+      }
+      const _sv = _as.sfxVolume !== undefined ? _as.sfxVolume : (_as.sfxEnabled !== false ? 100 : 0);
+      SFX._sfxVol = _sv / 100;
+      SFX._enabled = _sv > 0;
+      if (SFX.gain) SFX.gain.gain.value = SFX._sfxVol;
+    }
     this.p1Idx = 0; this.p2Idx = 1;
     this.p1Done = false; this.p2Done = false;
     this.solo = STATE.mode === 1;
