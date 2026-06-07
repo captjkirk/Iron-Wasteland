@@ -1538,7 +1538,7 @@ class GameScene extends Phaser.Scene {
           this.physics.add.collider(guardspr, this.obstacles);
           const eg = {
             spr: guardspr, type: 'bear',
-            hp: Math.floor(140 * sizeMult * D * 1.4), maxHp: Math.floor(140 * sizeMult * D * 1.4),
+            hp: Math.floor(140 * sizeMult * D * 1.6), maxHp: Math.floor(140 * sizeMult * D * 1.6),
             speed: 50 * S, dmg: Math.max(1, Math.floor(16 * sizeMult * D * 1.3)),
             atkInterval: Math.max(500, Math.round(2400 / D)), attackTimer: 0,
             wanderTimer: Phaser.Math.Between(0, 2000),
@@ -6713,8 +6713,8 @@ class GameScene extends Phaser.Scene {
         this.physics.add.collider(spr, this.obstacles);
         const eGuard = {
           spr, type: t.key,
-          hp: Math.floor(t.hp * sizeMult * towerDiff), maxHp: Math.floor(t.hp * sizeMult * towerDiff),
-          speed: t.speed * sizeMult * towerSpeed, dmg: Math.max(1, Math.floor(t.dmg * sizeMult * towerDiff)),
+          hp: Math.floor(t.hp * sizeMult * towerDiff * 1.4), maxHp: Math.floor(t.hp * sizeMult * towerDiff * 1.4),
+          speed: t.speed * sizeMult * towerSpeed, dmg: Math.max(1, Math.floor(t.dmg * sizeMult * towerDiff * 1.2)),
           attackTimer: 0, wanderTimer: 0,
           aggroRange: 260, attackRange: 35 * sizeMult,
           sizeMult, towerGuard: true,
@@ -7286,10 +7286,11 @@ class GameScene extends Phaser.Scene {
     return dayScale * relicScale;
   }
 
-  // Speed-specific multiplier — hard-capped at 2.0× so late-game enemies
-  // never permanently outrun the player. HP and damage keep scaling via _diffMult().
+  // Speed-specific multiplier — hard-capped at 1.4× so enemies top out near
+  // average player speed (~171 px/s). Fastest common enemy (ice crawler, base 130)
+  // hits ~182 at cap — above avg player but jukeble. HP/dmg keep scaling via _diffMult().
   _diffSpeedMult() {
-    return Math.min(2.0, this._diffMult());
+    return Math.min(1.4, this._diffMult());
   }
 
   _relicPressure() {
