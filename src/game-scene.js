@@ -4536,11 +4536,11 @@ class GameScene extends Phaser.Scene {
 
     // Pick boss type based on biome spread — random for now
     const bossTypes = [
-      { key: 'boss_golem',  name: 'Iron Golem',   biome: 'waste',  hp: 600, speed: 55,  dmg: 22, armor: 4, specialType: 'slam',   specialInterval: 5500 },
-      { key: 'boss_wolf',   name: 'Alpha Wolf',    biome: 'grass',  hp: 420, speed: 100, dmg: 16, armor: 1, specialType: 'charge', specialInterval: 4000 },
-      { key: 'boss_spider', name: 'Spider Queen',  biome: 'ruins',  hp: 480, speed: 85,  dmg: 18, armor: 2, specialType: 'spray',  specialInterval: 5000 },
-      { key: 'boss_troll',  name: 'Frost Troll',   biome: 'tundra', hp: 700, speed: 65,  dmg: 28, armor: 5, specialType: 'slam',   specialInterval: 6500 },
-      { key: 'boss_hydra',  name: 'Bog Hydra',     biome: 'swamp',  hp: 540, speed: 65,  dmg: 20, armor: 2, specialType: 'spray',  specialInterval: 5500 },
+      { key: 'boss_golem',  name: 'Iron Golem',   biome: 'waste',  hp: 600, speed: 55,  dmg: 22, armor: 4, specialType: 'slam',   specialInterval: 5000 },
+      { key: 'boss_wolf',   name: 'Alpha Wolf',    biome: 'grass',  hp: 420, speed: 100, dmg: 16, armor: 1, specialType: 'charge', specialInterval: 3500 },
+      { key: 'boss_spider', name: 'Spider Queen',  biome: 'ruins',  hp: 480, speed: 85,  dmg: 18, armor: 2, specialType: 'spray',  specialInterval: 4200 },
+      { key: 'boss_troll',  name: 'Frost Troll',   biome: 'tundra', hp: 700, speed: 65,  dmg: 28, armor: 5, specialType: 'slam',   specialInterval: 5800 },
+      { key: 'boss_hydra',  name: 'Bog Hydra',     biome: 'swamp',  hp: 540, speed: 65,  dmg: 20, armor: 2, specialType: 'spray',  specialInterval: 4800 },
     ];
     // Biome-anchored pick — prefer a boss whose biome matches where the
     // players currently are, so the boss reads as something emerging from
@@ -4609,7 +4609,7 @@ class GameScene extends Phaser.Scene {
       spr, hp: _bossHp, maxHp: _bossHp,
       speed: bt.speed, dmg: _bossDmg, name: bt.name,
       isBoss: true, type: bt.key, armor: bt.armor || 0,
-      attackTimer: 0, atkInterval: 2200,
+      attackTimer: 0, atkInterval: 1900,
       aggroRange: 99999, attackRange: 70, wanderTimer: 0, sizeMult: 1,
       hpBg, hpBar,
       shadow, baseScale: BOSS_SCALE, _hitTweenUntil: 0,
@@ -4747,7 +4747,7 @@ class GameScene extends Phaser.Scene {
     // Bog Hydra passive HP regen — 5 HP/s. Suppress while flinching from a
     // recent hit so sustained DPS actually drops HP instead of racing regen.
     if (b.type === 'boss_hydra' && b.hp < b.maxHp && b.hp > 0 && !(b._flinchTimer > 0)) {
-      b.hp = Math.min(b.maxHp, b.hp + 5 * (delta / 1000));
+      b.hp = Math.min(b.maxHp, b.hp + 8 * (delta / 1000));
     }
 
     // ── Animation: shadow, idle breathing, walk bob ─────────────
@@ -4943,7 +4943,7 @@ class GameScene extends Phaser.Scene {
       }
 
       // Alpha Wolf howl — summon 2 wolves when below 50% HP, every 12s
-      if (b.type === 'boss_wolf' && b.hp < b.maxHp * 0.5) {
+      if (b.type === 'boss_wolf' && b.hp < b.maxHp * 0.65) {
         if (!b._howlTimer) b._howlTimer = 12000;
         b._howlTimer -= delta;
         if (b._howlTimer <= 0) {
@@ -6298,6 +6298,27 @@ class GameScene extends Phaser.Scene {
         if (e.lbl && e.lbl.scene) e.lbl.destroy();
       }
     });
+    // Kill debris pop — 4 small chunks fly outward, matching the enemy's tint.
+    // Skipped for bosses (they get the full 12-chunk flourish in the isBoss block).
+    if (!e.isBoss) {
+      for (let _ki = 0; _ki < 4; _ki++) {
+        const _ang = (_ki / 4) * Math.PI * 2 + Phaser.Math.FloatBetween(-0.5, 0.5);
+        const _dist = Phaser.Math.Between(12, 28);
+        const _chip = this.add.graphics().setDepth(13);
+        if (this.hudCam) this.hudCam.ignore(_chip);
+        _chip.fillStyle(0xff3300, 0.9);
+        _chip.fillRect(-2, -2, Phaser.Math.Between(3, 6), Phaser.Math.Between(3, 6));
+        _chip.setPosition(ex, ey);
+        this.tweens.add({
+          targets: _chip,
+          x: ex + Math.cos(_ang) * _dist,
+          y: ey + Math.sin(_ang) * _dist - 8,
+          alpha: 0, scaleX: 0.1, scaleY: 0.1,
+          duration: 320, ease: 'Quad.Out',
+          onComplete: () => { if (_chip && _chip.active) _chip.destroy(); },
+        });
+      }
+    }
     // Raider kill — check if camp cleared
     if (e.isRaider) {
       const _ri = this.raiders.indexOf(e); if (_ri !== -1) this.raiders.splice(_ri, 1);
