@@ -1,5 +1,9 @@
 'use strict';
-'use strict';
+// ── src/constants.js — Global config, shared state, biome logic ──────────────
+// Globals exported: VERSION, CFG, ENEMY_STATS, ENEMY_LOOT, CHARS, STATE,
+//                   _worldRng, _pendingLogMsgs, _qlog,
+//                   getBiome, _buildBiomeMap, _buildBiomeMapChunked, _biomeSeeds
+// grep: "const CFG"  "ENEMY_STATS"  "_qlog"  "getBiome"
 
 // ── VERSION ───────────────────────────────────────────────────
 // Update this each commit so the title screen reflects the build date.

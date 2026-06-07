@@ -5,29 +5,50 @@
 // ============================================================
 //
 // ============================================================
-// MANIFEST — NAVIGATION GUIDE FOR THIS FILE
+// MANIFEST — NAVIGATION GUIDE
 // ============================================================
-// This file is a single-file Phaser 3 game. Use the anchors below
-// (function names, CFG keys, class names, log tags) as grep targets
-// instead of line numbers, which drift with every edit.
+// The game is split into src/ files loaded in order by index.html.
+// All files share global scope (plain <script> tags, no ES modules).
+// Use function/class names as grep targets — not line numbers, which drift.
 //
-//   grep -n "functionName" game.js     # find a definition
-//   grep -n "CFG\.KEY_NAME" game.js    # find all uses of a config key
-//   grep -n "_log('\\[BUILD" game.js   # find all build log entries
+//   grep -rn "functionName" src/          # find a definition across all files
+//   grep -rn "CFG\.KEY_NAME" src/         # find all uses of a config key
+//   grep -rn "_log('\[BUILD" src/         # find all build log entries
+//   grep -n  "functionName" src/game-scene.js   # scope to gameplay
 //
-// ── FILE STRUCTURE ───────────────────────────────────────────
-//   Top-level constants:    VERSION, _isMobile, CFG, ENEMY_STATS, ENEMY_LOOT, RECIPES
-//   Phaser scenes (classes):
-//     BootScene          — boot/loader
-//     ControlsScene      — keybind display
-//     ModeSelectScene    — solo/co-op + survival/hardcore
-//     SettingsScene      — audio/video toggles
-//     CharSelectScene    — knight/gunslinger/architect/charmer
-//     GameScene          — main gameplay (the bulk of this file)
-//     GameOverScene      — death + stats screen
+// ── FILE MAP ─────────────────────────────────────────────────
+//   game.js              — THIS FILE. Header + Phaser.Game init only.
 //
-// ── GAMEPLAY SYSTEMS ─────────────────────────────────────────
+//   src/constants.js     — Global config + shared state
+//                          VERSION, CFG, ENEMY_STATS, ENEMY_LOOT,
+//                          _makeMulberry32, _worldRng, _pendingLogMsgs, _qlog,
+//                          biome fns (getBiome, _buildBiomeMap, _biomeSeeds …),
+//                          CHARS, STATE
+//
+//   src/audio.js         — Web Audio chiptune engine
+//                          Music  (Music.play, Music.stop, Music.switchToBoss …)
+//
+//   src/textures.js      — Procedural texture generation (no image files)
+//                          drawWolf, drawRat, drawBear, drawIceCrawler,
+//                          drawSpiderRuins, drawBogLurker, drawDustHound, drawWaterLurker
+//                          drawKnight*, drawGunslinger*, drawArchitect*,
+//                          drawLauren*/charmer, drawAbigail*/ranger
+//                          drawRaiderDirectionals, buildTextures, buildAtlases,
+//                          makeScaleProxy
+//
+//   src/scenes.js        — All non-gameplay scenes + input helpers
+//                          DEFAULT_BINDINGS, keyDisplayName, getControls,
+//                          ControlsScene, BootScene, ModeSelectScene,
+//                          SettingsScene, CharSelectScene
+//
+//   src/game-scene.js    — GameScene: all 22 gameplay systems (see list below)
+//                          Also: GameScene.RECIPES static property
+//
+//   src/game-over.js     — GameOverScene (death + stats screen)
+//
+// ── GAMEPLAY SYSTEMS (all in src/game-scene.js) ──────────────
 // Each system lists its primary functions and relevant CFG keys.
+// Biome/world-gen helpers (getBiome, _buildBiomeMap …) live in src/constants.js.
 //
 // 1. WORLD / TERRAIN GENERATION
 //    fns:  buildWorld, _buildPonds, _buildLakes, _buildRivers,

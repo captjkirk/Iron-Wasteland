@@ -1,4 +1,11 @@
 'use strict';
+// ── src/scenes.js — All non-gameplay scenes + input/settings helpers ──────────
+// Globals exported: DEFAULT_BINDINGS, keyDisplayName, getControls,
+//                   ControlsScene, BootScene, ModeSelectScene,
+//                   SettingsScene, CharSelectScene
+// Note: buildTextures(scene) is called from BootScene.preload() (defined in textures.js).
+// grep: "class BootScene"  "class CharSelectScene"  "getControls"  "DEFAULT_BINDINGS"
+
 // ── KEY BINDING DEFAULTS ─────────────────────────────────────
 const DEFAULT_BINDINGS = {
   p1up:'W', p1down:'S', p1left:'A', p1right:'D',

@@ -1,4 +1,14 @@
 'use strict';
+// ── src/textures.js — Procedural texture generation (no image files) ─────────
+// Globals exported: drawWolf, drawRat, drawBear, drawIceCrawler,
+//                   drawSpiderRuins, drawBogLurker, drawDustHound, drawWaterLurker,
+//                   drawKnight* drawGunslinger* drawArchitect* drawLauren* drawAbigail*
+//                   drawRaiderDirectionals, buildTextures, buildAtlases, makeScaleProxy
+// All draw* fns take (g: Phaser.GameObjects.Graphics).
+// buildTextures(scene) is called from BootScene.preload().
+// buildAtlases(scene) is called internally by buildTextures after all frames generated.
+// grep: "function draw"  "buildTextures"  "buildAtlases"  "generateTexture"
+
 function drawWolf(g) {
   g.clear();
   g.fillStyle(0x888899); g.fillRect(2, 3, 14, 6);

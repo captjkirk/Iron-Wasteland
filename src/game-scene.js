@@ -1,4 +1,13 @@
 'use strict';
+// ── src/game-scene.js — GameScene: all 22 gameplay systems ───────────────────
+// Globals exported: GameScene, GameScene.RECIPES
+// Systems: world-gen, enemy AI, dens, waves/bosses, player movement, player combat,
+//          death/revive, building/crafting, walls/spikes, day/night, relics,
+//          raiders, harvesting, cameras, HUD/minimap, fog-of-war, audio hooks,
+//          input, debug log, tutorial, game-over/victory, settings/save
+// grep: "// ── SYSTEM:"  "spawnBoss"  "updateEnemies"  "buildWorld"  "_log("
+// ALWAYS ask for the debug log when investigating bugs (backtick in-game to view).
+
 class GameScene extends Phaser.Scene {
   constructor() { super('Game'); }
 
