@@ -299,6 +299,8 @@ class GameScene extends Phaser.Scene {
             const _hk = { p1use:K[_B.p1interact], tab:K.TAB, esc:K.ESC };
             if (this.p2) _hk.p2use = K[_B.p2interact];
             this.hotkeys = this.input.keyboard.addKeys(_hk);
+            // Prevent browser from stealing Tab (focus cycle) while the game is running
+            this.input.keyboard.addCapture(K.TAB);
 
             this.hotkeys.p1use.on('down', () => { if (!this.barrackOpen && !this.isOver) this.tryInteract(this.p1); });
             if (this.p2) this.hotkeys.p2use.on('down', () => { if (!this.barrackOpen && !this.isOver) this.tryInteract(this.p2); });
@@ -312,7 +314,7 @@ class GameScene extends Phaser.Scene {
               if (this.controlsVis)   { this.toggleControls(); return; }
               fallback();
             };
-            this.hotkeys.tab.on('down', _makeMenuHandler(() => this.toggleControls()));
+            this.hotkeys.tab.on('down', _makeMenuHandler(() => this.openPauseSettings()));
             this.hotkeys.esc.on('down', _makeMenuHandler(() => this.openPauseSettings()));
 
             // Backtick/grave (`) toggles the debug event log
@@ -2896,11 +2898,19 @@ class GameScene extends Phaser.Scene {
     // keep firing while paused / through the Settings overlay.
     if (this.craftMenuOpen) this.closeCraftMenu();
     if (this.barrackOpen) this.closeBarrack();
+    // Gather character data so the Settings scene can show the controls reference.
+    const p1Ch = this.p1 ? this.p1.charData : CHARS.find(c => c.id === STATE.p1CharId);
+    const p2Ch = (!this.solo && this.p2) ? this.p2.charData : null;
     // Pause immediately so the world freezes mid-frame; Settings overlays on top.
     // We deliberately do NOT fade the world to black — Settings now uses a
     // semi-transparent background so the paused world peeks through.
     this.scene.pause();
-    this.scene.launch('Settings', { returnTo: 'Game' });
+    this.scene.launch('Settings', {
+      returnTo: 'Game',
+      p1CharId: p1Ch ? p1Ch.id : null,
+      p2CharId: p2Ch ? p2Ch.id : null,
+      solo: !!this.solo,
+    });
     this.scene.bringToTop('Settings');
   }
 

@@ -518,112 +518,115 @@ class SettingsScene extends Phaser.Scene {
   constructor() { super('Settings'); }
 
   init(data) {
-    // Remember who launched us so the back button can return there
     this._returnTo = (data && data.returnTo) ? data.returnTo : null;
+    this._p1CharId = (data && data.p1CharId) ? data.p1CharId : null;
+    this._p2CharId = (data && data.p2CharId) ? data.p2CharId : null;
+    this._isSolo   = data ? !!data.solo : true;
   }
 
   create() {
     const { W, H } = CFG;
+    // Scale factor so layout fits both desktop (1280x720) and iPad (640x360)
+    const S  = Math.min(W / 1280, H / 720);
+    const fs = (n) => Math.max(8, Math.round(n * S)) + 'px';
+    const sp = (n) => Math.round(n * S);
+
     const fromGame = this._returnTo === 'Game';
-    // Skip the menu fade-in when we're popping over a paused game — the
-    // pause overlay should appear instantly so the player knows the world froze.
     if (!fromGame) this.cameras.main.fadeIn(300, 0, 0, 0);
 
+    // Background
     const bg = this.add.graphics();
     if (fromGame) {
-      // Pause overlay: 65% dim so the frozen world peeks through.
-      bg.fillStyle(0x000000, 0.65).fillRect(0, 0, W, H);
+      bg.fillStyle(0x000000, 0.72).fillRect(0, 0, W, H);
     } else {
       bg.fillGradientStyle(0x0a0a14, 0x0a0a14, 0x080810, 0x080810, 1);
       bg.fillRect(0, 0, W, H);
     }
-
-    // Discreet PAUSED watermark — only when overlaying gameplay.
     if (fromGame) {
-      this.add.text(20, 22, '⏸ PAUSED', {
-        fontFamily:'monospace', fontSize:'14px', color:'#88aabb',
-        stroke:'#000', strokeThickness:2, letterSpacing: 3,
+      this.add.text(sp(20), sp(22), '⏸ PAUSED', {
+        fontFamily: 'monospace', fontSize: fs(14), color: '#88aabb',
+        stroke: '#000', strokeThickness: 2, letterSpacing: 3,
       }).setOrigin(0, 0.5);
     }
 
-    this.add.text(W/2, 44, 'SETTINGS', {
-      fontFamily:'monospace', fontSize:'36px', color:'#cc8833',
-      stroke:'#7a4a1a', strokeThickness:4,
-    }).setOrigin(0.5);
+    // Thin rule helper
+    const rule = (ry) => {
+      const g = this.add.graphics();
+      g.lineStyle(1, 0x2a3a2a, 0.55);
+      g.lineBetween(W * 0.08, ry, W * 0.92, ry);
+    };
 
-    // ── Input mode section ──────────────────────────────────
-    this.add.text(W/2, 98, 'INPUT MODE', {
-      fontFamily:'monospace', fontSize:'13px', color:'#556655', letterSpacing: 3,
-    }).setOrigin(0.5);
+    let y = sp(40);
 
-    this.add.text(W/2, 120, 'Choose how you control the game. "Auto" detects your device automatically.', {
-      fontFamily:'monospace', fontSize:'11px', color:'#445544',
+    // TITLE
+    this.add.text(W / 2, y, 'SETTINGS', {
+      fontFamily: 'monospace', fontSize: fs(28), color: '#cc8833',
+      stroke: '#7a4a1a', strokeThickness: 3,
     }).setOrigin(0.5);
+    y += sp(38);
+
+    // INPUT MODE
+    const devNote = isTouchDevice() ? '📱 touch' : '💻 keyboard';
+    this.add.text(W / 2, y, 'INPUT MODE  —  ' + devNote + ' detected', {
+      fontFamily: 'monospace', fontSize: fs(11), color: '#556655', letterSpacing: 3,
+    }).setOrigin(0.5);
+    y += sp(18);
 
     const inputOpts = [
-      { key:'auto',     label:'AUTO',     sub: isTouchDevice() ? '(will use Touch on this device)' : '(will use Keyboard on this device)' },
-      { key:'touch',    label:'TOUCH',    sub: 'Virtual joystick + on-screen buttons' },
-      { key:'keyboard', label:'KEYBOARD', sub: 'WASD + Mouse (or arrow keys for P2)' },
+      { key: 'auto',     label: 'AUTO',     sub: isTouchDevice() ? 'auto-detect (touch)' : 'auto-detect (kb)' },
+      { key: 'touch',    label: 'TOUCH',    sub: 'virtual joystick + btns' },
+      { key: 'keyboard', label: 'KEYBOARD', sub: 'WASD + mouse / arrows' },
     ];
-
     const curMode = loadSettings().inputMode || 'auto';
     this._inputSel = curMode;
+    const ibW = sp(210), ibH = sp(50);
+    const ibSpacing = Math.min(sp(240), Math.floor((W - sp(120)) / 3));
+    const ibCy = y + ibH / 2;
     this._inputBoxes = inputOpts.map((o, i) => {
-      const x = W/2 + (i - 1) * 290;
-      const y = 212;
+      const x = W / 2 + (i - 1) * ibSpacing;
       const box = this.add.graphics();
-      const lbl = this.add.text(x, y, o.label, {
-        fontFamily:'monospace', fontSize:'22px', color:'#ffffff', stroke:'#000', strokeThickness:2,
+      const lbl = this.add.text(x, ibCy - sp(7), o.label, {
+        fontFamily: 'monospace', fontSize: fs(16), color: '#ffffff',
+        stroke: '#000', strokeThickness: 2,
       }).setOrigin(0.5);
-      this.add.text(x, y + 30, o.sub, {
-        fontFamily:'monospace', fontSize:'10px', color:'#667755', wordWrap:{width:240},
-      }).setOrigin(0.5, 0);
-      const zone = this.add.zone(x, y + 20, 260, 80).setInteractive({ useHandCursor: true });
+      this.add.text(x, ibCy + sp(11), o.sub, {
+        fontFamily: 'monospace', fontSize: fs(9), color: '#667755',
+      }).setOrigin(0.5);
+      const zone = this.add.zone(x, ibCy, ibW, ibH).setInteractive({ useHandCursor: true });
       zone.on('pointerover', () => this.setInput(o.key));
       zone.on('pointerdown', () => { this.setInput(o.key); saveSettings({ inputMode: o.key }); });
-      return { box, lbl, x, y, key: o.key };
+      return { box, lbl, x, y: ibCy, key: o.key, bw: ibW, bh: ibH };
     });
+    y += ibH + sp(14);
 
-    // Current device note
-    const deviceNote = isTouchDevice()
-      ? '\uD83D\uDCF1  iPad / touch device detected'
-      : '\uD83D\uDCBB  Keyboard device detected';
-    this.add.text(W/2, 318, deviceNote, {
-      fontFamily:'monospace', fontSize:'12px', color:'#4a6a4a',
+    rule(y); y += sp(16);
+
+    // AUDIO
+    this.add.text(W / 2, y, 'AUDIO', {
+      fontFamily: 'monospace', fontSize: fs(11), color: '#556655', letterSpacing: 3,
     }).setOrigin(0.5);
+    y += sp(18);
 
-    // ── Audio settings ───────────────────────────────────────
-    this.add.text(W/2, 352, 'AUDIO', {
-      fontFamily:'monospace', fontSize:'13px', color:'#556655', letterSpacing: 3,
-    }).setOrigin(0.5);
-
-    const s = loadSettings();
-    const fogOn = s.fogEnabled !== false;
-
-    // ── Volume sliders ───────────────────────────────────────────
-    const musicVol = s.musicVolume !== undefined ? s.musicVolume : (s.musicEnabled !== false ? 50 : 0);
-    const sfxVol   = s.sfxVolume   !== undefined ? s.sfxVolume   : (s.sfxEnabled   !== false ? 100 : 0);
+    const st = loadSettings();
+    const musicVol = st.musicVolume !== undefined ? st.musicVolume : (st.musicEnabled !== false ? 50 : 0);
+    const sfxVol   = st.sfxVolume   !== undefined ? st.sfxVolume   : (st.sfxEnabled   !== false ? 100 : 0);
 
     const makeSlider = (label, cy, initialVal, onChange) => {
-      const trackW = Math.min(300, W * 0.4), trackH = 8, thumbW = 14, thumbH = 26;
+      const trackW = Math.min(sp(280), Math.floor(W * 0.38));
+      const trackH = Math.max(4, sp(8)), thumbW = Math.max(8, sp(14)), thumbH = Math.max(14, sp(24));
       const cx = W / 2, trackX = cx - trackW / 2;
-
-      this.add.text(cx, cy - 18, label, {
-        fontFamily:'monospace', fontSize:'10px', color:'#445544', letterSpacing:2,
+      this.add.text(cx, cy - sp(16), label, {
+        fontFamily: 'monospace', fontSize: fs(10), color: '#445544', letterSpacing: 2,
       }).setOrigin(0.5);
-
       const trackGfx = this.add.graphics();
       const fillGfx  = this.add.graphics();
       const thumbGfx = this.add.graphics();
-      const valTxt   = this.add.text(trackX + trackW + 18, cy, '100%', {
-        fontFamily:'monospace', fontSize:'10px', color:'#aaffaa',
+      const valTxt   = this.add.text(trackX + trackW + sp(16), cy, '100%', {
+        fontFamily: 'monospace', fontSize: fs(10), color: '#aaffaa',
       }).setOrigin(0, 0.5);
-
       let val = Phaser.Math.Clamp(initialVal, 0, 100);
-
       const redraw = () => {
-        const pct   = val / 100;
-        const fillW = Math.max(0, Math.floor(trackW * pct));
+        const pct = val / 100, fillW = Math.max(0, Math.floor(trackW * pct));
         trackGfx.clear();
         trackGfx.fillStyle(0x111122, 0.95);
         trackGfx.fillRoundedRect(trackX, cy - trackH / 2, trackW, trackH, 4);
@@ -642,139 +645,198 @@ class SettingsScene extends Phaser.Scene {
         thumbGfx.strokeRoundedRect(thumbX, cy - thumbH / 2, thumbW, thumbH, 3);
         valTxt.setText(val + '%').setColor(val > 0 ? '#aaffaa' : '#556655');
       };
-
       const applyPtr = (ptr) => {
         val = Phaser.Math.Clamp(Math.round(((ptr.x - trackX) / trackW) * 100), 0, 100);
-        redraw();
-        onChange(val);
+        redraw(); onChange(val);
       };
-
-      const zone = this.add.zone(cx, cy, trackW + thumbW + 20, thumbH + 12)
-        .setInteractive({ useHandCursor: true, draggable: false });
+      const zone = this.add.zone(cx, cy, trackW + thumbW + sp(20), thumbH + sp(12)).setInteractive({ useHandCursor: true, draggable: false });
       zone.on('pointerdown', applyPtr);
       zone.on('pointermove', (ptr) => { if (ptr.isDown) applyPtr(ptr); });
-
       redraw();
     };
 
-    makeSlider('MUSIC', 385, musicVol, (v) => {
+    makeSlider('MUSIC', y + sp(14), musicVol, (v) => {
       saveSettings({ musicVolume: v, musicEnabled: v > 0 });
       if (Music.gain) Music.gain.gain.value = (v / 100) * 0.14;
     });
-    makeSlider('SFX', 425, sfxVol, (v) => {
+    y += sp(34);
+    makeSlider('SFX', y + sp(14), sfxVol, (v) => {
       saveSettings({ sfxVolume: v, sfxEnabled: v > 0 });
-      SFX._sfxVol = v / 100;
-      SFX._enabled = v > 0;
+      SFX._sfxVol = v / 100; SFX._enabled = v > 0;
       if (SFX.gain) SFX.gain.gain.value = SFX._sfxVol;
     });
+    y += sp(38);
 
-    const makeToggle = (label, x, y, initial, onToggle) => {
-      const opts = [{ key:true, label:'ON' }, { key:false, label:'OFF' }];
-      this.add.text(x, y - 36, label, { fontFamily:'monospace', fontSize:'10px', color:'#445544', letterSpacing:2 }).setOrigin(0.5);
+    rule(y); y += sp(16);
+
+    // GAMEPLAY TOGGLES
+    const makeToggle = (label, tx, ty, initial, onToggle) => {
+      const bx_off = sp(48), tbW = sp(84), tbH = sp(38);
+      const opts = [{ key: true, label: 'ON' }, { key: false, label: 'OFF' }];
+      this.add.text(tx, ty - sp(26), label, {
+        fontFamily: 'monospace', fontSize: fs(10), color: '#445544', letterSpacing: 2,
+      }).setOrigin(0.5);
       const boxes = opts.map((o, i) => {
-        const bx = x + (i === 0 ? -60 : 60), by = y;
-        const bg = this.add.graphics();
-        const lbl = this.add.text(bx, by, o.label, { fontFamily:'monospace', fontSize:'16px', color:'#fff', stroke:'#000', strokeThickness:2 }).setOrigin(0.5);
-        const zone = this.add.zone(bx, by, 100, 46).setInteractive({ useHandCursor:true });
+        const bx = tx + (i === 0 ? -bx_off : bx_off), by = ty;
+        const tbg = this.add.graphics();
+        const lbl = this.add.text(bx, by, o.label, {
+          fontFamily: 'monospace', fontSize: fs(14), color: '#fff',
+          stroke: '#000', strokeThickness: 2,
+        }).setOrigin(0.5);
+        const zone = this.add.zone(bx, by, tbW, tbH).setInteractive({ useHandCursor: true });
         zone.on('pointerdown', () => { onToggle(o.key); redraw(o.key); });
-        return { bg, lbl, bx, by, key: o.key };
+        return { bg: tbg, lbl, bx, by, key: o.key, bw: tbW, bh: tbH };
       });
       const redraw = (sel) => boxes.forEach(b => {
         b.bg.clear();
         b.bg.fillStyle(b.key === sel ? 0x142014 : 0x0d0d14, 0.95);
-        b.bg.fillRoundedRect(b.bx - 46, b.by - 20, 92, 40, 6);
+        b.bg.fillRoundedRect(b.bx - tbW / 2, b.by - tbH / 2, tbW, tbH, 6);
         b.bg.lineStyle(2, b.key === sel ? 0x88cc44 : 0x222233);
-        b.bg.strokeRoundedRect(b.bx - 46, b.by - 20, 92, 40, 6);
+        b.bg.strokeRoundedRect(b.bx - tbW / 2, b.by - tbH / 2, tbW, tbH, 6);
         b.lbl.setColor(b.key === sel ? '#aaffaa' : '#888899');
       });
       redraw(initial);
     };
 
-    // ── Gameplay settings ────────────────────────────────────
-    this.add.text(W/2, 444, 'GAMEPLAY', {
-      fontFamily:'monospace', fontSize:'13px', color:'#556655', letterSpacing: 3,
-    }).setOrigin(0.5);
+    makeToggle('FOG OF WAR', W / 2 - sp(190), y + sp(28), st.fogEnabled !== false,         (v) => saveSettings({ fogEnabled: v }));
+    makeToggle('MINIMAP',    W / 2,            y + sp(28), st.minimapEnabled !== false,       (v) => saveSettings({ minimapEnabled: v }));
+    y += sp(62);
 
-    makeToggle('FOG OF WAR', W/2 - 200, 486, fogOn, (v) => {
-      saveSettings({ fogEnabled: v });
-    });
-    makeToggle('MINIMAP', W/2, 486, s.minimapEnabled !== false, (v) => {
-      saveSettings({ minimapEnabled: v });
-    });
+    rule(y); y += sp(16);
 
-    // (legacy touch-controls hint — one compact line)
-    const btnDefs = [
-      { lx: 0, ly: 0, r: 0, col: 0, label: '' },
-    ];
-    btnDefs.forEach(b => {
-      void b; // replaced by new settings above
-    });
-
-    // ── Tutorial toggle ──────────────────────────────────────
-    this.add.text(W/2, 536, 'TUTORIAL TIPS', {
-      fontFamily:'monospace', fontSize:'11px', color:'#445544', letterSpacing: 3,
-    }).setOrigin(0.5);
-
-    const tutEnabled = loadSettings().tutorial !== false; // default ON
+    // TUTORIAL TIPS
+    const tutEnabled = loadSettings().tutorial !== false;
     this._tutSel = tutEnabled;
+    const tutBh = sp(50), tutBw = sp(200), tutSpacing = sp(130);
+    const tutCy = y + tutBh / 2;
     const tutOpts = [
-      { key: true,  label: 'ON',  sub: 'Tips appear at top of screen during first game' },
-      { key: false, label: 'OFF', sub: 'No tutorial tips — for experienced players' },
+      { key: true,  label: 'ON',  sub: 'Tips during first game' },
+      { key: false, label: 'OFF', sub: 'For experienced players' },
     ];
     this._tutBoxes = tutOpts.map((o, i) => {
-      const x = W/2 + (i === 0 ? -140 : 140), y = 596;
+      const tx = W / 2 + (i === 0 ? -tutSpacing : tutSpacing);
       const box = this.add.graphics();
-      const lbl = this.add.text(x, y, o.label, {
-        fontFamily:'monospace', fontSize:'18px', color:'#ffffff', stroke:'#000', strokeThickness:2,
+      const lbl = this.add.text(tx, tutCy - sp(8), o.label, {
+        fontFamily: 'monospace', fontSize: fs(16), color: '#ffffff',
+        stroke: '#000', strokeThickness: 2,
       }).setOrigin(0.5);
-      this.add.text(x, y + 22, o.sub, {
-        fontFamily:'monospace', fontSize:'9px', color:'#557755', wordWrap:{width:220},
-      }).setOrigin(0.5, 0);
-      const zone = this.add.zone(x, y + 10, 230, 62).setInteractive({ useHandCursor: true });
+      this.add.text(tx, tutCy + sp(10), o.sub, {
+        fontFamily: 'monospace', fontSize: fs(9), color: '#557755',
+      }).setOrigin(0.5);
+      const zone = this.add.zone(tx, tutCy, tutBw, tutBh).setInteractive({ useHandCursor: true });
       zone.on('pointerover', () => this.setTutorial(o.key));
       zone.on('pointerdown', () => { this.setTutorial(o.key); saveSettings({ tutorial: o.key }); });
-      return { box, lbl, x, y, key: o.key };
+      return { box, lbl, x: tx, y: tutCy, key: o.key, bw: tutBw, bh: tutBh };
     });
+    this.add.text(W / 2, tutCy - tutBh / 2 - sp(14), 'TUTORIAL TIPS', {
+      fontFamily: 'monospace', fontSize: fs(10), color: '#445544', letterSpacing: 2,
+    }).setOrigin(0.5);
+    y += tutBh + sp(14);
 
-    // ── Reset tutorial ───────────────────────────────────────
-    const resetTutBtn = this.add.text(W/2, H - 88, '[ RESET TUTORIAL ]', {
-      fontFamily:'monospace', fontSize:'11px', color:'#556655',
-    }).setOrigin(0.5).setInteractive({ useHandCursor: true });
-    resetTutBtn.on('pointerover', () => resetTutBtn.setColor('#88cc88'));
-    resetTutBtn.on('pointerout',  () => resetTutBtn.setColor('#556655'));
-    resetTutBtn.on('pointerdown', () => {
-      try { localStorage.removeItem('iw_tutorial_state'); } catch(e) {}
+    // CONTROLS REFERENCE — in-game only
+    if (fromGame && this._p1CharId) {
+      rule(y); y += sp(14);
+      this.add.text(W / 2, y, 'YOUR CONTROLS', {
+        fontFamily: 'monospace', fontSize: fs(10), color: '#445566', letterSpacing: 3,
+      }).setOrigin(0.5);
+      y += sp(16);
+
+      const p1Lines = getControls(1, this._p1CharId, this._isSolo);
+      const p2Lines = (!this._isSolo && this._p2CharId) ? getControls(2, this._p2CharId) : null;
+      const lnH = Math.max(10, sp(13));
+
+      const p1x = p2Lines ? Math.floor(W * 0.28) : W / 2;
+      const p1Ch = CHARS.find(c => c.id === this._p1CharId);
+      const p1Col = p1Ch ? '#' + (p1Ch.color || 0x88aaff).toString(16).padStart(6, '0') : '#88aaff';
+      this.add.text(p1x, y, p1Ch ? p1Ch.player + ' — ' + p1Ch.title : 'Player 1', {
+        fontFamily: 'monospace', fontSize: fs(10), color: p1Col,
+        stroke: '#000', strokeThickness: 2,
+      }).setOrigin(0.5);
+      p1Lines.forEach((l, i) => {
+        this.add.text(p1x, y + sp(14) + i * lnH, l, {
+          fontFamily: 'monospace', fontSize: fs(9), color: '#aabbcc',
+          stroke: '#000', strokeThickness: 1,
+        }).setOrigin(0.5);
+      });
+
+      if (p2Lines) {
+        const p2x = Math.floor(W * 0.72);
+        const p2Ch = CHARS.find(c => c.id === this._p2CharId);
+        const p2Col = p2Ch ? '#' + (p2Ch.color || 0xffbb77).toString(16).padStart(6, '0') : '#ffbb77';
+        this.add.text(p2x, y, p2Ch ? p2Ch.player + ' — ' + p2Ch.title : 'Player 2', {
+          fontFamily: 'monospace', fontSize: fs(10), color: p2Col,
+          stroke: '#000', strokeThickness: 2,
+        }).setOrigin(0.5);
+        p2Lines.forEach((l, i) => {
+          this.add.text(p2x, y + sp(14) + i * lnH, l, {
+            fontFamily: 'monospace', fontSize: fs(9), color: '#eeddcc',
+            stroke: '#000', strokeThickness: 1,
+          }).setOrigin(0.5);
+        });
+        y += sp(14) + Math.max(p1Lines.length, p2Lines.length) * lnH + sp(8);
+      } else {
+        y += sp(14) + p1Lines.length * lnH + sp(8);
+      }
+    }
+
+    // BOTTOM BUTTONS — anchored to H so they never overlap content
+    const btnRuleY = H - sp(96);
+    if (y < btnRuleY - sp(8)) rule(btnRuleY);
+
+    // Utility buttons row
+    const utilBtns = [];
+    const addUtil = (label, col, handler) => {
+      const btn = this.add.text(0, H - sp(68), label, {
+        fontFamily: 'monospace', fontSize: fs(11), color: col,
+      }).setOrigin(0.5).setInteractive({ useHandCursor: true });
+      btn.on('pointerover', () => btn.setColor('#ffffff'));
+      btn.on('pointerout',  () => btn.setColor(col));
+      btn.on('pointerdown', handler);
+      utilBtns.push(btn);
+      return btn;
+    };
+
+    const resetTutBtn = addUtil('[ RESET TUTORIAL ]', '#556655', () => {
+      try { localStorage.removeItem('iw_tutorial_state'); } catch (e) {}
       saveSettings({ tutorial: true });
       this.setTutorial(true);
-      this.hint('Tutorial reset — tips will show again next run.', 2500);
       resetTutBtn.setColor('#aaffaa');
       this.time.delayedCall(1200, () => resetTutBtn.setColor('#556655'));
     });
 
-    // ── Rebind controls link ─────────────────────────────────
-    const rebindBtn = this.add.text(W/2, H - 60, '[ REBIND CONTROLS ]', {
-      fontFamily:'monospace', fontSize:'14px', color:'#8888cc',
-    }).setOrigin(0.5).setInteractive({ useHandCursor: true });
-    rebindBtn.on('pointerover', () => rebindBtn.setColor('#aaaaff'));
-    rebindBtn.on('pointerout',  () => rebindBtn.setColor('#8888cc'));
-    rebindBtn.on('pointerdown', () => {
+    addUtil('[ REBIND CONTROLS ]', '#8888cc', () => {
       this.cameras.main.fadeOut(200, 0, 0, 0);
-      this.time.delayedCall(200, () => {
-        this.scene.start('Controls', { returnTo: this._returnTo });
-      });
+      this.time.delayedCall(200, () => this.scene.start('Controls', { returnTo: this._returnTo }));
     });
 
-    // ── Back button ──────────────────────────────────────────
-    const backLabel = this._returnTo === 'Game' ? '[ BACK TO GAME ]' : '[ BACK TO MAIN MENU ]';
-    const backBtn = this.add.text(W/2, H - 22, backLabel, {
-      fontFamily:'monospace', fontSize:'18px', color:'#aaffaa',
+    if (fromGame) {
+      addUtil('[ QUIT TO MENU ]', '#cc6655', () => {
+        this.cameras.main.fadeOut(200, 0, 0, 0);
+        this.time.delayedCall(200, () => {
+          const gs = this.scene.get('Game');
+          this.scene.stop('Settings');
+          this.scene.resume('Game');
+          if (gs && gs.triggerGameOver) gs.triggerGameOver('Run abandoned — better luck next time.');
+        });
+      });
+    }
+
+    // Space utility buttons evenly
+    const uSpacing = Math.min(sp(280), Math.floor((W - sp(80)) / utilBtns.length));
+    const uStartX  = W / 2 - uSpacing * (utilBtns.length - 1) / 2;
+    utilBtns.forEach((b, i) => b.setX(uStartX + i * uSpacing));
+
+    // BACK / CLOSE button
+    const backLabel = fromGame ? '[ BACK TO GAME ]' : '[ BACK TO MAIN MENU ]';
+    const backBtn = this.add.text(W / 2, H - sp(30), backLabel, {
+      fontFamily: 'monospace', fontSize: fs(18), color: '#aaffaa',
     }).setOrigin(0.5).setInteractive({ useHandCursor: true });
     backBtn.on('pointerover', () => backBtn.setColor('#ffffff'));
     backBtn.on('pointerout',  () => backBtn.setColor('#aaffaa'));
 
     const goBack = () => {
       const _s = loadSettings();
-      _qlog(`Settings: back  returnTo=${this._returnTo||'menu'}  inputMode=${_s.inputMode||'auto'}  music=${_s.musicEnabled!==false}  sfx=${_s.sfxEnabled!==false}`, 'menu');
+      _qlog('Settings: back  returnTo=' + (this._returnTo || 'menu') + '  inputMode=' + (_s.inputMode || 'auto'), 'menu');
       this.cameras.main.fadeOut(200, 0, 0, 0);
       this.time.delayedCall(200, () => {
         if (this._returnTo === 'Game') {
@@ -793,25 +855,30 @@ class SettingsScene extends Phaser.Scene {
     backBtn.on('pointerdown', goBack);
     this.tweens.add({ targets: backBtn, alpha: 0.4, duration: 700, yoyo: true, repeat: -1 });
 
+    // Both ESC and TAB dismiss the settings overlay
     const K = Phaser.Input.Keyboard.KeyCodes;
+    this.input.keyboard.addCapture(K.TAB);
     this.input.keyboard.addKey(K.ESC).on('down', goBack);
+    this.input.keyboard.addKey(K.TAB).on('down', goBack);
 
     this.setInput(curMode);
     this.setTutorial(tutEnabled);
   }
 
-  drawSettingsBox(g, x, y, selected) {
+  // drawSettingsBox — optional bw/bh for compact variants
+  drawSettingsBox(g, x, y, selected, bw, bh) {
+    const w = bw || 260, h = bh || 90;
     g.clear();
     g.fillStyle(selected ? 0x142014 : 0x0d0d14, 0.95);
-    g.fillRoundedRect(x - 130, y - 46, 260, 90, 8);
+    g.fillRoundedRect(x - w / 2, y - h / 2, w, h, 8);
     g.lineStyle(2, selected ? 0x88cc44 : 0x222233);
-    g.strokeRoundedRect(x - 130, y - 46, 260, 90, 8);
+    g.strokeRoundedRect(x - w / 2, y - h / 2, w, h, 8);
   }
 
   setInput(key) {
     this._inputSel = key;
     this._inputBoxes.forEach(b => {
-      this.drawSettingsBox(b.box, b.x, b.y, b.key === key);
+      this.drawSettingsBox(b.box, b.x, b.y, b.key === key, b.bw, b.bh);
       b.lbl.setColor(b.key === key ? '#aaffaa' : '#888899');
     });
   }
@@ -820,14 +887,13 @@ class SettingsScene extends Phaser.Scene {
     this._tutSel = key;
     if (this._tutBoxes) {
       this._tutBoxes.forEach(b => {
-        this.drawSettingsBox(b.box, b.x, b.y, b.key === key);
+        this.drawSettingsBox(b.box, b.x, b.y, b.key === key, b.bw, b.bh);
         b.lbl.setColor(b.key === key ? '#aaffaa' : '#888899');
       });
     }
   }
 }
 
-// ── SCENE: CHARACTER SELECT ────────────────────────────────────
 class CharSelectScene extends Phaser.Scene {
   constructor() { super('CharSelect'); }
 
