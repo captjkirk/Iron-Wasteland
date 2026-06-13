@@ -172,12 +172,16 @@ class ControlsScene extends Phaser.Scene {
           const KC = Phaser.Input.Keyboard.KeyCodes;
           let keyName = Object.keys(KC).find(k => KC[k] === event.keyCode);
           if (!keyName) keyName = event.key.toUpperCase();
+          // Reject keys we can't actually bind (dead/international keys with no KeyCodes
+          // entry) — persisting one would leave the box looking set but the key inert.
+          if (KC[keyName] === undefined) { redraw(false, false); return; }
           const cur = getBindings();
-          // If this key is already bound to a different action, clear that old
-          // action first so we never persist duplicate bindings (which would
-          // leave one of the two actions silently non-functional).
+          // If this key already belongs to another action, SWAP: hand that action the
+          // key this one is giving up. Previously we cleared it to '' , which left a
+          // movement/attack key silently dead with no on-screen warning.
+          const prevKey = cur[actionKey];
           for (const [otherAction, otherKey] of Object.entries(cur)) {
-            if (otherAction !== actionKey && otherKey === keyName) cur[otherAction] = '';
+            if (otherAction !== actionKey && otherKey === keyName) cur[otherAction] = prevKey;
           }
           cur[actionKey] = keyName;
           saveSettings({ bindings: cur });
