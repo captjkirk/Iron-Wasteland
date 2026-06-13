@@ -32,14 +32,17 @@ node scripts/check-manifest.js
 ```
 
 ## VERSION constant — REQUIRED bump on every PR
-The `VERSION` constant (top of `game.js`, line ~199) is rendered prominently on the title screen as "Last updated …". It must be different on every PR vs `main`.
+The `VERSION` constant (top of `src/constants.js`) is rendered prominently on the title screen as "Last updated …". It must be different on every PR vs `main`.
 
 - **Local:** `bash setup.sh` once configures git to run `.githooks/pre-commit`, which auto-stamps `VERSION` to the current UTC time on every commit.
 - **CI:** `.github/workflows/checks.yml` → `version-bump` fails any PR where `VERSION` matches the base branch. This is the hard guarantee — it cannot be skipped, even if the local hook isn't installed.
+- **Deploy:** `.github/workflows/pages.yml` re-stamps `VERSION` at publish time so the live "Last updated" reflects the true deploy moment.
+
+(All three — hook, CI check, deploy stamp — target `src/constants.js`. VERSION moved there from `game.js` in the 7-file split; keep them in sync if it ever moves again.)
 
 If CI flags you, stamp manually:
 ```bash
-sed -i "s|const VERSION = '[^']*';|const VERSION = '$(date -u +%Y-%m-%dT%H:%M:%SZ)';|" game.js
+perl -i -pe "s|const VERSION = '[^']*';|const VERSION = '$(date -u +%Y-%m-%dT%H:%M:%SZ)';|" src/constants.js
 ```
 
 ## Debug Log System

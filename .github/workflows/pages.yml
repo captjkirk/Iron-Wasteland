@@ -39,9 +39,9 @@ jobs:
         run: |
           set -euo pipefail
           NEW_VERSION="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
-          perl -i -pe "s|const VERSION = '[^']*';|const VERSION = '${NEW_VERSION}';|" game.js
+          perl -i -pe "s|const VERSION = '[^']*';|const VERSION = '${NEW_VERSION}';|" src/constants.js
           echo "Published VERSION → ${NEW_VERSION}"
-          grep -m1 "const VERSION" game.js
+          grep -m1 "const VERSION" src/constants.js
 
       - name: Configure Pages
         uses: actions/configure-pages@v5

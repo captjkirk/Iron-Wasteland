@@ -18,12 +18,12 @@ jobs:
           set -euo pipefail
           base_ref="${{ github.base_ref }}"
           git fetch origin "$base_ref" --depth=1
-          base_version=$(git show "origin/${base_ref}:game.js" | grep -E "^const VERSION = " || true)
-          head_version=$(grep -E "^const VERSION = " game.js || true)
+          base_version=$(git show "origin/${base_ref}:src/constants.js" | grep -E "^const VERSION = " || true)
+          head_version=$(grep -E "^const VERSION = " src/constants.js || true)
           echo "base: $base_version"
           echo "head: $head_version"
           if [ -z "$head_version" ]; then
-            echo "::error::VERSION constant not found in game.js"
+            echo "::error::VERSION constant not found in src/constants.js"
             exit 1
           fi
           if [ "$base_version" = "$head_version" ]; then
@@ -35,7 +35,7 @@ jobs:
             echo "  git commit --amend --no-edit   # re-runs the hook and stamps VERSION"
             echo ""
             echo "Or stamp manually:"
-            echo "  sed -i \"s|const VERSION = '[^']*';|const VERSION = '\$(date -u +%Y-%m-%dT%H:%M:%SZ)';|\" game.js"
+            echo "  perl -i -pe \"s|const VERSION = '[^']*';|const VERSION = '\$(date -u +%Y-%m-%dT%H:%M:%SZ)';|\" src/constants.js"
             exit 1
           fi
           echo "VERSION bumped — OK."

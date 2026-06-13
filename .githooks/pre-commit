@@ -1,9 +1,11 @@
 #!/usr/bin/env bash
-# Automatically stamps VERSION in game.js with the current UTC ISO time
+# Automatically stamps VERSION in src/constants.js with the current UTC ISO time
 # on every commit, so the build date shown to players is always accurate.
+# (VERSION moved from game.js to src/constants.js in the 7-file split — the stamp
+# target must track it or the title screen's "Last updated" silently freezes.)
 set -euo pipefail
 
-GAME_FILE="game.js"
+GAME_FILE="src/constants.js"
 
 if [ ! -f "$GAME_FILE" ]; then
   echo "pre-commit: $GAME_FILE not found, skipping VERSION stamp" >&2
