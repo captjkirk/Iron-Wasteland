@@ -3,11 +3,46 @@
 // Globals exported: drawWolf, drawRat, drawBear, drawIceCrawler,
 //                   drawSpiderRuins, drawBogLurker, drawDustHound, drawWaterLurker,
 //                   drawKnight* drawGunslinger* drawArchitect* drawLauren* drawAbigail*
-//                   drawRaiderDirectionals, buildTextures, buildAtlases, makeScaleProxy
+//                   drawRaiderDirectionals, drawRiverFrame, buildTextures, buildAtlases, makeScaleProxy
 // All draw* fns take (g: Phaser.GameObjects.Graphics).
 // buildTextures(scene) is called from BootScene.preload().
 // buildAtlases(scene) is called internally by buildTextures after all frames generated.
-// grep: "function draw"  "buildTextures"  "buildAtlases"  "generateTexture"
+// grep: "function draw"  "buildTextures"  "buildAtlases"  "generateTexture"  "drawRiverFrame"
+
+// River current — draws the wavy stripe pattern onto a 32×32 canvas at a vertical
+// scroll offset. Used both to bake the shared 'water_river' CanvasTexture and to
+// re-scroll it each frame from GameScene. ONE shared texture animates every river
+// tile at once, so river tiles stay plain (batchable) add.image objects instead of
+// per-tile TileSprites (which each allocate their own WebGL texture → draw-call storm).
+// The pattern is drawn twice (at off and off-32) so the vertical scroll wraps seamlessly.
+function drawRiverFrame(ctx, off) {
+  off = ((off % 32) + 32) % 32;
+  ctx.fillStyle = '#2277aa';
+  ctx.fillRect(0, 0, 32, 32);
+  ctx.lineWidth = 1;
+  ctx.lineJoin = 'round';
+  for (const dy of [off, off - 32]) {
+    ctx.strokeStyle = 'rgba(85,204,238,0.88)';
+    // Wave 1 — centre y=8
+    ctx.beginPath(); ctx.moveTo(0, 8 + dy);
+    ctx.lineTo(4, 5 + dy); ctx.lineTo(8, 3 + dy); ctx.lineTo(12, 5 + dy);
+    ctx.lineTo(16, 8 + dy); ctx.lineTo(20, 12 + dy); ctx.lineTo(24, 13 + dy); ctx.lineTo(28, 12 + dy);
+    ctx.lineTo(32, 8 + dy); ctx.stroke();
+    // Wave 2 — centre y=19 (opposite phase)
+    ctx.beginPath(); ctx.moveTo(0, 19 + dy);
+    ctx.lineTo(4, 23 + dy); ctx.lineTo(8, 24 + dy); ctx.lineTo(12, 23 + dy);
+    ctx.lineTo(16, 19 + dy); ctx.lineTo(20, 16 + dy); ctx.lineTo(24, 14 + dy); ctx.lineTo(28, 16 + dy);
+    ctx.lineTo(32, 19 + dy); ctx.stroke();
+    // Wave 3 — centre y=29 (clamped to ≤32 so no mid-tile seam)
+    ctx.beginPath(); ctx.moveTo(0, 29 + dy);
+    ctx.lineTo(4, 26 + dy); ctx.lineTo(8, 24 + dy); ctx.lineTo(12, 26 + dy);
+    ctx.lineTo(16, 29 + dy); ctx.lineTo(20, 31 + dy); ctx.lineTo(24, 32 + dy); ctx.lineTo(28, 31 + dy);
+    ctx.lineTo(32, 29 + dy); ctx.stroke();
+    // Scattered glints
+    ctx.fillStyle = 'rgba(170,238,255,0.20)';
+    ctx.fillRect(4, 5 + dy, 5, 1); ctx.fillRect(19, 16 + dy, 4, 1); ctx.fillRect(7, 26 + dy, 5, 1);
+  }
+}
 
 function drawWolf(g) {
   g.clear();
@@ -698,9 +733,7 @@ function buildTextures(scene) {
 
   // Shallow water (32×32) — solid blue-green ground tile
   g.clear();
-  g.fillStyle(0x1a5570); g.fillRect(0, 0, 32, 32);
-  g.fillStyle(0x226688); g.fillRect(1, 1, 30, 30);
-  g.fillStyle(0x3a88a8, 0.5); g.fillRect(0, 0, 32, 10);  // surface lighter zone
+  g.fillStyle(0x226688); g.fillRect(0, 0, 32, 32);  // edge-to-edge — no 1px dark ring
   g.lineStyle(1, 0x66aac8, 0.85);
   g.beginPath(); g.moveTo(4,  8); g.lineTo(14,  8); g.strokePath();
   g.beginPath(); g.moveTo(18, 15); g.lineTo(27, 15); g.strokePath();
@@ -708,22 +741,23 @@ function buildTextures(scene) {
   g.fillStyle(0xaadeee, 0.18); g.fillRect(5, 3, 9, 2); g.fillRect(20, 10, 5, 1);
   g.generateTexture('water_shallow', 32, 32);
 
-  // River tile (32×32) — brighter flowing blue with diagonal ripple lines suggesting current
-  g.clear();
-  g.fillStyle(0x1a5a7a); g.fillRect(0, 0, 32, 32);
-  g.fillStyle(0x2277aa); g.fillRect(1, 1, 30, 30);
-  g.fillStyle(0x44aacc, 0.30); g.fillRect(0, 0, 32, 9);   // surface glint
-  g.lineStyle(1, 0x55ccee, 0.9);
-  g.beginPath(); g.moveTo(2,  14); g.lineTo(11,  5); g.strokePath();
-  g.beginPath(); g.moveTo(11, 22); g.lineTo(22, 11); g.strokePath();
-  g.beginPath(); g.moveTo(19, 29); g.lineTo(30, 18); g.strokePath();
-  g.fillStyle(0xaaeeff, 0.18); g.fillRect(4, 2, 8, 2); g.fillRect(19, 8, 5, 1);
-  g.generateTexture('water_river', 32, 32);
+  // River tile (32×32) — a SHARED animated CanvasTexture (not a per-tile TileSprite).
+  // River tiles are plain add.image('water_river') objects so they batch into one
+  // draw call; GameScene scrolls this single canvas each frame (see drawRiverFrame +
+  // the river block in update()), animating every river tile at once with one upload.
+  {
+    const _riverTex = scene.textures.exists('water_river')
+      ? scene.textures.get('water_river')
+      : scene.textures.createCanvas('water_river', 32, 32);
+    if (_riverTex && _riverTex.context) {
+      drawRiverFrame(_riverTex.context, 0);
+      _riverTex.refresh();
+    }
+  }
 
   // Deep water (32×32) — darker, impassable
   g.clear();
-  g.fillStyle(0x0d2233); g.fillRect(0, 0, 32, 32);
-  g.fillStyle(0x112840); g.fillRect(1, 1, 30, 30);
+  g.fillStyle(0x112840); g.fillRect(0, 0, 32, 32);  // edge-to-edge — no 1px dark ring
   g.lineStyle(1, 0x1a4060, 0.6);
   g.beginPath(); g.moveTo(5, 10); g.lineTo(13, 10); g.strokePath();
   g.beginPath(); g.moveTo(17, 19); g.lineTo(27, 19); g.strokePath();

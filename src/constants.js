@@ -55,8 +55,6 @@ const CFG = {
 // Format: [item_key, base_chance, flags]  flags: 0=plain, 1=multiply by foodMult, 2=rare (skip if hc.rareDropsBossOnly)
 // Chance > 1 = always drops (e.g. bears always drop metal, boss_wolf always drops food).
 const _RAIDER_LOOT = [['item_ammo', 0.6, 0], ['item_metal', 0.4, 0], ['item_food', 0.3, 1]];
-// Hoisted so the per-frame charmer AI doesn't re-allocate this array each tick.
-const HUMAN_ENEMY_TYPES = ['raider_brawler', 'raider_shooter', 'raider_heavy'];
 
 // Canonical base stats for wave/biome enemies. Structure and tower guards keep
 // their own tuned values (they're tuned harder to make POIs dangerous); these

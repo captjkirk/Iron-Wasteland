@@ -124,6 +124,25 @@ class GameScene extends Phaser.Scene {
     this._w = o => { this._wo.push(o); return o; };
     this._h = o => { this._ho.push(o); return o; };
 
+    // Ambient grass sway — 3 staggered phase groups, updated only when frame changes
+    this._grassGroups = [[], [], []];
+    this._grassPhase = -1;
+
+    // Water animation — rivers scroll a shared texture; ponds/lakes shimmer alpha.
+    this._pondWaterTiles = [];  // Image tiles — alpha pulse via shimmer table
+    this._riverTex     = this.textures.exists('water_river') ? this.textures.get('water_river') : null;
+    this._riverScroll  = 0;     // accumulated downstream offset (px)
+    this._riverOffLast = -1;    // last integer offset uploaded — skip redundant refreshes
+    // Shallow-water spatial index is lazily rebuilt per run (see applyTerrainEffects).
+    // Null it on (re)create so a "Play Again" run can't query the previous world's
+    // destroyed tiles (submersion visual would silently die otherwise).
+    this._waterTileByCoord = null;
+    // Pre-compute 60-step shimmer alpha table (~3.3 s cycle, sin-smoothed 0.84→0.96)
+    // Slow, narrow range keeps the shimmer subtle — ponds breathe, not strobe.
+    this._shimmerTable = Array.from({length: 60}, (_, i) =>
+      0.84 + 0.12 * (0.5 + 0.5 * Math.sin(i * Math.PI * 2 / 60))
+    );
+
     // Contextual tutorial hint flags (each fires once)
     this._ctx = {
       nearTree: false, firstHarvest: false, firstCraft: false,
@@ -694,8 +713,9 @@ class GameScene extends Phaser.Scene {
       if (!key) continue; // ruins gets no tall grass
       const sc = Phaser.Math.FloatBetween(0.7, 1.3);
       const ox = Phaser.Math.Between(-10, 10), oy = Phaser.Math.Between(-8, 8);
-      this._w(this.add.image(tx*TILE+ox, ty*TILE+oy, key)
+      const _gs = this._w(this.add.image(tx*TILE+ox, ty*TILE+oy, key)
         .setOrigin(0.5, 1).setScale(sc).setDepth(4 + ty*0.001).setAlpha(0.82));
+      this._grassGroups[i % 3].push(_gs);
     }
 
     // ── PRE-COMPUTE ALL POI POSITIONS ────────────────────────────────────────
@@ -2468,9 +2488,16 @@ class GameScene extends Phaser.Scene {
     refreshAmmo(this.ammoIcons.p1, this.ammoReserveText && this.ammoReserveText.p1, this.p1);
     if (this.p2) refreshAmmo(this.ammoIcons.p2, this.ammoReserveText && this.ammoReserveText.p2, this.p2);
 
-    // Update name badges
-    if (this.p1Badge) this.p1Badge.setText(this.p1.charData.player + ' — ' + this.p1.charData.title);
-    if (this.p2Badge && this.p2) this.p2Badge.setText(this.p2.charData.player + ' — ' + this.p2.charData.title);
+    // Update name badges — cache the rendered string so an unrelated HUD dirty
+    // (ammo, relic, build) doesn't re-layout glyphs that never changed.
+    if (this.p1Badge) {
+      const _b1 = this.p1.charData.player + ' — ' + this.p1.charData.title;
+      if (this._lastBadgeP1 !== _b1) { this._lastBadgeP1 = _b1; this.p1Badge.setText(_b1); }
+    }
+    if (this.p2Badge && this.p2) {
+      const _b2 = this.p2.charData.player + ' — ' + this.p2.charData.title;
+      if (this._lastBadgeP2 !== _b2) { this._lastBadgeP2 = _b2; this.p2Badge.setText(_b2); }
+    }
 
     // Inventory display
     const invStr = p => {
@@ -2483,8 +2510,14 @@ class GameScene extends Phaser.Scene {
       if (i.food > 0) parts.push('Food:' + i.food);
       return parts.length ? parts.join('  ') : '';
     };
-    if (this.p1InvText) this.p1InvText.setText(invStr(this.p1));
-    if (this.p2InvText) this.p2InvText.setText(invStr(this.p2));
+    if (this.p1InvText) {
+      const _i1 = invStr(this.p1);
+      if (this._lastInvP1 !== _i1) { this._lastInvP1 = _i1; this.p1InvText.setText(_i1); }
+    }
+    if (this.p2InvText) {
+      const _i2 = invStr(this.p2);
+      if (this._lastInvP2 !== _i2) { this._lastInvP2 = _i2; this.p2InvText.setText(_i2); }
+    }
 
     // Relic progress tracker
     if (this.hudRelicText) {
@@ -2495,8 +2528,12 @@ class GameScene extends Phaser.Scene {
       if (anyActivity) {
         const boxes = '◆'.repeat(dep) + '◇'.repeat(5 - dep);
         const carryStr = held > 0 ? '  ▶ carrying ' + held : '';
-        this.hudRelicText.setText('ALTAR ' + boxes + carryStr);
-        this.hudRelicText.setColor(held > 0 ? '#ff8833' : '#cc44ff');
+        const _rs = 'ALTAR ' + boxes + carryStr;
+        if (this._lastRelicStr !== _rs) {
+          this._lastRelicStr = _rs;
+          this.hudRelicText.setText(_rs);
+          this.hudRelicText.setColor(held > 0 ? '#ff8833' : '#cc44ff');
+        }
       }
     }
   }
@@ -3676,11 +3713,11 @@ class GameScene extends Phaser.Scene {
       if (this._perfBudget && this._perfBudget.n > 0) {
         const _n = this._perfBudget.n;
         const _av = k => (this._perfBudget[k] / _n).toFixed(2);
-        this._log(`frame budget (${_n}fr avg)  terrain=${_av('terrain')}ms  enemies=${_av('enemies')}ms  waves=${_av('waves')}ms  dens=${_av('dens')}ms  raiders=${_av('raiders')}ms  boss=${_av('boss')}ms  daynight=${_av('daynight')}ms  glows=${_av('glows')}ms  fog=${_av('fog')}ms  minimap=${_av('minimap')}ms  hud=${_av('hud')}ms  threats=${_av('threats')}ms`, 'perf');
+        this._log(`frame budget (${_n}fr avg)  terrain=${_av('terrain')}ms  enemies=${_av('enemies')}ms  waves=${_av('waves')}ms  dens=${_av('dens')}ms  raiders=${_av('raiders')}ms  boss=${_av('boss')}ms  daynight=${_av('daynight')}ms  glows=${_av('glows')}ms  fog=${_av('fog')}ms  minimap=${_av('minimap')}ms  hud=${_av('hud')}ms  threats=${_av('threats')}ms  grass=${_av('grass')}ms  water=${_av('water')}ms`, 'perf');
         this._perfBudget = null;
       }
     }
-    if (!this._perfBudget) this._perfBudget = { terrain: 0, enemies: 0, waves: 0, dens: 0, raiders: 0, boss: 0, daynight: 0, glows: 0, fog: 0, minimap: 0, hud: 0, threats: 0, n: 0 };
+    if (!this._perfBudget) this._perfBudget = { terrain: 0, enemies: 0, waves: 0, dens: 0, raiders: 0, boss: 0, daynight: 0, glows: 0, fog: 0, minimap: 0, hud: 0, threats: 0, grass: 0, water: 0, n: 0 };
 
     // _onIce, _inShallowWater, and toxic pool detection are now all computed per-frame
     // inside applyTerrainEffects via Uint8Array map lookups — no reset needed here.
@@ -3773,8 +3810,64 @@ class GameScene extends Phaser.Scene {
     // Tundra slowdown effect
     { const _t = performance.now(); this.applyTerrainEffects(this.p1); if (this.p2) this.applyTerrainEffects(this.p2); this._perfBudget.terrain += performance.now() - _t; }
 
+    // Ambient grass sway — pivot from origin (0.5,1) so blades rotate at their base.
+    // 3 phase groups cycle out-of-sync for a natural, non-mechanical look.
+    // setAngle only fires when the 600ms phase boundary crosses — negligible cost.
+    { const _t = performance.now();
+      const _gp = Math.floor(time / 600);
+      if (_gp !== this._grassPhase) {
+        this._grassPhase = _gp;
+        const _angles = [-2, 2, 0];
+        for (let _gi = 0; _gi < 3; _gi++) {
+          const _a = _angles[(_gp + _gi) % 3];
+          for (const _s of this._grassGroups[_gi]) _s.setAngle(_a);
+        }
+      }
+      this._perfBudget.grass += performance.now() - _t; }
+
+    // Water animation — river current + pond/lake shimmer.
+    // Rivers: scroll the SINGLE shared 'water_river' canvas downstream. Every river
+    //   tile is a plain add.image sharing this texture, so one redraw+upload animates
+    //   them all in one batch (no per-tile TileSprite draw-call storm). The redraw is
+    //   gated on the integer offset changing, so it fires only every ~2-3 frames.
+    // Ponds/lakes: alpha oscillates per-tile via a pre-computed 60-step sin table;
+    //   the per-tile phase offset (_shimmerOff) breaks the lockstep so tiles
+    //   don't all brighten/darken together — gives a gentle ripple-across-the-water feel.
+    { const _t = performance.now();
+      if (this._riverTex && this._riverTex.context) {
+        this._riverScroll += delta * 0.012; // ~12 px/sec downstream, frame-rate independent
+        const _off = Math.floor(this._riverScroll) % 32;
+        if (_off !== this._riverOffLast) {
+          this._riverOffLast = _off;
+          try { drawRiverFrame(this._riverTex.context, _off); this._riverTex.refresh(); } catch(e) {}
+        }
+      }
+      if (this._shimmerTable && this._pondWaterTiles.length) {
+        const _si = Math.floor(time / 55); // ~3.3 s full shimmer cycle
+        for (const _pt of this._pondWaterTiles) {
+          _pt.setAlpha(this._shimmerTable[(_si + _pt._shimmerOff) % 60]);
+        }
+      }
+      this._perfBudget.water += performance.now() - _t; }
+
     // Cache active players once per frame — reused by updateEnemyDens, updateWaterDens, etc.
     this._activePlayers = [this.p1, this.p2].filter(p => p && p.spr && p.spr.active);
+
+    // Low-HP heal reminder — logs showed players limping at single-digit HP for whole
+    // game-days without using any heal path (Med Kit / campfire / food). Nudge once when a
+    // player first drops below 30%; re-arm after they recover past 60% so it can fire again
+    // in a long run but never spams.
+    for (const _pl of this._activePlayers) {
+      if (_pl.isDowned || _pl.hp <= 0 || !_pl.maxHp) continue;
+      if (_pl._lowHpArmed === undefined) _pl._lowHpArmed = true;
+      const _hpR = _pl.hp / _pl.maxHp;
+      if (_hpR < 0.30 && _pl._lowHpArmed) {
+        _pl._lowHpArmed = false;
+        this.hint('⚠ Low HP! Eat food, rest by a campfire, or craft a Med Kit at a bench.', 3500);
+      } else if (_hpR > 0.60) {
+        _pl._lowHpArmed = true;
+      }
+    }
 
     // Water submersion visual overlay
     this._updateWaterSubmersion(this.p1);
@@ -4397,9 +4490,16 @@ class GameScene extends Phaser.Scene {
     // Shooters fire projectiles; brawlers get a charge lunge
     if (!this.raiders || this.isOver) return;
     const players = [this.p1, this.p2].filter(p => p && p.spr && !p.isDowned && p.hp > 0 && p.spr.visible);
+    // When a charmer (Lauren) is in play, raiders are her allies — their movement +
+    // attack is driven by the ally AI in updateEnemies. Skip the hostile raider AI
+    // here so it doesn't override that velocity and re-aim them at the players.
+    const _charmerAlive = [this.p1, this.p2].some(
+      p => p && p.charData && p.charData.id === 'charmer' && !p.isDowned && p.spr && p.spr.active
+    );
 
     this.raiders.forEach(raider => {
       if (raider.hp <= 0 || !raider.spr.active) return;
+      if (_charmerAlive && !raider._aggroOverride) return; // charmed ally — handled by updateEnemies
       // Hunt-party expiration — after 3 minutes the hunter demotes to a normal raider.
       if (raider.isHuntParty && this.time.now > (raider.huntExpires || 0)) {
         raider.isHuntParty = false;
@@ -4576,7 +4676,14 @@ class GameScene extends Phaser.Scene {
     this.physics.add.collider(spr, this.obstacles, (bSpr, obstacle) => {
         const now = this.time.now;
         if (obstacle?.active && now > (this.boss?._smashCooldown || 0)) {
-            if (this.boss) this.boss._smashCooldown = now + 350;
+            if (this.boss) {
+              this.boss._smashCooldown = now + 350;
+              // Smashing costs momentum — slow the boss briefly so walls/terrain actually
+              // delay it instead of being plowed through at full speed (player feedback:
+              // "slow them down, not stop them"). Each smash refreshes the slow, so a wall
+              // line meaningfully holds the boss up.
+              this.boss._smashSlowUntil = now + 550;
+            }
             this._bossSmash(obstacle);
         }
     });
@@ -4676,7 +4783,11 @@ class GameScene extends Phaser.Scene {
           speed: t.speed * sizeMult, dmg: Math.max(1, Math.floor(t.dmg * sizeMult)),
           type: t.key, attackTimer: 0,
           wanderTimer: Phaser.Math.Between(0, 1000),
-          aggroRange: baseAggro * 1.4, attackRange: (30 + t.w/2) * sizeMult,
+          // Escort: map-wide aggro + dormancy-exempt so they actively march toward the
+          // player WITH the boss instead of going dormant at the distant edge spawn and
+          // never being seen (the "boss had no entourage" report).
+          aggroRange: 99999, attackRange: (30 + t.w/2) * sizeMult,
+          _bossEscort: true,
           sizeMult,
         });
         this._log(`spawnBoss: entourage spawned  i=${i}`, 'world');
@@ -4744,7 +4855,12 @@ class GameScene extends Phaser.Scene {
       return;
     }
 
-    // Bog Hydra passive HP regen — 5 HP/s. Suppress while flinching from a
+    // Decay the boss flinch timer here — the boss is excluded from the main enemy
+    // loop (where every other enemy's _flinchTimer is decremented), so without this
+    // a single hit would pin it > 0 forever and the regen gate below could never open.
+    if (b._flinchTimer > 0) b._flinchTimer -= delta;
+
+    // Bog Hydra passive HP regen — 8 HP/s. Suppress while flinching from a
     // recent hit so sustained DPS actually drops HP instead of racing regen.
     if (b.type === 'boss_hydra' && b.hp < b.maxHp && b.hp > 0 && !(b._flinchTimer > 0)) {
       b.hp = Math.min(b.maxHp, b.hp + 8 * (delta / 1000));
@@ -4914,8 +5030,10 @@ class GameScene extends Phaser.Scene {
         });
       }
 
-      // Chase toward nearest foe — use obstacle steering so the boss can't freeze on terrain
-      const vel = this._steerToward(b, foeX, foeY, b.speed);
+      // Chase toward nearest foe — use obstacle steering so the boss can't freeze on terrain.
+      // Halve speed briefly after smashing an obstacle so walls/terrain slow it down.
+      const _chaseSpd = (this.time.now < (b._smashSlowUntil || 0)) ? b.speed * 0.5 : b.speed;
+      const vel = this._steerToward(b, foeX, foeY, _chaseSpd);
       b._bossEscTimer = (b._bossEscTimer || 0) - delta;
       if (b._bossEscTimer > 0) {
         // escape burst active — keep current velocity, don't overwrite
@@ -5710,7 +5828,11 @@ class GameScene extends Phaser.Scene {
     } else if (id === 'charmer') {
       // FLOWER TOSS — charm-on-hit bouquet
       if ((player.flowerAmmo || 0) <= 0) {
-        this.hint('No flowers! Craft a Flower Bouquet.', 2000);
+        // Throttle the reminder — mashing attack with no flowers used to spam it ~7×/5s.
+        if (this.time.now > (player._noFlowerHintAt || 0)) {
+          player._noFlowerHintAt = this.time.now + 4000;
+          this.hint('No flowers! Craft a Flower Bouquet.', 2000);
+        }
         return;
       }
       player.flowerAmmo--;
@@ -6116,7 +6238,11 @@ class GameScene extends Phaser.Scene {
     if (!this._autoPaused) return;
     this._autoPaused = false;
     this._log('auto-resume', 'world');
-    if (this.scene && this.scene.isPaused('Game')) this.scene.resume('Game');
+    // Don't force-resume if the player has the pause/Settings screen open — they
+    // paused on purpose. Auto-resuming would unpause the world behind the still-open
+    // (semi-transparent) menu, so enemies could move and kill them while "paused".
+    const _settingsOpen = this.scene && this.scene.isActive && this.scene.isActive('Settings');
+    if (!_settingsOpen && this.scene && this.scene.isPaused('Game')) this.scene.resume('Game');
     // Clear stale key-down states so nothing is "stuck" after the tab was backgrounded.
     // Without this, a key held before the tab-switch stays .isDown = true forever.
     try { if (this.input && this.input.keyboard) this.input.keyboard.resetKeys(); } catch(e) {}
@@ -6442,7 +6568,8 @@ class GameScene extends Phaser.Scene {
 
     if (!nearest) { this._hideScoutPanel(); return; }
 
-    const data = SCOUT_DATA[nearest.type];
+    // Raiders carry the unprefixed type ('brawler'); SCOUT_DATA keys them 'raider_*'.
+    const data = SCOUT_DATA[nearest.isRaider ? 'raider_' + nearest.type : nearest.type];
     if (!data) { this._hideScoutPanel(); return; }
 
     // Build panel lazily
@@ -6630,12 +6757,14 @@ class GameScene extends Phaser.Scene {
           } else {
             player.inv.food = (player.inv.food || 0) + 1;
             this.resourcesGathered++;
+            this._hudDirty = true;
             this._log(`${player.charData.player} stored food (full HP)  inv=${JSON.stringify(player.inv)}`, 'player');
             label = '+1 Food';
           }
         } else {
           player.inv[item.itemType] = (player.inv[item.itemType] || 0) + 1;
           this.resourcesGathered++;
+          this._hudDirty = true;
           this._log(`${player.charData.player} +1 ${item.itemType}  inv=${JSON.stringify(player.inv)}`, 'player');
           label = '+1 ' + item.itemType.charAt(0).toUpperCase() + item.itemType.slice(1);
         }
@@ -6850,6 +6979,8 @@ class GameScene extends Phaser.Scene {
           if (this.hudCam) this.hudCam.ignore(tile);
           this.waterTiles.push(tile);
           this._waterMap[tx + ty * CFG.MAP_W] = 1;
+          tile._shimmerOff = (tx * 7 + ty * 13) % 60;
+          this._pondWaterTiles.push(tile);
         }
       });
       _pondPlaced++;
@@ -6956,11 +7087,15 @@ class GameScene extends Phaser.Scene {
           if (this.hudCam) this.hudCam.ignore(tile);
           this.waterTiles.push(tile);
           this._waterMap[tx + ty * CFG.MAP_W] = 1;
+          tile._shimmerOff = (tx * 7 + ty * 13) % 60;
+          this._pondWaterTiles.push(tile);
         } else {
           const tile = this._w(this.add.image(x, y, 'water_shallow').setOrigin(0).setDepth(0.75));
           if (this.hudCam) this.hudCam.ignore(tile);
           this.waterTiles.push(tile);
           this._waterMap[tx + ty * CFG.MAP_W] = 1;
+          tile._shimmerOff = (tx * 7 + ty * 13) % 60;
+          this._pondWaterTiles.push(tile);
         }
       });
 
@@ -7193,6 +7328,9 @@ class GameScene extends Phaser.Scene {
         if (rtx < 1 || rty < 1 || rtx >= MAP_W - 1 || rty >= MAP_H - 1) return;
         if (_inExcl(rtx, rty)) return;
         if (this._waterMap[rtx + rty * MAP_W]) return; // already water — skip
+        // Plain image sharing the animated 'water_river' canvas — batches into one
+        // draw call. (Was a per-tile TileSprite; with ~5,000 river tiles that meant
+        // ~5,000 unique WebGL textures + no culling → killed iPad framerate.)
         const tile = this._w(this.add.image(rtx * TILE, rty * TILE, 'water_river').setOrigin(0).setDepth(0.75));
         if (this.hudCam) this.hudCam.ignore(tile);
         this.waterTiles.push(tile);
@@ -7420,17 +7558,21 @@ class GameScene extends Phaser.Scene {
         this._log('Wave ' + this.waveNum + ' capped — MAX_ENEMIES reached (' + this.enemies.length + '/' + CFG.MAX_ENEMIES + ')  skipped: w=' + _wSkip + ' r=' + _rSkip + ' b=' + _bSkip, 'world');
         return;
       }
-      // Escalating counts
-      const w = Math.min(6 + this.waveNum * 2, 20);
-      const r = Math.min(8 + this.waveNum * 3, 30);
-      const b = Math.min(1 + this.waveNum, 8);
+      // Escalating counts — clamped to the remaining headroom under MAX_ENEMIES so a
+      // day-boundary wave can't blow past the cap (was overshooting 280 → 305-318,
+      // which then starved biome/den spawns and added pointless update cost).
+      let _head = Math.max(0, CFG.MAX_ENEMIES - this.enemies.length);
+      const _take = n => { const v = Math.min(n, _head); _head -= v; return v; };
+      const w = _take(Math.min(6 + this.waveNum * 2, 20));
+      const r = _take(Math.min(8 + this.waveNum * 3, 30));
+      const b = _take(Math.min(1 + this.waveNum, 8));
       this._spawnGroup(this.enemyWorldW, this.enemyWorldH, this.enemyCX, this.enemyCY, { wolf:w, rat:r, bear:b }, true);
       if (this.dayNum >= 2) {
         const wn = this.waveNum;
-        this._spawnBiomeEnemy('ice_crawler',  'tundra', Math.min(2 + wn, 6),  1);
-        this._spawnBiomeEnemy('spider_ruins', 'ruins',  Math.min(2 + wn, 6),  1);
-        this._spawnBiomeEnemy('bog_lurker',   'swamp',  Math.min(1 + wn, 4),  1);
-        this._spawnBiomeEnemy('dust_hound',   'waste',  Math.min(3 * wn, 9),  3);
+        this._spawnBiomeEnemy('ice_crawler',  'tundra', _take(Math.min(2 + wn, 6)),  1);
+        this._spawnBiomeEnemy('spider_ruins', 'ruins',  _take(Math.min(2 + wn, 6)),  1);
+        this._spawnBiomeEnemy('bog_lurker',   'swamp',  _take(Math.min(1 + wn, 4)),  1);
+        this._spawnBiomeEnemy('dust_hound',   'waste',  _take(Math.min(3 * wn, 9)),  3);
       }
       this._log('Wave ' + this.waveNum + ' day=' + this.dayNum + ' diff=' + this._diffMult().toFixed(1) + 'x  speed=' + this._diffSpeedMult().toFixed(1) + 'x  w=' + w + ' r=' + r + ' b=' + b, 'world');
       this.hint('Wave ' + this.waveNum + '! Enemies approaching from the wastes!', 3000);
@@ -7539,6 +7681,7 @@ class GameScene extends Phaser.Scene {
               if (!item.active) return;
               p.inv.wood = (p.inv.wood || 0) + 1;
               this.resourcesGathered++;
+              this._hudDirty = true;
               SFX._play(720, 'sine', 0.1, 0.08);
               this._floatPickup(item.x, item.y, '+1 Wood');
               if (!this._ctx.firstHarvest) {
@@ -7813,7 +7956,7 @@ class GameScene extends Phaser.Scene {
     const _AURA_R2 = 700 * 700;
     const _rp = this._relicPressure();
 
-    // HUMAN_ENEMY_TYPES hoisted to module scope so we don't reallocate per frame.
+    // Resolve the charmer once per frame for the per-enemy charm/ally pass below.
     const charmerPlayer = [this.p1, this.p2].find(
       p => p && p.charData && p.charData.id === 'charmer' && !p.isDowned && p.spr && p.spr.active
     );
@@ -7826,8 +7969,8 @@ class GameScene extends Phaser.Scene {
       if (e.isBoss) return; // boss movement/attack handled by updateBoss
 
       // ── Dormancy: wildlife enemies far from all players sleep (no AI, no physics) ──
-      // Raiders are always aggressive — never dormant. Boss already excluded above.
-      if (!e.isRaider) {
+      // Raiders + boss escorts are always aggressive — never dormant. Boss already excluded above.
+      if (!e.isRaider && !e._bossEscort) {
         let _minDist2 = Infinity;
         for (const _pp of _pPos) {
           const _dx = e.spr.x - _pp.x, _dy = e.spr.y - _pp.y;
@@ -7920,8 +8063,13 @@ class GameScene extends Phaser.Scene {
         return;
       }
       // Lauren (charmer) passive — human enemies are permanent allies; others charmed within aura
-      // charmerPlayer + HUMAN_ENEMY_TYPES are hoisted above forEach for performance
-      const isHumanEnemy = HUMAN_ENEMY_TYPES.includes(e.type);
+      // (charmerPlayer is resolved once above the forEach for performance).
+      // "Human enemy" = any raider (brawler/shooter/heavy, incl. hunt parties). Keyed
+      // off the isRaider flag, not the type string: raiders carry the UNPREFIXED type
+      // ('brawler'), while HUMAN_ENEMY_TYPES held the texture-key form ('raider_brawler'),
+      // so the old includes() was always false and the charmer's signature passive
+      // (raiders are allies) never fired.
+      const isHumanEnemy = !!e.isRaider;
       if (!e._aggroOverride) {
         if (charmerPlayer) {
           let charmed = false;
@@ -7957,7 +8105,7 @@ class GameScene extends Phaser.Scene {
                 e._allyRetargetCd = 250;
                 e._allyTarget = this.enemies.find(t =>
                   t !== e && !t.dying && t.spr && t.spr.active &&
-                  !HUMAN_ENEMY_TYPES.includes(t.type) &&
+                  !t.isRaider && !t.isBoss &&
                   Phaser.Math.Distance.Between(e.spr.x, e.spr.y, t.spr.x, t.spr.y) < 350
                 ) || null;
               }
@@ -8474,11 +8622,13 @@ class GameScene extends Phaser.Scene {
           } else {
             player.inv.food = (player.inv.food || 0) + 2;
             this.resourcesGathered += 2;
+            this._hudDirty = true;
             this._log(`${player.charData.player} crate food stored (full HP)  inv=${JSON.stringify(player.inv)}`, 'player');
           }
         } else {
           player.inv[crate.itemType] = (player.inv[crate.itemType] || 0) + 2;
           this.resourcesGathered += 2;
+          this._hudDirty = true;
           this._log(`${player.charData.player} crate ${crate.itemType}  inv=${JSON.stringify(player.inv)}`, 'player');
         }
         SFX._play(720, 'sine', 0.1, 0.08);
@@ -8579,6 +8729,7 @@ class GameScene extends Phaser.Scene {
         refund[res] = give;
       }
     }
+    this._hudDirty = true;
 
     // Reuse the existing destroy path (bucket + cluster + minimap + fade tween).
     this.damageStructure(best, (best.hp || 1) + 1);
@@ -8652,6 +8803,7 @@ class GameScene extends Phaser.Scene {
         if (partner) partner.inv[res] = Math.max(0, partner.inv[res] - left);
       }
     }
+    this._hudDirty = true;
 
     // Place the structure
     this._log(`Build placed: ${this.buildType}  pos=(${Math.floor(x/CFG.TILE)},${Math.floor(y/CFG.TILE)})  by=${this.buildOwner?.charData?.player||'?'}`, 'build');
@@ -9104,6 +9256,7 @@ class GameScene extends Phaser.Scene {
         if (left <= 0) break;
       }
     }
+    this._hudDirty = true; // inventory (Wood/Metal/Fiber/Food) changed — refresh the readout
 
     if (rec.type === 'instant' && rec.key === 'flower_bouquet') {
       // Flower Bouquet: +8 flowers for Lauren; hint if Lauren not in game

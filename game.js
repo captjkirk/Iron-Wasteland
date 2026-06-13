@@ -61,6 +61,9 @@
 //          PLACEMENT, ROCKS
 //    data: _biomeSeeds, _waterMap, _iceMap, waterTiles, iceTiles,
 //          deepWaterTiles, mountainTiles, obstacles
+//    ambient anim: _grassGroups, _grassPhase (grass sway);
+//          _riverTex, _riverScroll, _riverOffLast + drawRiverFrame (shared scrolling
+//          river canvas); _pondWaterTiles, _shimmerTable (pond/lake alpha shimmer)
 //    log:  [WORLD ]
 //
 // 2. ENEMY AI / PATHFINDING / DAMAGE
@@ -206,7 +209,7 @@
 //
 // ── COMMON GOTCHAS ───────────────────────────────────────────
 // • Two cameras: new world objects must call hudCam.ignore(obj).
-// • Water detection uses _waterTileSet (Set of "tx,ty"), NOT physics overlap.
+// • Water detection uses the _waterMap Uint8Array (index tx + ty*MAP_W), NOT physics overlap.
 // • Enemy dormancy: enemies > DORMANT_RADIUS are physics-disabled and hidden;
 //   they re-enable inside WAKE_RADIUS (hysteresis).
 // • Edits must also land in the canonical iCloud folder (see CLAUDE.md).
