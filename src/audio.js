@@ -2,7 +2,7 @@
 
 // ── CHIPTUNE MUSIC (Web Audio, no files needed) ───────────────
 const Music = {
-  ctx: null, gain: null, playing: false, mode: 'day', _loopTimer: null,
+  ctx: null, gain: null, playing: false, mode: 'day', _loopTimer: null, _voices: [],
   start() {
     if (this.playing) return;
     try {
@@ -14,6 +14,18 @@ const Music = {
         this.gain = this.ctx.createGain();
         this.gain.gain.value = 0.07;
         this.gain.connect(this.ctx.destination);
+        // iOS/Safari suspends the AudioContext on tab-hide / Siri / phone call even on
+        // menu scenes that have no pause handler of their own. Resume whenever the page
+        // becomes visible again while music is meant to be playing, so audio doesn't stay
+        // dead for a whole session. ('interrupted' is Safari's non-standard suspended.)
+        try {
+          document.addEventListener('visibilitychange', () => {
+            if (!document.hidden && this.playing && this.ctx &&
+                (this.ctx.state === 'suspended' || this.ctx.state === 'interrupted')) {
+              this.ctx.resume().catch(() => {});
+            }
+          });
+        } catch(e) {}
       }
       if (this.ctx.state === 'suspended') this.ctx.resume();
       this.playing = true;
@@ -26,8 +38,25 @@ const Music = {
     // Cancel any scheduled loop callback — otherwise queued setTimeouts keep firing
     // and re-enter _*Loop against a stopped/suspended context.
     if (this._loopTimer) { clearTimeout(this._loopTimer); this._loopTimer = null; }
+    this._voices = [];
     // Suspend rather than close, so the same ctx can be resumed on restart (iOS).
     if (this.ctx && this.ctx.state === 'running') { try { this.ctx.suspend(); } catch(e) {} }
+  },
+  // Fade out and stop every currently-scheduled music oscillator. Used on the hard
+  // boss in/out cut so the previous loop's already-scheduled notes (day blocks run
+  // ~7.7s, night ~12s) don't keep sounding layered over the new track.
+  _killVoices(fade) {
+    if (!this.ctx || !this._voices.length) return;
+    const now = this.ctx.currentTime, f = fade || 0.08;
+    for (const v of this._voices.slice()) {
+      try {
+        v.g.gain.cancelScheduledValues(now);
+        v.g.gain.setValueAtTime(Math.max(0.0001, v.g.gain.value || 0.0001), now);
+        v.g.gain.exponentialRampToValueAtTime(0.0001, now + f);
+        v.o.stop(now + f + 0.02);
+      } catch(e) {}
+    }
+    this._voices = [];
   },
   switchToNight() {
     if (this.mode === 'night' || this.mode === 'boss') return;
@@ -45,6 +74,7 @@ const Music = {
     if (this.mode === 'boss') return;
     this._preBossMode = this.mode; // remember day/night so we can restore it
     this.mode = 'boss';
+    this._killVoices(0.1); // silence the leftover day/night block before the boss track
     this._bossLoop(this.ctx ? this.ctx.currentTime + 0.15 : 0);
   },
   switchFromBoss(hint) {
@@ -54,6 +84,7 @@ const Music = {
     // Fall back to _preBossMode, then day.
     this.mode = (hint === 'day' || hint === 'night') ? hint : (this._preBossMode || 'day');
     this._preBossMode = null;
+    this._killVoices(0.1); // silence the leftover boss block before day/night resumes
     if (this.mode === 'night') this._nightLoop(this.ctx ? this.ctx.currentTime + 0.1 : 0);
     else { this._dawnJingle(); this._dayLoop(this.ctx ? this.ctx.currentTime + 2 : 0); }
   },
@@ -67,6 +98,11 @@ const Music = {
     g.gain.linearRampToValueAtTime(vol||1, now+t+0.02);
     g.gain.linearRampToValueAtTime(0, now+t+dur-0.02);
     o.start(now+t); o.stop(now+t+dur+0.05);
+    // Track the voice so a boss-switch can silence still-scheduled notes. Self-removes
+    // on end to keep the list bounded.
+    const v = { o, g };
+    this._voices.push(v);
+    o.onended = () => { const i = this._voices.indexOf(v); if (i !== -1) this._voices.splice(i, 1); };
   },
   _dawnJingle() {
     if (!this.ctx || !this.playing) return;
