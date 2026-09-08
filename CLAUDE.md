@@ -94,13 +94,13 @@ A graphify knowledge graph lives in `graphify-out/`. Use it before reading files
 
 - **Query the graph:** `/graphify query "<question>"` — traces cross-file connections, finds what calls what, explains system relationships
 - **The graph is kept current automatically** via the `.githooks/post-commit` hook — it runs an incremental `--update` in the background after every commit
-- **If the graph ever feels stale** (e.g. after a big refactor or pulling someone else's changes): `/graphify /Users/jaredkirk/Desktop/Iron\ Wasteland --update`
-- **Full rebuild** (rare, only if graph is corrupted): `/graphify /Users/jaredkirk/Desktop/Iron\ Wasteland`
+- **If the graph ever feels stale** (e.g. after a big refactor or pulling someone else's changes): `/graphify . --update` from the repo root
+- **Full rebuild** (rare, only if graph is corrupted): `/graphify .` from the repo root
 
 God nodes (highest connectivity): `GameScene` (177 edges), `buildTextures()` (86), `GameOverScene` (26), `getBiome()` (15).
 
 ## Working Directory
-**All edits must target the canonical project folder:** `~/Desktop/Iron Wasteland/`
+**All edits must target the canonical project folder:** this repository's root, wherever it is cloned. Start sessions there (not in a parent folder) and commit with plain `git`.
 
 Never edit files only inside a worktree. When working in a worktree, always ensure changes are committed/merged back to `main` so the canonical folder stays up to date. If the user asks to update the game, confirm edits land in this folder.
 

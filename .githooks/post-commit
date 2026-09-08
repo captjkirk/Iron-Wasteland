@@ -1,0 +1,34 @@
+#!/usr/bin/env bash
+# Incrementally updates the graphify knowledge graph after every commit.
+# Only re-extracts files that changed — typically completes in a few seconds.
+# Failures are non-fatal: the commit always succeeds regardless.
+
+set -uo pipefail
+
+GRAPH_DIR="graphify-out"
+PYTHON_FILE="${GRAPH_DIR}/.graphify_python"
+
+# Skip silently if the graph has never been built
+if [ ! -f "${GRAPH_DIR}/graph.json" ]; then
+  exit 0
+fi
+
+# Resolve the Python interpreter used to build the graph
+if [ -f "$PYTHON_FILE" ]; then
+  GRAPHIFY_PYTHON=$(cat "$PYTHON_FILE")
+else
+  GRAPHIFY_PYTHON="python3"
+fi
+
+# Run incremental update in the background so the commit returns immediately
+(
+  "$GRAPHIFY_PYTHON" -m graphify update . \
+    > "${GRAPH_DIR}/.graphify_update.log" 2>&1
+  if [ $? -eq 0 ]; then
+    echo "post-commit: graphify graph updated" >&2
+  else
+    echo "post-commit: graphify update failed (see ${GRAPH_DIR}/.graphify_update.log)" >&2
+  fi
+) &
+
+exit 0
