@@ -6,7 +6,7 @@ Plan work in vertical slices. When a task will outlast one session or touch more
 
 Slice only the route you can see. If the way to the goal is not clear yet, the first steps are questions to settle with me, not slices. Mark every item decide or build. A decide item ends in a recorded answer, one answered per session. What cannot yet be asked sharply goes under "Not yet specified" and is never sliced in advance. Charting every item up front fails the same way horizontal building does: the later items stop making sense before you reach them.
 
-One map per effort, on GitHub. A multi-session effort is one issue labelled wayfinder:map with Destination, Notes, Decisions so far, Not yet specified, and Out of scope. Its tickets are child issues labelled wayfinder:research, wayfinder:prototype, wayfinder:grilling, or wayfinder:task. One such map already exists: issue 156, separate-view 2-player on home Wi-Fi. It is the model for every future map. The map is an index, not a store: an answer lives in its ticket's resolution comment, and the map only points at it. Never write product code inside a decision ticket, and never grant yourself an exemption to do so in the map's own Notes.
+One map per effort, on GitHub. A multi-session effort is one issue labelled wayfinder:map with Destination, Notes, Decisions so far, Not yet specified, and Out of scope. Its tickets are child issues labelled wayfinder:research, wayfinder:prototype, wayfinder:grilling, or wayfinder:task. Every slice or ticket is a GitHub issue before work on it starts, and the session's first write is to claim it: `gh issue edit <n> --add-assignee @me`. An issue with an assignee is taken; the frontier is the open, unblocked, unassigned ones. The map is an index, not a store: an answer lives in its ticket's resolution comment, and the map only points at it. Never write product code inside a decision ticket, and never grant yourself an exemption to do so in the map's own Notes.
 
 No commit without its check. A commit message never says "untested". Every commit passes npm run check. A change I need to see in the browser ships with the steps to see it, in the PR body or the commit message.
 
@@ -36,4 +36,10 @@ Ask for the session log on any bug report (how players get it: `CONTRIBUTING.md`
 
 ## Working directory
 
-Start sessions in this repository's root, not a parent folder, and commit with plain `git`. Work done in a worktree or branch is finished only once it is merged to `main`.
+Each session works in its own git worktree on its own branch. The main checkout stays on `main` and only pulls; the pre-commit hook refuses a commit on `main` and any commit made from the main checkout. A session that finds itself there makes a worktree first:
+
+```bash
+git worktree add ../wt/<branch> -b <branch>
+```
+
+Work is finished only once its PR is merged to `main`. Then remove the worktree and delete the branch.
