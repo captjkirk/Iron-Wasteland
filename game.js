@@ -215,7 +215,7 @@
 // 22. GAME OVER / VICTORY  (src/game-scene.js; GameOverScene in src/game-over.js)
 //     fns:  triggerGameOver, _triggerVictory, checkBothDead, handleDeath
 //     scene: GameOverScene
-//     win condition: relicsHeld === 5 (deposited at altar)
+//     win condition: relicsDeposited === 5 (deposited at altar)
 //
 // 23. SETTINGS / SAVE  (src/scenes.js; toggleSleep in src/game-scene.js)
 //     fns:  loadSettings, saveSettings, toggleSleep
