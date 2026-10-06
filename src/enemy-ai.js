@@ -238,7 +238,7 @@ Object.assign(GameScene.prototype, {
           const eGuard = {
             spr, type: t.key,
             hp: Math.floor(t.hp * sizeMult * guardDiff), maxHp: Math.floor(t.hp * sizeMult * guardDiff),
-            speed: t.speed * sizeMult * guardSpeed, dmg: Math.max(1, Math.floor(t.dmg * sizeMult * guardDiff)),
+            speed: t.speed * (sizeMult > 1.2 ? 0.8 : 1) * guardSpeed, dmg: Math.max(1, Math.floor(t.dmg * sizeMult * guardDiff)),
             attackTimer: 0, wanderTimer: 0,
             aggroRange: aggroR, attackRange: (30 + t.w / 4) * sizeMult,
             sizeMult, structureGuard: true,
@@ -273,7 +273,7 @@ Object.assign(GameScene.prototype, {
         const eGuard = {
           spr, type: t.key,
           hp: Math.floor(t.hp * sizeMult * towerDiff * 1.4), maxHp: Math.floor(t.hp * sizeMult * towerDiff * 1.4),
-          speed: t.speed * sizeMult * towerSpeed, dmg: Math.max(1, Math.floor(t.dmg * sizeMult * towerDiff * 1.2)),
+          speed: t.speed * (sizeMult > 1.2 ? 0.8 : 1) * towerSpeed, dmg: Math.max(1, Math.floor(t.dmg * sizeMult * towerDiff * 1.2)),
           attackTimer: 0, wanderTimer: 0,
           aggroRange: 260, attackRange: 35 * sizeMult,
           sizeMult, towerGuard: true,
