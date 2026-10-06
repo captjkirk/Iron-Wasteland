@@ -45,7 +45,7 @@
 //                          ControlsScene, BootScene, ModeSelectScene,
 //                          SettingsScene, CharSelectScene
 //
-//   src/game-scene.js    — GameScene: gameplay systems 3, 5-7 and 9-22 (see list below)
+//   src/game-scene.js    — GameScene: gameplay systems 3, 5-7, 9-16 and 19-23 (see list below)
 //                          Also: GameScene.RECIPES static property (system 8's recipe list)
 //
 //   src/world-gen.js     — System 1, added to GameScene.prototype; loads after game-scene.js
