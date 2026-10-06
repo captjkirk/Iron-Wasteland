@@ -717,6 +717,17 @@ function buildTextures(scene) {
   g.fillStyle(0xaa8855); g.fillCircle(20, 5, 1); g.fillCircle(4, 24, 1);
   g.generateTexture('ground_desert', 32, 32);
 
+  // 3×3-tile ground patches (96×96), one shared texture per ground key. buildWorld lays the
+  // map out as plain images of these. A TileSprite would allocate a canvas of its own full
+  // size per object: ~735 MB for the old map-sized grass plus 10k patches, which got the
+  // tab killed on iPhone during world build (#238).
+  for (const key of ['grass', 'ground_waste', 'ground_swamp', 'ground_tundra', 'ground_ruins', 'ground_fungal', 'ground_desert']) {
+    const src = scene.textures.get(key).getSourceImage();
+    const patch = scene.textures.createCanvas(key + '_3x3', 96, 96);
+    for (let y = 0; y < 96; y += 32) for (let x = 0; x < 96; x += 32) patch.context.drawImage(src, x, y);
+    patch.refresh();
+  }
+
 
 
 
