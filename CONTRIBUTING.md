@@ -19,15 +19,16 @@ MANIFEST, an index of every gameplay system: read it first to find where a syste
 
 ## Making commits
 
-The pre-commit hook does three things:
+The pre-commit hook refuses a commit on `main`, and any commit from the main checkout (every
+session works in its own worktree; see `CLAUDE.md`, "Working directory"), then runs
+`npm run check`: a syntax check of `game.js` and every `src/*.js`, a check that every `src/*.js`
+has a `<script>` tag in `index.html`, the manifest check, and ESLint. A failure aborts the commit.
 
-1. Refuses a commit on `main`, and any commit from the main checkout (every session works in
-   its own worktree; see `CLAUDE.md`, "Working directory").
-2. Stamps `VERSION` in `src/constants.js` with the current UTC time. The title screen shows
-   it as "Last updated …" in the player's own timezone.
-3. Runs `npm run check`: a syntax check of `game.js` and every `src/*.js`, a check that every
-   `src/*.js` has a `<script>` tag in `index.html`, the manifest check, and ESLint. A failure
-   aborts the commit.
+`VERSION` in `src/constants.js` stays `'dev build'` in git. `npm run serve` stamps it with the
+commit time of `HEAD` on every request, and the deploy stamps it with the publish time, so the
+title screen's "Last updated" is real in both places and no two PRs ever edit that line
+([ADR 0003](docs/adr/0003-stamp-version-on-serve-not-in-commits.md)). Opening `index.html`
+straight from disk shows "dev build".
 
 A post-commit hook refreshes a local graphify knowledge graph in `graphify-out/` (gitignored) if
 you have built one. It runs in the background and never blocks a commit.
@@ -37,16 +38,8 @@ the MANIFEST lists, update the MANIFEST in the same commit.
 
 ## CI checks (run on every PR)
 
-`.github/workflows/checks.yml` runs three checks; all must pass before merge.
+`.github/workflows/checks.yml` runs two checks; both must pass before merge.
 
-- **`version-bump`** fails the PR if `VERSION` matches `main`. The hook normally prevents
-  this. If it flags you:
-
-  ```bash
-  perl -i -pe "s|const VERSION = '[^']*';|const VERSION = '$(date -u +%Y-%m-%dT%H:%M:%SZ)';|" src/constants.js
-  ```
-
-  then commit again.
 - **`check`** runs `npm run check`, the same as the hook.
 - **`smoke`** runs `npm run smoke`: it fetches Playwright's WebKit (pinned in `package.json`,
   never installed into the repo) and makes two passes. The first loads the game and fails
@@ -57,7 +50,7 @@ the MANIFEST lists, update the MANIFEST in the same commit.
   Shader and WebGL-only bugs stay invisible to it. Run it locally before moving code between
   `src/` files or touching a system that runs every frame.
 
-On deploy, `.github/workflows/pages.yml` re-stamps `VERSION` with the publish time.
+On deploy, `.github/workflows/pages.yml` stamps `VERSION` with the publish time.
 
 ## The ticket loop
 

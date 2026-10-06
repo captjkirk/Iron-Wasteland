@@ -1,12 +1,10 @@
 #!/usr/bin/env bash
-# Automatically stamps VERSION in src/constants.js with the current UTC ISO time
-# on every commit, so the build date shown to players is always accurate.
-# (VERSION moved from game.js to src/constants.js in the 7-file split — the stamp
-# target must track it or the title screen's "Last updated" silently freezes.)
+# Refuses commits on main or from the main checkout, then runs npm run check.
+# VERSION is no longer stamped here: server.js stamps it on serve and pages.yml at deploy
+# (ADR 0003), so no two PRs edit the same line.
 set -euo pipefail
 
 # Every session works in its own worktree on its own branch (CLAUDE.md, "Working directory").
-# Both refusals run before the VERSION stamp so a refused commit touches nothing.
 branch=$(git rev-parse --abbrev-ref HEAD)
 if [ "$branch" = "main" ]; then
   echo "pre-commit: refusing a commit on main. Branch in a worktree and open a PR." >&2
@@ -17,27 +15,6 @@ if [ "$(git rev-parse --git-dir)" = "$(git rev-parse --git-common-dir)" ]; then
   echo "  git worktree add ../wt/$branch $branch   # then commit from there" >&2
   exit 1
 fi
-
-GAME_FILE="src/constants.js"
-
-if [ ! -f "$GAME_FILE" ]; then
-  echo "pre-commit: $GAME_FILE not found, skipping VERSION stamp" >&2
-  exit 0
-fi
-
-# Current time as UTC ISO 8601 (e.g. 2026-04-15T13:43:00Z)
-NEW_VERSION=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
-
-# Replace the VERSION constant — matches the ISO format we now use.
-# Uses `perl -i` (not `sed -i`) for portability: GNU `sed -i` works on the Linux
-# CI runner, but BSD/macOS `sed -i` requires a backup-suffix argument and would
-# abort the commit here under `set -euo pipefail`. perl -i behaves the same on both.
-perl -i -pe "s|const VERSION = '[^']*';|const VERSION = '${NEW_VERSION}';|" "$GAME_FILE"
-
-# Re-stage the file so the updated timestamp is included in this commit
-git add "$GAME_FILE"
-
-echo "pre-commit: VERSION stamped → ${NEW_VERSION}"
 
 # Syntax, manifest and lint check. A failure here aborts the commit.
 # ponytail: checks the working tree, not just what is staged; a partial stage can pass on unstaged fixes.

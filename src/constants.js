@@ -8,10 +8,11 @@
 // ── VERSION ───────────────────────────────────────────────────
 // Update this each commit so the title screen reflects the build date.
 // Stored as UTC ISO so it can be displayed in each player's local timezone.
-const VERSION = '2026-10-06T17:40:13Z';
+const VERSION = 'dev build'; // stamped by server.js on serve and by pages.yml at deploy (ADR 0003)
 // Format VERSION into the viewer's local time with abbreviated tz name (EDT, PDT, BST, etc.)
 function _fmtVersion(iso) {
   try {
+    if (isNaN(new Date(iso))) return iso; // 'dev build' when opened straight from disk
     return new Date(iso).toLocaleString(undefined, {
       month: 'short', day: 'numeric', year: 'numeric',
       hour: 'numeric', minute: '2-digit', timeZoneName: 'short',
