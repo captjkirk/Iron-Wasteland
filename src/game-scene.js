@@ -137,7 +137,6 @@ class GameScene extends Phaser.Scene {
     // Shallow-water spatial index is lazily rebuilt per run (see applyTerrainEffects).
     // Null it on (re)create so a "Play Again" run can't query the previous world's
     // destroyed tiles (submersion visual would silently die otherwise).
-    this._waterTileByCoord = null;
     // Pre-compute 60-step shimmer alpha table (~3.3 s cycle, sin-smoothed 0.84→0.96)
     // Slow, narrow range keeps the shimmer subtle — ponds breathe, not strobe.
     this._shimmerTable = Array.from({length: 60}, (_, i) =>
@@ -2872,51 +2871,21 @@ class GameScene extends Phaser.Scene {
     if (!isPlayer) { actor._tvx = actor.spr.body.velocity.x; actor._tvy = actor.spr.body.velocity.y; }
   }
 
+  // Wading: while a player stands in shallow water, the lower half of their sprite is cut
+  // away (the water tile behind shows through) and a thin water-surface strip marks the waist.
   _updateWaterSubmersion(p) {
     if (!p || !p.waterOverlay || !p.waterOverlay.active) return;
-    // Restore any previously elevated tiles
-    if (p._waterSubmersionTiles) {
-      p._waterSubmersionTiles.forEach(t => {
-        if (t.active) t.setDepth(0.75).setAlpha(1);
-      });
-      p._waterSubmersionTiles = null;
+    const s = p.spr;
+    const wading = p._inShallowWater && !p.isDowned && s.visible;
+    p.waterOverlay.setVisible(!!wading);
+    if (!wading) {
+      if (p._wadeCrop) { s.setCrop(); p._wadeCrop = false; }
+      return;
     }
-    p.waterOverlay.setVisible(false);
-    if (p._inShallowWater && !p.isDowned && p.spr.visible) {
-      const TILE = CFG.TILE;
-      const px = p.spr.x, py = p.spr.y;
-      // Lazy-build a spatial index once: Map<"tx,ty" -> tile sprite>. The
-      // original implementation filtered ALL waterTiles every frame; with 100+
-      // water tiles that was ~0.3-0.5ms/frame per player.
-      if (!this._waterTileByCoord) {
-        this._waterTileByCoord = new Map();
-        const src = this.waterTiles || [];
-        for (let i = 0; i < src.length; i++) {
-          const t = src[i];
-          const tx = Math.floor((t.x + TILE / 2) / TILE);
-          const ty = Math.floor(t.y / TILE);
-          this._waterTileByCoord.set(tx + ',' + ty, t);
-        }
-      }
-      // Query the 3-wide window matching the original bounding box.
-      const cx = Math.floor(px / TILE);
-      const yTop = Math.floor((py - TILE * 1.5) / TILE);
-      const yBot = Math.floor((py + TILE * 0.5) / TILE);
-      const elevated = [];
-      for (let tx = cx - 1; tx <= cx + 1; tx++) {
-        for (let ty = yTop; ty <= yBot; ty++) {
-          const t = this._waterTileByCoord.get(tx + ',' + ty);
-          if (t && t.active &&
-              Math.abs(t.x + TILE / 2 - px) < TILE * 1.5 &&
-              t.y <= py + TILE * 0.5 &&
-              t.y >= py - TILE * 1.5) {
-            t.setDepth(10).setAlpha(0.72);
-            elevated.push(t);
-          }
-        }
-      }
-      p._waterSubmersionTiles = elevated;
-    }
+    s.setCrop(0, 0, s.frame.width, s.frame.height * 0.5);
+    p._wadeCrop = true;
+    p.waterOverlay.setPosition(s.x, s.y).setDisplaySize(s.displayWidth * 0.8, 6)
+      .setAlpha(0.9).setDepth(s.depth + 0.0001);
   }
 
   checkRadioTowerRange(delta) {
