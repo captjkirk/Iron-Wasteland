@@ -2,75 +2,56 @@
 
 ## First-time setup
 
-After cloning, run the setup script once:
+After cloning, run once:
 
 ```bash
 bash setup.sh
 ```
 
-This does two things:
-- Configures git to use the repo's `.githooks/` folder
-- Marks the pre-commit hook executable
-
-That's it. There is no build step, no `npm install`, no compiler.
+It points git at `.githooks/`. There is no build step and no `npm install`.
 
 ## Development workflow
 
-Open `index.html` directly in a browser. Edit `game.js` and refresh — changes are live immediately.
-
-```
-index.html      ← thin shell, just loads Phaser and game.js
-game.js         ← everything: logic, textures, audio, UI (~9000 lines)
-lib/phaser.min.js
-```
+Open `index.html` in a browser (or `npm run serve` to play over the home network). Edit any
+file in `src/` and refresh. `index.html` loads `lib/phaser.min.js`, then the `src/` files in
+dependency order, then `game.js`; they share one global scope. `game.js` opens with the
+MANIFEST, an index of every gameplay system: read it first to find where a system lives.
 
 ## Making commits
 
-The pre-commit hook in `.githooks/pre-commit` automatically stamps the `VERSION`
-constant in `game.js` with the current UTC time before each commit. You don't need
-to touch it manually — just commit and the timestamp updates itself.
+The pre-commit hook does two things:
 
-Players see the timestamp converted to their own local timezone (EDT, PDT, BST, etc.)
-via `_fmtVersion()` at the top of `game.js`. It's rendered prominently on the title
-screen as "Last updated …".
+1. Stamps `VERSION` in `src/constants.js` with the current UTC time. The title screen shows
+   it as "Last updated …" in the player's own timezone.
+2. Runs `npm run check`: a syntax check of `game.js` and every `src/*.js`, the manifest check,
+   and ESLint. A failure aborts the commit.
+
+Run `npm run check` yourself any time. If you rename, add or remove a symbol the MANIFEST
+lists, update the MANIFEST in the same commit.
 
 ## CI checks (run on every PR)
 
-`.github/workflows/checks.yml` runs two required checks. Both must pass before merge.
+`.github/workflows/checks.yml` runs two checks; both must pass before merge.
 
-### `version-bump`
-Fails the PR if `VERSION` in `game.js` is identical to `main`. The pre-commit hook
-normally handles this, but CI is the hard guarantee. If it flags you:
+- **`version-bump`** fails the PR if `VERSION` matches `main`. The hook normally prevents
+  this. If it flags you:
 
-```bash
-sed -i "s|const VERSION = '[^']*';|const VERSION = '$(date -u +%Y-%m-%dT%H:%M:%SZ)';|" game.js
-git commit --amend --no-edit
-```
+  ```bash
+  perl -i -pe "s|const VERSION = '[^']*';|const VERSION = '$(date -u +%Y-%m-%dT%H:%M:%SZ)';|" src/constants.js
+  ```
 
-### `manifest-sync`
-The top of `game.js` contains a **MANIFEST** comment block that indexes every
-gameplay system. CI fails the PR if the manifest references any function name,
-`CFG.*` key, or state variable that no longer exists in the file (catches
-renames, deletions, typos).
+  then commit again.
+- **`check`** runs `npm run check`, the same as the hook.
 
-Whenever you rename, remove, or add a manifest-listed symbol, update the
-manifest in the same commit. Run the check locally:
-
-```bash
-node scripts/check-manifest.js
-```
+On deploy, `.github/workflows/pages.yml` re-stamps `VERSION` with the publish time.
 
 ## Debug log
 
-Press `` ` `` in-game to open the debug overlay. From there:
-- **`C`** — copy the full session log to clipboard
-- **`G`** — download as a `.txt` file
-
-The log captures combat events, player actions, UI interactions, and world
-generation details. See `CLAUDE.md` for the full tag reference.
+Press `` ` `` in-game to open the debug overlay. **`C`** copies the session log to the
+clipboard; **`G`** downloads it as a `.txt` file. It also downloads on its own when the game
+ends.
 
 ## Reporting bugs
 
-Use the bug report template at `.github/ISSUE_TEMPLATE/bug_report.md`.
-Always attach the session log (downloaded with **`G`**) — it timestamps
-everything and makes root causes much faster to find.
+Use the bug report template at `.github/ISSUE_TEMPLATE/bug_report.md` and attach the session
+log. It timestamps everything and makes root causes much faster to find.
