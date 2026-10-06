@@ -1056,17 +1056,19 @@ class GameScene extends Phaser.Scene {
         }
       }
       const px = tx*TILE+24, py = ty*TILE+20;
-      // Ground skirt under the peak (depth 1.5, crater layer). Every mountain texture is
-      // 112×88 with its ground line at texture y=80, i.e. (80-44)*sc below the sprite centre.
-      this._w(this.add.image(px, py + 36*sc, 'mountain_base').setScale(sc).setDepth(1.5));
+      // Every mountain texture is 224×176 with its ground line at texture y=160. Anchor the
+      // sprite there (origin 0.5, 160/176) so peaks of any scale share one ground line, and
+      // put the ground skirt (depth 1.5, crater layer) on that line.
+      this._w(this.add.image(px, py, 'mountain_base').setScale(sc).setDepth(1.5));
       const ob = this.obstacles.create(px, py, key);
-      ob.setScale(sc).setDepth(6 + ty*0.01).setImmovable(true);
+      ob.setOrigin(0.5, 160 / 176).setScale(sc).setDepth(6 + ty*0.01).setImmovable(true);
       // Scale-compensated circle hitbox: world radius stays ~13px regardless of mountain scale.
-      // StaticBody world radius = r * scale, so divide desired world radius by sc.
+      // StaticBody world radius = r * scale, so divide desired world radius by sc. Body offsets
+      // are from the frame's top-left, independent of origin.
       {
         const R = 13;
         const r = Math.round(R / sc);
-        ob.body.setCircle(r, Math.round(56 / sc - r), Math.round(72 / sc - r)); // base centre at sprite (56, 72)
+        ob.body.setCircle(r, Math.round(112 / sc - r), Math.round(148 / sc - r)); // base centre at sprite (112, 148)
       }
       ob.refreshBody();
       mtns.push({ tx, ty });
@@ -1089,12 +1091,12 @@ class GameScene extends Phaser.Scene {
       const tx = Math.round(stx + Math.cos(angle) * (ringR + Math.sin(angle*3)*3));
       const ty = Math.round(sty + Math.sin(angle) * (ringR + Math.cos(angle*5)*3));
       if (tx < 2 || tx > CFG.MAP_W-3 || ty < 2 || ty > CFG.MAP_H-3) continue;
-      placeMtn(tx, ty, pickMtn(), Phaser.Math.FloatBetween(2.0, 2.8));
+      placeMtn(tx, ty, pickMtn(), Phaser.Math.FloatBetween(1.0, 1.4));
       // Double-layer: second ring row for a thick visible ridge (skip in exit zones)
       if (Math.random() < 0.6) {
         const tx2 = Math.round(stx + Math.cos(angle) * (ringR + 3 + Math.sin(angle*5)*2));
         const ty2 = Math.round(sty + Math.sin(angle) * (ringR + 3 + Math.cos(angle*3)*2));
-        placeMtn(tx2, ty2, pickMtn(), Phaser.Math.FloatBetween(1.8, 2.4));
+        placeMtn(tx2, ty2, pickMtn(), Phaser.Math.FloatBetween(0.9, 1.2));
       }
     }
 
@@ -1115,7 +1117,7 @@ class GameScene extends Phaser.Scene {
         const tx = cc.tx + Phaser.Math.Between(-8, 8);
         const ty = cc.ty + Phaser.Math.Between(-8, 8);
         if (tx < 2 || tx > CFG.MAP_W-3 || ty < 2 || ty > CFG.MAP_H-3) continue;
-        placeMtn(tx, ty, pickMtn(), Phaser.Math.FloatBetween(2.0, 2.8));
+        placeMtn(tx, ty, pickMtn(), Phaser.Math.FloatBetween(1.0, 1.4));
       }
     }
 

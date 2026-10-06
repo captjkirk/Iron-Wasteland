@@ -1070,20 +1070,20 @@ function buildTextures(scene) {
   }
   g.generateTexture('spiderweb', 24, 24);
 
-  // Mountains — five irregular silhouettes, all 112x88 with the ground line at y=80 so
+  // Mountains — five irregular silhouettes, all 224x176 with the ground line at y=160 so
   // placeMtn can use one collision anchor for every variant. Drawn column by column from a
   // jagged ridgeline: faces that climb to the right are lit (light from top-left, like the
   // rock sprite), faces that fall away are shaded, three strata bands, snow that follows the
-  // ridge, and a dark rubble foot. Rows below 80 stay transparent for the ground skirt.
+  // ridge, and a dark rubble foot. Rows below 160 stay transparent for the ground skirt.
   drawMountains(g);
 
   // Ground skirt placed under every mountain (depth 1.5, same layer as craters) so the peak
   // sits in the terrain instead of on it.
   g.clear();
-  g.fillStyle(0x1a1410, 0.18); g.fillEllipse(72, 20, 144, 40);
-  g.fillStyle(0x1a1410, 0.22); g.fillEllipse(72, 20, 112, 30);
-  g.fillStyle(0x1a1410, 0.26); g.fillEllipse(72, 20, 76, 20);
-  g.generateTexture('mountain_base', 144, 40);
+  g.fillStyle(0x1a1410, 0.12); g.fillEllipse(140, 36, 280, 72);
+  g.fillStyle(0x1a1410, 0.14); g.fillEllipse(140, 36, 220, 54);
+  g.fillStyle(0x1a1410, 0.16); g.fillEllipse(140, 36, 150, 36);
+  g.generateTexture('mountain_base', 280, 72);
 
   // Supply cache — small chest/crate
   g.clear();
@@ -1843,10 +1843,12 @@ function buildTextures(scene) {
 // Individual textures remain in the TextureManager (are not removed); only
 // the atlas-backed sprites benefit from batching.
 // ── MOUNTAIN RIDGES ───────────────────────────────────────────
-// Five 112x88 variants: 'mountain', 'mountain2' … 'mountain5'. Ridge control points run
+// Five 224x176 variants: 'mountain', 'mountain2' … 'mountain5'. Ridge control points (in 112x88
+// units, doubled on use) run
 // left base → peaks → right base; each column gets ±2 px of hashed roughness.
 function drawMountains(g) {
-  const W = 112, H = 88, BASE = 80;
+  // Drawn at 224x176 and shown near 1x so mountain pixels match the 1.5x characters.
+  const W = 224, H = 176, BASE = 160, K = 2;
   const variants = [
     [[0,BASE],[14,58],[26,40],[38,22],[46,10],[52,16],[62,30],[74,44],[90,60],[112,BASE]],                      // tall peak left of centre
     [[0,BASE],[12,62],[22,36],[30,24],[36,30],[48,42],[60,34],[72,14],[78,20],[90,42],[100,60],[112,BASE]],     // twin peaks, right one higher
@@ -1863,7 +1865,8 @@ function drawMountains(g) {
     const r = Math.max(0, Math.min(255, (c >> 16) + d)), gg = Math.max(0, Math.min(255, ((c >> 8) & 255) + d)), b = Math.max(0, Math.min(255, (c & 255) + d));
     return (r << 16) | (gg << 8) | b;
   };
-  variants.forEach((pts, vi) => {
+  variants.forEach((pts0, vi) => {
+    const pts = pts0.map(([x, y]) => [x * K, y === 80 ? BASE : y * K]);
     g.clear();
     const ridge = new Array(W), smooth = new Array(W);
     for (let x = 0; x < W; x++) {
@@ -1871,26 +1874,26 @@ function drawMountains(g) {
       const [x0, y0] = pts[k], [x1, y1] = pts[k + 1];
       const t = (x - x0) / (x1 - x0);
       smooth[x] = y0 + (y1 - y0) * t;
-      ridge[x] = Math.max(2, Math.round(smooth[x] + (hash(vi, x) - 0.5) * 4));
+      ridge[x] = Math.max(2, Math.round(smooth[x] + (hash(vi, x) - 0.5) * 5));
     }
     const peakY = Math.min(...ridge);
-    const snowLine = peakY + 16;
+    const snowLine = peakY + 16 * K;
     for (let x = 0; x < W; x++) {
-      const top = Math.min(ridge[x], BASE - 3);
+      const top = Math.min(ridge[x], BASE - 5);
       // Face shading from the smooth ridge (the jitter only roughens the silhouette):
       // climbing to the right = lit by the top-left light, falling away = in shadow.
-      const slope = smooth[Math.min(W - 1, x + 3)] - smooth[Math.max(0, x - 3)];
+      const slope = smooth[Math.min(W - 1, x + 6)] - smooth[Math.max(0, x - 6)];
       const face = slope < -0.5 ? 16 : slope > 0.5 ? -18 : 0;
-      const snowDepth = 5 + Math.floor(hash(vi, x * 13) * 6);
+      const snowDepth = (5 + Math.floor(hash(vi, x * 13) * 6)) * K;
       let runStart = top, runCol = null;
       const flush = (yEnd) => { if (runCol !== null && yEnd > runStart) { g.fillStyle(runCol); g.fillRect(x, runStart, 1, yEnd - runStart); } };
       for (let y = top; y < BASE; y++) {
         const f = (y - peakY) / (BASE - peakY);
         let col = f < 0.33 ? 0x5c5757 : f < 0.66 ? 0x4b4646 : 0x3b3737;
         col = shade(col, face);
-        if (y % 11 === 0 && f > 0.3) col = shade(col, -10);                                   // faint strata line
+        if (y % 22 < 2 && f > 0.3) col = shade(col, -10);                                     // faint strata line
         if (y < snowLine && y - top < snowDepth) col = face > 0 ? 0xf4f4f4 : face < 0 ? 0xcdd2d8 : 0xe6e8ec; // snow follows the ridge
-        if (y >= BASE - 3) col = 0x241f1e;                                                     // rubble foot
+        if (y >= BASE - 5) col = 0x241f1e;                                                     // rubble foot
         if (col !== runCol) { flush(y); runStart = y; runCol = col; }
       }
       flush(BASE);
@@ -1931,6 +1934,20 @@ function polishActor(scene, key, opts) {
     if ((x > 0 && solid[i - 1]) || (x < nw - 1 && solid[i + 1]) || (y > 0 && solid[i - nw]) || (y < nh - 1 && solid[i + nw])) {
       d[i * 4] = 0x14; d[i * 4 + 1] = 0x10; d[i * 4 + 2] = 0x16; d[i * 4 + 3] = 255;
     }
+  }
+  // Cheap volume: lighten silhouette edges facing the top-left light, darken edges facing
+  // away, and shade the lower part of the figure a little. Only silhouette edges are touched,
+  // so interior colour borders stay crisp.
+  for (let y = 0; y < nh; y++) for (let x = 0; x < nw; x++) {
+    const i = y * nw + x;
+    if (!solid[i]) continue;
+    const litEdge = (y > 0 && !solid[i - nw]) || (x > 0 && !solid[i - 1]);
+    const darkEdge = (y < nh - 1 && !solid[i + nw]) || (x < nw - 1 && !solid[i + 1]);
+    let m = 1;
+    if (litEdge && !darkEdge) m = 1.22; else if (darkEdge && !litEdge) m = 0.78;
+    const fy = feet > 0 ? y / feet : 0;
+    if (fy > 0.6) m *= 1 - (fy - 0.6) * 0.3;
+    if (m !== 1) { d[i * 4] = Math.min(255, d[i * 4] * m); d[i * 4 + 1] = Math.min(255, d[i * 4 + 1] * m); d[i * 4 + 2] = Math.min(255, d[i * 4 + 2] * m); }
   }
   ctx.putImageData(img, 0, 0);
   if (shadow && feet >= 0 && fx1 >= fx0) {
