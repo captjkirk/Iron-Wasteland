@@ -4510,8 +4510,6 @@ class GameScene extends Phaser.Scene {
       // Hardcore additionally multiplies every roll by hc.resourceDropMult (0.75).
       const rdm      = this.hc.resourceDropMult;
       const foodMult = Math.max(0.35, 1 - 0.12 * ((this.dayNum || 1) - 1));
-      // All enemies drop food sometimes
-      if (Math.random() < 0.4 * foodMult * rdm) drops.push('item_food');
       // Type-specific drops via lookup table (flags: 0=plain rdm, 1=foodMult*rdm, 2=rare/hc-blocked)
       const _loot = ENEMY_LOOT[enemyType];
       if (_loot) {
@@ -4519,6 +4517,10 @@ class GameScene extends Phaser.Scene {
           if (flags === 2 && this.hc.rareDropsBossOnly) continue;
           if (Math.random() < chance * (flags === 1 ? foodMult : 1) * rdm) drops.push(item);
         }
+      } else {
+        // Fallback so an enemy type with no table entry still drops something.
+        if (Math.random() < 0.4 * foodMult * rdm) drops.push('item_food');
+        if (Math.random() < 0.3 * rdm) drops.push('item_fiber');
       }
     }
     drops.forEach((key, i) => {
