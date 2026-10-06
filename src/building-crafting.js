@@ -4,6 +4,8 @@
 // create() wires the build, craft and barracks keys; update() calls updateBuildMode,
 // updateCraftMenu and checkBarrackRange. GameScene.RECIPES stays in src/game-scene.js.
 
+const CRAFTER_NAME = { gunslinger: 'Gunslinger', charmer: 'Lauren' };
+
 Object.assign(GameScene.prototype, {
   // ── BUILD SYSTEM ──────────────────────────────────────────────
   toggleBuildMode(player) {
@@ -536,14 +538,15 @@ Object.assign(GameScene.prototype, {
       }
 
       // Bench requirement and affordability
-      const locked = rec.needsBench && !this.craftBenchPlaced;
+      const wrongChar = rec.type === 'instant' && rec.charId && this.craftMenuOwner?.charData.id !== rec.charId;
+      const locked = (rec.needsBench && !this.craftBenchPlaced) || wrongChar;
       const canAfford = !locked && Object.entries(rec.cost).every(([r,a]) => (team[r]||0) >= a);
 
       const nameColor = locked ? '#555544' : isSelected ? '#ffffff' : isHovered ? '#ddeedd' : '#aabbaa';
       const costColor = canAfford ? '#66ee44' : '#ee4422';
 
       const costStr = Object.entries(rec.cost).map(([r,a]) => a+' '+r).join(', ');
-      const suffix  = locked ? ' [bench reqd]' : '';
+      const suffix  = wrongChar ? ` [${CRAFTER_NAME[rec.charId]} only]` : locked ? ' [bench reqd]' : '';
       addTxt(PX + 18, rowY + 2, rec.label + suffix, { color: nameColor });
       addTxt(PX + PW - 18, rowY + 2, costStr, { color: costColor }).setOrigin(1, 0);
     }
@@ -570,6 +573,13 @@ Object.assign(GameScene.prototype, {
     // Bench requirement
     if (rec.needsBench && !this.craftBenchPlaced) {
       this.hint('Need a Craftbench first!', 2000); return;
+    }
+    // Instant items with a charId are for that character's crafter only
+    if (rec.type === 'instant' && rec.charId && player.charData.id !== rec.charId) {
+      this.hint(`Only ${CRAFTER_NAME[rec.charId]} can craft that!`, 2000); return;
+    }
+    if (rec.key === 'ammo_pack' && player.reserveAmmo >= 40 - player.ammo) {
+      this.hint('Ammo reserve is full!', 2000); return;
     }
     // Afford check — use rec.cost so display and deduction always agree
     const cost = rec.cost;
@@ -610,28 +620,18 @@ Object.assign(GameScene.prototype, {
     this._hudDirty = true; // inventory (Wood/Metal/Fiber/Food) changed — refresh the readout
 
     if (rec.type === 'instant' && rec.key === 'flower_bouquet') {
-      // Flower Bouquet: +8 flowers for Lauren; hint if Lauren not in game
-      const charmer = [this.p1, this.p2].filter(Boolean).find(p => p.charData.id === 'charmer');
-      if (charmer) {
-        charmer.flowerAmmo = (charmer.flowerAmmo || 0) + 8;
-        this._log(`${charmer.charData.player} got +8 flowers  flowers=${charmer.flowerAmmo}`, 'player');
-        this.hint('+8 Flowers for Lauren! (' + charmer.flowerAmmo + ' total)', 2000);
-        this._hudDirty = true;
-      } else {
-        this.hint('Lauren isn\'t in play — flowers wasted!', 2000);
-      }
+      // Flower Bouquet: +8 flowers for Lauren (only she can craft it)
+      player.flowerAmmo = (player.flowerAmmo || 0) + 8;
+      this._log(`${player.charData.player} got +8 flowers  flowers=${player.flowerAmmo}`, 'player');
+      this.hint('+8 Flowers for Lauren! (' + player.flowerAmmo + ' total)', 2000);
+      this._hudDirty = true;
     } else if (rec.type === 'instant' && rec.key === 'ammo_pack') {
-      // Ammo Pack: +8 reserve ammo for Gunslinger; small metal refund hint for others
-      const gunslinger = [this.p1, this.p2].filter(Boolean).find(p => p.charData.id === 'gunslinger');
-      if (gunslinger) {
-        const maxReserve = 40 - gunslinger.ammo;
-        const added = Math.min(8, maxReserve - gunslinger.reserveAmmo);
-        gunslinger.reserveAmmo = Math.min(maxReserve, gunslinger.reserveAmmo + 8);
-        this.hint('+' + Math.max(0, added) + ' ammo (Gunslinger)', 2000);
-        this._hudDirty = true;
-      } else {
-        this.hint('No Gunslinger in play — ammo wasted!', 2000);
-      }
+      // Ammo Pack: +8 reserve ammo for the Gunslinger (only the Gunslinger can craft it)
+      const maxReserve = 40 - player.ammo;
+      const added = Math.min(8, maxReserve - player.reserveAmmo);
+      player.reserveAmmo += added;
+      this.hint('+' + added + ' ammo (Gunslinger)', 2000);
+      this._hudDirty = true;
     } else if (rec.type === 'instant' && rec.key === 'med_kit') {
       // D8 — Med Kit: restore HP (difficulty-scaled) to the crafting player, green flash
       const _medHeal = this.hc.medkitHeal;
