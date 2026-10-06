@@ -173,10 +173,11 @@
 //
 // 15. HUD / MINIMAP / THREAT INDICATORS
 //     fns:  _showStatus, _hideScoutPanel, _updateScoutPanel,
-//           _drawThreatIndicators, hint
+//           _drawThreatIndicators, hint, _activeStatuses, _drawStatusStrip
 //     minimap: _renderMinimapBase, _paintMinimapTile, _unpaintMinimapTile,
 //              _buildMinimapColorMap
-//     data: hudCam, hudRelicText, minimapGfx, minimapDots, mmBounds, _scoutPanel, _hudDirty
+//     data: hudCam, hudRelicText, minimapGfx, minimapDots, mmBounds, _scoutPanel, _hudDirty,
+//           _toxicUntil, _rallyUntil (status-strip timestamps)
 //
 // 16. FOG OF WAR
 //     fns:  revealFog, updateFog, _losBlocked
