@@ -304,6 +304,7 @@ const PLAYER_PAL = {
 const SPRITE_ART = {
   knight: {
     front: {
+      arms: { rows: [13, 15], cols: [[2, 5], [18, 21]] },
       head: { at: [15, 3], rows: [
         '......RRr.....',
         '.....RRRRr....',
@@ -377,6 +378,7 @@ const SPRITE_ART = {
       ] },
     },
     back: {
+      arms: { rows: [13, 15], cols: [[2, 5], [18, 21]] },
       head: { at: [15, 3], rows: [
         '......RRr.....',
         '.....RRRRr....',
@@ -450,6 +452,7 @@ const SPRITE_ART = {
       ] },
     },
     side: {
+      arms: { rows: [12, 14], cols: [[8, 14]] },
       head: { at: [15, 3], rows: [
         '...RRr........',
         '..RRRRr.......',
@@ -553,6 +556,7 @@ const SPRITE_ART = {
   },
   gunslinger: {
     front: {
+      arms: { rows: [13, 14], cols: [[2, 5], [18, 21]] },
       head: { at: [13, 5], rows: [
         '......hHHHHh......',
         '.....hHHIHHHh.....',
@@ -609,6 +613,7 @@ const SPRITE_ART = {
       ] },
     },
     back: {
+      arms: { rows: [13, 14], cols: [[2, 5], [18, 21]] },
       head: { at: [13, 5], rows: [
         '......hHHHHh......',
         '.....hHHIHHHh.....',
@@ -651,6 +656,7 @@ const SPRITE_ART = {
       ] },
     },
     side: {
+      arms: { rows: [12, 13], cols: [[8, 13]] },
       head: { at: [13, 5], rows: [
         '.......hHHHHh.....',
         '......hHIHHHHh....',
@@ -730,6 +736,7 @@ const SPRITE_ART = {
   },
   architect: {
     front: {
+      arms: { rows: [12, 14], cols: [[2, 6], [17, 21]] },
       head: { at: [14, 5], rows: [
         '.....yYYYYy.....',
         '...yYZZYYYYYy...',
@@ -780,6 +787,7 @@ const SPRITE_ART = {
       ] },
     },
     back: {
+      arms: { rows: [12, 14], cols: [[2, 6], [17, 21]] },
       head: { at: [14, 5], rows: [
         '.....yYYYYy.....',
         '...yYZZYYYYYy...',
@@ -814,6 +822,7 @@ const SPRITE_ART = {
       ] },
     },
     side: {
+      arms: { rows: [12, 14], cols: [[9, 15]] },
       head: { at: [14, 5], rows: [
         '......yYYYYy....',
         '....yYZZYYYYy...',
@@ -889,6 +898,7 @@ const SPRITE_ART = {
   },
   charmer: {
     front: {
+      arms: { rows: [10, 11], cols: [[3, 6], [17, 20]], atkDrop: 1 },
       head: { at: [14, 4], rows: [
         '.....hHHHHh.....',
         '...hHHJJHHHHh...',
@@ -949,6 +959,7 @@ const SPRITE_ART = {
       ] },
     },
     back: {
+      arms: { rows: [10, 11], cols: [[3, 6], [17, 20]], atkDrop: 1 },
       head: { at: [14, 4], rows: [
         '.....hHHHHh.....',
         '...hHHJJHHHHh...',
@@ -1007,6 +1018,7 @@ const SPRITE_ART = {
       ] },
     },
     side: {
+      arms: { rows: [10, 11], cols: [[9, 14]] },
       head: { at: [14, 4], rows: [
         '....hHHHHh......',
         '..hHHJJHHHHh....',
@@ -1087,6 +1099,7 @@ const SPRITE_ART = {
   },
   ranger: {
     front: {
+      arms: { rows: [10, 11], cols: [[2, 5], [18, 21]] },
       head: { at: [14, 4], rows: [
         '.......aA.......',
         '......aAAa......',
@@ -1135,6 +1148,7 @@ const SPRITE_ART = {
       ] },
     },
     back: {
+      arms: { rows: [10, 11], cols: [[2, 5], [18, 21]] },
       head: { at: [14, 4], rows: [
         '.......aA.......',
         '......aAAa......',
@@ -1194,6 +1208,7 @@ const SPRITE_ART = {
       ] },
     },
     side: {
+      arms: { rows: [10, 11], cols: [[10, 14]] },
       head: { at: [14, 4], rows: [
         '...aA...........',
         '...aAAa.........',
@@ -1264,6 +1279,7 @@ const SPRITE_ART = {
   },
   raider_brawler: {
     front: {
+      arms: { rows: [11, 13], cols: [[2, 5], [18, 21]] },
       head: { at: [15, 4], rows: [
         '......Rr......',
         '......RRr.....',
@@ -1302,6 +1318,7 @@ const SPRITE_ART = {
       ] },
     },
     back: {
+      arms: { rows: [11, 13], cols: [[2, 5], [18, 21]] },
       head: { at: [15, 4], rows: [
         '......Rr......',
         '......RRr.....',
@@ -1340,6 +1357,7 @@ const SPRITE_ART = {
       ] },
     },
     side: {
+      arms: { rows: [9, 11], cols: [[9, 13]] },
       head: { at: [15, 4], rows: [
         '....Rr........',
         '...RRRr.......',
@@ -1382,6 +1400,7 @@ const SPRITE_ART = {
   },
   raider_shooter: {
     front: {
+      arms: { rows: [11, 12], cols: [[2, 5], [18, 21]] },
       head: { at: [15, 6], rows: [
         '....hHHHHh....',
         '...hHJJHHHh...',
@@ -1423,6 +1442,7 @@ const SPRITE_ART = {
       ] },
     },
     back: {
+      arms: { rows: [11, 12], cols: [[2, 5], [18, 21]] },
       head: { at: [15, 6], rows: [
         '....hHHHHh....',
         '...hHJJHHHh...',
@@ -1513,6 +1533,7 @@ const SPRITE_ART = {
   raider_heavy: {
     legs: HEAVY_LEGS,
     front: {
+      arms: { rows: [10, 13], cols: [[2, 8], [19, 25]] },
       head: { at: [14, 6], rows: [
         '....aAAAAAAa....',
         '..aAQQAAAAAAAa..',
@@ -1552,6 +1573,7 @@ const SPRITE_ART = {
       ] },
     },
     back: {
+      arms: { rows: [10, 13], cols: [[2, 8], [19, 25]] },
       head: { at: [14, 6], rows: [
         '....aAAAAAAa....',
         '..aAQQAAAAAAAa..',
@@ -1591,6 +1613,7 @@ const SPRITE_ART = {
       ] },
     },
     side: {
+      arms: { rows: [10, 13], cols: [[10, 17]] },
       head: { at: [14, 6], rows: [
         '....aAAAAAa.....',
         '..aAQQAAAAAAa...',
@@ -1644,11 +1667,39 @@ function _artParts(art, dir) {
   return d.base ? Object.assign({}, art[d.base], d, { back: art[d.base].back || d.base === 'back' }) : Object.assign({}, d, { back: dir === 'back' });
 }
 
-function _artLayers(parts, legs, atk) {
-  const weapon = atk ? (parts.atk || parts.weapon) : parts.weapon;
+// Hands used to stop at the belt, so every figure read as a hard T at the waist. The arm
+// layer redraws each arm ARM_DROP rows longer: the sleeve row above the hand fills the gap
+// and the hand rows move down beside the thighs. Held weapons move down with the hand.
+const ARM_DROP = 5;
+
+function _armLayer(body, spec, cols) {
+  const [h, e] = spec.rows, w = body.rows[0].length;
+  const grid = Array.from({ length: e + ARM_DROP + 1 }, () => Array(w).fill('.'));
+  for (const [a, b] of cols) for (let x = a; x <= b; x++) {
+    const sleeve = body.rows[h - 1][x];
+    for (let r = h; r < h + ARM_DROP; r++) grid[r][x] = sleeve === '.' ? '_' : sleeve;
+    for (let r = h; r <= e; r++) if (body.rows[r][x] !== '.') grid[r + ARM_DROP][x] = body.rows[r][x];
+  }
+  return { at: body.at, rows: grid.map(r => r.join('')) };
+}
+
+const _drop = (L) => L && { at: [L.at[0], L.at[1] + ARM_DROP], rows: L.rows };
+
+function _artLayers(parts, legs, atk, side) {
+  const spec = parts.arms;
+  // Side attacks raise the near (only) arm, so they keep the short body arm; atkDrop leaves
+  // out the weapon-side arm for overlays that draw it raised from the shoulder.
+  let arms = null;
+  if (spec && !(atk && side)) {
+    const cols = atk && spec.atkDrop != null ? spec.cols.filter((_, i) => i !== spec.atkDrop) : spec.cols;
+    arms = _armLayer(parts.body, spec, cols);
+  }
+  let weapon = parts.weapon;
+  if (spec) weapon = _drop(weapon);
+  if (atk && parts.atk) weapon = spec && !side && spec.atkDrop == null ? _drop(parts.atk) : parts.atk;
   return parts.back
-    ? [legs, weapon, parts.behind, parts.body, parts.over, parts.head]
-    : [legs, parts.behind, parts.body, parts.over, weapon, parts.head];
+    ? [legs, weapon, parts.behind, parts.body, arms, parts.over, parts.head]
+    : [legs, parts.behind, parts.body, arms, parts.over, weapon, parts.head];
 }
 
 function pixelActorFrames(id) {
@@ -1658,10 +1709,11 @@ function pixelActorFrames(id) {
     const kind = dir === 'side' ? 'side' : 'front';
     const L = (rows, flip) => ({ at: [22 - rows[0].length / 2, 34], rows, flip });
     const legs = art.legs || LEGS;
+    const side = kind === 'side';
     out[id + sfx] = paintGrid(_artLayers(parts, L(legs[kind])), pal);
     out[id + sfx + '_step'] = paintGrid(_artLayers(parts, L(legs[kind + '_step'])), pal);
     out[id + sfx + '_step2'] = paintGrid(_artLayers(parts, L(legs[kind + '_step'], true)), pal);
-    if (art.front.atk) out[id + '_atk' + sfx] = paintGrid(_artLayers(parts, L(legs[kind]), true), pal);
+    if (art.front.atk) out[id + '_atk' + sfx] = paintGrid(_artLayers(parts, L(legs[kind]), true, side), pal);
   }
   return out;
 }
