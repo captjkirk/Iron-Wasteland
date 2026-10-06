@@ -6,6 +6,7 @@
   "scripts": {
     "serve": "node server.js",
     "check": "for f in game.js src/*.js; do node --check \"$f\" || exit 1; done && node scripts/check-manifest.js && npm run -s lint",
-    "lint": "npx --yes eslint@10.12.0 game.js src/"
+    "lint": "npx --yes eslint@10.12.0 game.js src/",
+    "smoke": "npm install --no-save playwright@1.63.0 && npx playwright install --with-deps webkit && node scripts/smoke.js"
   }
 }

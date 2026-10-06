@@ -21,7 +21,7 @@ function lanIP() {
   return '127.0.0.1';
 }
 
-const PORT    = 8080;
+const PORT    = process.env.PORT || 8080;
 const ROOT    = __dirname;
 const LOG_DIR = path.join(ROOT, 'logs');
 
@@ -95,7 +95,9 @@ const server = http.createServer((req, res) => {
 
 server.listen(PORT, '0.0.0.0', () => {
   console.log(`Iron Wasteland dev server running at:`);
-  console.log(`  http://localhost:${PORT}        (this machine)`);
-  console.log(`  http://${lanIP()}:${PORT}   (LAN)`);
+  console.log(`  http://localhost:${server.address().port}        (this machine)`);
+  console.log(`  http://${lanIP()}:${server.address().port}   (LAN)`);
   console.log(`Session logs will be saved to: ${LOG_DIR}`);
 });
+
+module.exports = server; // scripts/smoke.js runs it in-process on a free port

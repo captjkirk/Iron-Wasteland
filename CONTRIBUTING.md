@@ -34,7 +34,7 @@ the MANIFEST lists, update the MANIFEST in the same commit.
 
 ## CI checks (run on every PR)
 
-`.github/workflows/checks.yml` runs two checks; both must pass before merge.
+`.github/workflows/checks.yml` runs three checks; all must pass before merge.
 
 - **`version-bump`** fails the PR if `VERSION` matches `main`. The hook normally prevents
   this. If it flags you:
@@ -45,6 +45,10 @@ the MANIFEST lists, update the MANIFEST in the same commit.
 
   then commit again.
 - **`check`** runs `npm run check`, the same as the hook.
+- **`smoke`** runs `npm run smoke`: it fetches Playwright's WebKit (pinned in `package.json`,
+  never installed into the repo), loads the game, and fails unless `ModeSelect` comes up with
+  no console error. It catches a file using a name from a file that loads after it, which
+  ESLint passes. Run it locally before moving code between `src/` files.
 
 On deploy, `.github/workflows/pages.yml` re-stamps `VERSION` with the publish time.
 

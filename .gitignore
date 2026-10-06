@@ -4,3 +4,4 @@ __MACOSX/
 .iCloud/
 logs/
 graphify-out/
+node_modules/

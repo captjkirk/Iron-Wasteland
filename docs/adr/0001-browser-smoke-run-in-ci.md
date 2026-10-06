@@ -1,6 +1,6 @@
 # Add a headless browser smoke run to CI, before the game-file split
 
-Status: accepted (October 6, 2026). Not built yet.
+Status: accepted (October 6, 2026). Built as the `smoke` job; Playwright is fetched on demand by `npm run smoke`, not added as a dev dependency.
 
 `npm run check` catches syntax errors, manifest drift and undefined names, but it never runs the game. We decided to add a CI job that loads `index.html` in headless WebKit, waits for the `ModeSelect` scene, and fails on any console error or uncaught exception. WebKit is the engine on every iPad and iPhone the game is played on.
 
