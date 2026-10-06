@@ -451,7 +451,7 @@ Object.assign(GameScene.prototype, {
       // put the ground skirt (depth 1.5, crater layer) on that line.
       this._w(this.add.image(px, py, 'mountain_base').setScale(sc).setDepth(1.5));
       const ob = this.obstacles.create(px, py, key);
-      ob.setOrigin(0.5, 160 / 176).setScale(sc).setDepth(6 + ty*0.01).setImmovable(true);
+      ob.setOrigin(0.5, 160 / 176).setScale(sc).setDepth(this._sortDepth(py)).setImmovable(true);
       // Scale-compensated circle hitbox: world radius stays ~13px regardless of mountain scale.
       // StaticBody world radius = r * scale, so divide desired world radius by sc. Body offsets
       // are from the frame's top-left, independent of origin.
@@ -1248,8 +1248,9 @@ Object.assign(GameScene.prototype, {
   _placeScenery(tx, ty, key, frame) {
     const TILE = CFG.TILE;
     if (frame == null) frame = Phaser.Math.Between(0, SCENERY_SPECS[key].sizes.length - 1);
-    const o = this.obstacles.create(tx * TILE + TILE / 2, ty * TILE + TILE - 2, key, frame);
-    o.setOrigin(0.5, 1).setScale(ART_SCALE).setDepth(5 + ty * 0.01).setImmovable(true);
+    const baseY = ty * TILE + TILE - 2;
+    const o = this.obstacles.create(tx * TILE + TILE / 2, baseY, key, frame);
+    o.setOrigin(0.5, 1).setScale(ART_SCALE).setDepth(this._sortDepth(baseY)).setImmovable(true);
     o.refreshBody();
     const bw = o.displayWidth * 0.75, bh = o.displayHeight * 0.5;
     o.body.setSize(bw, bh, false);

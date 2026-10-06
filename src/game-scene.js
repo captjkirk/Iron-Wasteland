@@ -2318,10 +2318,18 @@ class GameScene extends Phaser.Scene {
     this._tutActive = false;
   }
 
+  // Y-sorted draw order: scenery, players and enemies share the band 9..9.9, deeper down the
+  // map = drawn later, so a sprite stands in front of whatever is above its feet. The band sits
+  // above ground items and structures (<= 8) and below bullets (10) and bars/labels (>= 11).
+  _sortDepth(feetY) { return 9 + feetY / (CFG.MAP_H * CFG.TILE) * 0.9; }
+
   // ── UPDATE ────────────────────────────────────────────────────
   update(time, delta) {
     if (!this._worldReady) return; // deferred world init not yet complete
     if (this.isOver) return;
+
+    for (const p of [this.p1, this.p2]) if (p?.spr) p.spr.setDepth(this._sortDepth(p.spr.y + p.spr.displayHeight / 2));
+    for (const e of this.enemies) if (e.spr?.active) e.spr.setDepth(this._sortDepth(e.spr.y + e.spr.displayHeight / 2));
 
     // Clamp delta — a backgrounded tab, long GC pause, or debugger break can
     // produce multi-second deltas that teleport enemies across walls and
