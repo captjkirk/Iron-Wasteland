@@ -26,8 +26,11 @@ The pre-commit hook does two things:
 2. Runs `npm run check`: a syntax check of `game.js` and every `src/*.js`, the manifest check,
    and ESLint. A failure aborts the commit.
 
-Run `npm run check` yourself any time. If you rename, add or remove a symbol the MANIFEST
-lists, update the MANIFEST in the same commit.
+A post-commit hook refreshes a local graphify knowledge graph in `graphify-out/` (gitignored) if
+you have built one. It runs in the background and never blocks a commit.
+
+Run `npm run check` yourself any time. If you add, rename, remove or deprecate anything
+the MANIFEST lists, update the MANIFEST in the same commit.
 
 ## CI checks (run on every PR)
 
