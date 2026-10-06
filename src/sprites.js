@@ -1725,3 +1725,288 @@ function buildPixelActors(scene) {
     for (const [key, canvas] of Object.entries(pixelActorFrames(id))) scene.textures.addCanvas(key, canvas);
   }
 }
+
+// ── SCENERY ───────────────────────────────────────────────────
+// Trees, rocks, bushes and built walls are painted pixel by pixel at native size and always
+// shown at ART_SCALE, the characters' pixel size, so nothing in the world is stretched.
+// Size variety comes from drawn variants (texture frames 0..n), never from random scaling.
+// Shapes are seeded, so every load paints the same pixels.
+// grep: "SCENERY_SPECS"  "buildScenery"  "placeScenery"
+const ART_SCALE = 1.5;
+
+function _buf(w, h) { return { w, h, c: new Array(w * h).fill(null) }; }
+function _put(b, x, y, col) {
+  x = Math.floor(x); y = Math.floor(y);
+  if (x >= 0 && y >= 0 && x < b.w && y < b.h) b.c[y * b.w + x] = col;
+}
+function _at(b, x, y) { return x >= 0 && y >= 0 && x < b.w && y < b.h ? b.c[y * b.w + x] : null; }
+function _noise(x, y, s) {
+  let n = Math.imul(x | 0, 374761393) + Math.imul(y | 0, 668265263) + Math.imul(s | 0, 1442695041);
+  n = Math.imul(n ^ (n >>> 13), 1274126177);
+  return ((n ^ (n >>> 16)) >>> 0) / 4294967296;
+}
+const _rng = (seed) => { let s = seed >>> 0; return () => { s = (s + 0x6D2B79F5) >>> 0; let t = s; t = Math.imul(t ^ (t >>> 15), t | 1); t ^= t + Math.imul(t ^ (t >>> 7), t | 61); return ((t ^ (t >>> 14)) >>> 0) / 4294967296; }; };
+
+// Shaded ellipse. ramp runs dark to light; light comes from the upper left, like the actors.
+// bias darkens (negative) or lightens a whole shape; rough eats into the edge for leafy rims.
+function _blob(b, cx, cy, rx, ry, ramp, seed, rough, bias) {
+  for (let y = Math.floor(cy - ry); y <= cy + ry; y++) for (let x = Math.floor(cx - rx); x <= cx + rx; x++) {
+    const dx = (x + 0.5 - cx) / rx, dy = (y + 0.5 - cy) / ry, d = dx * dx + dy * dy;
+    const n = _noise(x, y, seed);
+    if (d > 1 - (rough || 0) * n) continue;
+    const l = 0.6 - 0.5 * dx - 0.65 * dy - 0.25 * d + (n - 0.5) * 0.22 + (bias || 0);
+    _put(b, x, y, ramp[Math.max(0, Math.min(ramp.length - 1, Math.floor(l * ramp.length)))]);
+  }
+}
+function _line(b, x0, y0, x1, y1, col, wdt) {
+  const n = Math.max(Math.abs(x1 - x0), Math.abs(y1 - y0), 1);
+  for (let i = 0; i <= n; i++) {
+    const x = x0 + (x1 - x0) * i / n, y = y0 + (y1 - y0) * i / n;
+    for (let k = 0; k < (wdt || 1); k++) _put(b, x + k, y, col);
+  }
+}
+// Bark/stem column from (cx, y0) down to y1, width tapering from w0 (top) to w1 (bottom).
+function _trunk(b, cx, y0, y1, w0, w1, ramp, seed) {
+  for (let y = y0; y <= y1; y++) {
+    const t = (y - y0) / Math.max(1, y1 - y0), w = w0 + (w1 - w0) * t;
+    for (let x = Math.round(cx - w / 2); x < Math.round(cx + w / 2); x++) {
+      const u = (x + 0.5 - (cx - w / 2)) / w, n = _noise(x, y, seed);
+      _put(b, x, y, ramp[Math.max(0, Math.min(ramp.length - 1, Math.floor((0.9 - u * 0.8 + (n - 0.5) * 0.35) * ramp.length)))]);
+    }
+  }
+}
+
+// Outline + base shadow, then paint to a canvas the size of the buffer.
+function _bufCanvas(b, outline, shadow) {
+  const c = document.createElement('canvas'); c.width = b.w; c.height = b.h;
+  const ctx = c.getContext('2d');
+  if (shadow) {
+    ctx.fillStyle = 'rgba(0,0,0,0.28)';
+    for (let y = 0; y < b.h; y++) for (let x = 0; x < b.w; x++) {
+      const dx = (x + 0.5 - shadow[0]) / shadow[2], dy = (y + 0.5 - shadow[1]) / shadow[3];
+      if (dx * dx + dy * dy <= 1) ctx.fillRect(x, y, 1, 1);
+    }
+  }
+  for (let y = 0; y < b.h; y++) for (let x = 0; x < b.w; x++) {
+    let col = b.c[y * b.w + x];
+    if (!col && outline && (_at(b, x - 1, y) || _at(b, x + 1, y) || _at(b, x, y - 1) || _at(b, x, y + 1))) col = outline;
+    if (col) { ctx.fillStyle = col; ctx.fillRect(x, y, 1, 1); }
+  }
+  return c;
+}
+
+const SC_PAL = {
+  bark:   ['#2e1c10', '#4a2e18', '#6a4424', '#8a5e34'],
+  leaf:   ['#163a14', '#245a1c', '#357a26', '#4c9a32', '#74bc48'],
+  pine:   ['#0e2a1c', '#173f28', '#225836', '#2f7044'],
+  snow:   ['#c8d8e8', '#eef6ff'],
+  dead:   ['#2a2420', '#4a4038', '#6a5e52', '#8a7e70'],
+  swamp:  ['#1a2810', '#2a3c16', '#3c5020', '#52682c'],
+  moss:   ['#4a5a2a', '#6a7a3a'],
+  stalk:  ['#a89a88', '#cfc2ae', '#e8dcc8'],
+  cap:    ['#3a1448', '#5a2070', '#7a3494', '#a050b8'],
+  cactus: ['#1e4a24', '#2e6630', '#3e8040', '#5aa058'],
+  rock:   ['#3a3a40', '#55555c', '#707078', '#8c8c94', '#a8a8b0'],
+  sand:   ['#6a4a2a', '#8a6438', '#aa8048', '#c89c5c', '#e0bc7c'],
+  ice:    ['#3a5a7a', '#5a84a8', '#80aed0', '#aed4ec', '#e0f2ff'],
+  shroom: ['#7a2a3a', '#a83a50', '#d0566c'],
+  wall:   ['#3a2c1c', '#5a4428', '#7a6038', '#9a7c4c', '#b89a64'],
+};
+const SC_OUT = '#141016';
+
+function _leafyTree(w, h, seed, opts) {
+  const b = _buf(w, h), r = _rng(seed), cx = w / 2, base = h - 3;
+  const trunkTop = Math.round(h * (opts.trunkTop || 0.5));
+  _trunk(b, cx, trunkTop, base, Math.max(3, w * 0.09), Math.max(4, w * 0.14), SC_PAL.bark, seed);
+  _line(b, cx - w * 0.1, base, cx + w * 0.1, base, SC_PAL.bark[0], 1); // root flare
+  const ccx = cx, ccy = h * (opts.canopyY || 0.36), crx = w * 0.46, cry = h * (opts.canopyRy || 0.33);
+  const clumps = [];
+  for (let i = 0; i < (opts.clumps || 9); i++) {
+    const a = r() * Math.PI * 2, d = Math.sqrt(r()) * 0.6;
+    clumps.push({ x: ccx + Math.cos(a) * crx * d, y: ccy + Math.sin(a) * cry * d, rr: 0.38 + r() * 0.16 });
+  }
+  clumps.sort((p, q) => p.y - q.y);
+  _blob(b, ccx, ccy + cry * 0.15, crx * 0.85, cry * 0.85, opts.ramp, seed + 7, 0.1, -0.25); // dark core
+  clumps.forEach((k, i) => _blob(b, k.x, k.y, crx * k.rr, cry * k.rr * 1.1, opts.ramp, seed + i, 0.25, -0.18 * (k.y - ccy) / cry));
+  if (opts.moss) for (let x = Math.floor(ccx - crx * 0.8); x < ccx + crx * 0.8; x += 2) {
+    if (_noise(x, 1, seed) < 0.45) continue;
+    let y = ccy; while (y < h && _at(b, x, Math.floor(y))) y++;
+    _line(b, x, y - 1, x, y - 1 + 3 + Math.floor(_noise(x, 2, seed) * h * 0.18), opts.moss[_noise(x, 3, seed) < 0.5 ? 0 : 1], 1);
+  }
+  return _bufCanvas(b, SC_OUT, [cx, base, w * 0.32, Math.max(2, h * 0.04)]);
+}
+
+function _pineTree(w, h, seed, snow) {
+  const b = _buf(w, h), cx = w / 2, base = h - 3, tiers = 5, tierOf = new Int8Array(w * h).fill(-1);
+  _trunk(b, cx, Math.round(h * 0.8), base, 4, 5, SC_PAL.bark, seed);
+  const top = 1, bottom = h * 0.86;
+  for (let t = tiers - 1; t >= 0; t--) {
+    const yt = top + (bottom - top) * t / (tiers + 1.2), yb = top + (bottom - top) * (t + 1.6) / (tiers + 0.4);
+    const wb = (w / 2 - 1) * (0.45 + 0.55 * (t + 1) / tiers);
+    for (let y = Math.floor(yt); y <= yb; y++) {
+      const half = (y - yt) / (yb - yt) * wb;
+      for (let x = Math.floor(cx - half); x <= cx + half; x++) {
+        const n = _noise(x, y, seed + t);
+        if (y > yb - 2 && n < 0.4) continue; // ragged hem
+        const u = (x - (cx - half)) / Math.max(1, 2 * half);
+        const l = 0.8 - 0.6 * u + (n - 0.5) * 0.25 - 0.35 * (y - yt) / (yb - yt);
+        _put(b, x, y, SC_PAL.pine[Math.max(0, Math.min(3, Math.floor(l * 4)))]);
+        if (x >= 0 && y >= 0 && x < w && y < h) tierOf[Math.floor(y) * w + x] = t;
+      }
+    }
+  }
+  // Each tier's top surface is the strip just under the hem of the tier above: shade the
+  // first row (the hem's shadow), then lay snow on the left-lit part below it.
+  for (let y = 1; y < h; y++) for (let x = 0; x < w; x++) {
+    const t = tierOf[y * w + x], above = tierOf[(y - 1) * w + x];
+    if (t < 0 || above === t) continue;
+    if (above >= 0) _put(b, x, y, SC_PAL.pine[0]);
+    if (!snow) continue;
+    const u = (x - cx) / (w / 2);
+    for (let k = above >= 0 ? 1 : 0; k < 3; k++) {
+      if (tierOf[(y + k) * w + x] !== t || _noise(x, y + k, 99) < 0.2 + k * 0.25) break;
+      _put(b, x, y + k, SC_PAL.snow[u < 0.15 ? 1 : 0]);
+    }
+  }
+  return _bufCanvas(b, SC_OUT, [cx, base, w * 0.3, Math.max(2, h * 0.035)]);
+}
+
+function _deadTree(w, h, seed) {
+  const b = _buf(w, h), r = _rng(seed), cx = w / 2, base = h - 3;
+  _trunk(b, cx, Math.round(h * 0.2), base, 3, Math.max(5, w * 0.14), SC_PAL.dead, seed);
+  const branch = (x, y, ang, len, wdt, depth) => {
+    const x1 = x + Math.cos(ang) * len, y1 = y + Math.sin(ang) * len;
+    _line(b, x, y, x1, y1, SC_PAL.dead[depth > 1 ? 2 : 1], wdt);
+    if (depth > 0) for (let i = 0; i < 2; i++) branch(x1, y1, ang + (r() - 0.5) * 1.3, len * 0.62, Math.max(1, wdt - 1), depth - 1);
+  };
+  for (let i = 0; i < 4; i++) {
+    const y = h * (0.22 + 0.42 * r()), side = i % 2 ? 1 : -1;
+    branch(cx, y, -Math.PI / 2 + side * (0.6 + r() * 0.5), w * (0.22 + r() * 0.14), 2, 2);
+  }
+  branch(cx, h * 0.22, -Math.PI / 2 + (r() - 0.5) * 0.4, h * 0.18, 2, 2);
+  return _bufCanvas(b, SC_OUT, [cx, base, w * 0.26, Math.max(2, h * 0.04)]);
+}
+
+function _mushroomTree(w, h, seed) {
+  const b = _buf(w, h), cx = w / 2, base = h - 3;
+  _trunk(b, cx, Math.round(h * 0.4), base, w * 0.2, w * 0.26, SC_PAL.stalk, seed);
+  const capH = h * 0.46;
+  for (let y = 1; y < capH; y++) for (let x = 0; x < w; x++) {
+    const dx = (x + 0.5 - cx) / (w / 2 - 1), dy = (capH - y) / (capH - 1);
+    if (dx * dx + dy * dy > 1) continue;
+    const n = _noise(x, y, seed), l = 0.6 - 0.45 * dx - 0.3 * (1 - dy) + (n - 0.5) * 0.25;
+    _put(b, x, y, y > capH - 3 ? '#2a0e34' : SC_PAL.cap[Math.max(0, Math.min(3, Math.floor(l * 4)))]);
+  }
+  const r = _rng(seed);
+  for (let i = 0; i < 5; i++) {
+    const sx = cx + (r() - 0.5) * w * 0.65, sy = capH * (0.25 + r() * 0.5), sr = 1 + r() * 1.6;
+    if (_at(b, Math.floor(sx), Math.floor(sy))) _blob(b, sx, sy, sr, sr, ['#d8c8e0', '#f4ecf8'], seed + i, 0, 0.2);
+  }
+  return _bufCanvas(b, SC_OUT, [cx, base, w * 0.3, Math.max(2, h * 0.04)]);
+}
+
+function _cactus(w, h, seed) {
+  const b = _buf(w, h), r = _rng(seed), cx = w / 2, base = h - 3, bw = Math.max(6, Math.round(w * 0.3));
+  const column = (x0, y0, y1, cw) => {
+    for (let y = y0; y <= y1; y++) for (let x = x0; x < x0 + cw; x++) {
+      const u = (x - x0 + 0.5) / cw, top = y - y0 < cw / 2 ? Math.abs(u - 0.5) * 2 > Math.sqrt(1 - ((cw / 2 - (y - y0)) / (cw / 2)) ** 2) : false;
+      if (top) continue;
+      const rib = (x - x0) % 2 === 0 ? 0.12 : 0;
+      _put(b, x, y, SC_PAL.cactus[Math.max(0, Math.min(3, Math.floor((0.85 - 0.7 * u + rib) * 4)))]);
+    }
+  };
+  column(Math.round(cx - bw / 2), 1, base, bw);
+  const aw = Math.max(4, bw - 2);
+  [-1, 1].forEach((side, i) => {
+    const ay = Math.round(h * (0.35 + r() * 0.2)), ax = side < 0 ? Math.round(cx - bw / 2 - aw - 1) : Math.round(cx + bw / 2 + 1);
+    column(ax, Math.round(ay - h * (0.12 + r() * 0.1)), ay + aw, aw);
+    for (let x = Math.min(ax, Math.round(cx)); x < Math.max(ax + aw, Math.round(cx)); x++) for (let y = ay; y < ay + aw - 1; y++) if (!_at(b, x, y)) _put(b, x, y, SC_PAL.cactus[1 + i]);
+  });
+  return _bufCanvas(b, SC_OUT, [cx, base, w * 0.3, 2]);
+}
+
+function _rock(w, h, seed, ramp) {
+  const b = _buf(w, h), r = _rng(seed), base = h - 2;
+  for (let i = 0; i < 3; i++) {
+    const rx = w * (0.3 + r() * 0.16), ry = h * (0.34 + r() * 0.14);
+    _blob(b, w * (0.3 + 0.2 * i) + (r() - 0.5) * 2, base - ry, rx, ry, ramp, seed + i, 0.08, i === 1 ? 0.08 : -0.05);
+  }
+  for (let i = 0; i < 2; i++) { // cracks
+    let x = w * (0.3 + r() * 0.4), y = h * (0.3 + r() * 0.2);
+    for (let k = 0; k < h * 0.35; k++) { if (_at(b, Math.floor(x), Math.floor(y))) _put(b, x, y, ramp[0]); x += r() - 0.5; y += 1; }
+  }
+  return _bufCanvas(b, SC_OUT, [w / 2, base, w * 0.5, Math.max(2, h * 0.15)]);
+}
+
+function _bush(w, h, seed, berries) {
+  const b = _buf(w, h), r = _rng(seed), base = h - 2;
+  for (let i = 0; i < 4; i++) _blob(b, w * (0.25 + 0.5 * r()), base - h * (0.3 + 0.2 * r()), w * 0.3, h * 0.38, SC_PAL.leaf, seed + i, 0.3, -0.05);
+  if (berries) for (let i = 0; i < 5; i++) { const x = Math.floor(w * (0.2 + 0.6 * r())), y = Math.floor(h * (0.25 + 0.5 * r())); if (_at(b, x, y)) _put(b, x, y, '#d8344a'); }
+  return _bufCanvas(b, SC_OUT, [w / 2, base, w * 0.45, 2]);
+}
+
+function _mushrooms(w, h, seed) {
+  const b = _buf(w, h), r = _rng(seed), base = h - 2;
+  for (let i = 0; i < 3; i++) {
+    const x = w * (0.2 + 0.3 * i) + (r() - 0.5) * 2, ch = h * (0.35 + r() * 0.4), cw = 2.5 + r() * 2;
+    _line(b, x, base, x, base - ch, SC_PAL.stalk[1], 2);
+    _blob(b, x + 1, base - ch, cw, cw * 0.7, SC_PAL.shroom, seed + i, 0, 0.1);
+  }
+  return _bufCanvas(b, SC_OUT, [w / 2, base, w * 0.45, 2]);
+}
+
+// Built wall: front face fills the 32 px tile (21 art px at 32/21 scale), with a top face
+// above it. Displayed at WALL_SCALE so the front face lines up with the tile grid exactly.
+const WALL_SCALE = 32 / 21;
+function _wall(seed) {
+  const w = 21, h = 30, top = 9, b = _buf(w, h), ramp = SC_PAL.wall;
+  for (let y = 0; y < top; y++) for (let x = 0; x < w; x++) {
+    const n = _noise(x, y, seed);
+    _put(b, x, y, ramp[y < 1 ? 4 : (n < 0.15 ? 2 : 3)]);
+  }
+  for (let y = top; y < h; y++) {
+    const row = Math.floor((y - top) / 5), off = row % 2 ? 5 : 0;
+    for (let x = 0; x < w; x++) {
+      const mortar = (y - top) % 5 === 4 || (x + off) % 10 === 9;
+      const n = _noise(x, y, seed), l = 0.7 - 0.35 * (y - top) / (h - top) + (n - 0.5) * 0.3;
+      _put(b, x, y, mortar ? ramp[0] : ramp[Math.max(1, Math.min(3, Math.floor(l * 4)))]);
+    }
+  }
+  for (let x = 0; x < w; x++) _put(b, x, top, ramp[1]); // lip shadow under the top face
+  return _bufCanvas(b, null, null);
+}
+
+// key → list of [w, h] variants (art pixels) and the painter. Heights are measured against a
+// person, who is about 55 art pixels tall: trees 1.2-1.9 people, rocks knee to waist.
+const SCENERY_SPECS = {
+  tree:           { sizes: [[46, 66], [56, 82], [66, 98]],  paint: (w, h, s) => _leafyTree(w, h, s, { ramp: SC_PAL.leaf }) },
+  tree_snow:      { sizes: [[36, 72], [44, 90], [52, 106]], paint: (w, h, s) => _pineTree(w, h, s, true) },
+  tree_dead:      { sizes: [[40, 64], [48, 80], [56, 94]],  paint: (w, h, s) => _deadTree(w, h, s) },
+  tree_swamp:     { sizes: [[54, 64], [66, 78], [76, 90]],  paint: (w, h, s) => _leafyTree(w, h, s, { ramp: SC_PAL.swamp, canopyRy: 0.26, canopyY: 0.3, trunkTop: 0.4, moss: SC_PAL.moss }) },
+  tree_mushroom:  { sizes: [[40, 52], [50, 66], [60, 80]],  paint: (w, h, s) => _mushroomTree(w, h, s) },
+  tree_cactus:    { sizes: [[22, 44], [28, 58], [32, 70]],  paint: (w, h, s) => _cactus(w, h, s) },
+  great_oak:      { sizes: [[110, 150]], paint: (w, h, s) => _leafyTree(w, h, s, { ramp: SC_PAL.leaf, clumps: 16 }) },
+  great_pine:     { sizes: [[70, 170]],  paint: (w, h, s) => _pineTree(w, h, s, true) },
+  great_mangrove: { sizes: [[130, 110]], paint: (w, h, s) => _leafyTree(w, h, s, { ramp: SC_PAL.swamp, canopyRy: 0.28, canopyY: 0.32, trunkTop: 0.42, clumps: 16, moss: SC_PAL.moss }) },
+  rock:           { sizes: [[18, 12], [26, 17], [34, 23]], paint: (w, h, s) => _rock(w, h, s, SC_PAL.rock) },
+  rock_desert:    { sizes: [[20, 11], [28, 15], [36, 20]], paint: (w, h, s) => _rock(w, h, s, SC_PAL.sand) },
+  ice_rock:       { sizes: [[18, 13], [26, 18], [34, 24]], paint: (w, h, s) => _rock(w, h, s, SC_PAL.ice) },
+  bush:           { sizes: [[16, 12], [22, 15], [26, 18]], paint: (w, h, s) => _bush(w, h, s, s % 3 === 0) },
+  mushroom:       { sizes: [[14, 12], [18, 15]],           paint: (w, h, s) => _mushrooms(w, h, s) },
+  wall:           { sizes: [[21, 30]],                      paint: (w, h, s) => _wall(s) },
+};
+
+// One texture per key; each size variant is a frame (0..n), bottom-aligned in one strip.
+function buildScenery(scene) {
+  for (const [key, spec] of Object.entries(SCENERY_SPECS)) {
+    const cans = spec.sizes.map(([w, h], i) => spec.paint(w, h, 1000 + i * 97 + key.length * 13));
+    const W = cans.reduce((s, c) => s + c.width, 0), H = Math.max(...cans.map(c => c.height));
+    const strip = document.createElement('canvas'); strip.width = W; strip.height = H;
+    let x = 0;
+    for (const c of cans) { strip.getContext('2d').drawImage(c, x, H - c.height); x += c.width; }
+    if (scene.textures.exists(key)) scene.textures.remove(key);
+    const tex = scene.textures.addCanvas(key, strip);
+    x = 0;
+    cans.forEach((c, i) => { tex.add(i, 0, x, H - c.height, c.width, c.height); x += c.width; });
+  }
+}

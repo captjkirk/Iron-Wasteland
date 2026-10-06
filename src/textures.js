@@ -481,47 +481,9 @@ function buildTextures(scene) {
   g.fillStyle(0x1a3010); g.fillRect(4, 12, 2, 4); g.fillRect(10, 14, 2, 4); g.fillRect(16, 11, 2, 4); g.fillRect(22, 13, 2, 4);
   g.generateTexture('tall_grass_swamp', 32, 24);
 
-  // Bush (16×14, decorative only)
-  g.clear();
-  g.fillStyle(0x1f5c0f); g.fillCircle(8, 9, 7);
-  g.fillStyle(0x2a7a18); g.fillCircle(5, 8, 5); g.fillCircle(11, 8, 5);
-  g.fillStyle(0x196010); g.fillCircle(8, 6, 4);
-  g.fillStyle(0x3a9a22); g.fillCircle(6, 7, 2); g.fillCircle(10, 6, 2);
-  g.fillStyle(0x1a3a0a); g.fillRect(6, 12, 4, 2);
-  g.generateTexture('bush', 16, 14);
 
-  // Tree
-  g.clear();
-  g.fillStyle(0x5c3317); g.fillRect(10, 22, 8, 14);
-  g.fillStyle(0x3d2010); g.fillRect(10, 22, 2, 14);
-  g.fillStyle(0x1f5c0f); g.fillCircle(14, 16, 12);
-  g.fillStyle(0x2d8c1a); g.fillCircle(14, 13, 10);
-  g.fillStyle(0x3daa22); g.fillCircle(12, 10, 7);
-  g.fillStyle(0x4ec42a); g.fillCircle(15, 7, 5);
-  g.generateTexture('tree', 28, 36);
 
-  // Rock — polygon-based with lit top face for depth
-  g.clear();
-  // Main body: dark warm-grey base mass
-  g.fillStyle(0x706860);
-  g.fillPoints([{x:2,y:15},{x:0,y:9},{x:3,y:3},{x:9,y:1},{x:15,y:1},{x:20,y:4},{x:22,y:10},{x:18,y:15}], true);
-  // Top-left highlight face: lighter grey creates lit-top depth illusion
-  g.fillStyle(0xc0b8a8);
-  g.fillPoints([{x:3,y:13},{x:1,y:8},{x:4,y:3},{x:9,y:2},{x:14,y:2},{x:17,y:6},{x:18,y:11},{x:15,y:13}], true);
-  // Cracks: thin dark lines for texture
-  g.lineStyle(1, 0x3e3836);
-  g.beginPath(); g.moveTo(8,7); g.lineTo(11,11); g.lineTo(9,15); g.strokePath();
-  g.beginPath(); g.moveTo(14,4); g.lineTo(16,8); g.strokePath();
-  g.generateTexture('rock', 22, 16);
 
-  // Desert rock — sandstone orange-red (22×16)
-  g.clear();
-  g.fillStyle(0xcc7744);
-  g.fillPoints([{x:2,y:15},{x:0,y:9},{x:3,y:3},{x:9,y:1},{x:15,y:1},{x:20,y:4},{x:22,y:10},{x:18,y:15}], true);
-  g.fillStyle(0xdd9966);
-  g.fillPoints([{x:3,y:13},{x:1,y:8},{x:4,y:3},{x:9,y:2},{x:14,y:2},{x:17,y:6},{x:18,y:11},{x:15,y:13}], true);
-  g.fillStyle(0xeebb88); g.fillRect(6, 4, 2, 2); g.fillRect(12, 6, 1, 1);
-  g.generateTexture('rock_desert', 22, 16);
 
   // Barracks
   g.clear();
@@ -549,6 +511,8 @@ function buildTextures(scene) {
 
   // Players and raiders: hand-placed pixel grids in src/sprites.js
   buildPixelActors(scene);
+  // Trees, rocks, bushes and built walls: painted pixel by pixel in src/sprites.js
+  buildScenery(scene);
 
   // Bullet
   g.clear();
@@ -613,16 +577,6 @@ function buildTextures(scene) {
   g.fillStyle(0xffdd88); g.fillRect(4, 3, 2, 4);
   g.generateTexture('item_rare', 10, 10);
 
-  // Buildable structures
-  // Wall segment
-  g.clear();
-  g.fillStyle(0x7a6644); g.fillRect(0, 0, 32, 32);
-  g.fillStyle(0x665533); g.fillRect(1, 1, 14, 14); g.fillRect(17, 1, 14, 14);
-  g.fillStyle(0x665533); g.fillRect(1, 17, 14, 14); g.fillRect(17, 17, 14, 14);
-  g.fillStyle(0x8a7654); g.fillRect(2, 2, 12, 12); g.fillRect(18, 2, 12, 12);
-  g.fillStyle(0x8a7654); g.fillRect(2, 18, 12, 12); g.fillRect(18, 18, 12, 12);
-  g.fillStyle(0x555533); g.fillRect(0, 15, 32, 2); g.fillRect(15, 0, 2, 32);
-  g.generateTexture('wall', 32, 32);
 
   // Campfire
   g.clear();
@@ -763,125 +717,14 @@ function buildTextures(scene) {
   g.fillStyle(0xaa8855); g.fillCircle(20, 5, 1); g.fillCircle(4, 24, 1);
   g.generateTexture('ground_desert', 32, 32);
 
-  // Dead tree — gray trunk, bare branches, no foliage
-  g.clear();
-  g.fillStyle(0x666666); g.fillRect(11, 16, 6, 20);
-  g.fillStyle(0x555555); g.fillRect(11, 16, 2, 20);
-  g.fillStyle(0x777777); g.fillRect(8, 8, 3, 10); // left branch
-  g.fillStyle(0x666666); g.fillRect(5, 4, 3, 6);
-  g.fillStyle(0x777777); g.fillRect(17, 6, 3, 12); // right branch
-  g.fillStyle(0x666666); g.fillRect(20, 2, 3, 6);
-  g.fillStyle(0x888888); g.fillRect(12, 10, 4, 3); // top stub
-  g.fillStyle(0x777777); g.fillRect(13, 6, 2, 5);
-  g.generateTexture('tree_dead', 28, 36);
 
-  // Snow tree — green tree with white snow cap
-  g.clear();
-  g.fillStyle(0x5c3317); g.fillRect(10, 22, 8, 14);
-  g.fillStyle(0x3d2010); g.fillRect(10, 22, 2, 14);
-  g.fillStyle(0x1a5010); g.fillCircle(14, 16, 12);
-  g.fillStyle(0x2a7018); g.fillCircle(14, 13, 10);
-  g.fillStyle(0xddeeff); g.fillCircle(14, 8, 9); // snow cap
-  g.fillStyle(0xeef4ff); g.fillCircle(12, 6, 6);
-  g.fillStyle(0xffffff); g.fillCircle(15, 4, 4);
-  g.generateTexture('tree_snow', 28, 36);
 
-  // Swamp tree — dark murky green with hanging moss
-  g.clear();
-  g.fillStyle(0x2a1c08); g.fillRect(10, 20, 8, 16);
-  g.fillStyle(0x1e1406); g.fillRect(10, 20, 2, 16);
-  g.fillStyle(0x1a3012); g.fillCircle(14, 14, 12);
-  g.fillStyle(0x223818); g.fillCircle(14, 11, 9);
-  g.fillStyle(0x0e1a0a); g.fillCircle(11, 13, 3);
-  // Hanging moss streaks
-  g.fillStyle(0x1c2e14); g.fillRect(8, 18, 2, 9); g.fillRect(14, 17, 2, 8); g.fillRect(19, 18, 2, 10);
-  g.fillStyle(0x162410); g.fillRect(11, 19, 1, 7); g.fillRect(17, 18, 1, 8);
-  g.generateTexture('tree_swamp', 28, 36);
 
-  // Mushroom tree (28×40) — thick gray-brown stalk, wide purple cap with spots
-  g.clear();
-  g.fillStyle(0x887766); g.fillRect(10, 22, 8, 18); // stalk
-  g.fillStyle(0x665544); g.fillRect(10, 22, 2, 18); // shadow side
-  g.fillStyle(0xaa33bb); g.fillEllipse(14, 20, 28, 18); // cap
-  g.fillStyle(0xcc55dd); g.fillEllipse(14, 18, 22, 12); // cap highlight
-  g.fillStyle(0x8822aa); g.fillEllipse(14, 22, 28, 8); // cap underside
-  g.fillStyle(0xeebb44); g.fillCircle(8, 15, 2); g.fillCircle(20, 14, 2); g.fillCircle(14, 12, 1); // spots
-  g.generateTexture('tree_mushroom', 28, 40);
 
-  // Cactus (16×36) — green pillar with two offset arms
-  g.clear();
-  g.fillStyle(0x2d7a3a); g.fillRect(5, 4, 6, 32); // main trunk
-  g.fillStyle(0x3d9a4a); g.fillRect(5, 6, 3, 26); // highlight
-  g.fillStyle(0x2d7a3a); g.fillRect(2, 14, 5, 4); g.fillRect(2, 10, 4, 6); // left arm
-  g.fillStyle(0x3d9a4a); g.fillRect(2, 14, 2, 4);
-  g.fillStyle(0x2d7a3a); g.fillRect(9, 20, 5, 4); g.fillRect(9, 16, 4, 6); // right arm (lower)
-  g.fillStyle(0x3d9a4a); g.fillRect(11, 20, 2, 4);
-  g.generateTexture('tree_cactus', 16, 36);
 
-  // Great Oak — wide round canopy, thick trunk, grassland landmark (40×52)
-  g.clear();
-  g.fillStyle(0x5c3415); g.fillRect(15, 33, 10, 19);
-  g.fillStyle(0x3d2010); g.fillRect(15, 33, 3, 19);
-  g.fillStyle(0x6e4022); g.fillRect(21, 35, 3, 17);
-  // Root buttresses
-  g.fillStyle(0x5c3415); g.fillTriangle(8, 52, 17, 42, 17, 52);
-  g.fillStyle(0x5c3415); g.fillTriangle(32, 52, 23, 42, 23, 52);
-  // Canopy layers — dark to bright (bottom to top)
-  g.fillStyle(0x144010); g.fillEllipse(20, 29, 38, 28);
-  g.fillStyle(0x1e5818); g.fillEllipse(20, 23, 32, 24);
-  g.fillStyle(0x2a6820); g.fillEllipse(20, 16, 26, 20);
-  g.fillStyle(0x387828); g.fillEllipse(18, 12, 16, 12);
-  g.generateTexture('great_oak', 40, 52);
 
-  // Great Pine — tall narrow layered pine, tundra landmark (30×64)
-  g.clear();
-  g.fillStyle(0x5c3317); g.fillRect(13, 48, 4, 16);
-  g.fillStyle(0x3d2010); g.fillRect(13, 48, 1, 16);
-  // 4 tiers: bottom (wide) to top (narrow)
-  g.fillStyle(0x164010); g.fillTriangle(15, 48, 1, 56, 29, 56);
-  g.fillStyle(0x1e5018); g.fillTriangle(15, 45, 3, 54, 27, 54);
-  g.fillStyle(0xe8f2ff); g.fillTriangle(15, 45, 8, 49, 22, 49);
-  g.fillStyle(0x1a4812); g.fillTriangle(15, 36, 4, 47, 26, 47);
-  g.fillStyle(0x225a1a); g.fillTriangle(15, 34, 6, 45, 24, 45);
-  g.fillStyle(0xe8f2ff); g.fillTriangle(15, 34, 9, 38, 21, 38);
-  g.fillStyle(0x185010); g.fillTriangle(15, 24, 6, 36, 24, 36);
-  g.fillStyle(0x206018); g.fillTriangle(15, 22, 7, 34, 23, 34);
-  g.fillStyle(0xe8f2ff); g.fillTriangle(15, 22, 10, 26, 20, 26);
-  g.fillStyle(0x1a5812); g.fillTriangle(15, 12, 8, 25, 22, 25);
-  g.fillStyle(0x246820); g.fillTriangle(15, 10, 9, 23, 21, 23);
-  g.fillStyle(0xeef6ff); g.fillTriangle(15, 4, 11, 13, 19, 13);
-  g.fillStyle(0xffffff); g.fillTriangle(15, 2, 12, 9, 18, 9);
-  g.generateTexture('great_pine', 30, 64);
 
-  // Great Mangrove — wide gnarled roots, swamp landmark (52×50)
-  g.clear();
-  // Spreading root trunks
-  g.fillStyle(0x2e1c08);
-  g.fillTriangle(20, 50, 4, 50, 16, 28);
-  g.fillTriangle(22, 50, 14, 50, 20, 26);
-  g.fillRect(22, 22, 8, 28);
-  g.fillTriangle(30, 50, 36, 50, 32, 26);
-  g.fillTriangle(32, 50, 48, 50, 36, 28);
-  g.fillStyle(0x3d2810); g.fillRect(23, 22, 3, 28);
-  // Wide irregular canopy
-  g.fillStyle(0x182e12); g.fillEllipse(26, 18, 50, 32);
-  g.fillStyle(0x1e3818); g.fillEllipse(24, 13, 44, 24);
-  g.fillStyle(0x142810); g.fillCircle(18, 14, 10); g.fillCircle(34, 12, 8);
-  // Hanging moss
-  g.fillStyle(0x162a10);
-  g.fillRect(8, 28, 2, 14); g.fillRect(16, 24, 2, 11); g.fillRect(30, 24, 2, 9); g.fillRect(40, 26, 2, 13);
-  // Canopy highlight
-  g.fillStyle(0x284a1e); g.fillEllipse(22, 10, 18, 12);
-  g.generateTexture('great_mangrove', 52, 50);
 
-  // Mushroom — red/purple cap, replacing bushes in swamp
-  g.clear();
-  g.fillStyle(0x887766); g.fillRect(6, 10, 4, 6); // stem
-  g.fillStyle(0xaa8877); g.fillRect(7, 11, 2, 5);
-  g.fillStyle(0xaa2244); g.fillEllipse(8, 8, 14, 10); // cap
-  g.fillStyle(0xcc3355); g.fillEllipse(8, 6, 10, 6);
-  g.fillStyle(0xffccdd); g.fillCircle(5, 7, 1); g.fillCircle(10, 5, 1); g.fillCircle(8, 9, 1);
-  g.generateTexture('mushroom', 16, 16);
 
   // Broken stone pillar — for ruins biome
   g.clear();
@@ -967,22 +810,6 @@ function buildTextures(scene) {
   g.beginPath(); g.moveTo(22, 14); g.lineTo(22, 28); g.strokePath();
   g.generateTexture('water_ice', 32, 32);
 
-  // Ice rock — polygon-based, blue-grey with icy highlight face
-  g.clear();
-  // Main body: cool blue-grey
-  g.fillStyle(0x7090a8);
-  g.fillPoints([{x:2,y:15},{x:0,y:9},{x:3,y:3},{x:9,y:1},{x:15,y:1},{x:20,y:4},{x:22,y:10},{x:18,y:15}], true);
-  // Top-left highlight face: pale icy blue-white
-  g.fillStyle(0xbcd8e8);
-  g.fillPoints([{x:3,y:13},{x:1,y:8},{x:4,y:3},{x:9,y:2},{x:14,y:2},{x:17,y:6},{x:18,y:11},{x:15,y:13}], true);
-  // Frost sparkle highlights
-  g.fillStyle(0xeef6ff);
-  g.fillRect(7, 4, 2, 2); g.fillRect(13, 6, 1, 1); g.fillRect(5, 9, 1, 1);
-  // Cracks: dark blue-grey
-  g.lineStyle(1, 0x507080);
-  g.beginPath(); g.moveTo(8,7); g.lineTo(11,11); g.lineTo(9,15); g.strokePath();
-  g.beginPath(); g.moveTo(14,4); g.lineTo(16,8); g.strokePath();
-  g.generateTexture('ice_rock', 22, 16);
 
   // Ice spire — tundra biome, jagged ice spike cluster (16×32)
   g.clear();

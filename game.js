@@ -233,4 +233,7 @@ const _phaserGame = new Phaser.Game({
 // iOS PWA standalone mode: viewport layout may settle slightly after JS starts.
 // A deferred refresh ensures the canvas fills the container correctly.
 setTimeout(() => _phaserGame.scale.refresh(), 150);
-window.addEventListener('resize', () => _phaserGame.scale.refresh());
+// Watch the container, not just the window: an embedding pane (or an iPad split view) can
+// change size without a window resize event, and a stale size let the CSS max-width squash
+// the canvas sideways while its height stayed, stretching the whole game vertically.
+new ResizeObserver(() => { if (_phaserGame.canvas) _phaserGame.scale.refresh(); }).observe(document.getElementById('game-container'));

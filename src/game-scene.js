@@ -808,12 +808,7 @@ class GameScene extends Phaser.Scene {
       else if (biome === 'swamp') treeKey = Math.random() < 0.55 ? 'tree_swamp' : 'tree';
       else if (biome === 'fungal') treeKey = 'tree_mushroom';
       else if (biome === 'desert') { if (Math.random() < 0.4) treeKey = 'tree_cactus'; else return; } // desert sparse
-      const sc = Phaser.Math.FloatBetween(1.6, 2.8);
-      const t = this.obstacles.create(tx*TILE+14, ty*TILE+18, treeKey);
-      t.setScale(sc).setDepth(5 + ty*0.01).setImmovable(true);
-      // Trunk-only hitbox: 8px wide × 12px tall at the base of the sprite (28×36)
-      t.body.setSize(8, 12).setOffset(10, 24);
-      t.refreshBody();
+      const t = this._placeScenery(tx, ty, treeKey);
       t.isTree = true;
       treesPlaced.push({ tx, ty });
     };
@@ -844,11 +839,11 @@ class GameScene extends Phaser.Scene {
 
     // Great Trees — landmark-scale trees, 2-3 per relevant biome
     const greatTreeBiomes = [
-      { biome: 'grass', key: 'great_oak',      ox: 20, oy: 14, bw: 10, bh: 12, bx: 15, by: 36 },
-      { biome: 'tundra', key: 'great_pine',    ox: 15, oy: 10, bw: 5,  bh: 14, bx: 12, by: 46 },
-      { biome: 'swamp',  key: 'great_mangrove',ox: 26, oy: 14, bw: 28, bh: 10, bx: 12, by: 38 },
+      { biome: 'grass',  key: 'great_oak' },
+      { biome: 'tundra', key: 'great_pine' },
+      { biome: 'swamp',  key: 'great_mangrove' },
     ];
-    for (const { biome, key, ox, oy, bw, bh, bx, by } of greatTreeBiomes) {
+    for (const { biome, key } of greatTreeBiomes) {
       let placed = 0;
       for (let att = 0; att < 120 && placed < 3; att++) {
         const tx = Phaser.Math.Between(8, CFG.MAP_W-8);
@@ -856,11 +851,8 @@ class GameScene extends Phaser.Scene {
         if (getBiome(tx, ty) !== biome) continue;
         if (Math.abs(tx-stx) < SAFE_R+6 && Math.abs(ty-sty) < SAFE_R+6) continue;
         if (treesPlaced.some(p => Math.abs(p.tx-tx) <= 2 && Math.abs(p.ty-ty) <= 2)) continue;
-        const sc = Phaser.Math.FloatBetween(2.6, 3.4);
-        const t = this.obstacles.create(tx*TILE+ox, ty*TILE+oy, key);
-        t.setScale(sc).setDepth(5 + ty*0.01).setImmovable(true);
-        t.body.setSize(bw, bh).setOffset(bx, by);
-        t.refreshBody();
+        Phaser.Math.FloatBetween(2.6, 3.4); // ponytail: keeps the seeded world's random sequence unchanged
+        const t = this._placeScenery(tx, ty, key, 0);
         t.isTree = true;
         treesPlaced.push({ tx, ty });
         placed++;
@@ -873,23 +865,14 @@ class GameScene extends Phaser.Scene {
       if (Math.abs(tx-stx)<SAFE_R && Math.abs(ty-sty)<SAFE_R) continue;
       const biome = getBiome(tx, ty);
       const rockKey = biome === 'tundra' ? 'ice_rock' : biome === 'desert' ? 'rock_desert' : 'rock';
-      const sc = Phaser.Math.FloatBetween(0.4, 3.5);
-      const r = this.obstacles.create(tx*TILE+11, ty*TILE+8, rockKey);
-      r.setScale(sc).setDepth(5 + ty*0.01).setImmovable(true);
-      // Tighter oval hitbox (rock sprite is 22×16, use ~65% size)
-      r.body.setCircle(6, 5, 2);
-      r.refreshBody();
+      this._placeScenery(tx, ty, rockKey);
     }
 
     // Extra rocks in wasteland
     for (let i = 0; i < 180; i++) {
       const tx = Phaser.Math.Between(1, CFG.MAP_W-2), ty = Phaser.Math.Between(1, CFG.MAP_H-2);
       if (getBiome(tx, ty) !== 'waste') continue;
-      const sc = Phaser.Math.FloatBetween(0.3, 2.0);
-      const r = this.obstacles.create(tx*TILE+11, ty*TILE+8, 'rock');
-      r.setScale(sc).setDepth(5 + ty*0.01).setImmovable(true);
-      r.body.setCircle(6, 5, 2);
-      r.refreshBody();
+      this._placeScenery(tx, ty, 'rock');
     }
 
     // ── BIOME-SPECIFIC TERRAIN OBSTACLES ────────────────────────
@@ -944,8 +927,8 @@ class GameScene extends Phaser.Scene {
       if (biome === 'swamp') decKey = 'mushroom';
       else if (biome === 'waste') { if (Math.random() < 0.7) continue; } // sparse in waste
       else if (biome === 'tundra') { if (Math.random() < 0.5) continue; } // sparse in tundra
-      const sc = Phaser.Math.FloatBetween(1.0, 2.5);
-      this._w(this.add.image(tx*TILE, ty*TILE, decKey).setScale(sc).setDepth(4).setAlpha(0.9));
+      const frame = Phaser.Math.Between(0, SCENERY_SPECS[decKey].sizes.length - 1);
+      this._w(this.add.image(tx*TILE + TILE/2, ty*TILE + TILE - 2, decKey, frame).setOrigin(0.5, 1).setScale(ART_SCALE).setDepth(4));
     }
 
     // Ruins city — navigable abandoned city grid (replaces scattered pillars)
@@ -1315,7 +1298,13 @@ class GameScene extends Phaser.Scene {
     // ── FOG OF WAR ────────────────────────────────────────────
     this.fogRevealed = new Set(); // persistent — tiles ever seen (drives fog overlay)
     this.fogVisible = new Set();  // current-frame LOS — drives enemy visibility
-    this.fogGfx = this._w(this.add.graphics().setDepth(48));
+    // ponytail: fog is one texel per tile, scaled up with linear filtering, so the GPU
+    // blends the three zones into soft edges. Map-sized (300x300, 360 KB) and re-uploaded
+    // every FOG_UPDATE_INTERVAL frames; upgrade path is a camera-sized canvas if the
+    // upload shows in the [perf] fog= line on iPad.
+    if (this.textures.exists('fog_map')) this.textures.remove('fog_map');
+    this._fogTex = this.textures.createCanvas('fog_map', CFG.MAP_W, CFG.MAP_H);
+    this.fogGfx = this._w(this.add.image(0, 0, 'fog_map').setOrigin(0).setScale(CFG.TILE).setDepth(48));
     this._fogFrame = 0;
     // Reveal initial spawn area
     this.revealFog(stx, sty, CFG.FOG_REVEAL_R + 4);
@@ -1894,7 +1883,7 @@ class GameScene extends Phaser.Scene {
 
   updateFog() {
     if (!this.fogGfx) return;
-    if (loadSettings().fogEnabled === false) { this.fogGfx.clear(); return; }
+    if (loadSettings().fogEnabled === false) { this.fogGfx.setVisible(false); return; }
     this._fogFrame++;
     if (this._fogFrame % CFG.FOG_UPDATE_INTERVAL !== 0) return;
 
@@ -1929,36 +1918,75 @@ class GameScene extends Phaser.Scene {
       this._lastFogP2 = p2t;
     }
 
-    // Only draw fog tiles in camera viewport
-    this.fogGfx.clear();
+    // Paint the viewport's tiles into the fog texture: unexplored = dark,
+    // explored-but-not-in-LOS = dim, in-LOS = clear.
     const vx = cam.worldView.x, vy = cam.worldView.y;
     const vw = cam.worldView.width, vh = cam.worldView.height;
-    const startTX = Math.max(0, Math.floor(vx / TILE) - 1);
-    const startTY = Math.max(0, Math.floor(vy / TILE) - 1);
-    const endTX = Math.min(CFG.MAP_W - 1, Math.ceil((vx + vw) / TILE) + 1);
-    const endTY = Math.min(CFG.MAP_H - 1, Math.ceil((vy + vh) / TILE) + 1);
-
-    // Three-zone fog: unexplored = dark, explored-but-not-in-LOS = dim, in-LOS = clear.
-    // Two-pass draw (dark then dim) avoids toggling fillStyle per tile.
-    const DARK_ALPHA = 0.85;
-    const DIM_ALPHA = 0.35;
-    this.fogGfx.fillStyle(0x000000, DARK_ALPHA);
-    for (let tx = startTX; tx <= endTX; tx++) {
-      for (let ty = startTY; ty <= endTY; ty++) {
-        if (!this.fogRevealed.has(tx + ',' + ty)) {
-          this.fogGfx.fillRect(tx * TILE, ty * TILE, TILE, TILE);
-        }
-      }
-    }
-    this.fogGfx.fillStyle(0x000000, DIM_ALPHA);
-    for (let tx = startTX; tx <= endTX; tx++) {
-      for (let ty = startTY; ty <= endTY; ty++) {
+    const startTX = Math.max(0, Math.floor(vx / TILE) - 3);
+    const startTY = Math.max(0, Math.floor(vy / TILE) - 3);
+    const endTX = Math.min(CFG.MAP_W - 1, Math.ceil((vx + vw) / TILE) + 3);
+    const endTY = Math.min(CFG.MAP_H - 1, Math.ceil((vy + vh) / TILE) + 3);
+    const w = endTX - startTX + 1, h = endTY - startTY + 1;
+    const DARK = 217, DIM = 89; // 0.85 and 0.35 alpha
+    const a = new Uint8Array(w * h), b = new Uint8Array(w * h);
+    for (let ty = startTY; ty <= endTY; ty++) {
+      for (let tx = startTX; tx <= endTX; tx++) {
         const key = tx + ',' + ty;
-        if (this.fogRevealed.has(key) && !this.fogVisible.has(key)) {
-          this.fogGfx.fillRect(tx * TILE, ty * TILE, TILE, TILE);
-        }
+        a[(ty - startTY) * w + (tx - startTX)] =
+          !this.fogRevealed.has(key) ? DARK : (this.fogVisible.has(key) ? 0 : DIM);
       }
     }
+    // 5-tap box blur across then down, so zone edges fade over ~3 tiles instead of one;
+    // linear texture filtering then smooths what is left between tiles.
+    for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
+      let sum = 0;
+      for (let k = -2; k <= 2; k++) sum += a[y * w + Math.min(w - 1, Math.max(0, x + k))];
+      b[y * w + x] = sum / 5;
+    }
+    const ctx = this._fogTex.context;
+    const img = ctx.createImageData(w, h), d = img.data;
+    for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
+      let sum = 0;
+      for (let k = -2; k <= 2; k++) sum += b[Math.min(h - 1, Math.max(0, y + k)) * w + x];
+      d[(y * w + x) * 4 + 3] = sum / 5;
+    }
+    ctx.putImageData(img, startTX, startTY);
+    this._fogTex.refresh();
+    // pixelArt mode re-uploads canvases with NEAREST filtering; set LINEAR after every refresh.
+    this._fogTex.setFilter(Phaser.Textures.FilterMode.LINEAR);
+    this.fogGfx.setVisible(true);
+  }
+
+  // ── SCENERY PLACEMENT ───────────────────────────────────────
+  // Scenery from src/sprites.js is shown at ART_SCALE and stands on its tile (origin at the
+  // base). Phaser resets a static body to the whole sprite on refreshBody, so trees and rocks
+  // always blocked their full picture; the body is set after the refresh to roughly that old
+  // footprint (lower 3/4 width, lower half height) so forests stay as passable as before.
+  _placeScenery(tx, ty, key, frame) {
+    const TILE = CFG.TILE;
+    if (frame == null) frame = Phaser.Math.Between(0, SCENERY_SPECS[key].sizes.length - 1);
+    const o = this.obstacles.create(tx * TILE + TILE / 2, ty * TILE + TILE - 2, key, frame);
+    o.setOrigin(0.5, 1).setScale(ART_SCALE).setDepth(5 + ty * 0.01).setImmovable(true);
+    o.refreshBody();
+    const bw = o.displayWidth * 0.75, bh = o.displayHeight * 0.5;
+    o.body.setSize(bw, bh, false);
+    o.body.setOffset((o.displayWidth - bw) / 2, o.displayHeight - bh);
+    return o;
+  }
+
+  // Built walls and gates: the front face covers exactly the 32 px tile at (x, y) and the
+  // top face rises above it. Not rotated: the art has a top, and a square wall needs no turn.
+  _placeWallSprite(w) {
+    const TOP = 9, ART_H = 30;
+    w.setOrigin(0.5, (TOP + (ART_H - TOP) / 2) / ART_H).setScale(WALL_SCALE).setDepth(5 + Math.floor(w.y / CFG.TILE) * 0.01);
+    if (w.body.physicsType === Phaser.Physics.Arcade.STATIC_BODY) {
+      w.setImmovable(true); w.refreshBody();
+      w.body.setSize(CFG.TILE, CFG.TILE, false);
+      w.body.setOffset(0, TOP * WALL_SCALE);
+    } else {
+      w.body.setSize(ART_H - TOP, ART_H - TOP, false).setOffset(0, TOP);
+    }
+    return w;
   }
 
   // ── PLAYER ──────────────────────────────────────────────────
@@ -1980,7 +2008,7 @@ class GameScene extends Phaser.Scene {
     if (this.hudCam) this.hudCam.ignore(waterOverlay);
 
     const _hcMaxHp = Math.max(1, Math.round(charData.maxHp * this.hc.maxHpMult));
-    return {
+    const player = {
       spr, lbl, charData, pNum,
       hp: _hcMaxHp, maxHp: _hcMaxHp,
       ammo: charData.id==='gunslinger' ? 8 : Infinity,
@@ -1997,6 +2025,10 @@ class GameScene extends Phaser.Scene {
       kills: 0,
       waterOverlay,
     };
+    // Night torch: a fire glow that follows the player, driven by _updateFireGlows.
+    this._addFireGlow(x, y, 1.1);
+    this._fireGlows[this._fireGlows.length - 1].follow = player;
+    return player;
   }
 
   // ── HUD ─────────────────────────────────────────────────────
@@ -5456,10 +5488,21 @@ class GameScene extends Phaser.Scene {
     const worldX = pointer.x / cam.zoom + cam.worldView.x;
     const worldY = pointer.y / cam.zoom + cam.worldView.y;
     if (!Number.isFinite(worldX) || !Number.isFinite(worldY)) return;
-    const angle = Phaser.Math.Angle.Between(player.spr.x, player.spr.y, worldX, worldY);
-    // 8-directional facing from mouse angle (8 sectors of 45°)
+    // Store precise aim angle for attacks
+    player.aimAngle = Phaser.Math.Angle.Between(player.spr.x, player.spr.y, worldX, worldY);
+    // Walking sets facing (movePlayer already did); facing the cursor while walking away
+    // from it looked like moonwalking. Standing still turns the player toward the cursor,
+    // and _triggerAtkAnim turns them toward it for the swing or shot.
+    const moving = player.spr.body.velocity.x !== 0 || player.spr.body.velocity.y !== 0;
+    if (moving || this.time.now < (player.atkAnimUntil || 0)) return;
+    this._faceAngle(player, player.aimAngle);
+    const dirSuffix = player.dir === 'side' ? '' : ('_' + player.dir);
+    player.spr.setTexture('player_atlas', player.charData.id + dirSuffix);
+  }
+
+  // 8-directional facing from an angle (8 sectors of 45°); diagonals use fside/bside.
+  _faceAngle(player, a) {
     const PI8 = Math.PI / 8;  // 22.5°
-    const a = angle;
     let flip = false;
     if (a > -PI8 && a <= PI8)          { player.dir = 'side';  flip = false; }  // E
     else if (a > PI8 && a <= 3*PI8)    { player.dir = 'fside'; flip = false; }  // SE
@@ -5470,19 +5513,11 @@ class GameScene extends Phaser.Scene {
     else if (a > -7*PI8 && a <= -5*PI8){ player.dir = 'bside'; flip = true;  }  // NW
     else                               { player.dir = 'side';  flip = true;  }  // W
     player.spr.setFlipX(flip);
-    // Store precise aim angle for attacks
-    player.aimAngle = angle;
-    if (this.time.now < (player.atkAnimUntil || 0)) return;
-    // Update sprite — preserve walk cycle step frame
-    const id = player.charData.id;
-    const dirSuffix = player.dir === 'side' ? '' : ('_' + player.dir);
-    const moving = player.spr.body.velocity.x !== 0 || player.spr.body.velocity.y !== 0;
-    const step = moving ? _walkStep(player.walkTimer) : '';
-    player.spr.setTexture('player_atlas', id + dirSuffix + step);
   }
 
   _triggerAtkAnim(player, dur) {
     const id = player.charData.id;
+    if (this.solo && player === this.p1 && player.aimAngle !== undefined && !this._touchActive) this._faceAngle(player, player.aimAngle);
     const atkKey = (player.dir === 'side') ? id + '_atk' : id + '_atk_' + player.dir;
     player.spr.setTexture('player_atlas', atkKey);
     player.atkAnimUntil = this.time.now + dur;
@@ -6190,6 +6225,20 @@ class GameScene extends Phaser.Scene {
       const g = arr[i];
       // Lazy prune: if underlying sprites were destroyed by world reset, drop the record.
       if (!g.sprites[0] || !g.sprites[0].active) { arr.splice(i, 1); continue; }
+      if (g.follow) {
+        const fs = g.follow.spr;
+        const lit = fs && fs.active && !g.follow.isDowned && nightNorm > 0;
+        for (let k = 0; k < g.sprites.length; k++) g.sprites[k].setVisible(!!lit);
+        if (!lit) continue;
+        g.x = fs.x; g.y = fs.y + 6;
+        for (let k = 0; k < g.sprites.length; k++) g.sprites[k].setPosition(g.x, g.y);
+        const flick = 0.85 + 0.15 * Math.sin(t * 7.1 + g.phase) * Math.sin(t * 2.3);
+        for (let k = 0; k < g.sprites.length; k++) {
+          const sp = g.sprites[k];
+          sp.alpha = sp._baseAlpha * nightNorm * flick;
+        }
+        continue;
+      }
 
       if (doCull) {
         let min2 = Infinity;
@@ -6673,11 +6722,7 @@ class GameScene extends Phaser.Scene {
             if (biome === 'tundra') treeKey = 'tree_snow';
             else if (biome === 'ruins') treeKey = Math.random() < 0.5 ? 'tree_dead' : 'tree';
             else if (biome === 'swamp') treeKey = Math.random() < 0.55 ? 'tree_swamp' : 'tree';
-            const sc = Phaser.Math.FloatBetween(1.4, 2.0);
-            const newTree = this.obstacles.create(sx, sy, treeKey);
-            newTree.setScale(sc).setDepth(5 + (sy / TILE) * 0.01).setImmovable(true);
-            newTree.body.setSize(8, 12).setOffset(10, 24);
-            newTree.refreshBody();
+            const newTree = this._placeScenery(Math.floor(sx / TILE), Math.floor(sy / TILE), treeKey, 0);
             newTree.isTree = true;
             this._w(newTree);
           });
@@ -8815,9 +8860,7 @@ class GameScene extends Phaser.Scene {
     // Place the structure
     this._log(`Build placed: ${this.buildType}  pos=(${Math.floor(x/CFG.TILE)},${Math.floor(y/CFG.TILE)})  by=${this.buildOwner?.charData?.player||'?'}`, 'build');
     if (this.buildType === 'wall') {
-      const w = this.obstacles.create(x, y, 'wall').setDepth(5).setImmovable(true);
-      w.setAngle(this.buildRotation * 90);
-      w.refreshBody();
+      const w = this._placeWallSprite(this.obstacles.create(x, y, 'wall'));
       w.hp = 200; w.maxHp = 200; // destructible
       this.builtWalls.push(w);
       this._addWallToBuckets(w);
@@ -8825,8 +8868,7 @@ class GameScene extends Phaser.Scene {
       this._paintMinimapTile(w.x, w.y, 0xeeeeff);
       if (this.hudCam) this.hudCam.ignore(w);
     } else if (this.buildType === 'gate') {
-      const gate = this.physics.add.image(x, y, 'wall').setDepth(5).setTint(0x88aaff);
-      gate.setAngle(this.buildRotation * 90);
+      const gate = this._placeWallSprite(this.physics.add.image(x, y, 'wall')).setTint(0x88aaff);
       gate.body.setImmovable(true);
       gate.body.allowGravity = false;
       gate.isGate = true; gate.gateOpen = false;
@@ -8917,8 +8959,7 @@ class GameScene extends Phaser.Scene {
 
     // Reinforced wall (300 HP variant)
     if (this.buildType === 'reinforced_wall') {
-      const w = this.obstacles.create(x, y, 'wall').setDepth(5).setImmovable(true).setTint(0xaaaaff);
-      w.setAngle(this.buildRotation * 90); w.refreshBody();
+      const w = this._placeWallSprite(this.obstacles.create(x, y, 'wall')).setTint(0xaaaaff);
       w.hp = 300; w.maxHp = 300;
       this.builtWalls.push(w);
       this._addWallToBuckets(w);
