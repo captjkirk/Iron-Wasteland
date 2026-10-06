@@ -4397,9 +4397,9 @@ class GameScene extends Phaser.Scene {
       const rx = cx + Math.cos(angle) * dist;
       const ry = cy + Math.sin(angle) * dist;
       const texKey = 'raider_' + rtype;
-      const spr = this.physics.add.image(rx, ry, 'raider_atlas', texKey).setScale(2.5).setDepth(9);
+      const spr = this.physics.add.image(rx, ry, 'raider_atlas', texKey).setScale(1.25).setDepth(9);
       spr.setCollideWorldBounds(true);
-      spr.body.setSize(16, 20);
+      spr.body.setSize(32, 40);
       if (this.hudCam) this.hudCam.ignore(spr);
       this.physics.add.collider(spr, this.obstacles);
 
@@ -4464,9 +4464,9 @@ class GameScene extends Phaser.Scene {
       const ry = Phaser.Math.Clamp(baseY + Math.sin(offAng) * Phaser.Math.Between(20, 70),
         TILE*3, worldH - TILE*3);
       const texKey = 'raider_' + rtype;
-      const spr = this.physics.add.image(rx, ry, 'raider_atlas', texKey).setScale(2.5).setDepth(9);
+      const spr = this.physics.add.image(rx, ry, 'raider_atlas', texKey).setScale(1.25).setDepth(9);
       spr.setCollideWorldBounds(true);
-      spr.body.setSize(16, 20);
+      spr.body.setSize(32, 40);
       if (this.hudCam) this.hudCam.ignore(spr);
       this.physics.add.collider(spr, this.obstacles);
       const raider = {

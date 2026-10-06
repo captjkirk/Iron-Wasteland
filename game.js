@@ -28,13 +28,15 @@
 //   src/audio.js         — Web Audio chiptune engine
 //                          Music  (Music.play, Music.stop, Music.switchToBoss …)
 //
+//   src/sprites.js       — Player + raider art as hand-placed pixel grids (one char = one pixel)
+//                          paintGrid, pixelActorFrames, buildPixelActors,
+//                          SPRITE_ART, PLAYER_PAL, LEGS
+//
 //   src/textures.js      — Procedural texture generation (no image files)
 //                          drawWolf, drawRat, drawBear, drawIceCrawler,
 //                          drawSpiderRuins, drawBogLurker, drawDustHound, drawWaterLurker
-//                          drawKnight*, drawGunslinger*, drawArchitect*,
-//                          drawLauren*/charmer, drawAbigail*/ranger
-//                          drawRaiderDirectionals, buildTextures, buildAtlases,
-//                          drawMountains, polishActors, polishActor, mirrorLegs,
+//                          buildTextures, buildAtlases,
+//                          drawMountains, polishActors, polishActor,
 //                          makeScaleProxy
 //
 //   src/scenes.js        — All non-gameplay scenes + input helpers
@@ -174,12 +176,11 @@
 //     SFX wired into combat/pickup/build callsites.
 //
 // 18. PROCEDURAL TEXTURES (no image files)
-//     fns:  buildTextures, makeScaleProxy, drawMountains, polishActors, polishActor, mirrorLegs
+//     fns:  buildTextures, makeScaleProxy, drawMountains, polishActors, polishActor
 //     enemy draws: drawWolf, drawRat, drawBear, drawIceCrawler,
 //                  drawSpiderRuins, drawBogLurker, drawDustHound, drawWaterLurker
-//     character draws: drawKnight*, drawGunslinger*, drawArchitect*,
-//                      drawLauren* (charmer), drawAbigail* (charmer alt)
-//                      directional variants: Step/Front/Back/FSide/BSide/Atk
+//     character draws: paintGrid, pixelActorFrames, buildPixelActors (src/sprites.js)
+//                      art in SPRITE_ART[id][front|back|side|fside|bside]; step2 = step legs mirrored
 //
 // 19. INPUT MODES (kbd / gamepad / touch)
 //     fns:  getControls, activeInputMode, isTouchDevice,

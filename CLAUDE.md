@@ -9,6 +9,7 @@ Phaser 3 browser game. No build step — edit files in `src/` and refresh the br
 | `game.js` | Header manifest + `Phaser.Game` init only (~211 lines) |
 | `src/constants.js` | `VERSION`, `CFG`, `ENEMY_STATS`, `ENEMY_LOOT`, `CHARS`, `STATE`, `_worldRng`, `_pendingLogMsgs`, `_qlog`, biome functions |
 | `src/audio.js` | `Music` — Web Audio chiptune engine |
+| `src/sprites.js` | Player and raider art as pixel grids: `SPRITE_ART`, `PLAYER_PAL`, `LEGS`, `paintGrid`, `pixelActorFrames`, `buildPixelActors` |
 | `src/textures.js` | All `draw*` functions, `buildTextures`, `buildAtlases`, `makeScaleProxy` |
 | `src/scenes.js` | `BootScene`, `ModeSelectScene`, `SettingsScene`, `ControlsScene`, `CharSelectScene`, `getControls`, `DEFAULT_BINDINGS` |
 | `src/game-scene.js` | `GameScene` — all 22 gameplay systems, `GameScene.RECIPES` |
