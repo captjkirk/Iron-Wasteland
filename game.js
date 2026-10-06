@@ -228,7 +228,9 @@
 
 // ── PHASER GAME INIT ─────────────────────────────────────
 const _phaserGame = new Phaser.Game({
-  type: Phaser.AUTO,
+  // ?renderer=canvas forces the canvas renderer; the in-play smoke run (scripts/smoke.js)
+  // needs it because headless WebKit loses the WebGL context in the Game scene.
+  type: new URLSearchParams(location.search).get('renderer') === 'canvas' ? Phaser.CANVAS : Phaser.AUTO,
   width: CFG.W, height: CFG.H,
   backgroundColor: '#0a0a0a',
   pixelArt: true,
