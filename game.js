@@ -127,7 +127,7 @@
 //    log:  [PLAYER]
 //
 // 8. BUILDING & CRAFTING  (src/building-crafting.js; GameScene.RECIPES stays in src/game-scene.js)
-//    build: toggleBuildMode, updateBuildMode, placeBuild, exitBuildMode, _placeWallSprite,
+//    build: toggleBuildMode, updateBuildMode, placeBuild, _buildSpotError, exitBuildMode, _placeWallSprite,
 //           _tryTeardownBuild, openGate, getBuildCost, getTeamInv
 //    craft: openCraftMenu, closeCraftMenu, updateCraftMenu, craftSelected,
 //           renderCraftMenu, _craftScrollToSel
