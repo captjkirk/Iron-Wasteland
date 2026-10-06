@@ -217,7 +217,6 @@
 // • Water detection uses the _waterMap Uint8Array (index tx + ty*MAP_W), NOT physics overlap.
 // • Enemy dormancy: enemies > DORMANT_RADIUS are physics-disabled and hidden;
 //   they re-enable inside WAKE_RADIUS (hysteresis).
-// • Edits must also land in the canonical iCloud folder (see CLAUDE.md).
 // ============================================================
 
 // ── PHASER GAME INIT ─────────────────────────────────────
