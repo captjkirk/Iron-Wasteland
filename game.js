@@ -79,10 +79,11 @@
 //          river canvas); _pondWaterTiles, _shimmerTable (pond/lake alpha shimmer)
 //    log:  [WORLD ]
 //
-// 2. ENEMY AI / PATHFINDING / DAMAGE  (src/enemy-ai.js)
+// 2. ENEMY AI / PATHFINDING / DAMAGE  (src/enemy-ai.js; applyTerrainEffects in src/game-scene.js)
 //    fns:  updateEnemies, _steerToward, _hasLOS,
 //          _findWallOnPath, _hurtEnemy,
-//          killEnemy, _startDormantIfFar
+//          killEnemy, _startDormantIfFar,
+//          applyTerrainEffects (also runs for raiders and animals)
 //    spawn: spawnEnemies, _spawnGroup, _spawnBiomeEnemy,
 //           _spawnWaterLurker
 //    cfg:  MAX_ENEMIES, MAX_ACTIVE_ENEMIES, DORMANT_RADIUS, WAKE_RADIUS
@@ -156,9 +157,10 @@
 //     cfg:  FOG_REVEAL_R, FOG_UPDATE_INTERVAL
 //     data: _relicPOIs, relicsHeld, altarPos, altarDiscovered, _fireGlows
 //
-// 12. RAIDERS (camps + raid events)
+// 12. RAIDERS (camps + raid events)  (src/game-scene.js)
 //     fns:  updateRaiders, placeRaiderCamp, spawnRaiders, spawnHuntingParty,
-//           checkRaidCacheRange, openRaidCache, _fireRaiderShot
+//           checkRaidCacheRange, openRaidCache, _fireRaiderShot,
+//           applyTerrainEffects (raiders slide on ice, slow on tundra)
 //     data: raidCamp, raidRespawnDay, raiders
 //
 // 13. HARVESTING & RESOURCES
