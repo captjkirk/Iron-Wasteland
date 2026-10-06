@@ -20,7 +20,7 @@
 //   game.js              — THIS FILE. Header + Phaser.Game init only.
 //
 //   src/constants.js     — Global config + shared state
-//                          VERSION, CFG, ENEMY_STATS, ENEMY_LOOT,
+//                          VERSION, CFG, ENEMY_STATS, RAIDER_STATS, ENEMY_LOOT,
 //                          _makeMulberry32, _worldRng, _pendingLogMsgs, _qlog,
 //                          biome fns (getBiome, _buildBiomeMap, _biomeSeeds …),
 //                          CHARS, STATE
@@ -86,7 +86,7 @@
 //    spawn: spawnEnemies, _spawnGroup, _spawnBiomeEnemy,
 //           _spawnWaterLurker
 //    cfg:  MAX_ENEMIES, MAX_ACTIVE_ENEMIES, DORMANT_RADIUS, WAKE_RADIUS
-//    data: enemies[], ENEMY_STATS, ENEMY_LOOT
+//    data: enemies[], ENEMY_STATS, RAIDER_STATS, ENEMY_LOOT
 //    log:  [COMBAT], [WORLD ]
 //
 // 3. ENEMY DENS / RESPAWN

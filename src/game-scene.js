@@ -180,6 +180,9 @@ class GameScene extends Phaser.Scene {
     // First hunting party arrives on day 2-3; every 2-3 days after.
     this.huntNextDay = 2 + Phaser.Math.Between(0, 1);
     this.enemies = [];
+    // Lazily created elsewhere; reset so Play Again doesn't carry them over.
+    this._toxicPoolsData = [];
+    this._bedPrompts = [];
 
     // Build system state
     this.buildMode = false;
@@ -2054,9 +2057,9 @@ class GameScene extends Phaser.Scene {
         : ' Enemies will wake you.';
       if (this.isNight) {
         const skipNote = this.solo ? 'Night fast-forwarding to dawn!' : 'Both asleep = night speeds up!';
-        this.hint(player.charData.player + ' sleeping \u2014 ' + skipNote + '\n(+8 HP/tick)' + vulnWarn, 4500);
+        this.hint(player.charData.player + ' sleeping \u2014 ' + skipNote + '\n(+' + this.hc.bedHealPerTick + ' HP/tick)' + vulnWarn, 4500);
       } else {
-        this.hint(player.charData.player + ' resting\u2026 (+8 HP/tick)  Sleep at night to skip to dawn.' + vulnWarn, 3800);
+        this.hint(player.charData.player + ' resting\u2026 (+' + this.hc.bedHealPerTick + ' HP/tick)  Sleep at night to skip to dawn.' + vulnWarn, 3800);
       }
     }
   }
@@ -3012,11 +3015,7 @@ class GameScene extends Phaser.Scene {
 
       // Difficulty scaling — matches regular enemy formula (10% per day, caps at 3×)
       const diffScale = this._diffMult();
-      const stats = {
-        brawler: { hp: 130, speed: 110, dmg: 20, range: 36, atkInterval: 1100, shootRange: 0 },
-        shooter: { hp: 80,  speed: 90,  dmg: 16, range: 40, atkInterval: 1200, shootRange: 280 },
-        heavy:   { hp: 200, speed: 75,  dmg: 28, range: 42, atkInterval: 1400, shootRange: 200 },
-      }[rtype];
+      const stats = RAIDER_STATS[rtype];
 
       const raider = {
         spr, type: rtype, isRaider: true,
@@ -3057,10 +3056,7 @@ class GameScene extends Phaser.Scene {
     const toPlayer = Phaser.Math.Angle.Between(baseX, baseY, axx, axy);
     const diffScale = this._diffMult();
     const types = ['brawler', 'shooter', 'brawler', 'shooter', 'brawler'];
-    const stats = {
-      brawler: { hp: 130, speed: 110, dmg: 20, range: 36, atkInterval: 1100, shootRange: 0 },
-      shooter: { hp: 80,  speed: 90,  dmg: 16, range: 40, atkInterval: 1200, shootRange: 280 },
-    };
+    const stats = RAIDER_STATS;
     const huntExpires = this.time.now + 300000; // 5 minutes
     for (let i = 0; i < count; i++) {
       const rtype = types[i % types.length];
@@ -5016,7 +5012,7 @@ class GameScene extends Phaser.Scene {
       { label: 'Torch',              key: 'torch',             cost: {wood:2, fiber:1},         needsBench: false, type: 'build',   tooltip: 'Lights a small area at night. Cheap — place liberally around your base.' },
       { label: 'Spike Trap',         key: 'spike_trap',        cost: {wood:2, metal:1},         needsBench: false, type: 'build',   tooltip: 'Damages any enemy that steps on it. Stays active indefinitely.' },
       { label: 'Craftbench',         key: 'craftbench',        cost: {wood:5, metal:3},         needsBench: false, type: 'build',   tooltip: 'Required to unlock advanced recipes, upgrades, and the Bed.' },
-      { label: 'Bed',                key: 'bed',               cost: {wood:8, fiber:6, metal:2},needsBench: true,  type: 'build',   tooltip: 'Sets your respawn point. Sleep in it to greatly reduce down-timer.' },
+      { label: 'Bed',                key: 'bed',               cost: {wood:8, fiber:6, metal:2},needsBench: true,  type: 'build',   tooltip: 'Sleep in it to heal over time. When everyone sleeps, the night skips ahead.' },
       { label: 'Reinforced Wall',    key: 'reinforced_wall',   cost: {wood:4, metal:3},         needsBench: true,  type: 'build',   tooltip: 'Twice as durable as a standard wall. Holds the line against heavy raids.' },
       { label: 'Med Kit (+40 HP)',   key: 'med_kit',           cost: {fiber:3, food:2},         needsBench: true,  type: 'instant', tooltip: 'Instantly restores 40 HP to the crafter. Use when critically wounded.' },
       { label: 'Ammo Pack (+8)',     key: 'ammo_pack',         cost: {metal:2},                 needsBench: false, type: 'instant', tooltip: 'Adds 8 rounds to the shared team ammo pool immediately.' },
