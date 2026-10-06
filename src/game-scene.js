@@ -180,6 +180,9 @@ class GameScene extends Phaser.Scene {
     // First hunting party arrives on day 2-3; every 2-3 days after.
     this.huntNextDay = 2 + Phaser.Math.Between(0, 1);
     this.enemies = [];
+    // Lazily created elsewhere; reset so Play Again doesn't carry them over.
+    this._toxicPoolsData = [];
+    this._bedPrompts = [];
 
     // Build system state
     this.buildMode = false;
@@ -3076,11 +3079,7 @@ class GameScene extends Phaser.Scene {
 
       // Difficulty scaling — matches regular enemy formula (10% per day, caps at 3×)
       const diffScale = this._diffMult();
-      const stats = {
-        brawler: { hp: 130, speed: 110, dmg: 20, range: 36, atkInterval: 1100, shootRange: 0 },
-        shooter: { hp: 80,  speed: 90,  dmg: 16, range: 40, atkInterval: 1200, shootRange: 280 },
-        heavy:   { hp: 200, speed: 75,  dmg: 28, range: 42, atkInterval: 1400, shootRange: 200 },
-      }[rtype];
+      const stats = RAIDER_STATS[rtype];
 
       const raider = {
         spr, type: rtype, isRaider: true,
@@ -3121,10 +3120,7 @@ class GameScene extends Phaser.Scene {
     const toPlayer = Phaser.Math.Angle.Between(baseX, baseY, axx, axy);
     const diffScale = this._diffMult();
     const types = ['brawler', 'shooter', 'brawler', 'shooter', 'brawler'];
-    const stats = {
-      brawler: { hp: 130, speed: 110, dmg: 20, range: 36, atkInterval: 1100, shootRange: 0 },
-      shooter: { hp: 80,  speed: 90,  dmg: 16, range: 40, atkInterval: 1200, shootRange: 280 },
-    };
+    const stats = RAIDER_STATS;
     const huntExpires = this.time.now + 300000; // 5 minutes
     for (let i = 0; i < count; i++) {
       const rtype = types[i % types.length];
