@@ -45,16 +45,18 @@
 //                          ControlsScene, BootScene, ModeSelectScene,
 //                          SettingsScene, CharSelectScene
 //
-//   src/game-scene.js    — GameScene: all 22 gameplay systems (see list below)
+//   src/game-scene.js    — GameScene: gameplay systems 2-22 (see list below)
 //                          Also: GameScene.RECIPES static property
+//
+//   src/world-gen.js     — System 1, added to GameScene.prototype; loads after game-scene.js
 //
 //   src/game-over.js     — GameOverScene (death + stats screen)
 //
-// ── GAMEPLAY SYSTEMS (all in src/game-scene.js) ──────────────
+// ── GAMEPLAY SYSTEMS (in src/game-scene.js unless noted) ─────
 // Each system lists its primary functions and relevant CFG keys.
 // Biome/world-gen helpers (getBiome, _buildBiomeMap …) live in src/constants.js.
 //
-// 1. WORLD / TERRAIN GENERATION
+// 1. WORLD / TERRAIN GENERATION  (src/world-gen.js; the ambient anim stays in update())
 //    fns:  buildWorld, _buildPonds, _buildLakes, _buildRivers,
 //          buildPOIs, buildRuinsCity, buildBiomeStructures,
 //          _placeScenery (trees/rocks stand on their tile base; body set after refreshBody)
