@@ -8,37 +8,6 @@ const CRAFTER_NAME = { gunslinger: 'Gunslinger', charmer: 'Lauren' };
 
 Object.assign(GameScene.prototype, {
   // ── BUILD SYSTEM ──────────────────────────────────────────────
-  toggleBuildMode(player) {
-    const BUILD_TYPES = ['wall', 'gate', 'campfire', 'craftbench', 'bed'];
-    if (this.buildMode && this.buildOwner === player) {
-      // Cycle to next build type, exit after last
-      const idx = BUILD_TYPES.indexOf(this.buildType);
-      if (idx >= BUILD_TYPES.length - 1) {
-        this._log(`${player.charData.player} build mode off (cycled past last type)`, 'player');
-        this.exitBuildMode();
-        this.hint('Build mode off', 1000);
-        return;
-      }
-      this.buildType = BUILD_TYPES[idx + 1];
-      const cost = this.getBuildCost(this.buildType);
-      const costStr = Object.entries(cost).map(([k,v])=>v+' '+k).join(', ');
-      this._log(`${player.charData.player} build cycle → ${this.buildType}  cost=${costStr}`, 'player');
-      this.hint('Build: ' + this.buildType.toUpperCase() + ' (cost: ' + costStr + ')', 2000);
-      return;
-    }
-    this.buildMode = true;
-    this.buildOwner = player;
-    this.buildType = 'wall';
-    this.buildRotation = 0;
-    this._log(`${player.charData.player} build mode ON  type=wall`, 'player');
-    if (this.buildGhost) this.buildGhost.destroy();
-    this.buildGhost = this.add.image(player.spr.x + 40, player.spr.y, 'build_ghost').setDepth(50).setAlpha(0.6);
-    if (this.hudCam) this.hudCam.ignore(this.buildGhost);
-    this.hint('BUILD: Q/0=cycle | Attack=place | R/1=rotate | Interact=teardown (50% refund)', 3400);
-    this.buildRotKey1 = this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.R);
-    this.buildRotKey2 = this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.ONE);
-  },
-
   exitBuildMode() {
     if (this.buildMode) this._log(`${this.buildOwner?.charData?.player || 'unknown'} build mode OFF  was=${this.buildType}`, 'player');
     this.buildMode = false;

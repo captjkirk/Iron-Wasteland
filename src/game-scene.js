@@ -119,8 +119,6 @@ class GameScene extends Phaser.Scene {
     this.reviveProgress = 0;
     this.reviving    = false;
     this.reviveTarget = null;
-    this._toxicCd1   = 0;
-    this._toxicCd2   = 0;
 
     // Two-camera tracking lists
     this._wo = []; this._ho = [];
@@ -2319,10 +2317,18 @@ class GameScene extends Phaser.Scene {
     this._tutActive = false;
   }
 
+  // Y-sorted draw order: scenery, players and enemies share the band 9..9.9, deeper down the
+  // map = drawn later, so a sprite stands in front of whatever is above its feet. The band sits
+  // above ground items and structures (<= 8) and below bullets (10) and bars/labels (>= 11).
+  _sortDepth(feetY) { return 9 + feetY / (CFG.MAP_H * CFG.TILE) * 0.9; }
+
   // ── UPDATE ────────────────────────────────────────────────────
   update(time, delta) {
     if (!this._worldReady) return; // deferred world init not yet complete
     if (this.isOver) return;
+
+    for (const p of [this.p1, this.p2]) if (p?.spr) p.spr.setDepth(this._sortDepth(p.spr.y + p.spr.displayHeight / 2));
+    for (const e of this.enemies) if (e.spr?.active) e.spr.setDepth(this._sortDepth(e.spr.y + e.spr.displayHeight / 2));
 
     // Clamp delta — a backgrounded tab, long GC pause, or debugger break can
     // produce multi-second deltas that teleport enemies across walls and
@@ -2423,16 +2429,12 @@ class GameScene extends Phaser.Scene {
     const tickCd = p => { if (p && p.atkCooldown > 0) p.atkCooldown -= delta; };
     tickCd(this.p1); tickCd(this.p2);
 
-    // Toxic pool cooldown ticking
-    if (this._toxicCd1 > 0) this._toxicCd1 -= delta;
-    if (this._toxicCd2 > 0) this._toxicCd2 -= delta;
-
     // Web slow cooldown ticking
     if (this.p1 && (this.p1._webSlowCd || 0) > 0) this.p1._webSlowCd = Math.max(0, this.p1._webSlowCd - delta);
     if (this.p2 && (this.p2._webSlowCd || 0) > 0) this.p2._webSlowCd = Math.max(0, this.p2._webSlowCd - delta);
 
     // Tundra slowdown effect
-    { const _t = performance.now(); this.applyTerrainEffects(this.p1); if (this.p2) this.applyTerrainEffects(this.p2); this._perfBudget.terrain += performance.now() - _t; }
+    { const _t = performance.now(); this.applyTerrainEffects(this.p1, delta); if (this.p2) this.applyTerrainEffects(this.p2, delta); this._perfBudget.terrain += performance.now() - _t; }
 
     // Ambient grass sway — pivot from origin (0.5,1) so blades rotate at their base.
     // 3 phase groups cycle out-of-sync for a natural, non-mechanical look.
@@ -2510,6 +2512,15 @@ class GameScene extends Phaser.Scene {
     { const _t = performance.now(); this.updateWaves(delta); this._perfBudget.waves += performance.now() - _t; }
     { const _t = performance.now(); this.updateEnemyDens(delta); this.updateWaterDens(delta); this._perfBudget.dens += performance.now() - _t; }
     { const _t = performance.now(); this.updateRaiders(delta); this._perfBudget.raiders += performance.now() - _t; }
+    // Terrain reaches raiders and animals too. After the AI, which sets their velocity; bosses skip.
+    { const _t = performance.now();
+      const _en = this.enemies;
+      for (let _i = _en.length - 1; _i >= 0; _i--) { // backwards: a pool kill splices the array
+        const _e = _en[_i];
+        if (!_e || _e.dying || _e._dormant || _e.isBoss || !_e.spr || !_e.spr.active) continue;
+        this.applyTerrainEffects(_e, delta, _e.isRaider ? 'raider' : 'animal');
+      }
+      this._perfBudget.terrain += performance.now() - _t; }
     { const _t = performance.now(); this.updateBoss(delta); this._perfBudget.boss += performance.now() - _t; }
     this.updateSleep(delta);
     { const _t = performance.now(); this.updateDayNight(delta); this._perfBudget.daynight += performance.now() - _t; }
@@ -2754,50 +2765,63 @@ class GameScene extends Phaser.Scene {
     }
   }
 
-  applyTerrainEffects(player) {
-    if (!player || player.isDowned) return;
-    if (!player.spr || !player.spr.body) return;
+  // Terrain effects for any actor. kind: 'player' (all four effects), 'raider' (all four) or
+  // 'animal' (shallow water + toxic pools; water_lurker and bog_lurker are exempt where they live).
+  // Players scale their velocity every frame because movePlayer rewrites it every frame. AI actors
+  // do not (a wanderer's velocity is set once per 1.5-3.5 s), so _scaleVel scales only fresh values.
+  applyTerrainEffects(actor, delta = 0, kind = 'player') {
+    if (!actor || actor.isDowned) return;
+    if (!actor.spr || !actor.spr.body) return;
+    const isPlayer = kind === 'player';
+    const water = isPlayer || (actor.type !== 'water_lurker' && actor.type !== 'bog_lurker');
+    const toxic = isPlayer || actor.type !== 'bog_lurker';
+    const coldGround = isPlayer || kind === 'raider';
+    const name = isPlayer ? actor.charData.player : actor.type;
+    if (actor._toxicCd > 0) actor._toxicCd -= delta;
 
     // Shallow water + ice + toxic pools — all computed per-frame via Uint8Array maps
     const TILE = CFG.TILE, MW = CFG.MAP_W;
-    const ptx = Math.floor(player.spr.x / TILE);
-    const pty = Math.floor(player.spr.y / TILE);
+    const ptx = Math.floor(actor.spr.x / TILE);
+    const pty = Math.floor(actor.spr.y / TILE);
     {
       const wm = this._waterMap;
-      player._inShallowWater = !!(wm &&
+      actor._inShallowWater = water && !!(wm &&
         (wm[ptx + pty * MW] || wm[(ptx+1) + pty * MW] ||
          wm[ptx + (pty+1) * MW] || wm[(ptx+1) + (pty+1) * MW]));
     }
     // Ice lookup (tundra lakes + frozen ponds)
     {
       const im = this._iceMap;
-      player._onIce = !!(im &&
+      actor._onIce = coldGround && !!(im &&
         (im[ptx + pty * MW] || im[(ptx+1) + pty * MW] ||
          im[ptx + (pty+1) * MW] || im[(ptx+1) + (pty+1) * MW]));
     }
     // Toxic pool lookup — tile-indexed list of AABBs (numeric key avoids string alloc).
-    if (this._toxicTileIndex) {
+    if (toxic && this._toxicTileIndex) {
       const arr = this._toxicTileIndex.get(pty * MW + ptx);
       if (arr) {
-        const px = player.spr.x, py = player.spr.y;
+        const px = actor.spr.x, py = actor.spr.y;
         for (let i = 0; i < arr.length; i++) {
           const pool = arr[i];
           if (Math.abs(px - pool.x) <= pool.rx && Math.abs(py - pool.y) <= pool.ry) {
-            const isP1 = (player === this.p1);
-            const cdKey = isP1 ? '_toxicCd1' : '_toxicCd2';
-            if (!this[cdKey] || this[cdKey] <= 0) {
-              player.hp = Math.max(0, player.hp - 3);
-              this[cdKey] = 500;
-              player._toxicUntil = this.time.now + 900;
-              this._hudDirty = true;
-              this.time.delayedCall(950, () => { this._hudDirty = true; });
-              this._log(`${player.charData.player} toxic pool dmg=3 hp=${player.hp}/${player.maxHp}`, 'combat');
-              player.spr.setTint(0x44ff22);
+            if (!actor._toxicCd || actor._toxicCd <= 0) {
+              actor.hp = Math.max(0, actor.hp - 3);
+              actor._toxicCd = 500;
+              if (isPlayer) {
+                actor._toxicUntil = this.time.now + 900;
+                this._hudDirty = true;
+                this.time.delayedCall(950, () => { this._hudDirty = true; });
+              }
+              this._log(`${name} toxic pool dmg=3 hp=${actor.hp}/${actor.maxHp}`, 'combat');
+              actor.spr.setTint(0x44ff22);
               this.time.delayedCall(150, () => {
-                if (!player.spr?.active) return;
-                if (player._frostSlowed) player.spr.setTint(0x88ccff);
-                else player.spr.clearTint();
+                if (!actor.spr?.active) return;
+                if (actor._frostSlowed) actor.spr.setTint(0x88ccff);
+                else if (actor._charmTinted) actor.spr.setTint(0xffaacc);
+                else actor.spr.clearTint();
               });
+              // Straight to the kill path: no flinch, knockback or hit-pause per tick.
+              if (!isPlayer && actor.hp <= 0) { this.killEnemy(actor); return; }
             }
             break;
           }
@@ -2805,36 +2829,47 @@ class GameScene extends Phaser.Scene {
       }
     }
 
-    if (player._inShallowWater) {
-      const vx = player.spr.body.velocity.x, vy = player.spr.body.velocity.y;
-      player.spr.setVelocity(vx * 0.5, vy * 0.5);
+    if (actor._inShallowWater) {
+      this._scaleVel(actor, 0.5, isPlayer);
       return;
     }
 
     // Ice: momentum slide — 88/12 blend preserves previous velocity
-    if (player._onIce) {
-      const vx = player.spr.body.velocity.x, vy = player.spr.body.velocity.y;
-      if (player._iceVx === undefined) { player._iceVx = vx; player._iceVy = vy; }
-      player._iceVx = player._iceVx * 0.88 + vx * 0.12;
-      player._iceVy = player._iceVy * 0.88 + vy * 0.12;
-      player.spr.setVelocity(player._iceVx, player._iceVy);
+    if (actor._onIce) {
+      const vx = actor.spr.body.velocity.x, vy = actor.spr.body.velocity.y;
+      if (actor._iceVx === undefined) { actor._iceVx = vx; actor._iceVy = vy; }
+      actor._iceVx = actor._iceVx * 0.88 + vx * 0.12;
+      actor._iceVy = actor._iceVy * 0.88 + vy * 0.12;
+      actor.spr.setVelocity(actor._iceVx, actor._iceVy);
       return;
     }
-    player._iceVx = undefined; player._iceVy = undefined;
+    actor._iceVx = undefined; actor._iceVy = undefined;
 
     // Tundra ground slow (non-ice tiles, existing behavior)
-    const biome = getBiome(ptx, pty);
+    const biome = coldGround ? getBiome(ptx, pty) : null;
     if (biome === 'tundra') {
-      if (!player._inTundra) {
-        player._inTundra = true;
-        this._log(`${player.charData.player} entered tundra (speed x0.7)`, 'combat');
+      if (isPlayer && !actor._inTundra) {
+        actor._inTundra = true;
+        this._log(`${name} entered tundra (speed x0.7)`, 'combat');
       }
-      const vx = player.spr.body.velocity.x, vy = player.spr.body.velocity.y;
-      if (vx !== 0 || vy !== 0) player.spr.setVelocity(vx * 0.7, vy * 0.7);
-    } else if (player._inTundra) {
-      player._inTundra = false;
-      this._log(`${player.charData.player} left tundra`, 'combat');
+      this._scaleVel(actor, 0.7, isPlayer);
+    } else {
+      actor._tvx = undefined; // no slow active: forget what we last wrote
+      if (isPlayer && actor._inTundra) {
+        actor._inTundra = false;
+        this._log(`${name} left tundra`, 'combat');
+      }
     }
+  }
+
+  // Scale an actor's velocity by m. Players: every frame (movePlayer rewrites it). AI actors:
+  // only when the AI wrote a new velocity since our last scale, else a wanderer would decay to a stop.
+  _scaleVel(actor, m, isPlayer) {
+    const v = actor.spr.body.velocity;
+    if (!isPlayer && actor._tvx !== undefined && Math.abs(v.x - actor._tvx) < 0.01 && Math.abs(v.y - actor._tvy) < 0.01) return;
+    if (v.x === 0 && v.y === 0) { if (!isPlayer) actor._tvx = undefined; return; }
+    actor.spr.setVelocity(v.x * m, v.y * m);
+    if (!isPlayer) { actor._tvx = actor.spr.body.velocity.x; actor._tvy = actor.spr.body.velocity.y; }
   }
 
   _updateWaterSubmersion(p) {
