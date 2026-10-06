@@ -34,7 +34,7 @@ the MANIFEST lists, update the MANIFEST in the same commit.
 
 ## CI checks (run on every PR)
 
-`.github/workflows/checks.yml` runs two checks; both must pass before merge.
+`.github/workflows/checks.yml` runs three checks; all must pass before merge.
 
 - **`version-bump`** fails the PR if `VERSION` matches `main`. The hook normally prevents
   this. If it flags you:
@@ -45,6 +45,19 @@ the MANIFEST lists, update the MANIFEST in the same commit.
 
   then commit again.
 - **`check`** runs `npm run check`, the same as the hook.
+- **`smoke`** runs `scripts/smoke.js`: it serves the repo with `server.js`, loads the game in
+  headless WebKit (the iPad and iPhone engine), waits for the mode select screen, and fails on any
+  console error or uncaught exception. It catches a script that uses a name before the file
+  declaring it has loaded, which `npm run check` cannot see. It never looks at pixels and stops at
+  the title screen, so gameplay still needs the browser steps in each PR.
+
+  Playwright is installed by the CI job only, pinned in the workflow, so local setup still needs
+  no `npm install`. To run it locally (optional; `PORT` avoids a clash with a running `npm run serve`):
+
+  ```bash
+  npm install --no-save playwright@1.63.0 && npx playwright install webkit
+  PORT=8099 node scripts/smoke.js
+  ```
 
 On deploy, `.github/workflows/pages.yml` re-stamps `VERSION` with the publish time.
 

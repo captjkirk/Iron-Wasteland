@@ -21,7 +21,7 @@ function lanIP() {
   return '127.0.0.1';
 }
 
-const PORT    = 8080;
+const PORT    = Number(process.env.PORT) || 8080;
 const ROOT    = __dirname;
 const LOG_DIR = path.join(ROOT, 'logs');
 

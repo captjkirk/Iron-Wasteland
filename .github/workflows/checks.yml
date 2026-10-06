@@ -52,3 +52,22 @@ jobs:
 
       - name: Run npm run check
         run: npm run check
+
+  smoke:
+    name: WebKit smoke run (game reaches ModeSelect)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      # ponytail: CI-only install, pinned here like ESLint in package.json. No lockfile, no local npm install.
+      - name: Install Playwright WebKit
+        run: |
+          npm install --no-save playwright@1.63.0
+          npx playwright install --with-deps webkit
+
+      - name: Load the game in headless WebKit
+        run: node scripts/smoke.js
