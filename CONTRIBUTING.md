@@ -19,11 +19,13 @@ MANIFEST, an index of every gameplay system: read it first to find where a syste
 
 ## Making commits
 
-The pre-commit hook does two things:
+The pre-commit hook does three things:
 
-1. Stamps `VERSION` in `src/constants.js` with the current UTC time. The title screen shows
+1. Refuses a commit on `main`, and any commit from the main checkout (every session works in
+   its own worktree; see `CLAUDE.md`, "Working directory").
+2. Stamps `VERSION` in `src/constants.js` with the current UTC time. The title screen shows
    it as "Last updated …" in the player's own timezone.
-2. Runs `npm run check`: a syntax check of `game.js` and every `src/*.js`, the manifest check,
+3. Runs `npm run check`: a syntax check of `game.js` and every `src/*.js`, the manifest check,
    and ESLint. A failure aborts the commit.
 
 A post-commit hook refreshes a local graphify knowledge graph in `graphify-out/` (gitignored) if

@@ -5,6 +5,19 @@
 # target must track it or the title screen's "Last updated" silently freezes.)
 set -euo pipefail
 
+# Every session works in its own worktree on its own branch (CLAUDE.md, "Working directory").
+# Both refusals run before the VERSION stamp so a refused commit touches nothing.
+branch=$(git rev-parse --abbrev-ref HEAD)
+if [ "$branch" = "main" ]; then
+  echo "pre-commit: refusing a commit on main. Branch in a worktree and open a PR." >&2
+  exit 1
+fi
+if [ "$(git rev-parse --git-dir)" = "$(git rev-parse --git-common-dir)" ]; then
+  echo "pre-commit: refusing a commit from the main checkout; it stays on main." >&2
+  echo "  git worktree add ../wt/$branch $branch   # then commit from there" >&2
+  exit 1
+fi
+
 GAME_FILE="src/constants.js"
 
 if [ ! -f "$GAME_FILE" ]; then
