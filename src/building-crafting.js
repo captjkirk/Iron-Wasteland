@@ -59,6 +59,8 @@ Object.assign(GameScene.prototype, {
     if (this.buildGhost) {
       this.buildGhost.setPosition(gx, gy);
       this.buildGhost.setAngle(this.buildRotation * 90);
+      // Green = spot is fine, red = placement would be refused.
+      if (this._buildSpotError(gx, gy)) this.buildGhost.setTint(0xff5555); else this.buildGhost.clearTint();
     }
 
     // Check for type cycle (same key as build mode — double tap cycles)
@@ -109,40 +111,34 @@ Object.assign(GameScene.prototype, {
     return true;
   },
 
+  // Why a structure can't go at (x, y): water, ice, mountain, toxic ground, too close to another
+  // structure, or an enemy on top. Returns the hint text, or null if the spot is fine.
+  // placeBuild shows it; updateBuildMode tints the ghost from it, so the two cannot disagree.
+  _buildSpotError(x, y) {
+    const tx = Math.floor(x / CFG.TILE), ty = Math.floor(y / CFG.TILE);
+    if (this._waterMap && this._waterMap[tx + ty * CFG.MAP_W]) return "Can't build on water!";
+    if (this._iceMap && this._iceMap[tx + ty * CFG.MAP_W]) return "Can't build on ice!";
+    if (this._solidTileSet && this._solidTileSet.has(tx + ',' + ty)) return "Can't build on a mountain!";
+    if (this._toxicTileIndex && this._toxicTileIndex.has(ty * CFG.MAP_W + tx)) return "Can't build on toxic ground!";
+    if (this._wallNearby(x, y, 24)) return "Too close to existing structure!";
+    // Enemy overlap — an active enemy within ~24px of the placement point blocks it.
+    const eArr = this.enemies || [];
+    for (let i = 0; i < eArr.length; i++) {
+      const e = eArr[i];
+      if (!e || !e.spr || !e.spr.active || e._dormant) continue;
+      const dx = e.spr.x - x, dy = e.spr.y - y;
+      if (dx * dx + dy * dy < 24 * 24) return "Can't build on top of an enemy!";
+    }
+    return null;
+  },
+
   placeBuild() {
     if (!this.buildMode || !this.buildGhost) return;
     const p = this.buildOwner;
     const x = this.buildGhost.x, y = this.buildGhost.y;
 
-    // Terrain validation — reject placement on water, ice, mountain, toxic, or occupied tiles
-    {
-      const tx = Math.floor(x / CFG.TILE), ty = Math.floor(y / CFG.TILE);
-      if (this._waterMap && this._waterMap[tx + ty * CFG.MAP_W]) {
-        this.hint("Can't build on water!", 2000); return;
-      }
-      if (this._iceMap && this._iceMap[tx + ty * CFG.MAP_W]) {
-        this.hint("Can't build on ice!", 2000); return;
-      }
-      if (this._solidTileSet && this._solidTileSet.has(tx + ',' + ty)) {
-        this.hint("Can't build on a mountain!", 2000); return;
-      }
-      if (this._toxicTileIndex && this._toxicTileIndex.has(ty * CFG.MAP_W + tx)) {
-        this.hint("Can't build on toxic ground!", 2000); return;
-      }
-      if (this._wallNearby(x, y, 24)) {
-        this.hint("Too close to existing structure!", 2000); return;
-      }
-      // Enemy overlap — refuse if an active enemy is within ~24px of the placement point.
-      const _eArr = this.enemies || [];
-      for (let _ei = 0; _ei < _eArr.length; _ei++) {
-        const _e = _eArr[_ei];
-        if (!_e || !_e.spr || !_e.spr.active || _e._dormant) continue;
-        const _edx = _e.spr.x - x, _edy = _e.spr.y - y;
-        if (_edx * _edx + _edy * _edy < 24 * 24) {
-          this.hint("Can't build on top of an enemy!", 2000); return;
-        }
-      }
-    }
+    const spotError = this._buildSpotError(x, y);
+    if (spotError) { this.hint(spotError, 2000); return; }
 
     // Bed requires craftbench to be built first
     if (this.buildType === 'bed' && !this.craftBenchPlaced) {

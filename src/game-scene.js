@@ -2290,11 +2290,23 @@ class GameScene extends Phaser.Scene {
       _ts[key] = true;
       localStorage.setItem('iw_tutorial_state', JSON.stringify(_ts));
     } catch(e) {}
+    // Name the controls the player really has: touch buttons on touch, their bound keys on keyboard.
+    const B = Object.assign({}, DEFAULT_BINDINGS, loadSettings().bindings || {});
+    const k = a => keyDisplayName(B[a]);
+    const touch = !!this._touchActive;
     const TIPS = {
-      move:     { title: 'MOVE',          text: 'P1: WASD · P2: Arrow keys.  Explore each biome — grassland, wasteland, swamp, tundra, ruins.' },
-      attack:   { title: 'ATTACK',        text: 'P1: F to attack · P2: / (slash).  In 1-player mode: aim with the mouse and left-click to shoot.' },
-      gather:   { title: 'GATHER RESOURCES', text: 'Hold E (P1) or Enter (P2) near a tree to harvest wood.  Open crates for metal, fiber, ammo, and food.' },
-      craft:    { title: 'CRAFT & BUILD', text: 'Press Q (P1) or 0 (P2) to open the Crafting Menu.  Build walls, campfires, spike traps, and more.' },
+      move:     { title: 'MOVE',          text: touch
+        ? 'Drag the left side of the screen to move.  Explore each biome — grassland, wasteland, swamp, tundra, ruins.'
+        : `P1: ${k('p1up')}${k('p1left')}${k('p1down')}${k('p1right')} · P2: ${k('p2up')}${k('p2left')}${k('p2down')}${k('p2right')}.  Explore each biome — grassland, wasteland, swamp, tundra, ruins.` },
+      attack:   { title: 'ATTACK',        text: touch
+        ? 'Tap the ATK button to attack in the direction you are facing.'
+        : `P1: ${k('p1attack')} to attack · P2: ${k('p2attack')}.  In 1-player mode: aim with the mouse and left-click to shoot.` },
+      gather:   { title: 'GATHER RESOURCES', text: touch
+        ? 'Hold the USE button near a tree to harvest wood.  Open crates for metal, fiber, ammo, and food.'
+        : `Hold ${k('p1interact')} (P1) or ${k('p2interact')} (P2) near a tree to harvest wood.  Open crates for metal, fiber, ammo, and food.` },
+      craft:    { title: 'CRAFT & BUILD', text: touch
+        ? 'Tap the BLD button to open the Crafting Menu.  Build walls, campfires, spike traps, and more.'
+        : `Press ${k('p1build')} (P1) or ${k('p2build')} (P2) to open the Crafting Menu.  Build walls, campfires, spike traps, and more.` },
       nightfall:{ title: 'SURVIVE THE NIGHT', text: 'Enemies are stronger after dark.  Build a Bed (needs Craftbench) and sleep to fast-forward the night.' },
       caches:   { title: 'SUPPLY CACHES', text: 'Each biome hides a Supply Cache — rare loot but guarded by enemies.  Find them before the boss arrives!' },
       minimap:  { title: 'MINIMAP',       text: 'Top-right minimap shows biome edges, enemies (red dots), and points of interest.  Stay aware!' },
