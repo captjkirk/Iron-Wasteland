@@ -25,3 +25,7 @@ perl -i -pe "s|const VERSION = '[^']*';|const VERSION = '${NEW_VERSION}';|" "$GA
 git add "$GAME_FILE"
 
 echo "pre-commit: VERSION stamped → ${NEW_VERSION}"
+
+# Syntax, manifest and lint check. A failure here aborts the commit.
+# ponytail: checks the working tree, not just what is staged; a partial stage can pass on unstaged fixes.
+npm run -s check
