@@ -5,6 +5,8 @@
 const fs = require('fs');
 
 const FILES = ['game.js', ...fs.readdirSync('src').filter(f => f.endsWith('.js')).map(f => 'src/' + f)];
+// ponytail: one name per column-0 line. `const {a, b} = ...` and `let a, b` register only the first
+// (or none), so the other files get a false no-undef error. Parse with a real parser if that bites.
 const TOP_LEVEL = /^(?:async +)?(?:const|let|var|function\*?|class) +([A-Za-z_$][\w$]*)/gm;
 const declared = Object.fromEntries(FILES.map(f =>
   [f, [...fs.readFileSync(f, 'utf8').matchAll(TOP_LEVEL)].map(m => m[1])]));
