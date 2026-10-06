@@ -208,10 +208,10 @@
 //     CLAUDE.md: ALWAYS ASK FOR THE LOG when investigating bugs.
 //
 // 21. TUTORIAL
-//     fns:  startTutorial, _tutTrigger, _showNextTutTip,
-//           _clearTutObjs, _endTutorial
+//     fns:  startTutorial, _tutTrigger, _endTutorial
 //     cfg:  TUT_AUTO_ADVANCE_MS
-//     data: _tutShown, _tutObjs, _tutQueue
+//     data: _tutShown
+//     tips are hint() calls with a title; hint(text, dur, {urgent}) jumps the queue
 //
 // 22. GAME OVER / VICTORY  (src/game-scene.js; GameOverScene in src/game-over.js)
 //     fns:  triggerGameOver, _triggerVictory, checkBothDead, handleDeath
