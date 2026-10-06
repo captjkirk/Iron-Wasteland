@@ -7,8 +7,8 @@ set -euo pipefail
 echo "Setting up Iron Wasteland dev environment..."
 
 # ── Git hooks ────────────────────────────────────────────────────────────────
-# Point git at the repo's .githooks folder so the pre-commit VERSION stamp
-# fires automatically on every commit.
+# Point git at the repo's .githooks folder so the pre-commit refusals and
+# npm run check fire on every commit.
 git config core.hooksPath .githooks
 echo "  ✓ git hooks configured (.githooks/pre-commit)"
 

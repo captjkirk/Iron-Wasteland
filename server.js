@@ -11,6 +11,7 @@ const http = require('http');
 const fs   = require('fs');
 const os   = require('os');
 const path = require('path');
+const { execFileSync } = require('child_process');
 
 function lanIP() {
   for (const ifaces of Object.values(os.networkInterfaces())) {
@@ -83,6 +84,14 @@ const server = http.createServer((req, res) => {
 
   fs.readFile(filePath, (err, data) => {
     if (err) { res.writeHead(404); res.end('Not Found'); return; }
+    // VERSION is not stamped in commits (ADR 0003): stamp it here with HEAD's commit time,
+    // per request, so a refresh after a commit shows the new time. No git: serve as is.
+    if (urlPath === '/src/constants.js') {
+      try {
+        const t = execFileSync('git', ['log', '-1', '--format=%cI'], { cwd: ROOT, stdio: ['ignore', 'pipe', 'ignore'] }).toString().trim();
+        if (t) data = Buffer.from(data.toString().replace(/const VERSION = '[^']*';/, `const VERSION = '${t}';`));
+      } catch (_) { /* not a git checkout, or git missing */ }
+    }
     const ext  = path.extname(filePath).toLowerCase();
     const mime = MIME[ext] || 'application/octet-stream';
     res.writeHead(200, {
