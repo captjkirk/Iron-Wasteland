@@ -24,8 +24,8 @@ One word per concept. Agreed terms live in GLOSSARY.md at the repo root. Read it
 
 ## Where things live
 
-- **Players:** iPads (touch, plus an iPad Pro with a keyboard), an older iPhone, a laptop and a Mac. Every iOS browser is WebKit. A change works only once it works on touch and on keyboard.
-- **Code:** Phaser 3, plain `<script>` files sharing one global scope, no build step. Before searching, read the MANIFEST at the top of `game.js`: it maps every gameplay system to its functions, `CFG` keys and log tags, and ends with the common gotchas (the two cameras, water lookup, dormancy). Update it in the same commit whenever you add, rename, remove or deprecate anything it lists.
+- **Players:** touch on iPads and iPhones (WebKit, sometimes with a keyboard) and keyboard on Macs and laptops. A change works only once it works on touch and on keyboard.
+- **Code:** read the MANIFEST at the top of `game.js` before searching; it maps each gameplay system to its functions and ends with the common gotchas. Update it in the same commit whenever you add, rename, remove or deprecate anything it lists.
 - **Setup, hooks, VERSION, CI:** `CONTRIBUTING.md` owns them.
 - **Issues:** GitHub, via `gh`; see `docs/agents/issue-tracker.md` and `docs/agents/triage-labels.md`. Terms and decisions: `GLOSSARY.md` and `docs/adr/`, per `docs/agents/domain.md`.
 - **Knowledge graph:** if `graphify-out/` exists (local only, gitignored), ask `/graphify query "<question>"` before reading files by hand. Refresh with `/graphify . --update` after a big refactor or a pull.
