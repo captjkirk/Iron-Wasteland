@@ -8,7 +8,7 @@
 // ── VERSION ───────────────────────────────────────────────────
 // Update this each commit so the title screen reflects the build date.
 // Stored as UTC ISO so it can be displayed in each player's local timezone.
-const VERSION = '2026-10-06T01:39:23Z';
+const VERSION = '2026-10-06T01:39:42Z';
 // Format VERSION into the viewer's local time with abbreviated tz name (EDT, PDT, BST, etc.)
 function _fmtVersion(iso) {
   try {
@@ -60,14 +60,17 @@ const _RAIDER_LOOT = [['item_ammo', 0.6, 0], ['item_metal', 0.4, 0], ['item_food
 // their own tuned values (they're tuned harder to make POIs dangerous); these
 // apply to _spawnGroup (wave spawns) and _spawnBiomeEnemy (day>=2 biome enemies).
 // HP/dmg/speed/atkInterval are scaled at spawn time by _diffMult().
+// w/h = physics body in TEXTURE pixels (the full texture size). Enemy textures
+// are drawn at 2× pixel density, so baseScale is half the old value and w/h are
+// double; on-screen and body sizes are unchanged. Melee reach uses w/4 (= old w/2).
 const ENEMY_STATS = {
-  wolf:         { hp:60,  speed:75,  dmg:6,  baseScale:1.8, w:20, h:12, atkInterval:1600, aggro:190 },
-  rat:          { hp:30,  speed:105, dmg:4,  baseScale:1.4, w:15, h:9,  atkInterval:1200, aggro:110 },
-  bear:         { hp:140, speed:50,  dmg:16, baseScale:2.2, w:24, h:18, atkInterval:2400, aggro:290 },
-  ice_crawler:  { hp:45,  speed:130, dmg:7,  baseScale:1.6, w:18, h:12, atkInterval:1400, aggro:160 },
-  spider_ruins: { hp:40,  speed:70,  dmg:8,  baseScale:1.6, w:16, h:12, atkInterval:1800, aggro:130 },
-  bog_lurker:   { hp:55,  speed:55,  dmg:13, baseScale:1.8, w:20, h:14, atkInterval:2000, aggro: 80 },
-  dust_hound:   { hp:28,  speed:118, dmg:5,  baseScale:1.3, w:18, h:12, atkInterval:1500, aggro:200 },
+  wolf:         { hp:60,  speed:75,  dmg:6,  baseScale:0.9,  w:40, h:24, atkInterval:1600, aggro:190 },
+  rat:          { hp:30,  speed:105, dmg:4,  baseScale:0.7,  w:30, h:18, atkInterval:1200, aggro:110 },
+  bear:         { hp:140, speed:50,  dmg:16, baseScale:1.1,  w:48, h:36, atkInterval:2400, aggro:290 },
+  ice_crawler:  { hp:45,  speed:130, dmg:7,  baseScale:0.8,  w:36, h:24, atkInterval:1400, aggro:160 },
+  spider_ruins: { hp:40,  speed:70,  dmg:8,  baseScale:0.8,  w:32, h:24, atkInterval:1800, aggro:130 },
+  bog_lurker:   { hp:55,  speed:55,  dmg:13, baseScale:0.9,  w:40, h:28, atkInterval:2000, aggro: 80 },
+  dust_hound:   { hp:28,  speed:118, dmg:5,  baseScale:0.65, w:36, h:24, atkInterval:1500, aggro:200 },
 };
 const ENEMY_LOOT = {
   // ── Grass / common wildlife ──────────────────────────────────
