@@ -278,7 +278,12 @@ class GameScene extends Phaser.Scene {
         try {
           _setProgress(30, 'Building world...');
           this._log('World init: buildWorld start', 'world');
-          this.buildWorld(worldW, worldH, cx, cy);
+          // ?seed=N reproducibility: buildWorld is synchronous and Phaser's Between/FloatBetween
+          // call Math.random, so route every random draw in it through the seeded _worldRng.
+          const _realRandom = Math.random;
+          Math.random = _worldRng;
+          try { this.buildWorld(worldW, worldH, cx, cy); }
+          finally { Math.random = _realRandom; }
           this._log(`World init: buildWorld done  enemies_placed=${(this.enemies||[]).length}`, 'world');
           _setProgress(58, 'Spawning players...');
         } catch (err) { _initFail(err); return; }
