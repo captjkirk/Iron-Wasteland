@@ -1285,7 +1285,7 @@ class GameScene extends Phaser.Scene {
     this._drawStatusStrip(this.p1StatusGfx, this.p1, false, '_lastStatusP1');
     if (this.p2StatusGfx) this._drawStatusStrip(this.p2StatusGfx, this.p2, true, '_lastStatusP2');
     // Update ammo icons and reserve counter — only touch alphas/text when the
-    // values actually changed (redrawHUD fires every frame from update()).
+    // values actually changed (redrawHUD runs from update() only when _hudDirty is set).
     const refreshAmmo = (icons, reserveText, player) => {
       if (!icons || !player || player.charData.id!=='gunslinger') return;
       if (player._lastAmmoShown !== player.ammo) {

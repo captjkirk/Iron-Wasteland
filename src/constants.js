@@ -143,7 +143,7 @@ CFG.RIVER_WIDTH_MAX  = 3;    // BFS spread radius max (3 → ~7-tile channel)
 
 // ── MULBERRY32 SEEDED RNG ─────────────────────────────────────
 // Deterministic, fast, good statistical quality.
-// _worldRng is set in initWorldRng(); call _worldRng() instead of Math.random() in world gen.
+// _worldRng is set in src/game-scene.js from the world seed; call _worldRng() instead of Math.random() in world gen.
 let _worldRng = Math.random; // default to Math.random until seed is set
 function _makeMulberry32(seed) {
   let s = (seed >>> 0) || 1;
