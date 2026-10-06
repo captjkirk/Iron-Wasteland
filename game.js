@@ -38,14 +38,14 @@
 //                          drawSpiderRuins, drawBogLurker, drawDustHound, drawWaterLurker
 //                          buildTextures, buildAtlases,
 //                          drawMountains, polishActors, polishActor,
-//                          makeScaleProxy
+//                          makeScaleProxy, getControls (the controls help text)
 //
 //   src/scenes.js        — All non-gameplay scenes + input helpers
-//                          DEFAULT_BINDINGS, keyDisplayName, getControls,
+//                          DEFAULT_BINDINGS, keyDisplayName,
 //                          ControlsScene, BootScene, ModeSelectScene,
 //                          SettingsScene, CharSelectScene
 //
-//   src/game-scene.js    — GameScene: gameplay systems 3, 5-7 and 9-22 (see list below)
+//   src/game-scene.js    — GameScene: gameplay systems 3, 5-7, 9-16 and 19-23 (see list below)
 //                          Also: GameScene.RECIPES static property (system 8's recipe list)
 //
 //   src/world-gen.js     — System 1, added to GameScene.prototype; loads after game-scene.js
@@ -60,9 +60,9 @@
 //
 // ── GAMEPLAY SYSTEMS (in src/game-scene.js unless noted) ─────
 // Each system lists its primary functions and relevant CFG keys.
-// Biome/world-gen helpers (getBiome, _buildBiomeMap …) live in src/constants.js.
+// A heading's note names every file its functions live in; npm run check verifies it.
 //
-// 1. WORLD / TERRAIN GENERATION  (src/world-gen.js; the ambient anim stays in update())
+// 1. WORLD / TERRAIN GENERATION  (src/world-gen.js; biome fns in src/constants.js; the ambient anim stays in update())
 //    fns:  buildWorld, _buildPonds, _buildLakes, _buildRivers,
 //          buildPOIs, buildRuinsCity, buildBiomeStructures,
 //          _placeScenery (trees/rocks stand on their tile base; body set after refreshBody)
@@ -99,7 +99,7 @@
 //    data: waveNum, waveTimer, boss, _bossChance, huntNextDay
 //    log:  [WORLD ], [COMBAT]
 //
-// 5. PLAYER MOVEMENT & INPUT
+// 5. PLAYER MOVEMENT & INPUT  (src/game-scene.js; getControls in src/textures.js)
 //    fns:  movePlayer, aimAtMouse (faces the cursor while _mouseAt is recent), _faceAngle,
 //          applyTouchInput, applyTerrainEffects,
 //          getControls, initTouchControls, _onTouchDown/Move/Up,
@@ -183,23 +183,23 @@
 //     cfg:  FOG_REVEAL_R, FOG_UPDATE_INTERVAL
 //     data: fogRevealed (Uint8Array), fogVisible, _fogVisibleBuilding
 //
-// 17. AUDIO (Web Audio API)
+// 17. AUDIO (Web Audio API)  (src/audio.js)
 //     class: Music         (background + boss switch via Music.switchToBoss)
 //     SFX wired into combat/pickup/build callsites.
 //
-// 18. PROCEDURAL TEXTURES (no image files)
+// 18. PROCEDURAL TEXTURES (no image files)  (src/textures.js; character draws in src/sprites.js)
 //     fns:  buildTextures, makeScaleProxy, drawMountains, polishActors, polishActor
 //     enemy draws: drawWolf, drawRat, drawBear, drawIceCrawler,
 //                  drawSpiderRuins, drawBogLurker, drawDustHound, drawWaterLurker
-//     character draws: paintGrid, pixelActorFrames, buildPixelActors (src/sprites.js)
+//     character draws: paintGrid, pixelActorFrames, buildPixelActors
 //                      art in SPRITE_ART[id][front|back|side|fside|bside]; step2 = step legs mirrored
 //
-// 19. INPUT MODES (kbd / gamepad / touch)
+// 19. INPUT MODES (kbd / gamepad / touch)  (src/scenes.js; getControls in src/textures.js; _onBtnPress in src/game-scene.js)
 //     fns:  getControls, activeInputMode, isTouchDevice,
 //           _onBtnPress, keyDisplayName
 //     data: wasd, p2keys, _joy, _tcBtns
 //
-// 20. DEBUG LOG & PERF
+// 20. DEBUG LOG & PERF  (src/game-scene.js; _qlog in src/constants.js)
 //     fns:  _log, _qlog, _dbgRefresh, _downloadLog, hint
 //     log tags: [WORLD ], [PLAYER], [COMBAT], [BUILD ], [perf], [error]
 //     data: _dbgEntries (persists across runs), _perfBudget
@@ -212,12 +212,12 @@
 //     cfg:  TUT_AUTO_ADVANCE_MS
 //     data: _tutShown, _tutObjs, _tutQueue
 //
-// 22. GAME OVER / VICTORY
+// 22. GAME OVER / VICTORY  (src/game-scene.js; GameOverScene in src/game-over.js)
 //     fns:  triggerGameOver, _triggerVictory, checkBothDead, handleDeath
 //     scene: GameOverScene
 //     win condition: relicsHeld === 5 (deposited at altar)
 //
-// 23. SETTINGS / SAVE
+// 23. SETTINGS / SAVE  (src/scenes.js; toggleSleep in src/game-scene.js)
 //     fns:  loadSettings, saveSettings, toggleSleep
 //     data: STATE (mode/difficulty), persisted via localStorage
 //
