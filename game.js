@@ -30,7 +30,8 @@
 //
 //   src/sprites.js       — Player + raider art as hand-placed pixel grids (one char = one pixel)
 //                          paintGrid, pixelActorFrames, buildPixelActors,
-//                          SPRITE_ART, PLAYER_PAL, LEGS
+//                          SPRITE_ART, PLAYER_PAL, LEGS;
+//                          scenery (trees, rocks, bush, mushroom, wall): SCENERY_SPECS, buildScenery, ART_SCALE, WALL_SCALE
 //
 //   src/textures.js      — Procedural texture generation (no image files)
 //                          drawWolf, drawRat, drawBear, drawIceCrawler,
@@ -55,7 +56,8 @@
 //
 // 1. WORLD / TERRAIN GENERATION
 //    fns:  buildWorld, _buildPonds, _buildLakes, _buildRivers,
-//          buildPOIs, buildRuinsCity, buildBiomeStructures
+//          buildPOIs, buildRuinsCity, buildBiomeStructures,
+//          _placeScenery (trees/rocks stand on their tile base; body set after refreshBody)
 //    biome: getBiome, _biomeHash, _biomeNoise, _computeBiomeRaw,
 //           _initBiomeSeeds, _buildBiomeMap, _buildBiomeMapChunked
 //    placement: _isBlockedForPlacement, _footprintOnWaterOrIce
@@ -91,7 +93,8 @@
 //    log:  [WORLD ], [COMBAT]
 //
 // 5. PLAYER MOVEMENT & INPUT
-//    fns:  movePlayer, aimAtMouse, applyTouchInput, applyTerrainEffects,
+//    fns:  movePlayer, aimAtMouse (faces the cursor while _mouseAt is recent), _faceAngle,
+//          applyTouchInput, applyTerrainEffects,
 //          getControls, initTouchControls, _onTouchDown/Move/Up,
 //          openPauseSettings, _walkStep
 //    data: p1, p2 (spr, hp, maxHp, charData, inv), _joy, _tcBtns, wasd, p2keys
@@ -115,7 +118,7 @@
 //    log:  [PLAYER]
 //
 // 8. BUILDING & CRAFTING
-//    build: toggleBuildMode, updateBuildMode, placeBuild, exitBuildMode,
+//    build: toggleBuildMode, updateBuildMode, placeBuild, exitBuildMode, _placeWallSprite,
 //           tryInteract, _tryTeardownBuild, deployTurret
 //    craft: openCraftMenu, closeCraftMenu, updateCraftMenu, craftSelected,
 //           renderCraftMenu, _craftScrollToSel

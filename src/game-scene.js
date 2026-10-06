@@ -320,6 +320,11 @@ class GameScene extends Phaser.Scene {
             const K = Phaser.Input.Keyboard.KeyCodes;
             const _B = Object.assign({}, DEFAULT_BINDINGS, loadSettings().bindings || {});
             this.wasd    = this.input.keyboard.addKeys({ up:K[_B.p1up], down:K[_B.p1down], left:K[_B.p1left], right:K[_B.p1right] });
+            // Mouse in use = a real mouse moved or clicked over the canvas recently (touch does not count).
+            this._mouseAt = -Infinity;
+            const _markMouse = (p) => { if (!p.wasTouch) this._mouseAt = this.time.now; };
+            this.input.on('pointermove', _markMouse);
+            this.input.on('pointerdown', _markMouse);
             // P2 keys and interact hotkey only registered in 2P mode — avoids a dangling
             // Key object (and its scan in the keyboard manager's per-frame loop) in solo play.
             this.p2keys  = this.p2 ? this.input.keyboard.addKeys({ up:K[_B.p2up], down:K[_B.p2down], left:K[_B.p2left], right:K[_B.p2right] }) : null;
@@ -416,6 +421,7 @@ class GameScene extends Phaser.Scene {
                 if (this.barrackOpen || this.isOver || this.p1.isDowned || this.p1.isSleeping) return;
                 // Craft menu consumes click — don't bleed into attack (gunslinger loses ammo otherwise)
                 if (this.craftMenuOpen) return;
+                this.aimAtMouse(this.p1); // the click itself counts as mouse use, so aim at it
                 if (pointer.leftButtonDown()) {
                   if (this.buildMode && this.buildOwner === this.p1) this.placeBuild();
                   else this.doAttack(this.p1);
@@ -5488,16 +5494,16 @@ class GameScene extends Phaser.Scene {
     const worldX = pointer.x / cam.zoom + cam.worldView.x;
     const worldY = pointer.y / cam.zoom + cam.worldView.y;
     if (!Number.isFinite(worldX) || !Number.isFinite(worldY)) return;
-    // Store precise aim angle for attacks
+    // Facing rule (Jared): with a mouse in use, always face the cursor, even while walking;
+    // with no mouse (keyboard only), keep the walking direction movePlayer set and aim that way.
+    // ponytail: "in use" = mouse moved or clicked in the last 4 s; a stale cursor hands facing back to walking.
+    if (this.time.now - this._mouseAt > 4000) { player.aimAngle = undefined; return; }
     player.aimAngle = Phaser.Math.Angle.Between(player.spr.x, player.spr.y, worldX, worldY);
-    // Walking sets facing (movePlayer already did); facing the cursor while walking away
-    // from it looked like moonwalking. Standing still turns the player toward the cursor,
-    // and _triggerAtkAnim turns them toward it for the swing or shot.
-    const moving = player.spr.body.velocity.x !== 0 || player.spr.body.velocity.y !== 0;
-    if (moving || this.time.now < (player.atkAnimUntil || 0)) return;
+    if (this.time.now < (player.atkAnimUntil || 0)) return;
     this._faceAngle(player, player.aimAngle);
+    const moving = player.spr.body.velocity.x !== 0 || player.spr.body.velocity.y !== 0;
     const dirSuffix = player.dir === 'side' ? '' : ('_' + player.dir);
-    player.spr.setTexture('player_atlas', player.charData.id + dirSuffix);
+    player.spr.setTexture('player_atlas', player.charData.id + dirSuffix + (moving ? _walkStep(player.walkTimer) : ''));
   }
 
   // 8-directional facing from an angle (8 sectors of 45°); diagonals use fside/bside.
@@ -7658,7 +7664,7 @@ class GameScene extends Phaser.Scene {
         player._treeScanCd = (player._treeScanCd || 0) - delta;
         const cached = player._cachedTree;
         if (cached && cached.active && cached.isTree) {
-          const cdx = player.spr.x - cached.x, cdy = player.spr.y - cached.y;
+          const cdx = player.spr.x - cached.body.center.x, cdy = player.spr.y - cached.body.center.y; // trees stand on their base; measure to the trunk box
           const cd2 = cdx * cdx + cdy * cdy;
           if (cd2 < HARVEST_RANGE * HARVEST_RANGE) {
             nearestTree = cached;
@@ -7669,7 +7675,7 @@ class GameScene extends Phaser.Scene {
           player._treeScanCd = 200;
           for (const obj of this.obstacles.getChildren()) {
             if (!obj.isTree || !obj.active) continue;
-            const odx = player.spr.x - obj.x, ody = player.spr.y - obj.y;
+            const odx = player.spr.x - obj.body.center.x, ody = player.spr.y - obj.body.center.y;
             const od2 = odx * odx + ody * ody;
             if (od2 < HARVEST_RANGE * HARVEST_RANGE && od2 < nearDist * nearDist) {
               nearDist = Math.sqrt(od2);
