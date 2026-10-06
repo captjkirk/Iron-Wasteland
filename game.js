@@ -63,6 +63,8 @@
 // A heading's note names every file its functions live in; npm run check verifies it.
 //
 // 1. WORLD / TERRAIN GENERATION  (src/world-gen.js; biome fns in src/constants.js; the ambient anim stays in update())
+//    ground: one Tilemap layer (32 px steps between biomes) from the 'ground_tileset' texture, tile index = GROUND_KEYS order (src/textures.js).
+//            No full-world grass TileSprite exists any more (removed in #238).
 //    fns:  buildWorld, _buildPonds, _buildLakes, _buildRivers,
 //          buildPOIs, buildRuinsCity, buildBiomeStructures,
 //          _placeScenery (trees/rocks stand on their tile base; body set after refreshBody)
