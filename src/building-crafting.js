@@ -4,39 +4,10 @@
 // create() wires the build, craft and barracks keys; update() calls updateBuildMode,
 // updateCraftMenu and checkBarrackRange. GameScene.RECIPES stays in src/game-scene.js.
 
+const CRAFTER_NAME = { gunslinger: 'Gunslinger', charmer: 'Lauren' };
+
 Object.assign(GameScene.prototype, {
   // ── BUILD SYSTEM ──────────────────────────────────────────────
-  toggleBuildMode(player) {
-    const BUILD_TYPES = ['wall', 'gate', 'campfire', 'craftbench', 'bed'];
-    if (this.buildMode && this.buildOwner === player) {
-      // Cycle to next build type, exit after last
-      const idx = BUILD_TYPES.indexOf(this.buildType);
-      if (idx >= BUILD_TYPES.length - 1) {
-        this._log(`${player.charData.player} build mode off (cycled past last type)`, 'player');
-        this.exitBuildMode();
-        this.hint('Build mode off', 1000);
-        return;
-      }
-      this.buildType = BUILD_TYPES[idx + 1];
-      const cost = this.getBuildCost(this.buildType);
-      const costStr = Object.entries(cost).map(([k,v])=>v+' '+k).join(', ');
-      this._log(`${player.charData.player} build cycle → ${this.buildType}  cost=${costStr}`, 'player');
-      this.hint('Build: ' + this.buildType.toUpperCase() + ' (cost: ' + costStr + ')', 2000);
-      return;
-    }
-    this.buildMode = true;
-    this.buildOwner = player;
-    this.buildType = 'wall';
-    this.buildRotation = 0;
-    this._log(`${player.charData.player} build mode ON  type=wall`, 'player');
-    if (this.buildGhost) this.buildGhost.destroy();
-    this.buildGhost = this.add.image(player.spr.x + 40, player.spr.y, 'build_ghost').setDepth(50).setAlpha(0.6);
-    if (this.hudCam) this.hudCam.ignore(this.buildGhost);
-    this.hint('BUILD: Q/0=cycle | Attack=place | R/1=rotate | Interact=teardown (50% refund)', 3400);
-    this.buildRotKey1 = this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.R);
-    this.buildRotKey2 = this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.ONE);
-  },
-
   exitBuildMode() {
     if (this.buildMode) this._log(`${this.buildOwner?.charData?.player || 'unknown'} build mode OFF  was=${this.buildType}`, 'player');
     this.buildMode = false;
@@ -536,14 +507,15 @@ Object.assign(GameScene.prototype, {
       }
 
       // Bench requirement and affordability
-      const locked = rec.needsBench && !this.craftBenchPlaced;
+      const wrongChar = rec.type === 'instant' && rec.charId && this.craftMenuOwner?.charData.id !== rec.charId;
+      const locked = (rec.needsBench && !this.craftBenchPlaced) || wrongChar;
       const canAfford = !locked && Object.entries(rec.cost).every(([r,a]) => (team[r]||0) >= a);
 
       const nameColor = locked ? '#555544' : isSelected ? '#ffffff' : isHovered ? '#ddeedd' : '#aabbaa';
       const costColor = canAfford ? '#66ee44' : '#ee4422';
 
       const costStr = Object.entries(rec.cost).map(([r,a]) => a+' '+r).join(', ');
-      const suffix  = locked ? ' [bench reqd]' : '';
+      const suffix  = wrongChar ? ` [${CRAFTER_NAME[rec.charId]} only]` : locked ? ' [bench reqd]' : '';
       addTxt(PX + 18, rowY + 2, rec.label + suffix, { color: nameColor });
       addTxt(PX + PW - 18, rowY + 2, costStr, { color: costColor }).setOrigin(1, 0);
     }
@@ -570,6 +542,13 @@ Object.assign(GameScene.prototype, {
     // Bench requirement
     if (rec.needsBench && !this.craftBenchPlaced) {
       this.hint('Need a Craftbench first!', 2000); return;
+    }
+    // Instant items with a charId are for that character's crafter only
+    if (rec.type === 'instant' && rec.charId && player.charData.id !== rec.charId) {
+      this.hint(`Only ${CRAFTER_NAME[rec.charId]} can craft that!`, 2000); return;
+    }
+    if (rec.key === 'ammo_pack' && player.reserveAmmo >= 40 - player.ammo) {
+      this.hint('Ammo reserve is full!', 2000); return;
     }
     // Afford check — use rec.cost so display and deduction always agree
     const cost = rec.cost;
@@ -610,28 +589,18 @@ Object.assign(GameScene.prototype, {
     this._hudDirty = true; // inventory (Wood/Metal/Fiber/Food) changed — refresh the readout
 
     if (rec.type === 'instant' && rec.key === 'flower_bouquet') {
-      // Flower Bouquet: +8 flowers for Lauren; hint if Lauren not in game
-      const charmer = [this.p1, this.p2].filter(Boolean).find(p => p.charData.id === 'charmer');
-      if (charmer) {
-        charmer.flowerAmmo = (charmer.flowerAmmo || 0) + 8;
-        this._log(`${charmer.charData.player} got +8 flowers  flowers=${charmer.flowerAmmo}`, 'player');
-        this.hint('+8 Flowers for Lauren! (' + charmer.flowerAmmo + ' total)', 2000);
-        this._hudDirty = true;
-      } else {
-        this.hint('Lauren isn\'t in play — flowers wasted!', 2000);
-      }
+      // Flower Bouquet: +8 flowers for Lauren (only she can craft it)
+      player.flowerAmmo = (player.flowerAmmo || 0) + 8;
+      this._log(`${player.charData.player} got +8 flowers  flowers=${player.flowerAmmo}`, 'player');
+      this.hint('+8 Flowers for Lauren! (' + player.flowerAmmo + ' total)', 2000);
+      this._hudDirty = true;
     } else if (rec.type === 'instant' && rec.key === 'ammo_pack') {
-      // Ammo Pack: +8 reserve ammo for Gunslinger; small metal refund hint for others
-      const gunslinger = [this.p1, this.p2].filter(Boolean).find(p => p.charData.id === 'gunslinger');
-      if (gunslinger) {
-        const maxReserve = 40 - gunslinger.ammo;
-        const added = Math.min(8, maxReserve - gunslinger.reserveAmmo);
-        gunslinger.reserveAmmo = Math.min(maxReserve, gunslinger.reserveAmmo + 8);
-        this.hint('+' + Math.max(0, added) + ' ammo (Gunslinger)', 2000);
-        this._hudDirty = true;
-      } else {
-        this.hint('No Gunslinger in play — ammo wasted!', 2000);
-      }
+      // Ammo Pack: +8 reserve ammo for the Gunslinger (only the Gunslinger can craft it)
+      const maxReserve = 40 - player.ammo;
+      const added = Math.min(8, maxReserve - player.reserveAmmo);
+      player.reserveAmmo += added;
+      this.hint('+' + added + ' ammo (Gunslinger)', 2000);
+      this._hudDirty = true;
     } else if (rec.type === 'instant' && rec.key === 'med_kit') {
       // D8 — Med Kit: restore HP (difficulty-scaled) to the crafting player, green flash
       const _medHeal = this.hc.medkitHeal;

@@ -81,10 +81,11 @@
 //          river canvas); _pondWaterTiles, _shimmerTable (pond/lake alpha shimmer)
 //    log:  [WORLD ]
 //
-// 2. ENEMY AI / PATHFINDING / DAMAGE  (src/enemy-ai.js)
+// 2. ENEMY AI / PATHFINDING / DAMAGE  (src/enemy-ai.js; applyTerrainEffects in src/game-scene.js)
 //    fns:  updateEnemies, _steerToward, _hasLOS,
 //          _findWallOnPath, _hurtEnemy,
-//          killEnemy, _startDormantIfFar
+//          killEnemy, _startDormantIfFar,
+//          applyTerrainEffects (also runs for raiders and animals)
 //    spawn: spawnEnemies, _spawnGroup, _spawnBiomeEnemy,
 //           _spawnWaterLurker
 //    cfg:  MAX_ENEMIES, MAX_ACTIVE_ENEMIES, DORMANT_RADIUS, WAKE_RADIUS
@@ -129,7 +130,7 @@
 //    log:  [PLAYER]
 //
 // 8. BUILDING & CRAFTING  (src/building-crafting.js; GameScene.RECIPES stays in src/game-scene.js)
-//    build: toggleBuildMode, updateBuildMode, placeBuild, _buildSpotError, exitBuildMode, _placeWallSprite,
+//    build: updateBuildMode, placeBuild, _buildSpotError, exitBuildMode, _placeWallSprite,
 //           _tryTeardownBuild, openGate, getBuildCost, getTeamInv
 //    craft: openCraftMenu, closeCraftMenu, updateCraftMenu, craftSelected,
 //           renderCraftMenu, _craftScrollToSel
@@ -158,9 +159,10 @@
 //     cfg:  FOG_REVEAL_R, FOG_UPDATE_INTERVAL
 //     data: _relicPOIs, relicsHeld, altarPos, altarDiscovered, _fireGlows
 //
-// 12. RAIDERS (camps + raid events)
+// 12. RAIDERS (camps + raid events)  (src/game-scene.js)
 //     fns:  updateRaiders, placeRaiderCamp, spawnRaiders, spawnHuntingParty,
-//           checkRaidCacheRange, openRaidCache, _fireRaiderShot
+//           checkRaidCacheRange, openRaidCache, _fireRaiderShot,
+//           applyTerrainEffects (raiders slide on ice, slow on tundra)
 //     data: raidCamp, raidRespawnDay, raiders
 //
 // 13. HARVESTING & RESOURCES
@@ -226,6 +228,7 @@
 //
 // ── COMMON GOTCHAS ───────────────────────────────────────────
 // • Two cameras: new world objects must call hudCam.ignore(obj).
+// • Draw order: trees, rocks, mountains, players and enemies are Y-sorted in depth band 9..9.9 via _sortDepth(feetY); keep ground items/structures <= 8 and bullets/bars >= 10.
 // • Water detection uses the _waterMap Uint8Array (index tx + ty*MAP_W), NOT physics overlap.
 // • Enemy dormancy: enemies > DORMANT_RADIUS are physics-disabled and hidden;
 //   they re-enable inside WAKE_RADIUS (hysteresis).
