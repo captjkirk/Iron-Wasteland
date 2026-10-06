@@ -76,17 +76,13 @@ Object.assign(GameScene.prototype, {
     // Biome ground map — key for each tile
     const groundTexMap = { grass:'grass', waste:'ground_waste', swamp:'ground_swamp', tundra:'ground_tundra', ruins:'ground_ruins', fungal:'ground_fungal', desert:'ground_desert' };
 
-    // Base ground fill (grass) then overlay biome tiles in patches
-    this._w(this.add.tileSprite(cx, cy, worldW, worldH, 'grass').setOrigin(0.5).setDepth(0));
-
-    // Place biome ground tiles in a grid (every 3 tiles for perf)
+    // Ground: one 3×3-tile patch per cell, plain images sharing a baked texture per biome
+    // (see buildTextures). Grass keeps depth 0 and other biomes 0.5, as the old base layer did.
     for (let tx = 0; tx < CFG.MAP_W; tx += 3) {
       for (let ty = 0; ty < CFG.MAP_H; ty += 3) {
         const biome = getBiome(tx, ty);
-        if (biome === 'grass') continue; // already grass base
-        const key = groundTexMap[biome];
-        const img = this.add.tileSprite(tx * TILE, ty * TILE, TILE * 3, TILE * 3, key).setOrigin(0).setDepth(0.5);
-        this._w(img);
+        const key = groundTexMap[biome] || 'grass';
+        this._w(this.add.image(tx * TILE, ty * TILE, key + '_3x3').setOrigin(0).setDepth(biome === 'grass' ? 0 : 0.5));
       }
     }
 
@@ -1065,7 +1061,7 @@ Object.assign(GameScene.prototype, {
         for (let wx = bx+1; wx < bx+blockW-1; wx++) {
           for (let wy = by+1; wy < by+blockH-1; wy++) {
             if (wx < 2 || wx > CFG.MAP_W-3 || wy < 2 || wy > CFG.MAP_H-3) continue;
-            this._w(this.add.tileSprite(wx*TILE, wy*TILE, TILE, TILE, 'ruin_floor').setOrigin(0).setDepth(0.6));
+            this._w(this.add.image(wx*TILE, wy*TILE, 'ruin_floor').setOrigin(0).setDepth(0.6));
             if (this._mmFloorTiles) this._mmFloorTiles.push(wx, wy);
           }
         }
@@ -1192,7 +1188,7 @@ Object.assign(GameScene.prototype, {
             for (let dy = 1; dy < H - 1; dy++) {
               const tx = x0 + dx, ty = y0 + dy;
               if (tx < 2 || tx > MAP_W - 3 || ty < 2 || ty > MAP_H - 3) continue;
-              this._w(this.add.tileSprite(tx * TILE, ty * TILE, TILE, TILE, floorKey).setOrigin(0).setDepth(0.65));
+              this._w(this.add.image(tx * TILE, ty * TILE, floorKey).setOrigin(0).setDepth(0.65));
             }
           }
         }

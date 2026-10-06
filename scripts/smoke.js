@@ -3,10 +3,12 @@
 //   2. In play: loads ?seed=1&renderer=canvas (headless WebKit loses the WebGL context in the
 //      Game scene, so the canvas renderer stands in), starts a solo game, waits for the world,
 //      plays PLAY_MS and fails on any console or page error. WebGL-only bugs stay invisible.
+//      Also fails when textures and object canvases hold more than PIXEL_BUDGET_MB of pixels.
 const { webkit } = require('playwright');
 process.env.PORT = '0'; // any free port, so a running `npm run serve` is no obstacle
 const server = require('../server.js');
 const PLAY_MS = 10000;
+const PIXEL_BUDGET_MB = 64; // RGBA bytes; an iPhone tab dies well short of 1 GB in total
 
 async function pass(browser, name, url, run) {
   const page = await browser.newPage();
@@ -44,6 +46,18 @@ async function pass(browser, name, url, run) {
     await page.waitForTimeout(PLAY_MS);
     const fps = await page.evaluate(() => Math.round(_phaserGame.loop.actualFps));
     console.log(`in play: world built, ${PLAY_MS / 1000} s played at ${fps} fps`);
+    // Pixel memory: every texture plus every canvas a game object owns (TileSprite, Text).
+    // A world-sized TileSprite and 10k patch TileSprites once came to ~735 MB here and got
+    // the tab killed on iPhone (#238).
+    const px = await page.evaluate(() => {
+      let n = 0;
+      for (const t of Object.values(_phaserGame.textures.list)) for (const s of t.source) n += s.width * s.height;
+      for (const o of _phaserGame.scene.getScene('Game').children.list) if (o.canvas) n += o.canvas.width * o.canvas.height;
+      return n;
+    });
+    const mb = Math.round(px * 4 / 1e6);
+    console.log(`in play: ${mb} MB of pixel memory (budget ${PIXEL_BUDGET_MB} MB)`);
+    if (mb > PIXEL_BUDGET_MB) throw new Error(`pixel memory ${mb} MB is over the ${PIXEL_BUDGET_MB} MB budget`);
   });
 
   await browser.close();
