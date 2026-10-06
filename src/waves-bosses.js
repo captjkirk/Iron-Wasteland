@@ -56,6 +56,9 @@ Object.assign(GameScene.prototype, {
     if (this.hudCam) this.hudCam.ignore(spr);
     this._log('spawnBoss: sprite created; adding collider', 'world');
     this.physics.add.collider(spr, this.obstacles, (bSpr, obstacle) => {
+        // Terrain stays standing; only trees, rocks and player walls smash (#151).
+        const k = obstacle?.texture?.key || '';
+        if (k.startsWith('mountain') || k === 'ruin_block' || k === 'water_deep') return;
         const now = this.time.now;
         if (obstacle?.active && now > (this.boss?._smashCooldown || 0)) {
             if (this.boss) {
