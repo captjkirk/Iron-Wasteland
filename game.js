@@ -45,10 +45,12 @@
 //                          ControlsScene, BootScene, ModeSelectScene,
 //                          SettingsScene, CharSelectScene
 //
-//   src/game-scene.js    — GameScene: gameplay systems 2-22 (see list below)
+//   src/game-scene.js    — GameScene: gameplay systems 2-3 and 5-22 (see list below)
 //                          Also: GameScene.RECIPES static property
 //
 //   src/world-gen.js     — System 1, added to GameScene.prototype; loads after game-scene.js
+//
+//   src/waves-bosses.js  — System 4, added to GameScene.prototype; loads after world-gen.js
 //
 //   src/game-over.js     — GameOverScene (death + stats screen)
 //
@@ -87,10 +89,9 @@
 //    fns:  updateEnemyDens, updateWaterDens
 //    data: enemyDens[], waterDens[]   (each: liveCount, type, pos, timer)
 //
-// 4. WAVES & BOSSES
+// 4. WAVES & BOSSES  (src/waves-bosses.js)
 //    fns:  updateWaves, updateBoss, spawnBoss, _bossExecuteSpecial,
-//          _bossSmash, _bossTelegraph, _fireRaiderShot, _fireArrow, _fireNailGun,
-//          _fireShieldThrow
+//          _bossSmash, _bossTelegraph
 //    data: waveNum, waveTimer, boss, _bossChance, huntNextDay
 //    log:  [WORLD ], [COMBAT]
 //
@@ -105,7 +106,8 @@
 // 6. PLAYER COMBAT (per-character abilities)
 //    fns:  doAttack, doAlt, meleeSwing, _triggerAtkAnim, _hitPause,
 //          _floatDamage, _knightShieldBlock, _dropSpiderWeb,
-//          _emitCharmSparkle, _emitLurkerBubble
+//          _emitCharmSparkle, _emitLurkerBubble,
+//          _fireArrow, _fireNailGun, _fireShieldThrow
 //    chars by id: knight, gunslinger, architect, charmer,
 //                 raider, spider, lurker, troll
 //    data: player.atkCooldown, player.ammo, player.reserveAmmo, teamAmmoPool
@@ -151,7 +153,7 @@
 //
 // 12. RAIDERS (camps + raid events)
 //     fns:  updateRaiders, placeRaiderCamp, spawnRaiders,
-//           checkRaidCacheRange, openRaidCache
+//           checkRaidCacheRange, openRaidCache, _fireRaiderShot
 //     data: raidCamp, raidRespawnDay, raiders
 //
 // 13. HARVESTING & RESOURCES
