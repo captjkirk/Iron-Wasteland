@@ -1556,9 +1556,9 @@ class GameScene extends Phaser.Scene {
           const gx = Phaser.Math.Clamp(px + Math.cos(ang) * 80, TILE * 4, (MAP_W - 4) * TILE);
           const gy = Phaser.Math.Clamp(py + Math.sin(ang) * 80, TILE * 4, (MAP_H - 4) * TILE);
           const sizeMult = Phaser.Math.FloatBetween(1.2, 1.6);
-          const guardspr = this.physics.add.image(gx, gy, 'bear').setScale(2.2 * sizeMult).setDepth(8);
+          const guardspr = this.physics.add.image(gx, gy, 'bear').setScale(1.1 * sizeMult).setDepth(8);
           guardspr.setCollideWorldBounds(true);
-          guardspr.body.setSize(24, 18);
+          guardspr.body.setSize(48, 36);
           if (this.hudCam) this.hudCam.ignore(guardspr);
           this.physics.add.collider(guardspr, this.obstacles);
           const eg = {
@@ -4671,11 +4671,13 @@ class GameScene extends Phaser.Scene {
     else                 { bx = worldW-TILE*4; by = Phaser.Math.Between(TILE*4, worldH-TILE*4); }
 
     this._log(`spawnBoss: picked ${bt.name} at (${bx|0},${by|0})`, 'world');
-    // Boss sprite: 3× on new 56×60 textures ≈ 168×180 in-game (twice the pixel density of the old 4×40).
-    const BOSS_SCALE = 3;
+    // Boss sprite: 1.5× on 112×120 textures ≈ 168×180 in-game (same pixel density as the players).
+    const BOSS_SCALE = 1.5;
+    // The 'boss_shadow' texture was not redrawn, so it keeps the old 3× base.
+    const BOSS_SHADOW_SCALE_X = 2.7, BOSS_SHADOW_SCALE_Y = 2.4;
     const spr = this.physics.add.image(bx, by, bt.key).setScale(BOSS_SCALE).setDepth(12);
     spr.setCollideWorldBounds(true);
-    spr.body.setSize(28, 28);
+    spr.body.setSize(56, 56);
     if (this.hudCam) this.hudCam.ignore(spr);
     this._log('spawnBoss: sprite created; adding collider', 'world');
     this.physics.add.collider(spr, this.obstacles, (bSpr, obstacle) => {
@@ -4696,7 +4698,7 @@ class GameScene extends Phaser.Scene {
 
     // Shadow — tracks boss every frame, sits below the sprite so terrain still reads.
     const shadow = this.add.image(bx, by + 36, 'boss_shadow')
-      .setScale(BOSS_SCALE * 0.9, BOSS_SCALE * 0.8)
+      .setScale(BOSS_SHADOW_SCALE_X, BOSS_SHADOW_SCALE_Y)
       .setDepth(3).setAlpha(0.75);
     if (this.hudCam) this.hudCam.ignore(shadow);
 
@@ -4764,8 +4766,8 @@ class GameScene extends Phaser.Scene {
     this._log(`spawnBoss: entourage scheduled  count=${entourageCount}`, 'world');
     const typeKey = (bt.biome === 'tundra') ? 'wolf' : (bt.biome === 'swamp') ? 'rat' : 'wolf';
     const t = typeKey === 'wolf'
-      ? { key:'wolf', hp:60, speed:100, dmg:9, baseScale:1.8, w:20, h:12 }
-      : { key:'rat',  hp:30, speed:140, dmg:6, baseScale:1.4, w:15, h:9  };
+      ? { key:'wolf', hp:60, speed:100, dmg:9, baseScale:0.9, w:40, h:24 }
+      : { key:'rat',  hp:30, speed:140, dmg:6, baseScale:0.7, w:30, h:18 };
     const baseAggro = { wolf: 190, rat: 110 }[t.key] || 160;
     for (let i = 0; i < entourageCount; i++) {
       this.time.delayedCall(i * 120, () => {
@@ -4791,7 +4793,7 @@ class GameScene extends Phaser.Scene {
           // Escort: map-wide aggro + dormancy-exempt so they actively march toward the
           // player WITH the boss instead of going dormant at the distant edge spawn and
           // never being seen (the "boss had no entourage" report).
-          aggroRange: 99999, attackRange: (30 + t.w/2) * sizeMult,
+          aggroRange: 99999, attackRange: (30 + t.w/4) * sizeMult,
           _bossEscort: true,
           sizeMult,
         });
@@ -5080,10 +5082,10 @@ class GameScene extends Phaser.Scene {
             const ex = Phaser.Math.Clamp(b.spr.x + Math.cos(ang) * 90, CFG.TILE*2, wW-CFG.TILE*2);
             const ey = Phaser.Math.Clamp(b.spr.y + Math.sin(ang) * 90, CFG.TILE*2, wH-CFG.TILE*2);
             const sizeMult = Phaser.Math.FloatBetween(0.9, 1.15);
-            const sc = 1.9 * sizeMult;
+            const sc = 0.95 * sizeMult;
             const eSpr = this.physics.add.image(ex, ey, 'wolf').setScale(sc).setDepth(9);
             eSpr.setCollideWorldBounds(true);
-            eSpr.body.setSize(20, 12);
+            eSpr.body.setSize(40, 24);
             if (this.hudCam) this.hudCam.ignore(eSpr);
             this.physics.add.collider(eSpr, this.obstacles);
             this.enemies.push({
@@ -5353,7 +5355,7 @@ class GameScene extends Phaser.Scene {
         if (den.liveCount >= 4) return;
         const types = ['wolf','rat','rat'];
         const type = types[Phaser.Math.Between(0, types.length-1)];
-        const typeDef = { wolf:{hp:60,speed:75,dmg:6,baseScale:1.8,w:20,h:12}, rat:{hp:30,speed:105,dmg:4,baseScale:1.4,w:15,h:9} };
+        const typeDef = { wolf:{hp:60,speed:75,dmg:6,baseScale:0.9,w:40,h:24}, rat:{hp:30,speed:105,dmg:4,baseScale:0.7,w:30,h:18} };
         const t = typeDef[type];
         const sizeMult = Phaser.Math.FloatBetween(1.0, 1.3);
         const sc = t.baseScale * sizeMult;
@@ -6490,7 +6492,7 @@ class GameScene extends Phaser.Scene {
       this.cameras.main.shake(600, 0.018);
       // Scale-up flash on the corpse sprite — tween fights with the fade, but
       // since it targets scale not alpha, both complete naturally.
-      const bs = e.baseScale || 3;
+      const bs = e.baseScale || 1.5;
       this.tweens.add({ targets: e.spr, scaleX: bs * 1.35, scaleY: bs * 1.35, duration: 500, ease: 'Cubic.Out' });
       e.spr.setTint(0xffffff);
       // Shadow fade
@@ -6809,11 +6811,11 @@ class GameScene extends Phaser.Scene {
       const biomeGuardType = { grass:'wolf', tundra:'wolf', swamp:'rat', waste:'bear', fungal:'bog_lurker', desert:'dust_hound' };
       for (const loc of this._structureLocs) {
         const type = biomeGuardType[loc.biome] || 'wolf';
-        const t = { wolf:      {key:'wolf',      hp:70, speed:95, dmg:10,baseScale:2.0,w:20,h:12},
-                    rat:       {key:'rat',       hp:38, speed:145,dmg:7, baseScale:1.6,w:15,h:9 },
-                    bear:      {key:'bear',      hp:160,speed:58, dmg:20,baseScale:2.4,w:24,h:18},
-                    bog_lurker:{key:'bog_lurker',hp:65, speed:60, dmg:14,baseScale:1.8,w:20,h:14},
-                    dust_hound:{key:'dust_hound',hp:35, speed:125,dmg:6, baseScale:1.3,w:18,h:12,atkInterval:1500} }[type];
+        const t = { wolf:      {key:'wolf',      hp:70, speed:95, dmg:10,baseScale:1.0, w:40,h:24},
+                    rat:       {key:'rat',       hp:38, speed:145,dmg:7, baseScale:0.8, w:30,h:18},
+                    bear:      {key:'bear',      hp:160,speed:58, dmg:20,baseScale:1.2, w:48,h:36},
+                    bog_lurker:{key:'bog_lurker',hp:65, speed:60, dmg:14,baseScale:0.9, w:40,h:28},
+                    dust_hound:{key:'dust_hound',hp:35, speed:125,dmg:6, baseScale:0.65,w:36,h:24,atkInterval:1500} }[type];
         const count = Phaser.Math.Between(2, 4);
         for (let i = 0; i < count; i++) {
           const ang = (i / count) * Math.PI * 2;
@@ -6836,7 +6838,7 @@ class GameScene extends Phaser.Scene {
             hp: Math.floor(t.hp * sizeMult * guardDiff), maxHp: Math.floor(t.hp * sizeMult * guardDiff),
             speed: t.speed * sizeMult * guardSpeed, dmg: Math.max(1, Math.floor(t.dmg * sizeMult * guardDiff)),
             attackTimer: 0, wanderTimer: 0,
-            aggroRange: aggroR, attackRange: (30 + t.w / 2) * sizeMult,
+            aggroRange: aggroR, attackRange: (30 + t.w / 4) * sizeMult,
             sizeMult, structureGuard: true,
           };
           this._startDormantIfFar(eGuard, ex, ey);
@@ -6847,7 +6849,7 @@ class GameScene extends Phaser.Scene {
 
     // Spawn guards around the Radio Tower (ruins biome spiders, aggressive patrol)
     if (this.radioTower) {
-      const t = { key:'spider_ruins', hp:55, speed:85, dmg:9, baseScale:1.8, w:18, h:12 };
+      const t = { key:'spider_ruins', hp:55, speed:85, dmg:9, baseScale:0.9, w:36, h:24 };
       const towerDiff = this._diffMult();
       const towerSpeed = this._diffSpeedMult();
       const count = Phaser.Math.Between(4, 6);
@@ -7353,14 +7355,14 @@ class GameScene extends Phaser.Scene {
 
   _spawnWaterLurker(x, y) {
     const sizeMult = Phaser.Math.FloatBetween(1.0, 1.4);
-    const sc = 2.0 * sizeMult;
+    const sc = 1.0 * sizeMult;
     const D = this._diffMult();
     const hp  = Math.floor(75 * sizeMult * D);
     const dmg = Math.max(1, Math.floor(14 * sizeMult * D));
     const spd = 52 * this._diffSpeedMult();
     const spr = this.physics.add.image(x, y, 'water_lurker').setScale(sc).setDepth(8);
     spr.setCollideWorldBounds(true);
-    spr.body.setSize(22, 12);
+    spr.body.setSize(44, 24);
     if (this.hudCam) this.hudCam.ignore(spr);
     this.physics.add.collider(spr, this.obstacles);
     const e = {
@@ -7418,7 +7420,7 @@ class GameScene extends Phaser.Scene {
         if (this.hudCam) this.hudCam.ignore(spr);
         this.physics.add.collider(spr, this.obstacles);
         const aggroR = t.aggro || 160;
-        const atkR = (30 + t.w / 2) * sizeMult;
+        const atkR = (30 + t.w / 4) * sizeMult;
         const e = { spr, hp, maxHp:hp, speed:spd, dmg, atkInterval, type, attackTimer:0,
           wanderTimer:Phaser.Math.Between(0,2000), aggroRange:aggroR, attackRange:atkR, sizeMult };
         if (type === 'bog_lurker') { e._lurking = true; spr.setAlpha(0.25); }
@@ -7545,7 +7547,7 @@ class GameScene extends Phaser.Scene {
         this.physics.add.collider(spr, this.obstacles);
         // Per-type aggro ranges (bears territorial, rats skittish) from ENEMY_STATS.
         const aggroR = (t.aggro || 160) * (sizeMult > 1.2 ? 1.2 : 1);
-        const atkR = (30 + t.w/2) * sizeMult;
+        const atkR = (30 + t.w/4) * sizeMult;
         const e = { spr, hp, maxHp:hp, speed:spd, dmg, atkInterval, type:key, attackTimer:0, wanderTimer:Phaser.Math.Between(0,2000), aggroRange:aggroR, attackRange:atkR, sizeMult };
         this._startDormantIfFar(e, ex, ey);
         this.enemies.push(e);

@@ -44,118 +44,333 @@ function drawRiverFrame(ctx, off) {
   }
 }
 
+// Enemy textures are drawn at the same pixel density as the player sprites
+// (shown at roughly 1× world scale per texture pixel ×1.5), so their display
+// scales in ENEMY_STATS / game-scene.js are half what they were at the old size.
+// Heads face RIGHT; the game flips X to face left. Light comes from the top-left.
+
 function drawWolf(g) {
+  // Grey wolf, 40×24.
   g.clear();
-  g.fillStyle(0x888899); g.fillRect(2, 3, 14, 6);
-  g.fillStyle(0x9999aa); g.fillRect(13, 1, 5, 6);
-  g.fillStyle(0x777788); g.fillRect(16, 0, 2, 3); g.fillRect(14, 0, 2, 3);
-  g.fillStyle(0xbbbbcc); g.fillRect(17, 3, 2, 3);
-  g.fillStyle(0x222222); g.fillRect(18, 4, 1, 1);
-  g.fillStyle(0xff4400); g.fillRect(16, 2, 1, 1);
-  g.fillStyle(0x777788); g.fillRect(3, 8, 2, 3); g.fillRect(7, 8, 2, 3);
-  g.fillRect(10, 8, 2, 3); g.fillRect(14, 8, 2, 3);
-  g.fillStyle(0x777788); g.fillRect(0, 2, 3, 3);
-  g.fillStyle(0xffffff); g.fillRect(0, 2, 2, 2);
-  g.generateTexture('wolf', 20, 12);
+  // ── TAIL: bushy, raised, pale tip (far left) ──
+  g.fillStyle(0x666677); g.fillRect(2, 6, 6, 6);
+  g.fillStyle(0x777788); g.fillRect(1, 4, 6, 5);
+  g.fillStyle(0xddddee); g.fillRect(0, 4, 4, 4);             // pale tip
+  g.fillStyle(0xffffff); g.fillRect(0, 4, 2, 2);             // tip highlight
+  // ── LEGS: far pair darker, near pair lit on the front edge ──
+  g.fillStyle(0x666677); g.fillRect(14, 16, 4, 5); g.fillRect(28, 16, 4, 5);   // far legs
+  g.fillStyle(0x555566); g.fillRect(14, 21, 5, 2); g.fillRect(28, 21, 5, 2);   // far paws
+  g.fillStyle(0x777788); g.fillRect(6, 16, 4, 5); g.fillRect(20, 16, 4, 5);    // near legs
+  g.fillStyle(0x8a8a9b); g.fillRect(6, 16, 1, 4); g.fillRect(20, 16, 1, 4);    // leg highlight
+  g.fillStyle(0x5a5a6a); g.fillRect(6, 21, 5, 2); g.fillRect(20, 21, 5, 2);    // near paws
+  g.fillStyle(0xddddcc);                                                         // claws
+  g.fillRect(10, 22, 1, 1); g.fillRect(18, 22, 1, 1); g.fillRect(24, 22, 1, 1); g.fillRect(32, 22, 1, 1);
+  // ── BODY: lean torso, lit back, shaded underside ──
+  g.fillStyle(0x888899); g.fillRect(5, 6, 25, 12); g.fillRect(4, 8, 28, 8);
+  g.fillStyle(0xa0a0b0); g.fillRect(6, 6, 22, 3);             // lit back
+  g.fillStyle(0xb4b4c4); g.fillRect(8, 6, 14, 1);             // top-light rim
+  g.fillStyle(0x6c6c7c); g.fillRect(7, 15, 22, 3);            // shaded belly
+  g.fillStyle(0x5c5c6c); g.fillRect(10, 17, 16, 1);           // belly underside
+  g.fillStyle(0x7a7a8a); g.fillRect(4, 9, 7, 8);              // haunch over the hind leg
+  g.fillStyle(0x9a9aaa); g.fillRect(5, 9, 4, 2);              // haunch highlight
+  // fur strands: dark streaks swept toward the tail, pale flecks on the back
+  g.fillStyle(0x76768a);
+  g.fillRect(12, 10, 3, 1); g.fillRect(17, 11, 3, 1); g.fillRect(22, 10, 3, 1);
+  g.fillRect(14, 13, 3, 1); g.fillRect(20, 13, 2, 1); g.fillRect(9, 12, 2, 1);
+  g.fillStyle(0xb0b0c0);
+  g.fillRect(11, 8, 2, 1); g.fillRect(15, 8, 2, 1); g.fillRect(21, 8, 2, 1);
+  // chest ruff: pale fur at the front of the body
+  g.fillStyle(0xa8a8b8); g.fillRect(27, 10, 5, 7);
+  g.fillStyle(0xc4c4d4); g.fillRect(28, 11, 2, 3);
+  // ── HEAD ──
+  g.fillStyle(0x666677); g.fillTriangle(27, 6, 29, 0, 32, 6); // back ear
+  g.fillStyle(0x777788); g.fillTriangle(30, 6, 33, 0, 36, 6); // front ear
+  g.fillStyle(0x4a4a58); g.fillTriangle(32, 5, 33, 2, 34, 5); // inner ear
+  g.fillStyle(0x9999aa); g.fillRect(26, 4, 9, 10);            // skull
+  g.fillStyle(0xb0b0c0); g.fillRect(27, 4, 7, 2);             // lit crown
+  g.fillStyle(0x7d7d8e); g.fillRect(27, 11, 8, 3);            // cheek / jaw shade
+  // snout
+  g.fillStyle(0xbbbbcc); g.fillRect(34, 6, 5, 6);
+  g.fillStyle(0xd4d4e2); g.fillRect(34, 6, 4, 1);             // bridge highlight
+  g.fillStyle(0x9999aa); g.fillRect(34, 11, 4, 1);            // under-jaw
+  g.fillStyle(0x444455); g.fillRect(34, 10, 4, 1);            // mouth line
+  g.fillStyle(0x222222); g.fillRect(37, 6, 2, 2);             // nose
+  g.fillStyle(0x555555); g.fillRect(37, 6, 1, 1);             // nose glint
+  g.fillStyle(0xffffff); g.fillRect(36, 11, 1, 1);            // fang
+  // eye: red, hot glint, heavy brow
+  g.fillStyle(0x555566); g.fillRect(30, 4, 4, 1);             // brow
+  g.fillStyle(0xff4400); g.fillRect(31, 5, 2, 2);
+  g.fillStyle(0xffcc88); g.fillRect(31, 5, 1, 1);
+  g.generateTexture('wolf', 40, 24);
 }
 
 function drawRat(g) {
+  // Giant rat, 30×18.
   g.clear();
-  g.fillStyle(0x8b5a2b); g.fillRect(3, 2, 9, 5);
-  g.fillStyle(0xaa7744); g.fillRect(10, 1, 4, 5);
-  g.fillStyle(0xff9999); g.fillRect(9, 0, 2, 2);
-  g.fillStyle(0x333333); g.fillRect(13, 2, 1, 1);
-  g.fillStyle(0xff4400); g.fillRect(12, 1, 1, 1);
-  g.fillStyle(0x8b5a2b); g.fillRect(3, 6, 2, 2); g.fillRect(6, 6, 2, 2); g.fillRect(9, 6, 2, 2);
-  g.fillStyle(0xcc8866); g.fillRect(0, 3, 4, 1); g.fillRect(0, 4, 2, 1);
-  g.generateTexture('rat', 15, 9);
+  // ── TAIL: long, pink, curling down-left ──
+  g.fillStyle(0xcc8866); g.fillRect(4, 7, 4, 2); g.fillRect(1, 8, 4, 2); g.fillRect(0, 10, 2, 2);
+  g.fillStyle(0xddaa88); g.fillRect(4, 7, 3, 1); g.fillRect(1, 8, 2, 1);   // lit top edge
+  g.fillStyle(0xaa6655); g.fillRect(2, 9, 3, 1); g.fillRect(0, 11, 2, 1);  // shaded underside
+  // ── LEGS: far legs darker, pink feet, pale claws ──
+  g.fillStyle(0x6b4220); g.fillRect(12, 12, 3, 4); g.fillRect(21, 12, 3, 4);   // far legs
+  g.fillStyle(0x8b5a2b); g.fillRect(7, 12, 4, 4); g.fillRect(17, 12, 3, 4);    // near legs
+  g.fillStyle(0xcc8866);                                                         // feet
+  g.fillRect(7, 15, 5, 1); g.fillRect(12, 15, 4, 1); g.fillRect(17, 15, 4, 1); g.fillRect(21, 15, 4, 1);
+  g.fillStyle(0xeeddcc); g.fillRect(11, 16, 1, 1); g.fillRect(20, 16, 1, 1); g.fillRect(24, 16, 1, 1);
+  // ── BODY: hunched and round ──
+  g.fillStyle(0x8b5a2b); g.fillEllipse(15, 9, 21, 11);
+  g.fillStyle(0xa06a38); g.fillEllipse(14, 7, 16, 5);         // lit back
+  g.fillStyle(0xb47c44); g.fillRect(10, 5, 7, 1);             // top-light rim
+  g.fillStyle(0x6b4220); g.fillEllipse(15, 13, 16, 3);        // shaded belly
+  g.fillStyle(0x7a4e24); g.fillEllipse(9, 10, 7, 6);          // haunch
+  g.fillStyle(0x9a6634); g.fillRect(7, 8, 3, 1);              // haunch highlight
+  g.fillStyle(0x6b4220);                                      // matted fur flecks
+  g.fillRect(12, 9, 2, 1); g.fillRect(16, 8, 2, 1); g.fillRect(19, 10, 2, 1); g.fillRect(14, 11, 1, 1);
+  g.fillStyle(0xc08a55); g.fillRect(13, 6, 1, 1); g.fillRect(17, 6, 1, 1);
+  // ── HEAD: tapered snout ──
+  g.fillStyle(0xaa7744); g.fillEllipse(23, 8, 9, 8);
+  g.fillTriangle(24, 4, 24, 11, 29, 9);                       // snout wedge
+  g.fillStyle(0xc08a55); g.fillRect(21, 4, 5, 2);             // lit crown
+  g.fillStyle(0x8b5a2b); g.fillRect(21, 10, 6, 2);            // jaw shade
+  g.fillStyle(0xaa7744); g.fillCircle(20, 3, 3);              // ear
+  g.fillStyle(0xff9999); g.fillCircle(20, 3, 2);              // pink inner ear
+  g.fillStyle(0xffcccc); g.fillRect(19, 2, 1, 1);
+  g.fillStyle(0xff4400); g.fillRect(24, 5, 2, 2);             // eye
+  g.fillStyle(0xffaa66); g.fillRect(24, 5, 1, 1);             // eye glint
+  g.fillStyle(0x333333); g.fillRect(28, 8, 2, 2);             // nose
+  g.fillStyle(0xffffee); g.fillRect(27, 10, 1, 2);            // buck teeth
+  g.fillStyle(0xccbbaa); g.fillRect(25, 9, 2, 1); g.fillRect(25, 11, 2, 1); // whiskers
+  g.generateTexture('rat', 30, 18);
 }
 
 function drawBear(g) {
+  // Brown bear, 48×36: shoulder hump, heavy clawed paws.
   g.clear();
-  g.fillStyle(0x6b3a1f); g.fillRect(2, 4, 18, 10);
-  g.fillStyle(0x8b5a2b); g.fillRect(14, 2, 8, 8);
-  g.fillStyle(0x6b3a1f); g.fillRect(19, 0, 3, 3);
-  g.fillStyle(0x6b3a1f); g.fillRect(15, 0, 3, 3);
-  g.fillStyle(0xcc9966); g.fillRect(19, 4, 3, 4);
-  g.fillStyle(0x111111); g.fillRect(20, 5, 2, 1);
-  g.fillStyle(0xff3300); g.fillRect(18, 3, 1, 1);
-  g.fillStyle(0x6b3a1f); g.fillRect(2, 13, 4, 4); g.fillRect(8, 13, 4, 4);
-  g.fillRect(13, 13, 4, 4); g.fillRect(17, 13, 3, 4);
-  g.generateTexture('bear', 24, 18);
+  // ── LEGS (behind the body): far pair in shadow ──
+  g.fillStyle(0x4e2a14); g.fillRect(16, 26, 8, 6); g.fillRect(34, 26, 6, 6);   // far legs
+  g.fillStyle(0x3a1e0e); g.fillRect(16, 31, 9, 3); g.fillRect(34, 31, 7, 3);   // far paws
+  g.fillStyle(0x6b3a1f); g.fillRect(4, 26, 8, 6); g.fillRect(26, 26, 8, 6);    // near legs
+  g.fillStyle(0x7d4826); g.fillRect(4, 26, 2, 5); g.fillRect(26, 26, 2, 5);    // lit edge
+  g.fillStyle(0x4a2614); g.fillRect(4, 31, 9, 3); g.fillRect(26, 31, 9, 3);    // near paws
+  g.fillStyle(0xddccaa);                                                         // claws
+  g.fillRect(9, 34, 1, 1); g.fillRect(11, 34, 1, 1); g.fillRect(13, 33, 1, 1);
+  g.fillRect(31, 34, 1, 1); g.fillRect(33, 34, 1, 1); g.fillRect(35, 33, 1, 1);
+  // ── BODY ──
+  g.fillStyle(0x6b3a1f); g.fillEllipse(21, 18, 38, 22); g.fillRect(4, 12, 34, 16);
+  g.fillStyle(0x7a4526); g.fillEllipse(28, 11, 18, 10);       // shoulder hump
+  g.fillStyle(0x8b5a2b); g.fillEllipse(18, 12, 28, 8);        // lit back
+  g.fillStyle(0x9c6a3a); g.fillRect(10, 9, 14, 2); g.fillRect(25, 7, 7, 1); // top-light rim
+  g.fillStyle(0x4e2a14); g.fillEllipse(21, 26, 32, 6);        // shaded belly
+  g.fillStyle(0x5a3018); g.fillEllipse(6, 19, 6, 14);         // rump shade
+  g.fillStyle(0x6b3a1f); g.fillRect(1, 12, 3, 3);             // stub tail
+  g.fillStyle(0x5a3018);                                      // dark fur tufts
+  g.fillRect(10, 15, 2, 1); g.fillRect(16, 17, 3, 1); g.fillRect(22, 14, 2, 1); g.fillRect(14, 20, 2, 1);
+  g.fillRect(26, 19, 3, 1); g.fillRect(32, 16, 2, 1); g.fillRect(8, 20, 2, 1); g.fillRect(20, 21, 3, 1);
+  g.fillStyle(0xa87444);                                      // sunlit tufts
+  g.fillRect(12, 12, 2, 1); g.fillRect(19, 11, 2, 1); g.fillRect(27, 9, 2, 1); g.fillRect(31, 12, 2, 1);
+  // ── HEAD ──
+  g.fillStyle(0x6b3a1f); g.fillCircle(33, 3, 3); g.fillCircle(41, 3, 3);       // ears
+  g.fillStyle(0x4e2a14); g.fillRect(32, 2, 2, 2); g.fillRect(40, 2, 2, 2);     // inner ears
+  g.fillStyle(0x8b5a2b); g.fillEllipse(36, 12, 17, 16);       // skull
+  g.fillStyle(0xa06a3a); g.fillEllipse(34, 9, 11, 6);         // lit brow
+  g.fillStyle(0x6b3a1f); g.fillEllipse(35, 18, 14, 5);        // jaw shade
+  g.fillStyle(0x7a4526); g.fillRect(28, 12, 3, 7);            // neck ruff
+  g.fillStyle(0xcc9966); g.fillEllipse(42, 13, 9, 8);         // muzzle
+  g.fillStyle(0xddb080); g.fillRect(39, 10, 5, 2);            // muzzle highlight
+  g.fillStyle(0xaa7744); g.fillRect(39, 15, 6, 2);            // muzzle underside
+  g.fillStyle(0x111111); g.fillRect(43, 10, 4, 3);            // nose
+  g.fillStyle(0x555555); g.fillRect(43, 10, 1, 1);            // nose glint
+  g.fillStyle(0x3a1e0e); g.fillRect(40, 15, 6, 1);            // mouth
+  g.fillStyle(0xffffee); g.fillRect(44, 16, 1, 2);            // fang
+  g.fillStyle(0x5a3018); g.fillRect(35, 6, 4, 1);             // brow
+  g.fillStyle(0xff3300); g.fillRect(36, 7, 3, 2);             // eye
+  g.fillStyle(0xffaa77); g.fillRect(36, 7, 1, 1);             // eye glint
+  g.generateTexture('bear', 48, 36);
 }
 
 function drawIceCrawler(g) {
+  // Ice crawler, 36×24: segmented frost beetle seen from above, head on the right.
   g.clear();
-  g.fillStyle(0x6699bb); g.fillRect(2, 3, 14, 6);          // body
-  g.fillStyle(0x88bbdd); g.fillRect(3, 4, 12, 4);           // highlight
-  g.fillStyle(0x4477aa); g.fillRect(2, 3, 2, 2); g.fillRect(14, 3, 2, 2); // head/tail caps
-  // Six legs — 3 per side
+  // ── SIX LEGS (behind the shell), bent back toward the tail ──
   g.fillStyle(0x335577);
-  g.fillRect(4, 8, 1, 3); g.fillRect(7, 9, 1, 3); g.fillRect(10, 8, 1, 3);
-  g.fillRect(4, 1, 1, 3); g.fillRect(7, 0, 1, 3); g.fillRect(10, 1, 1, 3);
-  g.fillStyle(0xcceeff); g.fillRect(8, 5, 2, 1); // icy eye glint
-  g.generateTexture('ice_crawler', 18, 12);
+  g.fillRect(8, 16, 2, 4);  g.fillRect(6, 19, 2, 4);          // lower legs: thigh, then shin
+  g.fillRect(14, 17, 2, 4); g.fillRect(12, 20, 2, 4);
+  g.fillRect(20, 16, 2, 4); g.fillRect(18, 19, 2, 4);
+  g.fillRect(8, 4, 2, 4);   g.fillRect(6, 1, 2, 4);           // upper legs mirror them
+  g.fillRect(14, 3, 2, 4);  g.fillRect(12, 0, 2, 4);
+  g.fillRect(20, 4, 2, 4);  g.fillRect(18, 1, 2, 4);
+  g.fillStyle(0x5588aa);                                       // lit knee joints
+  g.fillRect(6, 19, 1, 1); g.fillRect(12, 20, 1, 1); g.fillRect(18, 19, 1, 1);
+  g.fillRect(6, 4, 1, 1);  g.fillRect(12, 3, 1, 1);  g.fillRect(18, 4, 1, 1);
+  g.fillStyle(0xaaddff);                                       // icy claw tips
+  g.fillRect(6, 22, 1, 1); g.fillRect(12, 23, 1, 1); g.fillRect(18, 22, 1, 1);
+  g.fillRect(6, 1, 1, 1);  g.fillRect(12, 0, 1, 1);  g.fillRect(18, 1, 1, 1);
+  // ── TAIL: pointed stinger on the left ──
+  g.fillStyle(0x335577); g.fillTriangle(0, 12, 5, 9, 5, 15);
+  g.fillStyle(0x4477aa); g.fillEllipse(6, 12, 6, 8);
+  // ── SHELL: four plates, lit upper half, shaded lower half ──
+  g.fillStyle(0x6699bb); g.fillEllipse(18, 12, 28, 12);
+  g.fillStyle(0x88bbdd); g.fillEllipse(17, 10, 24, 5);        // lit upper shell
+  g.fillStyle(0x4f80a8); g.fillEllipse(18, 15, 24, 4);        // shaded lower shell
+  g.fillStyle(0x4477aa);                                       // plate seams
+  g.fillRect(11, 7, 1, 10); g.fillRect(17, 6, 1, 12); g.fillRect(23, 7, 1, 10);
+  g.fillStyle(0xaaddff);                                       // plate edge highlights
+  g.fillRect(7, 8, 3, 1); g.fillRect(12, 7, 4, 1); g.fillRect(18, 7, 4, 1); g.fillRect(24, 8, 3, 1);
+  g.fillStyle(0xcceeff);                                       // frost sparkles
+  g.fillRect(9, 9, 1, 1); g.fillRect(15, 10, 1, 1); g.fillRect(20, 9, 1, 1); g.fillRect(26, 10, 1, 1);
+  // ── HEAD (right) with mandibles ──
+  g.fillStyle(0x335577);
+  g.fillTriangle(32, 8, 36, 9, 32, 11);                        // upper mandible
+  g.fillTriangle(32, 13, 36, 15, 32, 16);                      // lower mandible
+  g.fillStyle(0xcceeff); g.fillRect(34, 9, 1, 1); g.fillRect(34, 15, 1, 1); // mandible tips
+  g.fillStyle(0x4477aa); g.fillEllipse(30, 12, 8, 10);
+  g.fillStyle(0x5588bb); g.fillEllipse(29, 10, 5, 4);         // lit head plate
+  g.fillStyle(0xcceeff); g.fillRect(31, 9, 2, 2); g.fillRect(31, 14, 2, 2); // icy eyes
+  g.fillStyle(0xffffff); g.fillRect(31, 9, 1, 1); g.fillRect(31, 14, 1, 1); // eye glints
+  g.generateTexture('ice_crawler', 36, 24);
 }
 
 function drawSpiderRuins(g) {
+  // Ruins spider, 32×24: seen from above, head at the TOP, 4 jointed legs per side.
   g.clear();
-  g.fillStyle(0x3a1a4a); g.fillCircle(8, 6, 5);             // body
-  g.fillStyle(0x5a2a6a); g.fillCircle(8, 4, 3);             // head
-  g.fillStyle(0xcc44ff); g.fillRect(6, 3, 1, 1); g.fillRect(9, 3, 1, 1); // eyes
-  // 4 legs per side
+  // ── LEGS: inner segment rises to a knee, outer segment drops to the foot ──
+  const legY = [7, 11, 14, 17];
   g.fillStyle(0x2a0e38);
-  g.fillRect(0, 4, 4, 1); g.fillRect(1, 6, 4, 1); g.fillRect(0, 8, 4, 1); g.fillRect(1, 9, 3, 1);
-  g.fillRect(12, 4, 4, 1); g.fillRect(11, 6, 4, 1); g.fillRect(12, 8, 4, 1); g.fillRect(12, 9, 3, 1);
-  g.generateTexture('spider_ruins', 16, 12);
+  for (const y of legY) {
+    g.fillRect(4, y, 6, 2);  g.fillRect(2, y - 2, 3, 3);  g.fillRect(0, y - 1, 2, 5);   // left
+    g.fillRect(22, y, 6, 2); g.fillRect(27, y - 2, 3, 3); g.fillRect(30, y - 1, 2, 5);  // right
+  }
+  g.fillStyle(0x5a2a6a);                                       // lit knees
+  for (const y of legY) { g.fillRect(2, y - 2, 2, 1); g.fillRect(27, y - 2, 2, 1); }
+  g.fillStyle(0x1a0626);                                       // dark feet
+  for (const y of legY) { g.fillRect(0, y + 3, 2, 1); g.fillRect(30, y + 3, 2, 1); }
+  // ── ABDOMEN ──
+  g.fillStyle(0x3a1a4a); g.fillCircle(16, 13, 9);
+  g.fillStyle(0x4a2260); g.fillCircle(14, 11, 6);             // lit upper-left
+  g.fillStyle(0x2a0e38); g.fillEllipse(17, 19, 14, 5);        // shaded underside
+  g.fillStyle(0x7a3a9a); g.fillTriangle(13, 14, 19, 14, 16, 19); // violet chevron marking
+  g.fillStyle(0xcc44ff); g.fillRect(15, 15, 2, 1);
+  g.fillStyle(0x6a3a7a); g.fillRect(11, 9, 2, 1); g.fillRect(10, 10, 1, 1); // sheen
+  g.fillStyle(0x2a0e38);                                       // bristles
+  g.fillRect(9, 15, 1, 1); g.fillRect(22, 13, 1, 1); g.fillRect(20, 18, 1, 1); g.fillRect(11, 18, 1, 1);
+  // ── HEAD (cephalothorax) ──
+  g.fillStyle(0x1a0626); g.fillCircle(16, 7, 6);             // dark waist separating head from abdomen
+  g.fillStyle(0x5a2a6a); g.fillCircle(16, 7, 5);
+  g.fillStyle(0x7a3a8a); g.fillCircle(15, 6, 3);              // lit crown
+  g.fillStyle(0x1a0626); g.fillRect(14, 1, 1, 2); g.fillRect(17, 1, 1, 2); // fangs
+  g.fillStyle(0xcc44ff);                                       // eyes: 2 large, 2 small
+  g.fillRect(12, 5, 2, 2); g.fillRect(18, 5, 2, 2); g.fillRect(14, 4, 1, 1); g.fillRect(17, 4, 1, 1);
+  g.fillStyle(0xffccff); g.fillRect(12, 5, 1, 1); g.fillRect(18, 5, 1, 1); // glints
+  g.generateTexture('spider_ruins', 32, 24);
 }
 
 function drawBogLurker(g) {
+  // Bog lurker, 40×28: wet slime mound, face on the right, drips at the base.
   g.clear();
-  g.fillStyle(0x1a3a1a); g.fillEllipse(10, 8, 18, 10);      // body
-  g.fillStyle(0x2a5a2a); g.fillEllipse(10, 7, 14, 7);       // highlight
-  g.fillStyle(0x0a1e0a); g.fillRect(4, 10, 12, 4);          // bottom shadow
-  g.fillStyle(0x44aa44); g.fillRect(8, 5, 2, 2); g.fillRect(11, 6, 1, 1); // eyes
-  g.fillStyle(0x3a7a3a); g.fillRect(3, 8, 2, 2); g.fillRect(15, 9, 2, 2); // slime bumps
-  g.generateTexture('bog_lurker', 20, 14);
+  g.fillStyle(0x1a3a1a); g.fillEllipse(20, 16, 36, 20);      // body
+  g.fillStyle(0x0a1e0a); g.fillEllipse(20, 23, 30, 8);       // shaded base
+  g.fillRect(9, 24, 3, 4); g.fillRect(17, 25, 2, 3); g.fillRect(26, 24, 3, 4); g.fillRect(32, 23, 2, 3); // drips
+  g.fillStyle(0x2a5a2a); g.fillEllipse(19, 13, 28, 12);      // upper mass
+  g.fillStyle(0x3a7a3a); g.fillEllipse(16, 10, 16, 5);       // lit top
+  g.fillStyle(0x5a9a5a); g.fillRect(12, 8, 4, 1); g.fillRect(11, 9, 2, 1); // wet shine
+  g.fillStyle(0x8acc8a); g.fillRect(12, 8, 1, 1);
+  g.fillStyle(0x10280f);                                     // mottling
+  g.fillRect(24, 15, 3, 2); g.fillRect(10, 15, 2, 2); g.fillRect(30, 13, 2, 2); g.fillRect(19, 19, 3, 1);
+  g.fillStyle(0x3a7a3a); g.fillCircle(8, 18, 2); g.fillCircle(32, 20, 2); // slime bumps
+  g.fillStyle(0x5a9a5a); g.fillRect(7, 17, 1, 1); g.fillRect(31, 19, 1, 1);
+  // ── FACE ──
+  g.fillStyle(0x0a1e0a); g.fillRect(22, 17, 10, 2);         // mouth slit
+  g.fillStyle(0x99aa77); g.fillRect(24, 17, 1, 1); g.fillRect(27, 17, 1, 1); g.fillRect(30, 17, 1, 1); // teeth
+  g.fillStyle(0x44aa44, 0.3); g.fillRect(15, 9, 6, 6);      // eye glow
+  g.fillStyle(0x44aa44); g.fillRect(16, 10, 4, 4); g.fillRect(22, 12, 2, 2); // eyes
+  g.fillStyle(0x0a1e0a); g.fillRect(18, 11, 1, 2);          // slit pupil
+  g.fillStyle(0xccffcc); g.fillRect(16, 10, 1, 1); g.fillRect(22, 12, 1, 1); // glints
+  g.generateTexture('bog_lurker', 40, 28);
 }
 
 function drawDustHound(g) {
+  // Dust hound, 36×24: lean, spotted, hyena-like, raised hackles.
   g.clear();
-  g.fillStyle(0xaa7733); g.fillRect(3, 4, 11, 6);           // body
-  g.fillStyle(0xcc9944); g.fillRect(4, 5, 9, 4);            // highlight
-  g.fillStyle(0x997722); g.fillRect(13, 3, 4, 5);           // head
-  g.fillStyle(0x553311); g.fillRect(15, 4, 2, 1);           // snout
-  g.fillStyle(0x111111); g.fillRect(14, 3, 1, 1);           // eye
-  g.fillStyle(0x886622);
-  g.fillRect(5, 9, 2, 3); g.fillRect(9, 9, 2, 3);          // back legs
-  g.fillRect(4, 5, 2, 3); g.fillRect(1, 5, 2, 2);          // front legs
-  g.fillStyle(0xaa7733); g.fillRect(0, 3, 3, 2);            // tail
-  g.generateTexture('dust_hound', 18, 12);
+  // ── TAIL ──
+  g.fillStyle(0xaa7733); g.fillRect(1, 7, 7, 3);
+  g.fillStyle(0x886622); g.fillRect(0, 5, 3, 4);             // dark tuft
+  g.fillStyle(0xcc9944); g.fillRect(3, 7, 4, 1);             // lit edge
+  // ── LEGS: far pair darker ──
+  g.fillStyle(0x775511); g.fillRect(12, 17, 3, 5); g.fillRect(25, 17, 3, 5);   // far legs
+  g.fillStyle(0x553311); g.fillRect(12, 21, 4, 2); g.fillRect(25, 21, 4, 2);   // far paws
+  g.fillStyle(0x886622); g.fillRect(8, 17, 4, 5); g.fillRect(21, 17, 3, 5);    // near legs
+  g.fillStyle(0xaa8833); g.fillRect(8, 17, 1, 4); g.fillRect(21, 17, 1, 4);    // lit edge
+  g.fillStyle(0x553311); g.fillRect(8, 21, 5, 2); g.fillRect(21, 21, 4, 2);    // near paws
+  g.fillStyle(0xddccaa); g.fillRect(12, 22, 1, 1); g.fillRect(24, 22, 1, 1); g.fillRect(28, 22, 1, 1); // claws
+  // ── BODY: tucked belly, spotted coat ──
+  g.fillStyle(0xaa7733); g.fillEllipse(17, 13, 24, 11);
+  g.fillStyle(0xcc9944); g.fillEllipse(16, 11, 20, 5);       // lit back
+  g.fillStyle(0xddaa55); g.fillRect(9, 9, 10, 1);            // top-light rim
+  g.fillStyle(0x886622); g.fillEllipse(17, 16, 18, 4);       // shaded belly
+  g.fillStyle(0x997722); g.fillEllipse(9, 13, 7, 8);         // haunch
+  g.fillStyle(0xbb8833); g.fillRect(7, 10, 3, 2);            // haunch highlight
+  g.fillStyle(0x775511);                                     // spots
+  g.fillRect(11, 12, 2, 2); g.fillRect(15, 14, 2, 1); g.fillRect(18, 12, 2, 2); g.fillRect(22, 14, 2, 1); g.fillRect(13, 16, 1, 1);
+  g.fillStyle(0x886622);                                     // hackles along the shoulders
+  g.fillRect(17, 7, 2, 2); g.fillRect(20, 6, 2, 2); g.fillRect(23, 7, 2, 2);
+  // ── HEAD ──
+  g.fillStyle(0x997722); g.fillRect(24, 9, 4, 6);            // neck
+  g.fillEllipse(29, 10, 9, 8);                               // skull
+  g.fillStyle(0x886622); g.fillTriangle(26, 7, 27, 2, 29, 7); // ear
+  g.fillStyle(0x553311); g.fillRect(27, 5, 1, 2);            // inner ear
+  g.fillStyle(0xbb8833); g.fillRect(26, 7, 5, 2);            // lit crown
+  g.fillStyle(0x775511); g.fillRect(27, 13, 6, 2);           // jaw shade
+  g.fillStyle(0x886622); g.fillRect(31, 9, 4, 4);            // muzzle
+  g.fillStyle(0x553311); g.fillRect(33, 9, 3, 2);            // nose
+  g.fillRect(31, 12, 4, 1);                                  // mouth
+  g.fillStyle(0xffffee); g.fillRect(33, 13, 1, 1);           // fang
+  g.fillStyle(0x111111); g.fillRect(28, 8, 2, 2);            // eye
+  g.fillStyle(0xffcc66); g.fillRect(28, 8, 1, 1);            // eye glint
+  g.generateTexture('dust_hound', 36, 24);
 }
 
 function drawWaterLurker(g) {
+  // Water lurker, 48×28: crocodilian, head and snout on the right.
   g.clear();
-  // Elongated crocodilian body — dark teal
-  g.fillStyle(0x1a4a3a); g.fillRect(1, 4, 20, 8);
-  g.fillStyle(0x256050); g.fillRect(2, 5, 18, 5);   // highlight stripe
-  // Ridged back spines
-  g.fillStyle(0x0d2e24);
-  g.fillRect(4, 3, 2, 2); g.fillRect(8, 2, 2, 3); g.fillRect(12, 2, 2, 3); g.fillRect(16, 3, 2, 2);
-  // Head (wider snout at left)
-  g.fillStyle(0x1a4a3a); g.fillRect(19, 3, 5, 8);
-  g.fillStyle(0x0d2e24); g.fillRect(21, 11, 3, 2);  // jaw underside
-  // Eyes — yellow slitted
-  g.fillStyle(0xddcc00); g.fillRect(20, 4, 2, 2); g.fillRect(22, 4, 1, 1);
-  g.fillStyle(0x111111); g.fillRect(21, 5, 1, 1);   // slit pupil
-  // Stubby legs
+  // ── STUBBY LEGS: far pair on top, near pair at the bottom ──
   g.fillStyle(0x163d2e);
-  g.fillRect(4, 11, 3, 3); g.fillRect(10, 11, 3, 3);
-  g.fillRect(4, 2, 3, 2);  g.fillRect(10, 2, 3, 2);
-  // Tail — tapers left
-  g.fillStyle(0x1a4a3a); g.fillRect(0, 5, 2, 6);
-  g.fillStyle(0x0d2e24); g.fillRect(0, 7, 1, 2);
-  g.generateTexture('water_lurker', 24, 14);
+  g.fillRect(8, 4, 6, 5);  g.fillRect(20, 4, 6, 5);           // far legs
+  g.fillRect(8, 22, 6, 4); g.fillRect(20, 22, 6, 4);          // near legs
+  g.fillStyle(0x0d2e24); g.fillRect(8, 25, 7, 2); g.fillRect(20, 25, 7, 2); // webbed feet
+  g.fillStyle(0xccccaa); g.fillRect(14, 26, 1, 1); g.fillRect(26, 26, 1, 1); // claws
+  // ── TAIL: tapers left ──
+  g.fillStyle(0x1a4a3a); g.fillRect(0, 11, 6, 10);
+  g.fillStyle(0x0d2e24); g.fillRect(0, 14, 2, 4);             // tail tip
+  g.fillRect(2, 10, 2, 1); g.fillRect(5, 10, 2, 1);           // tail scutes
+  // ── BODY ──
+  g.fillStyle(0x1a4a3a); g.fillRect(4, 8, 36, 16); g.fillRect(2, 10, 40, 12);
+  g.fillStyle(0x256050); g.fillRect(4, 10, 36, 6);            // lit back stripe
+  g.fillStyle(0x2f7462); g.fillRect(6, 10, 28, 1);            // top-light rim
+  g.fillStyle(0x123a2e); g.fillRect(4, 20, 36, 4);            // shaded belly
+  g.fillStyle(0x153f31);                                       // scale rows
+  for (let x = 6; x < 38; x += 4) { g.fillRect(x, 13, 2, 2); g.fillRect(x + 2, 17, 2, 2); }
+  g.fillStyle(0x2f7462);
+  for (let x = 6; x < 38; x += 8) g.fillRect(x, 12, 1, 1);    // scale glints
+  // ridged back spines
+  g.fillStyle(0x0d2e24);
+  g.fillTriangle(8, 10, 10, 5, 12, 10);  g.fillTriangle(16, 10, 18, 3, 20, 10);
+  g.fillTriangle(24, 10, 26, 3, 28, 10); g.fillTriangle(32, 10, 34, 5, 36, 10);
+  g.fillStyle(0x256050); g.fillRect(17, 6, 1, 2); g.fillRect(25, 6, 1, 2); // lit spine faces
+  // ── HEAD: long flat snout ──
+  g.fillStyle(0x1a4a3a); g.fillRect(38, 7, 10, 15);
+  g.fillStyle(0x256050); g.fillRect(39, 9, 8, 3);             // lit snout top
+  g.fillStyle(0x0d2e24); g.fillRect(40, 6, 5, 2);             // brow ridge
+  g.fillRect(46, 10, 1, 1); g.fillRect(46, 12, 1, 1);         // nostrils
+  g.fillRect(40, 17, 8, 1);                                   // mouth line
+  g.fillStyle(0x163d2e); g.fillRect(40, 18, 8, 4);            // lower jaw
+  g.fillStyle(0x0d2e24); g.fillRect(42, 22, 5, 3);            // jaw underside
+  g.fillStyle(0xddddcc);                                      // teeth along the mouth line
+  g.fillRect(41, 18, 1, 1); g.fillRect(43, 16, 1, 1); g.fillRect(45, 18, 1, 1); g.fillRect(47, 16, 1, 1);
+  g.fillStyle(0xddcc00); g.fillRect(40, 8, 4, 4);             // near eye
+  g.fillStyle(0xbbaa00); g.fillRect(44, 8, 2, 2);             // far eye
+  g.fillStyle(0xffee55); g.fillRect(40, 8, 1, 1);             // eye glint
+  g.fillStyle(0x111111); g.fillRect(42, 8, 1, 4);             // slit pupil
+  g.generateTexture('water_lurker', 48, 28);
 }
 
 function getControls(playerNum, charId, isSolo) {
@@ -1157,316 +1372,471 @@ function buildTextures(scene) {
   g.fillStyle(0x334455); g.fillRect(4, 25, 7, 5); g.fillRect(15, 25, 7, 5);
   g.generateTexture('raider_heavy', 26, 30);
 
-  // Boss sprites — one per biome boss type. All sprites are 56×60 px for
-  // twice the pixel density of the old 40×44; spawn scale is reduced from 4× to
-  // 3× so in-game footprint stays roughly similar. Outline + shading ramps
-  // sharpen the silhouette against busy terrain.
+  // Boss sprites — one per biome boss type, drawn at 112×120-ish (twice the
+  // old 56×60) so their pixels match the player sprites. BOSS_SCALE in
+  // game-scene.js is 1.5 (was 3), so the in-game footprint is unchanged.
+  // No silhouette outline here: shading ramps carry the form.
 
   // Iron Golem (wasteland) — hulking, cracked, battle-damaged colossus
   g.clear();
   // ── LEGS: wide, planted, asymmetric stance ──
-  g.fillStyle(0x445566); g.fillRect(11, 48, 14, 12); g.fillRect(33, 46, 14, 14); // right leg slightly forward
-  g.fillStyle(0x556677); g.fillRect(13, 48, 6, 10); g.fillRect(35, 46, 6, 12);   // leg highlight
-  g.fillStyle(0x2a3540); g.fillRect(10, 56, 16, 4); g.fillRect(32, 56, 16, 4);   // heavy feet
+  g.fillStyle(0x445566); g.fillRect(22, 96, 28, 24); g.fillRect(66, 92, 28, 28); // right leg slightly forward
+  g.fillStyle(0x556677); g.fillRect(26, 96, 12, 20); g.fillRect(70, 92, 12, 24);   // leg highlight
+  g.fillStyle(0x2a3540); g.fillRect(20, 112, 32, 8); g.fillRect(64, 112, 32, 8);   // heavy feet
+  g.fillStyle(0x7788aa); g.fillRect(24, 96, 2, 10); g.fillRect(68, 92, 2, 12);     // lit front edge
+  g.fillStyle(0x3a4654); g.fillRect(46, 96, 4, 16); g.fillRect(90, 92, 4, 20);     // shaded right side
+  g.fillRect(22, 106, 28, 2); g.fillRect(66, 104, 28, 2);                          // knee-plate seams
+  g.fillStyle(0x445566); g.fillRect(20, 112, 32, 2); g.fillRect(64, 112, 32, 2);   // foot top bevel
+  g.fillStyle(0x1c252e); g.fillRect(20, 118, 32, 2); g.fillRect(64, 118, 32, 2);   // soles
+  g.fillRect(30, 114, 2, 4); g.fillRect(40, 114, 2, 4); g.fillRect(74, 114, 2, 4); g.fillRect(84, 114, 2, 4); // toe splits
   // ── ARMS: asymmetric — left raised high (ready to swing), right hanging ──
   // left arm raised
-  g.fillStyle(0x556677); g.fillRect(1, 6, 11, 26); g.fillRect(0, 2, 13, 8);      // raised upper arm + fist up high
-  g.fillStyle(0x7788aa); g.fillRect(2, 8, 4, 22);                                 // arm gleam
-  g.fillStyle(0x3a4654); g.fillRect(0, 0, 13, 5);                                 // raised fist top
+  g.fillStyle(0x556677); g.fillRect(2, 12, 22, 52); g.fillRect(0, 4, 26, 16);      // raised upper arm + fist up high
+  g.fillStyle(0x7788aa); g.fillRect(4, 16, 8, 44);                                 // arm gleam
+  g.fillStyle(0x3a4654); g.fillRect(0, 0, 26, 10);                                 // raised fist top
   // right arm lower
-  g.fillStyle(0x556677); g.fillRect(45, 20, 11, 24); g.fillRect(44, 40, 13, 9);  // lower arm + fist
-  g.fillStyle(0x7788aa); g.fillRect(50, 22, 4, 18);                               // arm gleam
-  g.fillStyle(0x3a4654); g.fillRect(44, 46, 13, 4);                               // lower fist base
+  g.fillStyle(0x556677); g.fillRect(90, 40, 22, 48); g.fillRect(88, 80, 26, 18);  // lower arm + fist
+  g.fillStyle(0x7788aa); g.fillRect(100, 44, 8, 36);                               // arm gleam
+  g.fillStyle(0x3a4654); g.fillRect(88, 92, 26, 8);                               // lower fist base
+  g.fillStyle(0x445566); g.fillRect(106, 40, 6, 40);                              // hanging arm, shaded side
+  g.fillStyle(0x3a4654);                                                           // arm plate bands
+  g.fillRect(2, 30, 22, 2); g.fillRect(2, 46, 22, 2); g.fillRect(90, 56, 22, 2); g.fillRect(90, 70, 22, 2);
+  g.fillStyle(0x88a0b8);                                                           // band lower lips catch light
+  g.fillRect(4, 32, 18, 1); g.fillRect(4, 48, 18, 1); g.fillRect(92, 58, 14, 1); g.fillRect(92, 72, 14, 1);
+  g.fillStyle(0x55687a);                                                           // knuckles, raised fist
+  g.fillRect(2, 1, 6, 5); g.fillRect(10, 1, 6, 5); g.fillRect(18, 1, 6, 5);
+  g.fillRect(90, 93, 6, 5); g.fillRect(98, 93, 6, 5); g.fillRect(106, 93, 6, 5);  // knuckles, lower fist
+  g.fillStyle(0x88a0b8);                                                           // knuckle highlights
+  g.fillRect(2, 1, 3, 1); g.fillRect(10, 1, 3, 1); g.fillRect(18, 1, 3, 1);
+  g.fillRect(90, 93, 3, 1); g.fillRect(98, 93, 3, 1); g.fillRect(106, 93, 3, 1);
   // ── TORSO: wide barrel chest, hunched (narrower at shoulders top, bulging mid) ──
-  g.fillStyle(0x556677); g.fillRect(9, 16, 38, 34);          // main body, fills more
-  g.fillStyle(0x667a8c); g.fillRect(7, 22, 42, 18);          // bulging barrel mid-chest
-  g.fillStyle(0x7788aa); g.fillRect(11, 18, 34, 9);          // upper chest gleam
-  g.fillStyle(0x3a4654); g.fillRect(9, 44, 38, 6);           // lower-torso shadow (hunch)
+  g.fillStyle(0x556677); g.fillRect(18, 32, 76, 68);          // main body, fills more
+  g.fillStyle(0x667a8c); g.fillRect(14, 44, 84, 36);          // bulging barrel mid-chest
+  g.fillStyle(0x7788aa); g.fillRect(22, 36, 68, 18);          // upper chest gleam
+  g.fillStyle(0x3a4654); g.fillRect(18, 88, 76, 12);           // lower-torso shadow (hunch)
+  g.fillStyle(0x4a5c6c); g.fillRect(86, 36, 8, 52); g.fillRect(94, 44, 4, 36); // shaded right flank
+  g.fillStyle(0x8a9cbc); g.fillRect(22, 36, 40, 2);            // top-light rim on the chest
+  g.fillStyle(0x3a4654);                                       // armour plate seams
+  g.fillRect(18, 56, 76, 2); g.fillRect(14, 78, 84, 2); g.fillRect(55, 38, 2, 50);
+  g.fillStyle(0x7f93b0); g.fillRect(18, 58, 68, 1); g.fillRect(14, 80, 72, 1); // seam lips catch light
+  // battle damage: dents with a lit upper rim, bright scratches
+  g.fillStyle(0x445566); g.fillCircle(72, 48, 3); g.fillCircle(30, 70, 3); g.fillCircle(66, 86, 2);
+  g.fillStyle(0x88a0b8); g.fillRect(70, 45, 3, 1); g.fillRect(28, 67, 3, 1);
+  g.fillStyle(0x99aacc); g.fillRect(36, 44, 6, 1); g.fillRect(38, 45, 4, 1); g.fillRect(74, 68, 5, 1); g.fillRect(76, 69, 3, 1);
   // shoulder plates — left higher (raised arm), angular
-  g.fillStyle(0x6b7e90); g.fillTriangle(4, 16, 16, 8, 18, 20);   // left pauldron, high
-  g.fillStyle(0x6b7e90); g.fillTriangle(52, 22, 40, 14, 38, 26); // right pauldron, lower
-  g.fillStyle(0x88a0b8); g.fillTriangle(6, 15, 14, 10, 15, 17);  // left pauldron gleam
+  g.fillStyle(0x6b7e90); g.fillTriangle(8, 32, 32, 16, 36, 40);   // left pauldron, high
+  g.fillStyle(0x6b7e90); g.fillTriangle(104, 44, 80, 28, 76, 52); // right pauldron, lower
+  g.fillStyle(0x88a0b8); g.fillTriangle(12, 30, 28, 20, 30, 34);  // left pauldron gleam
   // ── GLOWING ORANGE CRACKS across the body ──
-  g.lineStyle(2, 0xff6600);
-  g.beginPath(); g.moveTo(14, 20); g.lineTo(20, 30); g.lineTo(17, 40); g.lineTo(23, 47); g.strokePath();
-  g.beginPath(); g.moveTo(40, 22); g.lineTo(34, 31); g.lineTo(39, 39); g.strokePath();
-  g.beginPath(); g.moveTo(28, 24); g.lineTo(30, 33); g.lineTo(26, 43); g.strokePath();
-  g.lineStyle(1, 0xffaa44);
-  g.beginPath(); g.moveTo(20, 30); g.lineTo(24, 28); g.strokePath();
-  g.beginPath(); g.moveTo(34, 31); g.lineTo(31, 35); g.strokePath();
+  g.lineStyle(4, 0xff6600);
+  g.beginPath(); g.moveTo(28, 40); g.lineTo(40, 60); g.lineTo(34, 80); g.lineTo(46, 94); g.strokePath();
+  g.beginPath(); g.moveTo(80, 44); g.lineTo(68, 62); g.lineTo(78, 78); g.strokePath();
+  g.beginPath(); g.moveTo(56, 48); g.lineTo(60, 66); g.lineTo(52, 86); g.strokePath();
+  g.lineStyle(2, 0xffaa44);
+  g.beginPath(); g.moveTo(40, 60); g.lineTo(48, 56); g.strokePath();
+  g.beginPath(); g.moveTo(68, 62); g.lineTo(62, 70); g.strokePath();
+  g.lineStyle(1, 0xffdd88);                                    // white-hot core inside each crack
+  g.beginPath(); g.moveTo(28, 40); g.lineTo(40, 60); g.lineTo(34, 80); g.lineTo(46, 94); g.strokePath();
+  g.beginPath(); g.moveTo(80, 44); g.lineTo(68, 62); g.lineTo(78, 78); g.strokePath();
+  g.beginPath(); g.moveTo(56, 48); g.lineTo(60, 66); g.lineTo(52, 86); g.strokePath();
   // crack glow embers
-  g.fillStyle(0xff8822); g.fillRect(19, 29, 2, 2); g.fillRect(33, 30, 2, 2); g.fillRect(25, 42, 2, 2);
-  // rivets
+  g.fillStyle(0xff8822); g.fillRect(38, 58, 4, 4); g.fillRect(66, 60, 4, 4); g.fillRect(50, 84, 4, 4);
+  g.fillStyle(0xffdd88); g.fillRect(39, 59, 2, 2); g.fillRect(67, 61, 2, 2); g.fillRect(51, 85, 2, 2);
+  // rivets: dark heads with a lit top-left pixel
   g.fillStyle(0x2a3540);
-  g.fillRect(12, 19, 2, 2); g.fillRect(43, 19, 2, 2);
-  g.fillRect(12, 45, 2, 2); g.fillRect(43, 45, 2, 2);
+  g.fillRect(24, 38, 4, 4); g.fillRect(86, 38, 4, 4);
+  g.fillRect(24, 90, 4, 4); g.fillRect(86, 90, 4, 4);
+  g.fillRect(24, 60, 4, 4); g.fillRect(86, 60, 4, 4); g.fillRect(20, 82, 4, 4); g.fillRect(90, 82, 4, 4);
+  g.fillStyle(0x99aacc);
+  g.fillRect(24, 38, 2, 1); g.fillRect(86, 38, 2, 1); g.fillRect(24, 90, 2, 1); g.fillRect(86, 90, 2, 1);
+  g.fillRect(24, 60, 2, 1); g.fillRect(86, 60, 2, 1); g.fillRect(20, 82, 2, 1); g.fillRect(90, 82, 2, 1);
   // ── HEAD: large, angular, armored, visor band ──
-  g.fillStyle(0x6b7e90); g.fillRect(16, 2, 24, 16);           // angular head block
-  g.fillStyle(0x55687a); g.fillRect(14, 6, 28, 4);            // brow ridge wider than head
-  g.fillStyle(0x223344); g.fillRect(15, 9, 26, 5);            // dark recessed visor band
+  g.fillStyle(0x6b7e90); g.fillRect(32, 4, 48, 32);           // angular head block
+  g.fillStyle(0x55687a); g.fillRect(28, 12, 56, 8);            // brow ridge wider than head
+  g.fillStyle(0x223344); g.fillRect(30, 18, 52, 10);            // dark recessed visor band
   // glowing red eye slits + glow halo
-  g.fillStyle(0xff2200, 0.35); g.fillRect(17, 8, 8, 7); g.fillRect(31, 8, 8, 7); // halo
-  g.fillStyle(0xff2200); g.fillRect(19, 10, 5, 3); g.fillRect(33, 10, 5, 3);     // slits
-  g.fillStyle(0xff7744); g.fillRect(20, 10, 2, 1); g.fillRect(34, 10, 2, 1);     // hot core
+  g.fillStyle(0xff2200, 0.35); g.fillRect(34, 16, 16, 14); g.fillRect(62, 16, 16, 14); // halo
+  g.fillStyle(0xff2200); g.fillRect(38, 20, 10, 6); g.fillRect(66, 20, 10, 6);     // slits
+  g.fillStyle(0xff7744); g.fillRect(40, 20, 4, 2); g.fillRect(68, 20, 4, 2);     // hot core
+  g.fillStyle(0xffeedd); g.fillRect(39, 21, 1, 1); g.fillRect(67, 21, 1, 1);     // eye glints
+  // head plating: lit crown bevel, crown seam, shaded right cheek
+  g.fillStyle(0x88a0b8); g.fillRect(32, 4, 46, 2); g.fillRect(32, 6, 2, 6);
+  g.fillStyle(0x55687a); g.fillRect(55, 6, 2, 6); g.fillRect(74, 28, 6, 8);
+  g.fillStyle(0x7788aa); g.fillRect(28, 12, 54, 1);                              // brow ridge edge light
   // jaw vents
-  g.fillStyle(0x2a3540); g.fillRect(20, 15, 4, 2); g.fillRect(28, 15, 4, 2); g.fillRect(36, 15, 4, 2);
-  // outline
-  g.lineStyle(1, 0x223344);
-  g.strokeRect(9, 16, 38, 34);
-  g.generateTexture('boss_golem', 56, 60);
+  g.fillStyle(0x2a3540); g.fillRect(40, 30, 8, 4); g.fillRect(56, 30, 8, 4); g.fillRect(72, 30, 8, 4);
+  g.fillStyle(0xff6600, 0.6); g.fillRect(41, 32, 6, 1); g.fillRect(57, 32, 6, 1); g.fillRect(73, 32, 6, 1); // furnace glow
+  g.generateTexture('boss_golem', 112, 120);
 
   // Alpha Wolf (grassland) — massive scarred predator, coiled to pounce
   g.clear();
   // ── TAIL: low, bushy, swept back ──
-  g.fillStyle(0x554422); g.fillTriangle(0, 22, 12, 26, 2, 36);
-  g.fillStyle(0x665533); g.fillTriangle(2, 24, 11, 27, 4, 33);
+  g.fillStyle(0x554422); g.fillTriangle(0, 44, 24, 52, 4, 72);
+  g.fillStyle(0x665533); g.fillTriangle(4, 48, 22, 54, 8, 66);
+  g.fillStyle(0x887744); g.fillRect(4, 48, 8, 2); g.fillRect(8, 50, 8, 1);          // lit upper edge
+  g.fillStyle(0x443311); g.fillRect(6, 56, 8, 1); g.fillRect(8, 60, 7, 1); g.fillRect(5, 64, 5, 1); // fur strands
   // ── BODY: muscular, low and coiled ──
-  g.fillStyle(0x665533); g.fillEllipse(26, 34, 42, 24);            // bulk
-  g.fillStyle(0x887744); g.fillEllipse(24, 29, 38, 14);           // back / shoulder mass
-  g.fillStyle(0x4a3a22); g.fillEllipse(26, 42, 34, 10);           // belly shadow
+  g.fillStyle(0x665533); g.fillEllipse(52, 68, 84, 48);            // bulk
+  g.fillStyle(0x887744); g.fillEllipse(48, 58, 76, 28);           // back / shoulder mass
+  g.fillStyle(0x4a3a22); g.fillEllipse(52, 84, 68, 20);           // belly shadow
+  // fur texture: strands swept back, pale on the lit back, dark toward the belly
+  g.fillStyle(0xa89860); g.fillRect(28, 46, 34, 1);               // top-light rim along the spine
+  g.fillStyle(0x9a8855);
+  for (let i = 0; i < 9; i++) g.fillRect(26 + i * 7, 50 + (i % 3) * 2, 4, 1);
+  g.fillStyle(0x554422);
+  for (let i = 0; i < 10; i++) g.fillRect(18 + i * 7, 66 + (i % 2) * 5, 4, 1);
+  g.fillStyle(0x3a2e1a);
+  for (let i = 0; i < 8; i++) g.fillRect(24 + i * 8, 78 + (i % 2) * 3, 3, 1);
   // ── RAISED HACKLES along the back ──
   g.fillStyle(0x332211);
-  g.fillTriangle(12, 24, 16, 16, 20, 24);
-  g.fillTriangle(19, 23, 24, 14, 29, 23);
-  g.fillTriangle(27, 24, 32, 17, 37, 24);
+  g.fillTriangle(24, 48, 32, 32, 40, 48);
+  g.fillTriangle(38, 46, 48, 28, 58, 46);
+  g.fillTriangle(54, 48, 64, 34, 74, 48);
   g.fillStyle(0x554433);
-  g.fillTriangle(20, 22, 23, 17, 26, 22);
+  g.fillTriangle(40, 44, 46, 34, 52, 44);
   // ── LEGS: wide, muscular, braced stance ──
   g.fillStyle(0x665533);
-  g.fillRect(8, 38, 8, 16); g.fillRect(20, 40, 8, 14);            // front legs (one braced forward)
-  g.fillRect(33, 38, 8, 16); g.fillRect(44, 40, 8, 14);           // back legs (spread wide)
-  g.fillStyle(0x887744); g.fillRect(9, 39, 3, 12); g.fillRect(45, 41, 3, 11); // leg muscle highlight
+  g.fillRect(16, 76, 16, 32); g.fillRect(40, 80, 16, 28);            // front legs (one braced forward)
+  g.fillRect(66, 76, 16, 32); g.fillRect(88, 80, 16, 28);           // back legs (spread wide)
+  g.fillStyle(0x887744); g.fillRect(18, 78, 6, 24); g.fillRect(90, 82, 6, 22); // leg muscle highlight
   g.fillStyle(0x2a2012);
-  g.fillRect(7, 51, 10, 4); g.fillRect(19, 51, 10, 4);
-  g.fillRect(32, 51, 10, 4); g.fillRect(43, 51, 10, 4);          // big paws
+  g.fillRect(14, 102, 20, 8); g.fillRect(38, 102, 20, 8);
+  g.fillRect(64, 102, 20, 8); g.fillRect(86, 102, 20, 8);          // big paws
+  g.fillStyle(0x4a3a22);                                          // shaded right side of each leg
+  g.fillRect(28, 78, 4, 24); g.fillRect(52, 82, 4, 20); g.fillRect(78, 78, 4, 24); g.fillRect(100, 82, 4, 20);
+  g.fillStyle(0x887744); g.fillRect(42, 82, 3, 18); g.fillRect(68, 78, 3, 20); // lit front of the other legs
+  g.fillStyle(0x3a2e1a); g.fillRect(14, 102, 20, 2); g.fillRect(38, 102, 20, 2); g.fillRect(64, 102, 20, 2); g.fillRect(86, 102, 20, 2); // paw tops
+  g.fillStyle(0x1a1208);                                          // toe splits
+  for (const px of [14, 38, 64, 86]) { g.fillRect(px + 6, 104, 1, 6); g.fillRect(px + 13, 104, 1, 6); }
   g.fillStyle(0xddccaa);                                          // claws
-  g.fillRect(7, 54, 1, 2); g.fillRect(11, 54, 1, 2); g.fillRect(15, 54, 1, 2);
-  g.fillRect(43, 54, 1, 2); g.fillRect(47, 54, 1, 2); g.fillRect(51, 54, 1, 2);
+  g.fillRect(14, 108, 2, 4); g.fillRect(22, 108, 2, 4); g.fillRect(30, 108, 2, 4);
+  g.fillRect(86, 108, 2, 4); g.fillRect(94, 108, 2, 4); g.fillRect(102, 108, 2, 4);
+  g.fillRect(38, 108, 2, 3); g.fillRect(46, 108, 2, 3); g.fillRect(54, 108, 2, 3);  // far paws
+  g.fillRect(64, 108, 2, 3); g.fillRect(72, 108, 2, 3); g.fillRect(80, 108, 2, 3);
+  g.fillStyle(0xffffff); g.fillRect(14, 108, 1, 1); g.fillRect(22, 108, 1, 1); g.fillRect(30, 108, 1, 1); // claw glints
+  g.fillRect(86, 108, 1, 1); g.fillRect(94, 108, 1, 1); g.fillRect(102, 108, 1, 1);
   // ── HEAD: oversized, lowered, aggressive ──
-  g.fillStyle(0x665533); g.fillEllipse(44, 24, 24, 20);          // big head
-  g.fillStyle(0x554422); g.fillEllipse(44, 30, 20, 9);           // jaw shadow
+  g.fillStyle(0x554422);                                           // shaggy neck ruff behind the head
+  g.fillTriangle(62, 36, 72, 44, 62, 50); g.fillTriangle(60, 48, 70, 54, 62, 62); g.fillTriangle(64, 60, 74, 62, 68, 72);
+  g.fillStyle(0x665533); g.fillEllipse(88, 48, 48, 40);          // big head
+  g.fillStyle(0x887744); g.fillEllipse(84, 36, 30, 12);          // lit crown
+  g.fillStyle(0xa89860); g.fillRect(76, 31, 14, 1);               // crown rim light
+  g.fillStyle(0x554422); g.fillRect(70, 46, 4, 1); g.fillRect(72, 52, 5, 1); g.fillRect(70, 58, 4, 1); // cheek fur
+  g.fillStyle(0x554422); g.fillEllipse(88, 60, 40, 18);           // jaw shadow
   // ears — large, pinned-forward
-  g.fillStyle(0x554422); g.fillTriangle(36, 6, 33, 16, 43, 14);  // back ear
-  g.fillStyle(0x665533); g.fillTriangle(50, 6, 46, 16, 56, 14);  // front ear
-  g.fillStyle(0x2a2012); g.fillTriangle(50, 9, 48, 15, 54, 14);  // ear inner
+  g.fillStyle(0x554422); g.fillTriangle(72, 12, 66, 32, 86, 28);  // back ear
+  g.fillStyle(0x665533); g.fillTriangle(100, 12, 92, 32, 112, 28);  // front ear
+  g.fillStyle(0x2a2012); g.fillTriangle(100, 18, 96, 30, 108, 28);  // ear inner
   // snout / muzzle, jutting
-  g.fillStyle(0x776644); g.fillEllipse(52, 28, 12, 9);
-  g.fillStyle(0x1a1208); g.fillRect(53, 25, 3, 3);               // nose
+  g.fillStyle(0x776644); g.fillEllipse(104, 56, 24, 18);
+  g.fillStyle(0x887755); g.fillRect(96, 49, 10, 2);               // muzzle bridge highlight
+  g.fillStyle(0x1a1208); g.fillRect(106, 50, 6, 6);               // nose
+  g.fillStyle(0x554433); g.fillRect(106, 50, 2, 2);               // nose glint
+  g.fillStyle(0x4a3a22); g.fillRect(98, 58, 1, 1); g.fillRect(101, 60, 1, 1); g.fillRect(104, 58, 1, 1); // whisker pits
   // ── SCAR across muzzle ──
-  g.lineStyle(1, 0xbbaa88);
-  g.beginPath(); g.moveTo(40, 19); g.lineTo(50, 27); g.strokePath();
-  g.fillStyle(0x4a3a22); g.fillRect(41, 20, 1, 1); g.fillRect(45, 23, 1, 1);
+  g.lineStyle(2, 0xbbaa88);
+  g.beginPath(); g.moveTo(80, 38); g.lineTo(100, 54); g.strokePath();
+  g.fillStyle(0x4a3a22); g.fillRect(82, 40, 2, 2); g.fillRect(90, 46, 2, 2);
   // ── EYES: large, bright amber, glowing ──
-  g.fillStyle(0xffcc33, 0.4); g.fillEllipse(42, 21, 8, 6);       // glow halo
-  g.fillStyle(0xffcc33); g.fillRect(39, 19, 5, 4); g.fillRect(46, 19, 5, 4); // big amber eyes
-  g.fillStyle(0x1a1208); g.fillRect(41, 20, 2, 2); g.fillRect(48, 20, 2, 2); // pupils
-  g.fillStyle(0xffffaa); g.fillRect(39, 19, 1, 1); g.fillRect(46, 19, 1, 1); // glint
+  g.fillStyle(0xffcc33, 0.4); g.fillEllipse(84, 42, 16, 12);       // glow halo
+  g.fillStyle(0xffcc33); g.fillRect(78, 38, 10, 8); g.fillRect(92, 38, 10, 8); // big amber eyes
+  g.fillStyle(0x1a1208); g.fillRect(82, 40, 4, 4); g.fillRect(96, 40, 4, 4); // pupils
+  g.fillStyle(0xffffaa); g.fillRect(78, 38, 2, 2); g.fillRect(92, 38, 2, 2); // glint
   // ── FANGS: prominent, bared ──
-  g.fillStyle(0x332211); g.fillRect(46, 32, 11, 4);              // dark open maw
+  g.fillStyle(0x332211); g.fillRect(92, 64, 22, 8);              // dark open maw
   g.fillStyle(0xffffff);
-  g.fillTriangle(47, 32, 49, 32, 48, 38);   // upper fangs
-  g.fillTriangle(53, 32, 55, 32, 54, 38);
-  g.fillTriangle(48, 36, 50, 36, 49, 32);   // lower fangs
-  g.fillTriangle(52, 36, 54, 36, 53, 32);
-  // outline
-  g.lineStyle(1, 0x2a2012);
-  g.strokeEllipse(26, 34, 42, 24);
-  g.generateTexture('boss_wolf', 56, 56);
+  g.fillTriangle(94, 64, 98, 64, 96, 76);   // upper fangs
+  g.fillTriangle(106, 64, 110, 64, 108, 76);
+  g.fillTriangle(96, 72, 100, 72, 98, 64);   // lower fangs
+  g.fillTriangle(104, 72, 108, 72, 106, 64);
+  g.fillStyle(0xccc4b0);                                          // shaded side of each fang
+  g.fillTriangle(96, 64, 98, 64, 96, 76); g.fillTriangle(108, 64, 110, 64, 108, 76);
+  g.fillStyle(0xaa3322); g.fillRect(100, 68, 4, 3);               // tongue
+  g.generateTexture('boss_wolf', 112, 112);
 
   // Spider Queen (ruins) — venomous matriarch, legs spanning the full width
   g.clear();
-  // ── 4 PAIRS OF LEGS: jagged, multi-jointed, outer feet near x=0 and x=55 ──
+  // ── 4 PAIRS OF LEGS: jagged, multi-jointed, outer feet near x=0 and x=110 ──
   // Each leg: foot → outer segment → knee → inner segment → body. Built with
-  // lineStyle strokes for a sharp spindly look, anchored at the cephalothorax (x≈28).
-  const spiderLegY = [16, 21, 27, 33];      // body anchor heights
-  const spiderFootX = [1, 4, 6, 9];          // left outer feet; mirrored on right
-  const spiderFootY = [10, 18, 30, 40];      // splayed foot heights
-  g.lineStyle(3, 0x1a0626);
+  // lineStyle strokes for a sharp spindly look, anchored at the cephalothorax (x≈56).
+  const spiderLegY = [32, 42, 54, 66];      // body anchor heights
+  const spiderFootX = [2, 8, 12, 18];          // left outer feet; mirrored on right
+  const spiderFootY = [20, 36, 60, 80];      // splayed foot heights
+  g.lineStyle(6, 0x1a0626);
   for (let i = 0; i < 4; i++) {
     const ay = spiderLegY[i];
     // left leg
     g.beginPath();
     g.moveTo(spiderFootX[i], spiderFootY[i]);
-    g.lineTo(spiderFootX[i] + 9, ay - 2);     // knee up
-    g.lineTo(22, ay);                          // into body
+    g.lineTo(spiderFootX[i] + 18, ay - 4);     // knee up
+    g.lineTo(44, ay);                          // into body
     g.strokePath();
     // right leg (mirror)
     g.beginPath();
-    g.moveTo(55 - spiderFootX[i], spiderFootY[i]);
-    g.lineTo(55 - spiderFootX[i] - 9, ay - 2);
-    g.lineTo(34, ay);
+    g.moveTo(110 - spiderFootX[i], spiderFootY[i]);
+    g.lineTo(110 - spiderFootX[i] - 18, ay - 4);
+    g.lineTo(68, ay);
     g.strokePath();
   }
   // leg highlights (purple) over the knees
-  g.lineStyle(1, 0x8833cc);
+  g.lineStyle(2, 0x8833cc);
   for (let i = 0; i < 4; i++) {
     const ay = spiderLegY[i];
-    g.beginPath(); g.moveTo(spiderFootX[i] + 9, ay - 2); g.lineTo(20, ay); g.strokePath();
-    g.beginPath(); g.moveTo(55 - spiderFootX[i] - 9, ay - 2); g.lineTo(36, ay); g.strokePath();
+    g.beginPath(); g.moveTo(spiderFootX[i] + 18, ay - 4); g.lineTo(40, ay); g.strokePath();
+    g.beginPath(); g.moveTo(110 - spiderFootX[i] - 18, ay - 4); g.lineTo(72, ay); g.strokePath();
+  }
+  // knee knobs, bristles on the outer segments, pale claw tips
+  for (let i = 0; i < 4; i++) {
+    const ay = spiderLegY[i], fx = spiderFootX[i], fy = spiderFootY[i];
+    for (const [kx, foot] of [[fx + 18, fx], [110 - fx - 18, 110 - fx]]) {
+      g.fillStyle(0x2d0a3d); g.fillCircle(kx, ay - 4, 4);
+      g.fillStyle(0xaa55ee); g.fillRect(kx - 2, ay - 7, 2, 1);
+      g.fillStyle(0x1a0626);
+      for (let t = 0.25; t < 0.9; t += 0.25) {                  // bristles along the outer segment
+        const bx = Math.round(foot + (kx - foot) * t), by = Math.round(fy + (ay - 4 - fy) * t);
+        g.fillRect(bx, by - 4, 1, 2);
+      }
+      g.fillStyle(0xccaaee); g.fillRect(foot - 1, fy - 1, 2, 2);
+    }
   }
   // ── ABDOMEN: deep purple-black, bulbous ──
-  g.fillStyle(0x2d0a3d); g.fillEllipse(28, 37, 34, 26);
-  g.fillStyle(0x4a1560); g.fillEllipse(28, 32, 26, 14);        // top sheen
-  g.fillStyle(0x8833cc); g.fillEllipse(27, 29, 14, 6);         // bright purple highlight
-  g.fillStyle(0x1a0626); g.fillEllipse(28, 44, 24, 9);         // underside shadow
+  g.fillStyle(0x2d0a3d); g.fillEllipse(56, 74, 68, 52);
+  g.fillStyle(0x4a1560); g.fillEllipse(56, 64, 52, 28);        // top sheen
+  g.fillStyle(0x8833cc); g.fillEllipse(54, 58, 28, 12);         // bright purple highlight
+  g.fillStyle(0x1a0626); g.fillEllipse(56, 88, 48, 18);         // underside shadow
+  g.fillStyle(0xcc88ff); g.fillRect(46, 55, 8, 1); g.fillRect(44, 56, 3, 1); // wet top-left sheen
+  g.fillStyle(0x3a0e4e);                                        // segment bands across the abdomen
+  g.fillRect(30, 70, 14, 2); g.fillRect(68, 70, 14, 2); g.fillRect(28, 80, 16, 2); g.fillRect(68, 80, 16, 2);
+  g.fillStyle(0x5a1d74); g.fillRect(30, 69, 14, 1); g.fillRect(68, 69, 14, 1); // band upper lips catch light
+  g.fillStyle(0x1a0626);                                        // fine hairs
+  for (const [hx, hy] of [[32, 62], [40, 58], [72, 58], [80, 62], [26, 76], [86, 76], [36, 90], [76, 90]]) g.fillRect(hx, hy, 1, 2);
+  g.fillStyle(0x110018); g.fillRect(52, 98, 8, 3);              // spinnerets
   // ── HOURGLASS MARKING (bright red/orange) on the abdomen ──
   g.fillStyle(0xff3300);
-  g.fillTriangle(24, 33, 32, 33, 28, 38);    // upper triangle
-  g.fillTriangle(24, 45, 32, 45, 28, 40);    // lower triangle
-  g.fillStyle(0xff8822); g.fillRect(27, 37, 2, 4);            // hot center
+  g.fillTriangle(48, 66, 64, 66, 56, 76);    // upper triangle
+  g.fillTriangle(48, 90, 64, 90, 56, 80);    // lower triangle
+  g.fillStyle(0xff8822); g.fillRect(54, 74, 4, 8);            // hot center
+  g.fillStyle(0xaa1100);                                       // shaded lower edges of the hourglass
+  g.fillRect(50, 66, 2, 1); g.fillRect(60, 66, 2, 1); g.fillRect(49, 89, 14, 1);
+  g.fillStyle(0xffcc88); g.fillRect(55, 75, 1, 3);             // white-hot core
   // ── CEPHALOTHORAX (head section) ──
-  g.fillStyle(0x4a1560); g.fillEllipse(28, 17, 22, 16);
-  g.fillStyle(0x8833cc); g.fillEllipse(28, 13, 16, 7);        // bright highlight
-  g.fillStyle(0x2d0a3d); g.fillEllipse(28, 21, 16, 6);        // chin shade
+  g.fillStyle(0x4a1560); g.fillEllipse(56, 34, 44, 32);
+  g.fillStyle(0x8833cc); g.fillEllipse(56, 26, 32, 14);        // bright highlight
+  g.fillStyle(0x2d0a3d); g.fillEllipse(56, 42, 32, 12);        // chin shade
+  g.fillStyle(0xbb77ee); g.fillRect(46, 21, 10, 1); g.fillRect(44, 22, 3, 1); // crown rim light
+  g.fillStyle(0x3a0e4e);                                       // radial grooves on the carapace
+  g.fillRect(36, 30, 4, 1); g.fillRect(72, 30, 4, 1); g.fillRect(40, 40, 4, 1); g.fillRect(68, 40, 4, 1);
   // ── 6 VIVID RED EYES with glow, two rows ──
   g.fillStyle(0xff1111, 0.4);                                  // glow halos
-  g.fillRect(18, 10, 5, 5); g.fillRect(25, 9, 5, 5); g.fillRect(33, 10, 5, 5);
-  g.fillRect(21, 16, 4, 4); g.fillRect(27, 16, 4, 4); g.fillRect(33, 16, 4, 4);
+  g.fillRect(36, 20, 10, 10); g.fillRect(50, 18, 10, 10); g.fillRect(66, 20, 10, 10);
+  g.fillRect(42, 32, 8, 8); g.fillRect(54, 32, 8, 8); g.fillRect(66, 32, 8, 8);
   g.fillStyle(0xff1111);                                       // eyes
-  g.fillRect(19, 11, 3, 3); g.fillRect(26, 10, 3, 3); g.fillRect(34, 11, 3, 3); // top row
-  g.fillRect(22, 17, 3, 3); g.fillRect(28, 17, 3, 3); g.fillRect(33, 17, 3, 3); // bottom row
+  g.fillRect(38, 22, 6, 6); g.fillRect(52, 20, 6, 6); g.fillRect(68, 22, 6, 6); // top row
+  g.fillRect(44, 34, 6, 6); g.fillRect(56, 34, 6, 6); g.fillRect(66, 34, 6, 6); // bottom row
   g.fillStyle(0xffbbbb);                                       // glints
-  g.fillRect(19, 11, 1, 1); g.fillRect(26, 10, 1, 1); g.fillRect(34, 11, 1, 1);
+  g.fillRect(38, 22, 2, 2); g.fillRect(52, 20, 2, 2); g.fillRect(68, 22, 2, 2);
+  g.fillRect(44, 34, 1, 1); g.fillRect(56, 34, 1, 1); g.fillRect(66, 34, 1, 1);
+  g.fillStyle(0xaa0000);                                       // shaded lower edge of each eye
+  g.fillRect(38, 27, 6, 1); g.fillRect(52, 25, 6, 1); g.fillRect(68, 27, 6, 1);
+  g.fillRect(44, 39, 6, 1); g.fillRect(56, 39, 6, 1); g.fillRect(66, 39, 6, 1);
   // ── FANGS / MANDIBLES + VENOM DRIP ──
-  g.fillStyle(0x1a0626); g.fillRect(24, 22, 3, 5); g.fillRect(29, 22, 3, 5);
-  g.fillStyle(0x553366); g.fillRect(24, 22, 1, 4); g.fillRect(29, 22, 1, 4);
-  g.fillStyle(0xaaff00); g.fillRect(25, 26, 2, 4); g.fillRect(30, 26, 2, 3);  // venom drip
-  g.fillStyle(0xccff66); g.fillRect(25, 29, 2, 1);                            // drip tip glow
-  // outline
-  g.lineStyle(1, 0x110022);
-  g.strokeEllipse(28, 37, 34, 26);
-  g.generateTexture('boss_spider', 56, 52);
+  g.fillStyle(0x1a0626); g.fillRect(48, 44, 6, 10); g.fillRect(58, 44, 6, 10);
+  g.fillStyle(0x553366); g.fillRect(48, 44, 2, 8); g.fillRect(58, 44, 2, 8);
+  g.fillStyle(0xaaff00); g.fillRect(50, 52, 4, 8); g.fillRect(60, 52, 4, 6);  // venom drip
+  g.fillStyle(0xccff66); g.fillRect(50, 58, 4, 2);                            // drip tip glow
+  g.fillStyle(0xeeffaa); g.fillRect(50, 52, 1, 3); g.fillRect(60, 52, 1, 2);  // venom shine
+  g.fillStyle(0x886699); g.fillRect(48, 44, 1, 4); g.fillRect(58, 44, 1, 4);  // fang edge light
+  g.generateTexture('boss_spider', 112, 104);
 
   // Frost Troll (tundra) — hunched ice giant bristling with crystal spikes
   g.clear();
   // ── LEGS: thick, planted wide ──
-  g.fillStyle(0x2a3a5a); g.fillRect(14, 48, 13, 12); g.fillRect(29, 48, 13, 12);
-  g.fillStyle(0x3a4f78); g.fillRect(16, 48, 5, 10); g.fillRect(31, 48, 5, 10);   // leg highlight
-  g.fillStyle(0x1c2840); g.fillRect(12, 56, 16, 4); g.fillRect(28, 56, 16, 4);   // big feet
+  g.fillStyle(0x2a3a5a); g.fillRect(28, 96, 26, 24); g.fillRect(58, 96, 26, 24);
+  g.fillStyle(0x3a4f78); g.fillRect(32, 96, 10, 20); g.fillRect(62, 96, 10, 20);   // leg highlight
+  g.fillStyle(0x1c2840); g.fillRect(24, 112, 32, 8); g.fillRect(56, 112, 32, 8);   // big feet
+  g.fillRect(48, 96, 6, 16); g.fillRect(78, 96, 6, 16);                            // shaded right side of legs
+  g.fillStyle(0x2a3a5a); g.fillRect(24, 112, 32, 2); g.fillRect(56, 112, 32, 2);   // lit top of feet
+  g.fillStyle(0x0e1626);                                                           // toe splits
+  g.fillRect(32, 114, 1, 6); g.fillRect(40, 114, 1, 6); g.fillRect(48, 114, 1, 6);
+  g.fillRect(64, 114, 1, 6); g.fillRect(72, 114, 1, 6); g.fillRect(80, 114, 1, 6);
+  g.fillStyle(0xaaddff); g.fillRect(25, 113, 3, 1); g.fillRect(57, 113, 3, 1);    // rime on the toes
   // ── LEFT ARM: long, reaching to the ground ──
-  g.fillStyle(0x4a5f88); g.fillRect(1, 16, 9, 30);
-  g.fillStyle(0x6680a8); g.fillRect(2, 18, 4, 22);                                // arm gleam
-  g.fillStyle(0x33445f); g.fillRect(0, 42, 11, 8);                                // left fist
+  g.fillStyle(0x4a5f88); g.fillRect(2, 32, 18, 60);
+  g.fillStyle(0x6680a8); g.fillRect(4, 36, 8, 44);                                // arm gleam
+  g.fillStyle(0x33445f); g.fillRect(0, 84, 22, 16);                                // left fist
+  g.fillStyle(0x3a4f78); g.fillRect(14, 32, 6, 52);                                // arm, shaded side
+  g.fillRect(4, 48, 4, 1); g.fillRect(8, 56, 4, 1); g.fillRect(4, 64, 5, 1); g.fillRect(9, 72, 3, 1); // shaggy hide
+  g.fillStyle(0x4a5f88);                                                           // knuckles
+  g.fillRect(1, 94, 5, 5); g.fillRect(8, 95, 5, 5); g.fillRect(15, 94, 5, 5);
+  g.fillStyle(0xcceeff); g.fillRect(1, 94, 2, 1); g.fillRect(8, 95, 2, 1); g.fillRect(15, 94, 2, 1); // frosted knuckles
+  g.fillStyle(0x6680a8); g.fillRect(0, 84, 20, 1);                                 // fist top edge light
   // ── MASSIVE ICE-CHUNK CLUB on the right ──
-  g.fillStyle(0x556688); g.fillRect(50, 40, 5, 16);                              // handle/forearm grip
-  g.fillStyle(0xaaccee); g.fillRect(42, 16, 14, 24);                             // big ice chunk
-  g.fillStyle(0xcceeff); g.fillRect(44, 18, 7, 14);                              // ice gleam
-  g.fillStyle(0x88bbe0); g.fillTriangle(42, 16, 50, 10, 56, 18);                 // jagged top facet
-  g.fillStyle(0x88bbe0); g.fillTriangle(42, 40, 49, 46, 56, 40);                 // jagged bottom facet
-  g.fillStyle(0xffffff); g.fillRect(46, 20, 2, 6);                              // sharp highlight
+  g.fillStyle(0x556688); g.fillRect(100, 80, 10, 32);                              // handle/forearm grip
+  g.fillStyle(0xaaccee); g.fillRect(84, 32, 28, 48);                             // big ice chunk
+  g.fillStyle(0xcceeff); g.fillRect(88, 36, 14, 28);                              // ice gleam
+  g.fillStyle(0x88bbe0); g.fillTriangle(84, 32, 100, 20, 112, 36);                 // jagged top facet
+  g.fillStyle(0x88bbe0); g.fillTriangle(84, 80, 98, 92, 112, 80);                 // jagged bottom facet
+  g.fillStyle(0xffffff); g.fillRect(92, 40, 4, 12);                              // sharp highlight
+  g.fillStyle(0x88aacc); g.fillRect(106, 36, 6, 44);                              // club, shaded side
+  g.lineStyle(1, 0x6699cc);                                                        // fracture lines in the ice
+  g.beginPath(); g.moveTo(86, 50); g.lineTo(96, 58); g.lineTo(94, 70); g.strokePath();
+  g.beginPath(); g.moveTo(104, 34); g.lineTo(100, 46); g.lineTo(108, 60); g.strokePath();
+  g.fillStyle(0xffffff); g.fillRect(100, 26, 1, 1); g.fillRect(89, 70, 1, 1); g.fillRect(104, 66, 1, 1); // sparkles
   // right shoulder/arm gripping the club
-  g.fillStyle(0x4a5f88); g.fillRect(44, 22, 8, 20);
+  g.fillStyle(0x4a5f88); g.fillRect(88, 44, 16, 40);
   // ── TORSO: very wide, hunched, x=0..55 reach via shoulders ──
-  g.fillStyle(0x4a5f88); g.fillRect(8, 18, 40, 32);            // wide body
-  g.fillStyle(0x5a72a0); g.fillRect(6, 24, 44, 16);           // bulging hunched mass
-  g.fillStyle(0x6680a8); g.fillRect(11, 20, 34, 9);          // upper highlight
-  g.fillStyle(0x33445f); g.fillRect(8, 44, 40, 6);           // belly hunch shadow
+  g.fillStyle(0x4a5f88); g.fillRect(16, 36, 80, 64);            // wide body
+  g.fillStyle(0x5a72a0); g.fillRect(12, 48, 88, 32);           // bulging hunched mass
+  g.fillStyle(0x6680a8); g.fillRect(22, 40, 68, 18);          // upper highlight
+  g.fillStyle(0x33445f); g.fillRect(16, 88, 80, 12);           // belly hunch shadow
+  g.fillStyle(0x3e5078); g.fillRect(84, 48, 12, 40);           // shaded right flank
+  g.fillStyle(0x7a94bc); g.fillRect(22, 40, 60, 1);            // top-light rim
+  g.fillStyle(0x7a94bc);                                       // shaggy hide: pale strands up top...
+  for (let i = 0; i < 8; i++) g.fillRect(24 + i * 8, 46 + (i % 2) * 4, 4, 1);
+  g.fillStyle(0x3e5078);                                       // ...dark strands lower down
+  for (let i = 0; i < 9; i++) g.fillRect(20 + i * 8, 78 + (i % 2) * 4, 4, 1);
+  g.fillStyle(0x33445f);                                       // ragged fur fringe hanging over the legs
+  for (let fx = 18; fx < 94; fx += 8) g.fillTriangle(fx, 98, fx + 6, 98, fx + 3, 104);
   // ── ICE-CRYSTAL SPIKES from shoulders and back (sharp pale-blue triangles) ──
   g.fillStyle(0xaaddff);
-  g.fillTriangle(2, 22, 8, 6, 13, 22);      // left shoulder big spike
-  g.fillTriangle(43, 22, 49, 4, 54, 22);    // right shoulder big spike
-  g.fillTriangle(14, 20, 18, 8, 22, 20);    // back spike
-  g.fillTriangle(34, 20, 38, 10, 42, 20);   // back spike
+  g.fillTriangle(4, 44, 16, 12, 26, 44);      // left shoulder big spike
+  g.fillTriangle(86, 44, 98, 8, 108, 44);    // right shoulder big spike
+  g.fillTriangle(28, 40, 36, 16, 44, 40);    // back spike
+  g.fillTriangle(68, 40, 76, 20, 84, 40);   // back spike
   g.fillStyle(0xcceeff);                     // spike inner gleam
-  g.fillTriangle(6, 20, 8, 9, 11, 20);
-  g.fillTriangle(47, 20, 49, 7, 52, 20);
+  g.fillTriangle(12, 40, 16, 18, 22, 40);
+  g.fillTriangle(94, 40, 98, 14, 104, 40);
+  g.fillStyle(0x88bbe0);                     // shaded right facet of each spike
+  g.fillTriangle(16, 12, 26, 44, 18, 44); g.fillTriangle(98, 8, 108, 44, 100, 44);
+  g.fillTriangle(36, 16, 44, 40, 38, 40); g.fillTriangle(76, 20, 84, 40, 78, 40);
+  g.fillStyle(0xffffff); g.fillRect(15, 14, 1, 3); g.fillRect(97, 10, 1, 3); // spike tip glints
   // ── GLOWING PALE-BLUE RUNES on torso ──
+  g.fillStyle(0x88eeff, 0.3);                // rune glow
+  g.fillRect(30, 58, 10, 10); g.fillRect(42, 66, 10, 10); g.fillRect(54, 60, 10, 10);
+  g.fillRect(66, 68, 10, 10); g.fillRect(46, 78, 10, 10);
   g.fillStyle(0x88eeff);
-  g.fillRect(16, 30, 3, 3); g.fillRect(22, 34, 3, 3); g.fillRect(28, 31, 3, 3);
-  g.fillRect(34, 35, 3, 3); g.fillRect(24, 40, 3, 3);
+  g.fillRect(32, 60, 6, 6); g.fillRect(44, 68, 6, 6); g.fillRect(56, 62, 6, 6);
+  g.fillRect(68, 70, 6, 6); g.fillRect(48, 80, 6, 6);
   g.fillStyle(0xccffff);                      // rune cores
-  g.fillRect(17, 31, 1, 1); g.fillRect(29, 32, 1, 1); g.fillRect(35, 36, 1, 1);
+  g.fillRect(34, 62, 2, 2); g.fillRect(58, 64, 2, 2); g.fillRect(70, 72, 2, 2);
   // ── HEAD: blocky, recessed dark eye sockets, glowing icy eyes ──
-  g.fillStyle(0x5a72a0); g.fillEllipse(28, 11, 30, 18);
-  g.fillStyle(0x4a5f88); g.fillEllipse(28, 15, 24, 9);        // jaw shade
+  g.fillStyle(0x5a72a0); g.fillEllipse(56, 22, 60, 36);
+  g.fillStyle(0x4a5f88); g.fillEllipse(56, 30, 48, 18);        // jaw shade
+  g.fillStyle(0x6680a8); g.fillEllipse(50, 10, 34, 8);         // lit brow
+  g.fillStyle(0x16203a); g.fillRect(52, 28, 2, 2); g.fillRect(58, 28, 2, 2); // nostrils
+  g.fillStyle(0xaaddff);                                       // icicle beard at the jaw corners
+  g.fillTriangle(34, 34, 40, 34, 37, 44); g.fillTriangle(72, 34, 78, 34, 75, 44);
+  g.fillStyle(0xeeffff); g.fillRect(35, 35, 1, 3); g.fillRect(73, 35, 1, 3);
   // horns / tusk-horns, swept
-  g.fillStyle(0x6688aa); g.fillTriangle(10, 8, 14, 0, 18, 8);
-  g.fillStyle(0x6688aa); g.fillTriangle(38, 8, 42, 0, 46, 8);
-  g.fillStyle(0x3a4f78); g.fillRect(12, 6, 4, 3); g.fillRect(40, 6, 4, 3);       // horn base shade
+  g.fillStyle(0x6688aa); g.fillTriangle(20, 16, 28, 0, 36, 16);
+  g.fillStyle(0x6688aa); g.fillTriangle(76, 16, 84, 0, 92, 16);
+  g.fillStyle(0x3a4f78); g.fillRect(24, 12, 8, 6); g.fillRect(80, 12, 8, 6);       // horn base shade
+  g.fillStyle(0x88aacc); g.fillRect(25, 8, 6, 1); g.fillRect(81, 8, 6, 1); g.fillRect(26, 4, 4, 1); g.fillRect(82, 4, 4, 1); // horn ridges
   // recessed dark eye sockets
-  g.fillStyle(0x16203a); g.fillRect(17, 7, 8, 6); g.fillRect(31, 7, 8, 6);
+  g.fillStyle(0x16203a); g.fillRect(34, 14, 16, 12); g.fillRect(62, 14, 16, 12);
   // glowing icy eyes
-  g.fillStyle(0x88eeff, 0.4); g.fillRect(18, 8, 6, 5); g.fillRect(32, 8, 6, 5);  // glow
-  g.fillStyle(0xaaddff); g.fillRect(19, 9, 4, 3); g.fillRect(33, 9, 4, 3);       // eyes
-  g.fillStyle(0xffffff); g.fillRect(20, 9, 1, 1); g.fillRect(34, 9, 1, 1);       // glint
+  g.fillStyle(0x88eeff, 0.4); g.fillRect(36, 16, 12, 10); g.fillRect(64, 16, 12, 10);  // glow
+  g.fillStyle(0xaaddff); g.fillRect(38, 18, 8, 6); g.fillRect(66, 18, 8, 6);       // eyes
+  g.fillStyle(0xffffff); g.fillRect(40, 18, 2, 2); g.fillRect(68, 18, 2, 2);       // glint
   // mouth + tusks
-  g.fillStyle(0x16203a); g.fillRect(22, 16, 12, 3);
+  g.fillStyle(0x16203a); g.fillRect(44, 32, 24, 6);
   g.fillStyle(0xeeffff);
-  g.fillTriangle(23, 16, 25, 16, 24, 21);   // tusks up
-  g.fillTriangle(31, 16, 33, 16, 32, 21);
-  // outline
-  g.lineStyle(1, 0x223355);
-  g.strokeRect(8, 18, 40, 32);
-  g.generateTexture('boss_troll', 56, 60);
+  g.fillTriangle(46, 32, 50, 32, 48, 42);   // tusks up
+  g.fillTriangle(62, 32, 66, 32, 64, 42);
+  g.fillStyle(0xaaccdd); g.fillTriangle(48, 32, 50, 32, 48, 42); g.fillTriangle(64, 32, 66, 32, 64, 42); // tusk shade
+  g.generateTexture('boss_troll', 112, 120);
 
   // Bog Hydra (swamp) — three-headed serpent, coiled and bioluminescent
   g.clear();
   // ── COILED MAIN BODY: large, fills the lower canvas ──
-  g.fillStyle(0x2a3a1c); g.fillEllipse(28, 48, 48, 22);        // big coil bulk
-  g.fillStyle(0x3d5229); g.fillEllipse(28, 44, 40, 14);       // back highlight
-  g.fillStyle(0x1a2610); g.fillEllipse(28, 55, 34, 8);        // belly shadow
+  g.fillStyle(0x2a3a1c); g.fillEllipse(56, 96, 96, 44);        // big coil bulk
+  g.fillStyle(0x3d5229); g.fillEllipse(56, 88, 80, 28);       // back highlight
+  g.fillStyle(0x1a2610); g.fillEllipse(56, 110, 68, 16);        // belly shadow
   // a second coil loop for a serpentine, wrapped look
-  g.fillStyle(0x33451f); g.fillEllipse(12, 50, 16, 14);
-  g.fillStyle(0x33451f); g.fillEllipse(46, 50, 16, 14);
-  g.fillStyle(0x223311); g.fillEllipse(12, 53, 12, 5); g.fillEllipse(46, 53, 12, 5);
-  // ── SCALE-PATTERN TEXTURE on the body ──
-  g.fillStyle(0x46602f);
-  for (let sx = 12; sx <= 44; sx += 8) {
-    for (let sy = 42; sy <= 54; sy += 6) {
-      g.fillRect(sx + ((sy / 6) % 2 ? 0 : 4), sy, 3, 3);
+  g.fillStyle(0x33451f); g.fillEllipse(24, 100, 32, 28);
+  g.fillStyle(0x33451f); g.fillEllipse(92, 100, 32, 28);
+  g.fillStyle(0x223311); g.fillEllipse(24, 106, 24, 10); g.fillEllipse(92, 106, 24, 10);
+  // ── SCALE-PATTERN TEXTURE on the body: staggered scales, lit top-left lip,
+  // dark lower edge; the lower two rows sit in the belly shadow and are darker ──
+  for (let row = 0; row < 4; row++) {
+    const sy = 84 + row * 6;
+    const base = row < 2 ? 0x46602f : 0x33451f, lip = row < 2 ? 0x5a7a3a : 0x46602f;
+    for (let sx = 16 + (row % 2) * 4; sx <= 92; sx += 8) {
+      const nx = (sx + 3 - 56) / 46, ny = (sy + 2 - 96) / 20;
+      if (nx * nx + ny * ny > 1) continue;              // keep scales inside the coil
+      g.fillStyle(base); g.fillRect(sx, sy, 6, 4);
+      g.fillStyle(lip);  g.fillRect(sx, sy, 3, 1);
+      g.fillStyle(0x223311); g.fillRect(sx + 1, sy + 4, 5, 1);
     }
   }
-  g.fillStyle(0x2a3a1c);                  // scale shading
-  for (let sx = 14; sx <= 46; sx += 8) {
-    g.fillRect(sx, 47, 2, 2);
-  }
+  g.fillStyle(0x2a3a1c);                                // ventral plate lines on the underside
+  for (let vx = 36; vx <= 76; vx += 6) g.fillRect(vx, 108, 1, 5);
+  g.fillStyle(0x6a8a4a);                                // wet glints on the top of the coil
+  g.fillRect(30, 80, 5, 1); g.fillRect(70, 79, 4, 1); g.fillRect(14, 92, 3, 1);
   // ── BACK SPINES along the coil ──
   g.fillStyle(0x1a2610);
-  g.fillTriangle(12, 40, 16, 30, 20, 40);
-  g.fillTriangle(22, 40, 27, 28, 32, 40);
-  g.fillTriangle(34, 40, 38, 30, 42, 40);
+  g.fillTriangle(24, 80, 32, 60, 40, 80);
+  g.fillTriangle(44, 80, 54, 56, 64, 80);
+  g.fillTriangle(68, 80, 76, 60, 84, 80);
+  g.fillStyle(0x33451f);                                // lit left face of each spine
+  g.fillTriangle(24, 80, 32, 60, 29, 80); g.fillTriangle(44, 80, 54, 56, 50, 80); g.fillTriangle(68, 80, 76, 60, 73, 80);
   // ── THREE NECKS at very different heights ──
   g.fillStyle(0x33451f);
-  g.fillRect(7, 24, 8, 24);     // left neck (mid)
-  g.fillRect(24, 4, 8, 42);     // center neck (full height, reaching near top)
-  g.fillRect(42, 30, 8, 18);    // right neck (low)
+  g.fillRect(14, 48, 16, 48);     // left neck (mid)
+  g.fillRect(48, 8, 16, 84);     // center neck (full height, reaching near top)
+  g.fillRect(84, 60, 16, 36);    // right neck (low)
   g.fillStyle(0x46602f);        // neck highlights
-  g.fillRect(9, 24, 3, 24); g.fillRect(26, 4, 3, 42); g.fillRect(44, 30, 3, 18);
+  g.fillRect(18, 48, 6, 48); g.fillRect(52, 8, 6, 84); g.fillRect(88, 60, 6, 36);
+  g.fillStyle(0x223311);                                // shaded right side of each neck
+  g.fillRect(27, 48, 3, 48); g.fillRect(61, 8, 3, 84); g.fillRect(97, 60, 3, 36);
+  g.fillStyle(0x2a3a1c);                                // scale bands ringing the necks
+  for (let ny = 52; ny < 94; ny += 6) g.fillRect(14, ny, 16, 1);
+  for (let ny = 30; ny < 90; ny += 6) g.fillRect(48, ny, 16, 1);
+  for (let ny = 64; ny < 94; ny += 6) g.fillRect(84, ny, 16, 1);
   // ── BIOLUMINESCENT STRIPES on the necks/body ──
   g.fillStyle(0x44ff88);
-  g.fillRect(11, 28, 2, 3); g.fillRect(11, 38, 2, 3);          // left neck
-  g.fillRect(28, 12, 2, 3); g.fillRect(28, 24, 2, 3); g.fillRect(28, 36, 2, 3); // center neck
-  g.fillRect(46, 34, 2, 3);                                    // right neck
+  g.fillRect(22, 56, 4, 6); g.fillRect(22, 76, 4, 6);          // left neck
+  g.fillRect(56, 24, 4, 6); g.fillRect(56, 48, 4, 6); g.fillRect(56, 72, 4, 6); // center neck
+  g.fillRect(92, 68, 4, 6);                                    // right neck
   g.fillStyle(0x88ff44);                                       // body biolum spots
-  g.fillRect(18, 46, 3, 3); g.fillRect(30, 48, 3, 3); g.fillRect(38, 45, 3, 3);
-  g.fillRect(24, 52, 3, 3); g.fillRect(14, 50, 2, 2);
+  g.fillRect(36, 92, 6, 6); g.fillRect(60, 96, 6, 6); g.fillRect(76, 90, 6, 6);
+  g.fillRect(48, 104, 6, 6); g.fillRect(28, 100, 4, 4);
   // ── THREE HEADS ──
-  g.fillStyle(0x4a6b33); g.fillEllipse(10, 18, 16, 11);       // left head
-  g.fillStyle(0x4a6b33); g.fillEllipse(28, 6, 17, 12);        // center head (top)
-  g.fillStyle(0x4a6b33); g.fillEllipse(46, 24, 15, 10);       // right head (low)
+  g.fillStyle(0x4a6b33); g.fillEllipse(20, 36, 32, 22);       // left head
+  g.fillStyle(0x4a6b33); g.fillEllipse(56, 12, 34, 24);        // center head (top)
+  g.fillStyle(0x4a6b33); g.fillEllipse(92, 48, 30, 20);       // right head (low)
   g.fillStyle(0x33451f);                                       // jaw shadows
-  g.fillEllipse(10, 21, 13, 4); g.fillEllipse(28, 10, 14, 4); g.fillEllipse(46, 27, 12, 4);
+  g.fillEllipse(20, 42, 26, 8); g.fillEllipse(56, 20, 28, 8); g.fillEllipse(92, 54, 24, 8);
+  g.fillStyle(0x5a8040);                                       // lit crowns
+  g.fillEllipse(18, 31, 20, 6); g.fillEllipse(54, 6, 22, 6); g.fillEllipse(90, 43, 18, 5);
+  g.fillStyle(0x1a2610);                                       // nostrils
+  g.fillRect(6, 36, 2, 2); g.fillRect(42, 12, 2, 2); g.fillRect(79, 48, 2, 2);
+  g.fillStyle(0x33451f);                                       // brow ridges
+  g.fillRect(21, 25, 10, 2); g.fillRect(57, 1, 10, 2); g.fillRect(93, 37, 10, 2);
   // snout biolum stripe on each head
   g.fillStyle(0x44ff88);
-  g.fillRect(4, 17, 4, 2); g.fillRect(22, 5, 4, 2); g.fillRect(40, 23, 4, 2);
+  g.fillRect(8, 34, 8, 4); g.fillRect(44, 10, 8, 4); g.fillRect(80, 46, 8, 4);
   // ── GLOWING EYES on all three heads (bright yellow-green) ──
   g.fillStyle(0xccff22, 0.4);                                  // glow halos
-  g.fillRect(10, 13, 6, 5); g.fillRect(28, 1, 6, 5); g.fillRect(46, 19, 6, 5);
+  g.fillRect(20, 26, 12, 10); g.fillRect(56, 2, 12, 10); g.fillRect(92, 38, 12, 10);
   g.fillStyle(0xccff22);                                       // eyes
-  g.fillRect(11, 14, 4, 3); g.fillRect(29, 2, 4, 3); g.fillRect(47, 20, 4, 3);
+  g.fillRect(22, 28, 8, 6); g.fillRect(58, 4, 8, 6); g.fillRect(94, 40, 8, 6);
   g.fillStyle(0x223300);                                       // slit pupils
-  g.fillRect(12, 15, 1, 2); g.fillRect(30, 3, 1, 2); g.fillRect(48, 21, 1, 2);
+  g.fillRect(24, 30, 2, 4); g.fillRect(60, 6, 2, 4); g.fillRect(96, 42, 2, 4);
+  g.fillStyle(0xffffcc);                                       // eye glints
+  g.fillRect(22, 28, 1, 1); g.fillRect(58, 4, 1, 1); g.fillRect(94, 40, 1, 1);
   // ── FANGS on all three mouths ──
   g.fillStyle(0x1a2610);                                       // dark maws
-  g.fillRect(4, 21, 10, 2); g.fillRect(22, 9, 12, 2); g.fillRect(40, 27, 10, 2);
+  g.fillRect(8, 42, 20, 4); g.fillRect(44, 18, 24, 4); g.fillRect(80, 54, 20, 4);
   g.fillStyle(0xeeffdd);
-  g.fillTriangle(5, 21, 7, 21, 6, 25);  g.fillTriangle(11, 21, 13, 21, 12, 25);   // left
-  g.fillTriangle(24, 9, 26, 9, 25, 14); g.fillTriangle(31, 9, 33, 9, 32, 14);     // center
-  g.fillTriangle(41, 27, 43, 27, 42, 31); g.fillTriangle(47, 27, 49, 27, 48, 31); // right
-  // outline
-  g.lineStyle(1, 0x112200);
-  g.strokeEllipse(28, 48, 48, 22);
-  g.generateTexture('boss_hydra', 56, 60);
+  g.fillTriangle(10, 42, 14, 42, 12, 50);  g.fillTriangle(22, 42, 26, 42, 24, 50);   // left
+  g.fillTriangle(48, 18, 52, 18, 50, 28); g.fillTriangle(62, 18, 66, 18, 64, 28);     // center
+  g.fillTriangle(82, 54, 86, 54, 84, 62); g.fillTriangle(94, 54, 98, 54, 96, 62); // right
+  g.fillStyle(0xbbccaa);                                       // shaded side of each fang
+  g.fillTriangle(12, 42, 14, 42, 12, 50); g.fillTriangle(24, 42, 26, 42, 24, 50);
+  g.fillTriangle(50, 18, 52, 18, 50, 28); g.fillTriangle(64, 18, 66, 18, 64, 28);
+  g.fillTriangle(84, 54, 86, 54, 84, 62); g.fillTriangle(96, 54, 98, 54, 96, 62);
+  g.generateTexture('boss_hydra', 112, 120);
 
   // Boss shadow — dark translucent ellipse that tracks under every boss
   g.clear();
