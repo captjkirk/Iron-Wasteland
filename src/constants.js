@@ -64,6 +64,12 @@ const _RAIDER_LOOT = [['item_ammo', 0.6, 0], ['item_metal', 0.4, 0], ['item_food
 // w/h = physics body in TEXTURE pixels (the full texture size). Enemy textures
 // are drawn at 2× pixel density, so baseScale is half the old value and w/h are
 // double; on-screen and body sizes are unchanged. Melee reach uses w/4 (= old w/2).
+// Raider base stats, scaled by _diffMult() at spawn. Camp raiders, heavies and hunt parties share this.
+const RAIDER_STATS = {
+  brawler: { hp: 130, speed: 110, dmg: 20, range: 36, atkInterval: 1100, shootRange: 0 },
+  shooter: { hp: 80,  speed: 90,  dmg: 16, range: 40, atkInterval: 1200, shootRange: 280 },
+  heavy:   { hp: 200, speed: 75,  dmg: 28, range: 42, atkInterval: 1400, shootRange: 200 },
+};
 const ENEMY_STATS = {
   wolf:         { hp:60,  speed:75,  dmg:6,  baseScale:0.9,  w:40, h:24, atkInterval:1600, aggro:190 },
   rat:          { hp:30,  speed:105, dmg:4,  baseScale:0.7,  w:30, h:18, atkInterval:1200, aggro:110 },
