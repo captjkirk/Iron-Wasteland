@@ -153,7 +153,6 @@ class GameScene extends Phaser.Scene {
     this.dayNum = 1; this.dayTimer = 0; this.DAY_DUR = 150000; this.isNight = false;
     this.kills = 0;
     this.resourcesGathered = 0;
-    this.teamAmmoPool = 0;
     this.bossSpawned = false;
     this.bossDefeated = false;
     this.boss = null;
@@ -747,6 +746,7 @@ class GameScene extends Phaser.Scene {
       hp: _hcMaxHp, maxHp: _hcMaxHp,
       ammo: charData.id==='gunslinger' ? 8 : Infinity,
       reserveAmmo: charData.id==='gunslinger' ? 32 : 0,
+      carriedAmmo: 0, // picked up by a non-Gunslinger; handed over when close to the Gunslinger
       flowerAmmo: charData.id==='charmer' ? 0 : undefined,
       knifeCooldown: 0,
       bowCooldown: 0,
@@ -1320,6 +1320,7 @@ class GameScene extends Phaser.Scene {
       if (i.metal > 0) parts.push('Metal:' + i.metal);
       if (i.fiber > 0) parts.push('Fiber:' + i.fiber);
       if (i.food > 0) parts.push('Food:' + i.food);
+      if (p.carriedAmmo > 0) parts.push('Ammo:' + p.carriedAmmo);
       return parts.length ? parts.join('  ') : '';
     };
     if (this.p1InvText) {
@@ -2501,6 +2502,7 @@ class GameScene extends Phaser.Scene {
     this.syncLabels();
     this.updateCamera();
     this.checkBarrackRange();
+    this._handOverAmmo();
     this.checkRadioTowerRange(delta);
     this.updateRelicChannels(delta);
     this.checkRaidCacheRange();
@@ -3647,13 +3649,29 @@ class GameScene extends Phaser.Scene {
     this.time.delayedCall(900, () => { if (blt.active) blt.destroy(); });
   }
 
+  // A non-Gunslinger carrying ammo tops up a live Gunslinger who is within barracks distance.
+  _handOverAmmo() {
+    const gun = [this.p1, this.p2].find(p => p && p.charData.id === 'gunslinger' && !p.isDowned && p.spr?.active);
+    if (!gun) return;
+    for (const p of [this.p1, this.p2]) {
+      if (!p || p === gun || !(p.carriedAmmo > 0) || p.isDowned || !p.spr?.active) continue;
+      if (Phaser.Math.Distance.Between(p.spr.x, p.spr.y, gun.spr.x, gun.spr.y) >= 110) continue;
+      const room = Math.max(0, 40 - gun.ammo - gun.reserveAmmo);
+      const moved = Math.min(p.carriedAmmo, room);
+      if (moved <= 0) continue;
+      p.carriedAmmo -= moved;
+      gun.reserveAmmo += moved;
+      this._hudDirty = true;
+      this._log(`${p.charData.player} handed ${moved} ammo to ${gun.charData.player}  reserve=${gun.reserveAmmo}  carried=${p.carriedAmmo}`, 'player');
+    }
+  }
+
   doAlt(player) {
     const id = player.charData.id;
     if (id === 'gunslinger') {
       const clipSize = player._gunslingerClip || 8;
-      // Pull from team pool if the personal reserve is empty \u2014 otherwise P2's
-      // ammo crate pickups are unreachable and gunslinger gets starved in co-op.
-      const totalAvailable = (player.reserveAmmo || 0) + (this.teamAmmoPool || 0);
+      // Reloads draw only from the Gunslinger's own reserve; ammo others carry arrives by hand-over.
+      const totalAvailable = player.reserveAmmo || 0;
       if (player.ammo < clipSize && !player.reloading && totalAvailable > 0) {
         player.reloading = true;
         SFX.reload();
@@ -3663,15 +3681,8 @@ class GameScene extends Phaser.Scene {
           let fill = Math.min(needed, player.reserveAmmo);
           player.ammo += fill;
           player.reserveAmmo -= fill;
-          // Top up from the shared team pool if still short.
-          const stillNeeded = (clipSize - player.ammo);
-          if (stillNeeded > 0 && this.teamAmmoPool > 0) {
-            const fromPool = Math.min(stillNeeded, this.teamAmmoPool);
-            player.ammo += fromPool;
-            this.teamAmmoPool -= fromPool;
-          }
           player.reloading = false;
-          this._log(`${player.charData.player} reloaded  ammo=${player.ammo}  reserve=${player.reserveAmmo}  pool=${this.teamAmmoPool}`, 'player');
+          this._log(`${player.charData.player} reloaded  ammo=${player.ammo}  reserve=${player.reserveAmmo}`, 'player');
           this._hudDirty = true; SFX.reload();
         });
       } else if (totalAvailable <= 0 && player.ammo < clipSize) {
@@ -4490,9 +4501,9 @@ class GameScene extends Phaser.Scene {
             this._log(`${player.charData.player} picked up ammo  reserve=${player.reserveAmmo}`, 'player');
             label = '+3 Ammo';
           } else {
-            this.teamAmmoPool += 3;
-            this._log(`${player.charData.player} picked up ammo → team pool  pool=${this.teamAmmoPool}`, 'player');
-            label = '+3 Ammo (Team)';
+            player.carriedAmmo += 3;
+            this._log(`${player.charData.player} picked up ammo (carried)  carried=${player.carriedAmmo}`, 'player');
+            label = '+3 Ammo (carried)';
           }
           this._hudDirty = true;
         } else if (item.itemType === 'food') {
@@ -4990,8 +5001,8 @@ class GameScene extends Phaser.Scene {
             player.reserveAmmo = Math.min(maxReserve, player.reserveAmmo + 4);
             this._log(`${player.charData.player} crate ammo  reserve=${player.reserveAmmo}`, 'player');
           } else {
-            this.teamAmmoPool += 4;
-            this._log(`${player.charData.player} crate ammo → team pool  pool=${this.teamAmmoPool}`, 'player');
+            player.carriedAmmo += 4;
+            this._log(`${player.charData.player} crate ammo (carried)  carried=${player.carriedAmmo}`, 'player');
           }
           this._hudDirty = true;
         } else if (crate.itemType === 'food') {

@@ -743,10 +743,10 @@ Object.assign(GameScene.prototype, {
     if (newCh.id==='gunslinger') {
       player.ammo = 8;
       const maxReserve = 40 - player.ammo;
-      const fromPool = Math.min(this.teamAmmoPool, maxReserve);
-      player.reserveAmmo = Math.min(maxReserve, 32 + fromPool);
-      this.teamAmmoPool = Math.max(0, this.teamAmmoPool - fromPool);
-      if (fromPool > 0) this._log(`Barracks: drained ${fromPool} from team pool → reserveAmmo=${player.reserveAmmo}  pool=${this.teamAmmoPool}`, 'player');
+      const carried = player.carriedAmmo || 0;
+      player.reserveAmmo = Math.min(maxReserve, 32 + carried);
+      player.carriedAmmo = 0;
+      if (carried > 0) this._log(`Barracks: ${carried} carried ammo → reserveAmmo=${player.reserveAmmo}`, 'player');
     }
 
     // Update STATE for consistency
