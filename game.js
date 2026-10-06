@@ -45,12 +45,14 @@
 //                          ControlsScene, BootScene, ModeSelectScene,
 //                          SettingsScene, CharSelectScene
 //
-//   src/game-scene.js    — GameScene: gameplay systems 2-3 and 5-22 (see list below)
-//                          Also: GameScene.RECIPES static property
+//   src/game-scene.js    — GameScene: gameplay systems 2-3, 5-7 and 9-22 (see list below)
+//                          Also: GameScene.RECIPES static property (system 8's recipe list)
 //
 //   src/world-gen.js     — System 1, added to GameScene.prototype; loads after game-scene.js
 //
 //   src/waves-bosses.js  — System 4, added to GameScene.prototype; loads after world-gen.js
+//
+//   src/building-crafting.js — System 8, added to GameScene.prototype; loads after waves-bosses.js
 //
 //   src/game-over.js     — GameOverScene (death + stats screen)
 //
@@ -99,7 +101,8 @@
 //    fns:  movePlayer, aimAtMouse (faces the cursor while _mouseAt is recent), _faceAngle,
 //          applyTouchInput, applyTerrainEffects,
 //          getControls, initTouchControls, _onTouchDown/Move/Up,
-//          openPauseSettings, _walkStep
+//          openPauseSettings, _walkStep,
+//          tryInteract (the Interact key: build teardown, barracks, radio tower, raid cache, bed, relics, altar)
 //    data: p1, p2 (spr, hp, maxHp, charData, inv), _joy, _tcBtns, wasd, p2keys
 //    cfg:  CAM_PAD, CAM_ZOOM_MIN, CAM_ZOOM_MAX
 //
@@ -107,7 +110,7 @@
 //    fns:  doAttack, doAlt, meleeSwing, _triggerAtkAnim, _hitPause,
 //          _floatDamage, _knightShieldBlock, _dropSpiderWeb,
 //          _emitCharmSparkle, _emitLurkerBubble,
-//          _fireArrow, _fireNailGun, _fireShieldThrow
+//          _fireArrow, _fireNailGun, _fireShieldThrow, deployTurret
 //    chars by id: knight, gunslinger, architect, charmer,
 //                 raider, spider, lurker, troll
 //    data: player.atkCooldown, player.ammo, player.reserveAmmo, teamAmmoPool
@@ -121,9 +124,9 @@
 //    data: player.isDowned, player.downedTimer, reviving, reviveProgress
 //    log:  [PLAYER]
 //
-// 8. BUILDING & CRAFTING
+// 8. BUILDING & CRAFTING  (src/building-crafting.js; GameScene.RECIPES stays in src/game-scene.js)
 //    build: toggleBuildMode, updateBuildMode, placeBuild, exitBuildMode, _placeWallSprite,
-//           tryInteract, _tryTeardownBuild, deployTurret
+//           _tryTeardownBuild, openGate, getBuildCost, getTeamInv
 //    craft: openCraftMenu, closeCraftMenu, updateCraftMenu, craftSelected,
 //           renderCraftMenu, _craftScrollToSel
 //    barracks: openBarrack, closeBarrack, barrackNav, barrackConfirm,
