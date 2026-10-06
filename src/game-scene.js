@@ -836,6 +836,10 @@ class GameScene extends Phaser.Scene {
       }).setOrigin(1,0).setDepth(102));
     }
 
+    // Status-effect strips under the name badges (drawn only from redrawHUD)
+    this.p1StatusGfx = this._h(this.add.graphics().setDepth(102));
+    if (this.p2) this.p2StatusGfx = this._h(this.add.graphics().setDepth(102));
+
     // ── MINIMAP ─────────────────────────────────────────────────
     const mmW = 160, mmH = 160;
     const mmX = W - mmW - 10, mmY = 96; // top-right so it doesn't overlap P2 inventory
@@ -1242,7 +1246,44 @@ class GameScene extends Phaser.Scene {
     }
   }
 
+  // Active status effects on a player, in draw order. They live in different fields.
+  _activeStatuses(p) {
+    const now = this.time.now, s = [];
+    if (p._frostSlowed) s.push('frost');
+    if (p._webbed) s.push('web');
+    if (p._toxicUntil > now) s.push('toxic');
+    if (p._rallyUntil > now) s.push('rally');
+    if (p['_' + p.charData.id + 'Upgraded']) s.push('upgrade');
+    return s;
+  }
+
+  _drawStatusStrip(gfx, p, rightAlign, cacheKey) {
+    const list = this._activeStatuses(p), key = list.join();
+    if (this[cacheKey] === key) return;
+    this[cacheKey] = key;
+    const SZ = 13, GAP = 3, y = 41, W = this.scale.width;
+    gfx.clear();
+    list.forEach((name, i) => {
+      const x = rightAlign ? W - 12 - SZ - i * (SZ + GAP) : 12 + i * (SZ + GAP);
+      const cx = x + SZ / 2, cy = y + SZ / 2, r = SZ / 2;
+      gfx.fillStyle(0x000000, 0.55).fillRect(x - 1, y - 1, SZ + 2, SZ + 2);
+      if (name === 'frost') {          // blue diamond
+        gfx.fillStyle(0x88ccff, 1).fillTriangle(cx, y, x + SZ, cy, cx, y + SZ).fillTriangle(cx, y, x, cy, cx, y + SZ);
+      } else if (name === 'web') {     // white cross in a ring
+        gfx.lineStyle(1.5, 0xdddddd, 1).strokeCircle(cx, cy, r - 1).lineBetween(x, cy, x + SZ, cy).lineBetween(cx, y, cx, y + SZ);
+      } else if (name === 'toxic') {   // green drop
+        gfx.fillStyle(0x44ff22, 1).fillCircle(cx, cy + 2, r - 2).fillTriangle(cx, y, cx - r + 2, cy + 1, cx + r - 2, cy + 1);
+      } else if (name === 'rally') {   // yellow up arrow
+        gfx.fillStyle(0xffdd44, 1).fillTriangle(cx, y, x, cy + 1, x + SZ, cy + 1).fillRect(cx - 2, cy, 4, r);
+      } else {                         // upgrade: orange square star
+        gfx.fillStyle(0xffaa22, 1).fillRect(x + 2, y + 2, SZ - 4, SZ - 4).fillTriangle(cx, y - 1, x + 1, cy, x + SZ - 1, cy).fillTriangle(cx, y + SZ + 1, x + 1, cy, x + SZ - 1, cy);
+      }
+    });
+  }
+
   redrawHUD() {
+    this._drawStatusStrip(this.p1StatusGfx, this.p1, false, '_lastStatusP1');
+    if (this.p2StatusGfx) this._drawStatusStrip(this.p2StatusGfx, this.p2, true, '_lastStatusP2');
     // Update ammo icons and reserve counter — only touch alphas/text when the
     // values actually changed (redrawHUD fires every frame from update()).
     const refreshAmmo = (icons, reserveText, player) => {
@@ -2796,6 +2837,9 @@ class GameScene extends Phaser.Scene {
             if (!this[cdKey] || this[cdKey] <= 0) {
               player.hp = Math.max(0, player.hp - 3);
               this[cdKey] = 500;
+              player._toxicUntil = this.time.now + 900;
+              this._hudDirty = true;
+              this.time.delayedCall(950, () => { this._hudDirty = true; });
               this._log(`${player.charData.player} toxic pool dmg=3 hp=${player.hp}/${player.maxHp}`, 'combat');
               player.spr.setTint(0x44ff22);
               this.time.delayedCall(150, () => {
@@ -3716,8 +3760,11 @@ class GameScene extends Phaser.Scene {
       const origSpeed = rallyTarget.charData.speed;
       rallyTarget.charData.speed = Math.floor(origSpeed * 1.5);
       rallyTarget.spr.setTint(0xffdd44);
+      rallyTarget._rallyUntil = this.time.now + 5000;
+      this._hudDirty = true;
       this.time.delayedCall(5000, () => {
         rallyTarget.charData.speed = origSpeed;
+        this._hudDirty = true;
         if (rallyTarget.spr.active) rallyTarget.spr.clearTint();
       });
       // Frighten nearby enemies — they flee for 5 seconds

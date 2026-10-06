@@ -656,6 +656,7 @@ Object.assign(GameScene.prototype, {
       const upgradeFlag = '_' + rec.charId + 'Upgraded';
       if (target[upgradeFlag]) { this.hint('Already upgraded!', 1500); return; }
       target[upgradeFlag] = true;
+      this._hudDirty = true;
       if (rec.charId === 'gunslinger') target._gunslingerClip = 12;
       if (rec.charId === 'charmer') target._charmerUpgraded = true;
       if (rec.charId === 'ranger') target._rangerUpgraded = true;
