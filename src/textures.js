@@ -855,36 +855,20 @@ function buildTextures(scene) {
   }
   g.generateTexture('spiderweb', 24, 24);
 
-  // Mountain — large terrain feature (96x80) — visible from across the map
-  g.clear();
-  g.fillStyle(0x333030); g.fillTriangle(48, 0, 0, 76, 96, 76);   // dark base mass
-  g.fillStyle(0x454040); g.fillTriangle(48, 6, 8, 70, 88, 70);   // mid face
-  g.fillStyle(0x575252); g.fillTriangle(48, 18, 20, 62, 76, 62); // upper face
-  g.fillStyle(0x2e2b2b); g.fillTriangle(48, 0, 0, 76, 32, 44);  // left shadow face
-  g.fillStyle(0x3e3b3b); g.fillTriangle(20, 52, 8, 72, 40, 68); // left rock detail
-  g.fillStyle(0x3e3b3b); g.fillTriangle(72, 46, 58, 70, 88, 70); // right rock detail
-  g.fillStyle(0xcccccc); g.fillTriangle(48, 0, 34, 28, 62, 28); // snow cap
-  g.fillStyle(0xdedede); g.fillTriangle(48, 2, 38, 20, 58, 20); // snow mid
-  g.fillStyle(0xf5f5f5); g.fillTriangle(48, 4, 42, 14, 54, 14); // snow tip
-  g.fillStyle(0x201e1e); g.fillRect(0, 73, 96, 7);               // base shadow
-  g.generateTexture('mountain', 96, 80);
+  // Mountains — five irregular silhouettes, all 112x88 with the ground line at y=80 so
+  // placeMtn can use one collision anchor for every variant. Drawn column by column from a
+  // jagged ridgeline: faces that climb to the right are lit (light from top-left, like the
+  // rock sprite), faces that fall away are shaded, three strata bands, snow that follows the
+  // ridge, and a dark rubble foot. Rows below 80 stay transparent for the ground skirt.
+  drawMountains(g);
 
-  // Mountain variant 2 — wide double-peak ridge (112x88)
+  // Ground skirt placed under every mountain (depth 1.5, same layer as craters) so the peak
+  // sits in the terrain instead of on it.
   g.clear();
-  g.fillStyle(0x303030); g.fillTriangle(30, 2, 0, 84, 62, 84);   // left peak
-  g.fillStyle(0x303030); g.fillTriangle(82, 0, 50, 84, 112, 84); // right peak
-  g.fillStyle(0x424040); g.fillTriangle(30, 8, 8, 78, 56, 78);
-  g.fillStyle(0x424040); g.fillTriangle(82, 6, 54, 78, 108, 78);
-  g.fillStyle(0x282828); g.fillTriangle(30, 2, 0, 84, 22, 50);   // left shadow
-  g.fillStyle(0x282828); g.fillTriangle(82, 0, 50, 84, 64, 46);  // right shadow
-  g.fillStyle(0x3a3838); g.fillTriangle(44, 46, 58, 84, 72, 84); // saddle
-  g.fillStyle(0x484646); g.fillTriangle(46, 48, 60, 80, 70, 80);
-  g.fillStyle(0xbbbbbb); g.fillTriangle(30, 2, 20, 24, 40, 24); // left snow
-  g.fillStyle(0xcccccc); g.fillTriangle(30, 4, 23, 18, 37, 18);
-  g.fillStyle(0xbbbbbb); g.fillTriangle(82, 0, 72, 22, 92, 22); // right snow
-  g.fillStyle(0xcccccc); g.fillTriangle(82, 2, 75, 16, 89, 16);
-  g.fillStyle(0x1e1e1e); g.fillRect(0, 81, 112, 7);
-  g.generateTexture('mountain2', 112, 88);
+  g.fillStyle(0x1a1410, 0.18); g.fillEllipse(72, 20, 144, 40);
+  g.fillStyle(0x1a1410, 0.22); g.fillEllipse(72, 20, 112, 30);
+  g.fillStyle(0x1a1410, 0.26); g.fillEllipse(72, 20, 76, 20);
+  g.generateTexture('mountain_base', 144, 40);
 
   // Supply cache — small chest/crate
   g.clear();
@@ -1477,6 +1461,7 @@ function buildTextures(scene) {
   // Enemy sprites
   drawWolf(g); drawRat(g); drawBear(g); drawIceCrawler(g); drawSpiderRuins(g); drawBogLurker(g); drawDustHound(g); drawWaterLurker(g);
 
+  polishActors(scene);
   buildAtlases(scene);
   g.destroy();
 }
@@ -1487,28 +1472,178 @@ function buildTextures(scene) {
 // a single texture bind per atlas per frame. Cuts draw calls by ~60–80%.
 // Individual textures remain in the TextureManager (are not removed); only
 // the atlas-backed sprites benefit from batching.
+// ── MOUNTAIN RIDGES ───────────────────────────────────────────
+// Five 112x88 variants: 'mountain', 'mountain2' … 'mountain5'. Ridge control points run
+// left base → peaks → right base; each column gets ±2 px of hashed roughness.
+function drawMountains(g) {
+  const W = 112, H = 88, BASE = 80;
+  const variants = [
+    [[0,BASE],[14,58],[26,40],[38,22],[46,10],[52,16],[62,30],[74,44],[90,60],[112,BASE]],                      // tall peak left of centre
+    [[0,BASE],[12,62],[22,36],[30,24],[36,30],[48,42],[60,34],[72,14],[78,20],[90,42],[100,60],[112,BASE]],     // twin peaks, right one higher
+    [[0,BASE],[10,66],[20,50],[34,38],[44,30],[56,28],[66,32],[80,40],[94,56],[112,BASE]],                      // broad low dome
+    [[0,BASE],[16,60],[28,34],[40,12],[44,18],[52,28],[58,24],[64,30],[76,48],[84,46],[96,62],[112,BASE]],      // spire with a shoulder
+    [[0,BASE],[8,64],[18,46],[26,52],[36,32],[48,18],[56,8],[62,14],[70,26],[82,38],[92,50],[102,66],[112,BASE]], // stepped ridge
+  ];
+  const hash = (i, x) => {
+    let h = (Math.imul(i + 1, 374761393) + Math.imul(x + 7, 668265263)) >>> 0;
+    h = Math.imul(h ^ (h >>> 13), 1274126177) >>> 0;
+    return ((h ^ (h >>> 16)) >>> 0) / 4294967296;
+  };
+  const shade = (c, d) => { // add d to every channel, clamped
+    const r = Math.max(0, Math.min(255, (c >> 16) + d)), gg = Math.max(0, Math.min(255, ((c >> 8) & 255) + d)), b = Math.max(0, Math.min(255, (c & 255) + d));
+    return (r << 16) | (gg << 8) | b;
+  };
+  variants.forEach((pts, vi) => {
+    g.clear();
+    const ridge = new Array(W);
+    for (let x = 0; x < W; x++) {
+      let k = 0; while (k < pts.length - 2 && pts[k + 1][0] <= x) k++;
+      const [x0, y0] = pts[k], [x1, y1] = pts[k + 1];
+      const t = (x - x0) / (x1 - x0);
+      ridge[x] = Math.max(2, Math.round(y0 + (y1 - y0) * t + (hash(vi, x) - 0.5) * 4));
+    }
+    const peakY = Math.min(...ridge);
+    const snowLine = peakY + 16;
+    for (let x = 0; x < W; x++) {
+      const top = Math.min(ridge[x], BASE - 3);
+      const slope = ridge[Math.min(W - 1, x + 2)] - ridge[Math.max(0, x - 2)]; // >0 = falling to the right (shadow side)
+      const face = slope < -1 ? 10 : slope > 1 ? -14 : 0;
+      const snowDepth = 5 + Math.floor(hash(vi, x * 13) * 6);
+      let runStart = top, runCol = null;
+      const flush = (yEnd) => { if (runCol !== null && yEnd > runStart) { g.fillStyle(runCol); g.fillRect(x, runStart, 1, yEnd - runStart); } };
+      for (let y = top; y < BASE; y++) {
+        const f = (y - peakY) / (BASE - peakY);
+        let col = f < 0.33 ? 0x5c5757 : f < 0.66 ? 0x4b4646 : 0x3b3737;
+        col = shade(col, face);
+        if (y % 11 === 0 && f > 0.3) col = shade(col, -10);                                   // faint strata line
+        if (y < snowLine && y - top < snowDepth) col = face > 0 ? 0xf4f4f4 : face < 0 ? 0xcdd2d8 : 0xe6e8ec; // snow follows the ridge
+        if (y >= BASE - 3) col = 0x241f1e;                                                     // rubble foot
+        if (col !== runCol) { flush(y); runStart = y; runCol = col; }
+      }
+      flush(BASE);
+    }
+    g.generateTexture(vi === 0 ? 'mountain' : 'mountain' + (vi + 1), W, H);
+  });
+}
+
+// ── ACTOR POLISH ──────────────────────────────────────────────
+// ponytail: outline + baked ground shadow as one canvas pass over each generated actor
+// texture, instead of editing every rectangle in ~3,800 lines of draw code. The shadow
+// rides inside the frame (it flips and squashes with the sprite); upgrade path is a
+// tracked shadow sprite per actor if that ever reads wrong.
+function polishActor(scene, key, opts) {
+  const shadow = !opts || opts.shadow !== false;
+  const tex = scene.textures.get(key);
+  if (!tex || tex.key !== key) return;
+  const src = tex.getSourceImage();
+  const w = src.width, h = src.height;
+  const PAD = 1, FOOT = shadow ? 4 : 0;
+  const nw = w + PAD * 2, nh = h + PAD * 2 + FOOT;
+  const c = document.createElement('canvas'); c.width = nw; c.height = nh;
+  const ctx = c.getContext('2d', { willReadFrequently: true });
+  ctx.drawImage(src, PAD, PAD);
+  const img = ctx.getImageData(0, 0, nw, nh), d = img.data;
+  const solid = new Uint8Array(nw * nh);
+  let feet = -1, fx0 = nw, fx1 = -1;
+  for (let y = 0; y < nh; y++) for (let x = 0; x < nw; x++) {
+    if (d[(y * nw + x) * 4 + 3] > 40) { solid[y * nw + x] = 1; feet = y; }
+  }
+  for (let y = Math.max(0, feet - 5); y <= feet; y++) for (let x = 0; x < nw; x++) {
+    if (solid[y * nw + x]) { if (x < fx0) fx0 = x; if (x > fx1) fx1 = x; }
+  }
+  // one-pixel near-black outline: every transparent pixel 4-adjacent to a solid one
+  for (let y = 0; y < nh; y++) for (let x = 0; x < nw; x++) {
+    const i = y * nw + x;
+    if (solid[i]) continue;
+    if ((x > 0 && solid[i - 1]) || (x < nw - 1 && solid[i + 1]) || (y > 0 && solid[i - nw]) || (y < nh - 1 && solid[i + nw])) {
+      d[i * 4] = 0x14; d[i * 4 + 1] = 0x10; d[i * 4 + 2] = 0x16; d[i * 4 + 3] = 255;
+    }
+  }
+  ctx.putImageData(img, 0, 0);
+  if (shadow && feet >= 0 && fx1 >= fx0) {
+    ctx.globalCompositeOperation = 'destination-over';
+    const cx = (fx0 + fx1 + 1) / 2, rx = Math.max(4, (fx1 - fx0 + 1) * 0.55);
+    ctx.fillStyle = 'rgba(0,0,0,0.38)';
+    ctx.beginPath(); ctx.ellipse(cx, feet + 1.5, rx, 2.6, 0, 0, Math.PI * 2); ctx.fill();
+    ctx.globalCompositeOperation = 'source-over';
+  }
+  scene.textures.remove(key);
+  scene.textures.addCanvas(key, c);
+}
+
+// ponytail: the fourth walk frame is the step frame with its leg band mirrored, so the
+// cycle reads idle → left stride → idle → right stride without 25 more hand-drawn poses.
+// Only the x-range of the feet is mirrored, so a sword or rifle hanging beside the legs
+// stays put. Upgrade path: hand-drawn <key>_step2 textures, which this skips if present.
+function mirrorLegs(scene, srcKey, dstKey, fromRow) {
+  if (scene.textures.exists(dstKey)) return;
+  const src = scene.textures.get(srcKey).getSourceImage();
+  const w = src.width, h = src.height;
+  const c = document.createElement('canvas'); c.width = w; c.height = h;
+  const ctx = c.getContext('2d', { willReadFrequently: true });
+  ctx.drawImage(src, 0, 0);
+  const img = ctx.getImageData(0, 0, w, h), d = img.data;
+  let x0 = w, x1 = -1;
+  for (let y = h - 8; y < h; y++) for (let x = 0; x < w; x++) {
+    if (d[(y * w + x) * 4 + 3] > 40) { if (x < x0) x0 = x; if (x > x1) x1 = x; }
+  }
+  if (x1 < x0) return;
+  const out = new Uint8ClampedArray(d);
+  for (let y = fromRow; y < h; y++) for (let x = x0; x <= x1; x++) {
+    const si = (y * w + (x1 - (x - x0))) * 4, di = (y * w + x) * 4;
+    out[di] = d[si]; out[di + 1] = d[si + 1]; out[di + 2] = d[si + 2]; out[di + 3] = d[si + 3];
+  }
+  ctx.putImageData(new ImageData(out, w, h), 0, 0);
+  scene.textures.addCanvas(dstKey, c);
+}
+
+const PLAYER_IDS = ['knight', 'gunslinger', 'architect', 'charmer', 'ranger'];
+const RAIDER_IDS = ['raider_brawler', 'raider_shooter', 'raider_heavy'];
+const DIRS = ['', '_front', '_back', '_fside', '_bside'];
+const GROUND_ENEMY_KEYS = ['wolf', 'rat', 'bear', 'ice_crawler', 'spider_ruins', 'bog_lurker', 'dust_hound'];
+const BOSS_KEYS = ['boss_golem', 'boss_wolf', 'boss_spider', 'boss_troll', 'boss_hydra'];
+
+function polishActors(scene) {
+  for (const id of PLAYER_IDS) for (const dir of DIRS) mirrorLegs(scene, id + dir + '_step', id + dir + '_step2', 36);
+  for (const id of RAIDER_IDS) for (const dir of DIRS) mirrorLegs(scene, id + dir + '_step', id + dir + '_step2', 18);
+  for (const id of PLAYER_IDS) {
+    for (const dir of DIRS) for (const f of ['', '_step', '_step2']) polishActor(scene, id + dir + f);
+    polishActor(scene, id + '_atk'); for (const dir of DIRS.slice(1)) polishActor(scene, id + '_atk' + dir);
+  }
+  for (const id of RAIDER_IDS) for (const dir of DIRS) for (const f of ['', '_step', '_step2']) polishActor(scene, id + dir + f);
+  for (const k of GROUND_ENEMY_KEYS) polishActor(scene, k);
+  polishActor(scene, 'water_lurker', { shadow: false });
+  for (const k of BOSS_KEYS) polishActor(scene, k, { shadow: false }); // bosses already carry a tracked shadow sprite
+}
+
 function buildAtlases(scene) {
   if (scene.textures.exists('player_atlas')) return;
 
-  // ── player_atlas: 5 characters × 15 frames = 75 frames, all 44×60 ──────────
-  const PLAYER_COLS = 15;
-  const PW = 44, PH = 60;
+  // ── player_atlas: 5 characters × 20 frames = 100 frames (44×60 drawn, 46×66 after polish) ──
+  const PLAYER_COLS = 20;
+  const pSrc = scene.textures.get('knight').getSourceImage();
+  const PW = pSrc.width, PH = pSrc.height;
   const PLAYER_KEYS = [
     'knight','knight_step','knight_front','knight_front_step','knight_back','knight_back_step',
     'knight_fside','knight_fside_step','knight_bside','knight_bside_step',
     'knight_atk','knight_atk_front','knight_atk_back','knight_atk_fside','knight_atk_bside',
+    'knight_step2','knight_front_step2','knight_back_step2','knight_fside_step2','knight_bside_step2',
     'gunslinger','gunslinger_step','gunslinger_front','gunslinger_front_step','gunslinger_back','gunslinger_back_step',
     'gunslinger_fside','gunslinger_fside_step','gunslinger_bside','gunslinger_bside_step',
     'gunslinger_atk','gunslinger_atk_front','gunslinger_atk_back','gunslinger_atk_fside','gunslinger_atk_bside',
+    'gunslinger_step2','gunslinger_front_step2','gunslinger_back_step2','gunslinger_fside_step2','gunslinger_bside_step2',
     'architect','architect_step','architect_front','architect_front_step','architect_back','architect_back_step',
     'architect_fside','architect_fside_step','architect_bside','architect_bside_step',
     'architect_atk','architect_atk_front','architect_atk_back','architect_atk_fside','architect_atk_bside',
+    'architect_step2','architect_front_step2','architect_back_step2','architect_fside_step2','architect_bside_step2',
     'charmer','charmer_step','charmer_front','charmer_front_step','charmer_back','charmer_back_step',
     'charmer_fside','charmer_fside_step','charmer_bside','charmer_bside_step',
     'charmer_atk','charmer_atk_front','charmer_atk_back','charmer_atk_fside','charmer_atk_bside',
+    'charmer_step2','charmer_front_step2','charmer_back_step2','charmer_fside_step2','charmer_bside_step2',
     'ranger','ranger_step','ranger_front','ranger_front_step','ranger_back','ranger_back_step',
     'ranger_fside','ranger_fside_step','ranger_bside','ranger_bside_step',
     'ranger_atk','ranger_atk_front','ranger_atk_back','ranger_atk_fside','ranger_atk_bside',
+    'ranger_step2','ranger_front_step2','ranger_back_step2','ranger_fside_step2','ranger_bside_step2',
   ];
   const pAtlasW = PLAYER_COLS * PW;                                    // 660
   const pAtlasH = Math.ceil(PLAYER_KEYS.length / PLAYER_COLS) * PH;   // 300
@@ -1525,19 +1660,23 @@ function buildAtlases(scene) {
   const pTex = pRT.saveTexture('player_atlas');
   Object.entries(pFrames).forEach(([key, f]) => pTex.add(key, 0, f.x, f.y, f.w, f.h));
 
-  // ── raider_atlas: 3 types × 10 frames = 30 frames, all 26×30 ────────────────
-  const RAIDER_COLS = 10;
-  const RW = 26, RH = 30;
+  // ── raider_atlas: 3 types × 15 frames = 45 frames (26×30 drawn, 28×36 after polish) ──
+  const RAIDER_COLS = 15;
+  const rSrc = scene.textures.get('raider_brawler').getSourceImage();
+  const RW = rSrc.width, RH = rSrc.height;
   const RAIDER_KEYS = [
     'raider_brawler','raider_brawler_step','raider_brawler_front','raider_brawler_front_step',
     'raider_brawler_back','raider_brawler_back_step','raider_brawler_fside','raider_brawler_fside_step',
     'raider_brawler_bside','raider_brawler_bside_step',
+    'raider_brawler_step2','raider_brawler_front_step2','raider_brawler_back_step2','raider_brawler_fside_step2','raider_brawler_bside_step2',
     'raider_shooter','raider_shooter_step','raider_shooter_front','raider_shooter_front_step',
     'raider_shooter_back','raider_shooter_back_step','raider_shooter_fside','raider_shooter_fside_step',
     'raider_shooter_bside','raider_shooter_bside_step',
+    'raider_shooter_step2','raider_shooter_front_step2','raider_shooter_back_step2','raider_shooter_fside_step2','raider_shooter_bside_step2',
     'raider_heavy','raider_heavy_step','raider_heavy_front','raider_heavy_front_step',
     'raider_heavy_back','raider_heavy_back_step','raider_heavy_fside','raider_heavy_fside_step',
     'raider_heavy_bside','raider_heavy_bside_step',
+    'raider_heavy_step2','raider_heavy_front_step2','raider_heavy_back_step2','raider_heavy_fside_step2','raider_heavy_bside_step2',
   ];
   const rAtlasW = RAIDER_COLS * RW;                                    // 260
   const rAtlasH = Math.ceil(RAIDER_KEYS.length / RAIDER_COLS) * RH;   // 90

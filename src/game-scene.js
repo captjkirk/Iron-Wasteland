@@ -6,6 +6,9 @@
 //          raiders, harvesting, cameras, HUD/minimap, fog-of-war, audio hooks,
 //          input, debug log, tutorial, game-over/victory, settings/save
 // grep: "// ── SYSTEM:"  "spawnBoss"  "updateEnemies"  "buildWorld"  "_log("
+
+// Four-band walk cycle: idle → stride A → idle → stride B. t counts 0..39.
+function _walkStep(t) { return t < 10 ? '' : t < 20 ? '_step' : t < 30 ? '' : '_step2'; }
 // ALWAYS ask for the debug log when investigating bugs (backtick in-game to view).
 
 class GameScene extends Phaser.Scene {
@@ -1023,6 +1026,8 @@ class GameScene extends Phaser.Scene {
     this.mountainTiles = [];
     const mtns = this.mountainTiles;
     const mtnMinDist = 2; // tighter packing for visible ridgeline
+    const MTN_KEYS = ['mountain', 'mountain2', 'mountain3', 'mountain4', 'mountain5'];
+    const pickMtn = () => MTN_KEYS[Math.floor(Math.random() * MTN_KEYS.length)];
     const placeMtn = (tx, ty, key, sc) => {
       if (Math.abs(tx-stx)<SAFE_R+6 && Math.abs(ty-sty)<SAFE_R+6) return;
       for (const m of mtns) {
@@ -1051,6 +1056,9 @@ class GameScene extends Phaser.Scene {
         }
       }
       const px = tx*TILE+24, py = ty*TILE+20;
+      // Ground skirt under the peak (depth 1.5, crater layer). Every mountain texture is
+      // 112×88 with its ground line at texture y=80, i.e. (80-44)*sc below the sprite centre.
+      this._w(this.add.image(px, py + 36*sc, 'mountain_base').setScale(sc).setDepth(1.5));
       const ob = this.obstacles.create(px, py, key);
       ob.setScale(sc).setDepth(6 + ty*0.01).setImmovable(true);
       // Scale-compensated circle hitbox: world radius stays ~13px regardless of mountain scale.
@@ -1058,13 +1066,7 @@ class GameScene extends Phaser.Scene {
       {
         const R = 13;
         const r = Math.round(R / sc);
-        if (key === 'mountain2') {
-          // mountain2 (112×88): visual base center at sprite (56, 62)
-          ob.body.setCircle(r, Math.round(56 / sc - r), Math.round(62 / sc - r));
-        } else {
-          // mountain (96×80): visual base center at sprite (48, 62)
-          ob.body.setCircle(r, Math.round(48 / sc - r), Math.round(62 / sc - r));
-        }
+        ob.body.setCircle(r, Math.round(56 / sc - r), Math.round(72 / sc - r)); // base centre at sprite (56, 72)
       }
       ob.refreshBody();
       mtns.push({ tx, ty });
@@ -1087,14 +1089,12 @@ class GameScene extends Phaser.Scene {
       const tx = Math.round(stx + Math.cos(angle) * (ringR + Math.sin(angle*3)*3));
       const ty = Math.round(sty + Math.sin(angle) * (ringR + Math.cos(angle*5)*3));
       if (tx < 2 || tx > CFG.MAP_W-3 || ty < 2 || ty > CFG.MAP_H-3) continue;
-      const key = Math.random() < 0.45 ? 'mountain2' : 'mountain';
-      const sc = Phaser.Math.FloatBetween(2.0, 3.2);
-      placeMtn(tx, ty, key, sc);
+      placeMtn(tx, ty, pickMtn(), Phaser.Math.FloatBetween(2.0, 2.8));
       // Double-layer: second ring row for a thick visible ridge (skip in exit zones)
       if (Math.random() < 0.6) {
         const tx2 = Math.round(stx + Math.cos(angle) * (ringR + 3 + Math.sin(angle*5)*2));
         const ty2 = Math.round(sty + Math.sin(angle) * (ringR + 3 + Math.cos(angle*3)*2));
-        placeMtn(tx2, ty2, Math.random() < 0.4 ? 'mountain2' : 'mountain', Phaser.Math.FloatBetween(1.8, 2.6));
+        placeMtn(tx2, ty2, pickMtn(), Phaser.Math.FloatBetween(1.8, 2.4));
       }
     }
 
@@ -1115,9 +1115,7 @@ class GameScene extends Phaser.Scene {
         const tx = cc.tx + Phaser.Math.Between(-8, 8);
         const ty = cc.ty + Phaser.Math.Between(-8, 8);
         if (tx < 2 || tx > CFG.MAP_W-3 || ty < 2 || ty > CFG.MAP_H-3) continue;
-        const key = Math.random() < 0.4 ? 'mountain2' : 'mountain';
-        const sc = Phaser.Math.FloatBetween(2.2, 4.0);
-        placeMtn(tx, ty, key, sc);
+        placeMtn(tx, ty, pickMtn(), Phaser.Math.FloatBetween(2.0, 2.8));
       }
     }
 
@@ -1155,7 +1153,7 @@ class GameScene extends Phaser.Scene {
       let _overlapRemoved = 0;
       this.obstacles.getChildren().slice().forEach(ob => {
         const k = ob.texture && ob.texture.key;
-        if (k === 'mountain' || k === 'mountain2') return; // never cull mountains
+        if (k.startsWith('mountain')) return; // never cull mountains
         if (!ob.isTree && !_overlapKeys.has(k)) return;   // keep walls, ruin blocks
         const tx = Math.floor(ob.x / TILE), ty = Math.floor(ob.y / TILE);
         if (this._waterMap[tx + ty * CFG.MAP_W] || this._impassableTileSet.has(tx + ',' + ty)) {
@@ -1292,7 +1290,7 @@ class GameScene extends Phaser.Scene {
       const ROCK_KEYS = new Set(['rock', 'rock2', 'ice_rock', 'rock_desert', 'ice_spire', 'rock_spire', 'mangrove_roots']);
       this.obstacles.getChildren().slice().forEach(ob => {
         const k = ob.texture && ob.texture.key;
-        if (k === 'mountain' || k === 'mountain2') return;
+        if (k.startsWith('mountain')) return;
         if (!ob.isTree && !ROCK_KEYS.has(k)) return; // keep structure walls, ruin blocks, etc.
         const obR = (ob.displayWidth || 32) / 2;
         for (const pos of this._preCacheTiles) {
@@ -1965,7 +1963,7 @@ class GameScene extends Phaser.Scene {
   spawnPlayer(x, y, charData, pNum) {
     const spr = this._w(this.physics.add.sprite(x, y, 'player_atlas', charData.id).setScale(1.5).setDepth(10));
     spr.setCollideWorldBounds(true);
-    spr.body.setSize(20, 24).setOffset(12, 30);
+    spr.body.setSize(20, 24).setOffset(13, 31); // frame is padded 1px for the outline
 
     const lbl = this._w(this.add.text(x, y-50, charData.player, {
       fontFamily:'monospace', fontSize:'11px',
@@ -4074,8 +4072,8 @@ class GameScene extends Phaser.Scene {
       } else {
         p.dir = 'side';
       }
-      p.walkTimer = (p.walkTimer + 1) % 20;
-      const step = p.walkTimer < 10 ? '' : '_step';
+      p.walkTimer = (p.walkTimer + 1) % 40;
+      const step = _walkStep(p.walkTimer);
       const dirSuffix = p.dir === 'side' ? '' : ('_' + p.dir);
       p.spr.setTexture('player_atlas', id + dirSuffix + step);
       if (p.dir === 'side' || p.dir === 'fside' || p.dir === 'bside') {
@@ -5429,8 +5427,8 @@ class GameScene extends Phaser.Scene {
         player.dir = 'side';
       }
       if (this.time.now < (player.atkAnimUntil || 0)) return;
-      player.walkTimer = (player.walkTimer + 1) % 20;
-      const step = player.walkTimer < 10 ? '' : '_step';
+      player.walkTimer = (player.walkTimer + 1) % 40;
+      const step = _walkStep(player.walkTimer);
       const dirSuffix = (player.dir === 'side') ? '' : ('_' + player.dir);
       player.spr.setTexture('player_atlas', id + dirSuffix + step);
       // Flip for leftward movement on all side-facing variants
@@ -5475,7 +5473,7 @@ class GameScene extends Phaser.Scene {
     const id = player.charData.id;
     const dirSuffix = player.dir === 'side' ? '' : ('_' + player.dir);
     const moving = player.spr.body.velocity.x !== 0 || player.spr.body.velocity.y !== 0;
-    const step = (moving && player.walkTimer >= 10) ? '_step' : '';
+    const step = moving ? _walkStep(player.walkTimer) : '';
     player.spr.setTexture('player_atlas', id + dirSuffix + step);
   }
 
@@ -8403,7 +8401,7 @@ class GameScene extends Phaser.Scene {
       // ── Walk cycle + 8-direction sprites (raiders only) — skip if off-screen ──
       if (e.spr.visible) {
         e._walkTimer = ((e._walkTimer || 0) + delta) % 600;
-        const _step = e._walkTimer < 300 ? '' : '_step';
+        const _step = _walkStep(Math.floor(e._walkTimer / 15));
         const _vx = e.spr.body.velocity.x, _vy = e.spr.body.velocity.y;
         const _moving = Math.abs(_vx) > 5 || Math.abs(_vy) > 5;
         if (_moving) {

@@ -1013,18 +1013,24 @@ class CharSelectScene extends Phaser.Scene {
     bg.fillStyle(0x12121e, 0.95);
     bg.fillRoundedRect(cx-half, cy-hH, cW, cH, 8);
 
-    const sprite = this.add.image(cx, cy-hH+sc(60), 'player_atlas', ch.id).setScale(2.0*S);
-    const nameT = this.add.text(cx, cy-hH+sc(130), ch.player, {
+    // Portrait is anchored at the card top (origin 0.5,0) and the rows below are laid out
+    // from its height at the SELECTED scale, so growing the selection never climbs over the
+    // frame or the name (#145). refresh() must use the same two scales.
+    const fh = this.textures.getFrame('player_atlas', ch.id).height;
+    const sprTop = cy-hH+sc(8);
+    const sprite = this.add.image(cx, sprTop, 'player_atlas', ch.id).setOrigin(0.5, 0).setScale(CharSelectScene.PORTRAIT_SCALE*S);
+    const nameY = sprTop + Math.round(fh * CharSelectScene.PORTRAIT_SCALE_SEL * S) + sc(14);
+    const nameT = this.add.text(cx, nameY, ch.player, {
       fontFamily:'monospace', fontSize:fs(21),
       color:'#'+ch.color.toString(16).padStart(6,'0'), stroke:'#000', strokeThickness:2,
     }).setOrigin(0.5);
-    this.add.text(cx, cy-hH+sc(155), ch.title, {
+    this.add.text(cx, nameY + sc(24), ch.title, {
       fontFamily:'monospace', fontSize:fs(13), color:'#777788',
     }).setOrigin(0.5);
 
     const statNames = ['HP','SPD','ATK','BLD'];
     ch.stats.forEach((val, si) => {
-      const sy = cy-hH+sc(184+si*22);
+      const sy = nameY + sc(42 + si*20);
       this.add.text(cx-half+sc(12), sy, statNames[si], { fontFamily:'monospace', fontSize:fs(11), color:'#777788' });
       for (let b=0; b<5; b++) {
         const bar = this.add.graphics();
@@ -1033,7 +1039,7 @@ class CharSelectScene extends Phaser.Scene {
       }
     });
     ch.desc.forEach((line, li) => {
-      this.add.text(cx, cy+hH-sc(82)+li*sc(22), line, {
+      this.add.text(cx, nameY + sc(42 + 3*20 + 11 + 18) + li*sc(22), line, {
         fontFamily:'monospace', fontSize:fs(11), color:'#888899',
         wordWrap:{width:cW-16},
       }).setOrigin(0.5);
@@ -1121,10 +1127,13 @@ class CharSelectScene extends Phaser.Scene {
       const p2s = this.p1Done && !this.p2Done && i===this.p2Idx, p2l = this.p2Done && i===this.p2Idx;
       c.p1b.setVisible(p1s||p1l); c.p2b.setVisible(p2s||p2l);
       c.p1badge.setVisible(p1l);  c.p2badge.setVisible(p2l);
-      c.sprite.setScale((p1s||p1l||p2s||p2l ? 3.0 : 2.0) * this._S);
+      c.sprite.setScale((p1s||p1l||p2s||p2l ? CharSelectScene.PORTRAIT_SCALE_SEL : CharSelectScene.PORTRAIT_SCALE) * this._S);
     });
     if (!this.p1Done) this.statusText.setText('Player 1 — A/D to choose, F to confirm');
   }
 }
+
+CharSelectScene.PORTRAIT_SCALE = 1.8;
+CharSelectScene.PORTRAIT_SCALE_SEL = 2.2;
 
 // ── SCENE: GAME ───────────────────────────────────────────────
