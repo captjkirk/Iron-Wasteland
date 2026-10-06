@@ -92,8 +92,11 @@ Object.assign(GameScene.prototype, {
       hpBg.fillRect(-_bw/2 - 1, -103, _bw + 2, 14);
     }
 
-    const _bossHp  = Math.max(1, Math.round(bt.hp  * this.hc.bossHpMult));
-    const _bossDmg = Math.max(1, Math.round(bt.dmg * this.hc.bossDmgMult));
+    // Gentle day scaling: +10% per 5 days from day 10, cap 2.0x. Armor is not scaled.
+    const _bossCycle = Math.max(0, Math.floor(((this.dayNum || 1) - 5) / 5));
+    const _bossScale = Math.min(2.0, 1 + _bossCycle * 0.10);
+    const _bossHp  = Math.max(1, Math.round(bt.hp  * this.hc.bossHpMult * _bossScale));
+    const _bossDmg = Math.max(1, Math.round(bt.dmg * this.hc.bossDmgMult * _bossScale));
     this.boss = {
       spr, hp: _bossHp, maxHp: _bossHp,
       speed: bt.speed, dmg: _bossDmg, name: bt.name,
@@ -115,7 +118,7 @@ Object.assign(GameScene.prototype, {
     this.boss._indicator = _bossInd;
 
     // Announce arrival
-    this._log(`Boss spawned: ${bt.name}  hp=${_bossHp}  dmg=${_bossDmg}  armor=${bt.armor||0}  day=${this.dayNum}  diff=${this._diffMult().toFixed(1)}x`, 'world');
+    this._log(`Boss spawned: ${bt.name}  hp=${_bossHp}  dmg=${_bossDmg}  armor=${bt.armor||0}  day=${this.dayNum}  cycle=${_bossCycle} scale=${_bossScale.toFixed(2)}x  diff=${this._diffMult().toFixed(1)}x`, 'world');
     this.hint('\u2620 ' + bt.name.toUpperCase() + ' APPROACHES! \u2620', 6000);
     SFX.bossRoar();
     this._log('spawnBoss: roar done', 'world');
