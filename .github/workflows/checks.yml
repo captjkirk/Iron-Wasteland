@@ -40,8 +40,8 @@ jobs:
           fi
           echo "VERSION bumped — OK."
 
-  manifest-sync:
-    name: MANIFEST must reference real symbols
+  check:
+    name: npm run check (syntax, manifest, lint)
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -50,5 +50,5 @@ jobs:
         with:
           node-version: '20'
 
-      - name: Run manifest sync check
-        run: node scripts/check-manifest.js
+      - name: Run npm run check
+        run: npm run check
