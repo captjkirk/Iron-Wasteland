@@ -59,6 +59,13 @@ the MANIFEST lists, update the MANIFEST in the same commit.
 
 On deploy, `.github/workflows/pages.yml` re-stamps `VERSION` with the publish time.
 
+## The ticket loop
+
+A fully specified issue (it has a "Check" section) gets the `ready-for-agent` label. In Claude
+Code, `/next-ticket` claims the lowest such issue, builds it in its own worktree, and opens a PR;
+`/loop 30m /next-ticket` keeps going until the frontier is empty. After a few tickets the
+session is no longer fresh: start a new one and run the loop again.
+
 ## Debug log
 
 Press `` ` `` in-game to open the debug overlay. **`C`** copies the session log to the
