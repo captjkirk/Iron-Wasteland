@@ -73,18 +73,18 @@ Object.assign(GameScene.prototype, {
     const { TILE, SAFE_R } = CFG;
     const stx = cx/TILE, sty = cy/TILE;
 
-    // Biome ground map — key for each tile
-    const groundTexMap = { grass:'grass', waste:'ground_waste', swamp:'ground_swamp', tundra:'ground_tundra', ruins:'ground_ruins', fungal:'ground_fungal', desert:'ground_desert' };
-
-    // Ground: one 3×3-tile patch per cell, plain images sharing a baked texture per biome
-    // (see buildTextures). Grass keeps depth 0 and other biomes 0.5, as the old base layer did.
-    for (let tx = 0; tx < CFG.MAP_W; tx += 3) {
-      for (let ty = 0; ty < CFG.MAP_H; ty += 3) {
-        const biome = getBiome(tx, ty);
-        const key = groundTexMap[biome] || 'grass';
-        this._w(this.add.image(tx * TILE, ty * TILE, key + '_3x3').setOrigin(0).setDepth(biome === 'grass' ? 0 : 0.5));
-      }
+    // Ground: one Tilemap layer, one tile per map cell, from 'ground_tileset' (see buildTextures).
+    // Tile index = position of the biome's ground in GROUND_KEYS.
+    const groundTile = { grass:0, waste:1, swamp:2, tundra:3, ruins:4, fungal:5, desert:6 };
+    const _before = this.children.length;
+    const map = this.make.tilemap({ tileWidth: TILE, tileHeight: TILE, width: CFG.MAP_W, height: CFG.MAP_H });
+    const tiles = map.addTilesetImage('ground', 'ground_tileset', TILE, TILE, 0, 0);
+    const ground = map.createBlankLayer('ground', tiles, 0, 0).setDepth(0.5);
+    this._w(ground);
+    for (let tx = 0; tx < CFG.MAP_W; tx++) {
+      for (let ty = 0; ty < CFG.MAP_H; ty++) ground.putTileAt(groundTile[getBiome(tx, ty)] || 0, tx, ty);
     }
+    this._log(`ground tile layer: ${CFG.MAP_W * CFG.MAP_H} tiles, display objects ${_before} -> ${this.children.length}`, 'world');
 
     // Ground wave shading — two sine waves at different angles produce broad organic shade bands.
     // Depth 0.55 sits above biome tiles (0.5) but below all water tiles (0.6+), so the effect

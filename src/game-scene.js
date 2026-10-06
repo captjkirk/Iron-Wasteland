@@ -499,7 +499,7 @@ class GameScene extends Phaser.Scene {
                 this.time.delayedCall(9200, () => this.startTutorial());
 
                 this._worldReady = true;
-                this._log('World init: READY', 'world');
+                this._log('World init: READY  display objects=' + this.children.length, 'world');
                 this.showStartupControls();
               });
             });
