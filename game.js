@@ -20,7 +20,7 @@
 //   game.js              — THIS FILE. Header + Phaser.Game init only.
 //
 //   src/constants.js     — Global config + shared state
-//                          VERSION, CFG, ENEMY_STATS, ENEMY_LOOT,
+//                          VERSION, CFG, ENEMY_STATS, RAIDER_STATS, ENEMY_LOOT,
 //                          _makeMulberry32, _worldRng, _pendingLogMsgs, _qlog,
 //                          biome fns (getBiome, _buildBiomeMap, _biomeSeeds …),
 //                          CHARS, STATE
@@ -86,7 +86,7 @@
 //    spawn: spawnEnemies, _spawnGroup, _spawnBiomeEnemy,
 //           _spawnWaterLurker
 //    cfg:  MAX_ENEMIES, MAX_ACTIVE_ENEMIES, DORMANT_RADIUS, WAKE_RADIUS
-//    data: enemies[], ENEMY_STATS, ENEMY_LOOT
+//    data: enemies[], ENEMY_STATS, RAIDER_STATS, ENEMY_LOOT
 //    log:  [COMBAT], [WORLD ]
 //
 // 3. ENEMY DENS / RESPAWN
@@ -208,10 +208,10 @@
 //     CLAUDE.md: ALWAYS ASK FOR THE LOG when investigating bugs.
 //
 // 21. TUTORIAL
-//     fns:  startTutorial, _tutTrigger, _showNextTutTip,
-//           _clearTutObjs, _endTutorial
+//     fns:  startTutorial, _tutTrigger, _endTutorial
 //     cfg:  TUT_AUTO_ADVANCE_MS
-//     data: _tutShown, _tutObjs, _tutQueue
+//     data: _tutShown
+//     tips are hint() calls with a title; hint(text, dur, {urgent}) jumps the queue
 //
 // 22. GAME OVER / VICTORY  (src/game-scene.js; GameOverScene in src/game-over.js)
 //     fns:  triggerGameOver, _triggerVictory, checkBothDead, handleDeath

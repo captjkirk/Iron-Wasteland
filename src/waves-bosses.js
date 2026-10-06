@@ -122,7 +122,7 @@ Object.assign(GameScene.prototype, {
 
     // Announce arrival
     this._log(`Boss spawned: ${bt.name}  hp=${_bossHp}  dmg=${_bossDmg}  armor=${bt.armor||0}  day=${this.dayNum}  cycle=${_bossCycle} scale=${_bossScale.toFixed(2)}x  diff=${this._diffMult().toFixed(1)}x`, 'world');
-    this.hint('\u2620 ' + bt.name.toUpperCase() + ' APPROACHES! \u2620', 6000);
+    this.hint('\u2620 ' + bt.name.toUpperCase() + ' APPROACHES! \u2620', 6000, { urgent: true });
     SFX.bossRoar();
     this._log('spawnBoss: roar done', 'world');
     // Defer boss music off the spawn frame. Prior freezes traced here: the first
