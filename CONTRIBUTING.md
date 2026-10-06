@@ -25,8 +25,9 @@ The pre-commit hook does three things:
    its own worktree; see `CLAUDE.md`, "Working directory").
 2. Stamps `VERSION` in `src/constants.js` with the current UTC time. The title screen shows
    it as "Last updated …" in the player's own timezone.
-3. Runs `npm run check`: a syntax check of `game.js` and every `src/*.js`, the manifest check,
-   and ESLint. A failure aborts the commit.
+3. Runs `npm run check`: a syntax check of `game.js` and every `src/*.js`, a check that every
+   `src/*.js` has a `<script>` tag in `index.html`, the manifest check, and ESLint. A failure
+   aborts the commit.
 
 A post-commit hook refreshes a local graphify knowledge graph in `graphify-out/` (gitignored) if
 you have built one. It runs in the background and never blocks a commit.
