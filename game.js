@@ -34,6 +34,7 @@
 //                          drawKnight*, drawGunslinger*, drawArchitect*,
 //                          drawLauren*/charmer, drawAbigail*/ranger
 //                          drawRaiderDirectionals, buildTextures, buildAtlases,
+//                          drawMountains, polishActors, polishActor, mirrorLegs,
 //                          makeScaleProxy
 //
 //   src/scenes.js        — All non-gameplay scenes + input helpers
@@ -90,7 +91,7 @@
 // 5. PLAYER MOVEMENT & INPUT
 //    fns:  movePlayer, aimAtMouse, applyTouchInput, applyTerrainEffects,
 //          getControls, initTouchControls, _onTouchDown/Move/Up,
-//          openPauseSettings
+//          openPauseSettings, _walkStep
 //    data: p1, p2 (spr, hp, maxHp, charData, inv), _joy, _tcBtns, wasd, p2keys
 //    cfg:  CAM_PAD, CAM_ZOOM_MIN, CAM_ZOOM_MAX
 //
@@ -173,7 +174,7 @@
 //     SFX wired into combat/pickup/build callsites.
 //
 // 18. PROCEDURAL TEXTURES (no image files)
-//     fns:  buildTextures, makeScaleProxy
+//     fns:  buildTextures, makeScaleProxy, drawMountains, polishActors, polishActor, mirrorLegs
 //     enemy draws: drawWolf, drawRat, drawBear, drawIceCrawler,
 //                  drawSpiderRuins, drawBogLurker, drawDustHound, drawWaterLurker
 //     character draws: drawKnight*, drawGunslinger*, drawArchitect*,

@@ -1865,19 +1865,22 @@ function drawMountains(g) {
   };
   variants.forEach((pts, vi) => {
     g.clear();
-    const ridge = new Array(W);
+    const ridge = new Array(W), smooth = new Array(W);
     for (let x = 0; x < W; x++) {
       let k = 0; while (k < pts.length - 2 && pts[k + 1][0] <= x) k++;
       const [x0, y0] = pts[k], [x1, y1] = pts[k + 1];
       const t = (x - x0) / (x1 - x0);
-      ridge[x] = Math.max(2, Math.round(y0 + (y1 - y0) * t + (hash(vi, x) - 0.5) * 4));
+      smooth[x] = y0 + (y1 - y0) * t;
+      ridge[x] = Math.max(2, Math.round(smooth[x] + (hash(vi, x) - 0.5) * 4));
     }
     const peakY = Math.min(...ridge);
     const snowLine = peakY + 16;
     for (let x = 0; x < W; x++) {
       const top = Math.min(ridge[x], BASE - 3);
-      const slope = ridge[Math.min(W - 1, x + 2)] - ridge[Math.max(0, x - 2)]; // >0 = falling to the right (shadow side)
-      const face = slope < -1 ? 10 : slope > 1 ? -14 : 0;
+      // Face shading from the smooth ridge (the jitter only roughens the silhouette):
+      // climbing to the right = lit by the top-left light, falling away = in shadow.
+      const slope = smooth[Math.min(W - 1, x + 3)] - smooth[Math.max(0, x - 3)];
+      const face = slope < -0.5 ? 16 : slope > 0.5 ? -18 : 0;
       const snowDepth = 5 + Math.floor(hash(vi, x * 13) * 6);
       let runStart = top, runCol = null;
       const flush = (yEnd) => { if (runCol !== null && yEnd > runStart) { g.fillStyle(runCol); g.fillRect(x, runStart, 1, yEnd - runStart); } };
