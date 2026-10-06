@@ -499,6 +499,7 @@ Object.assign(GameScene.prototype, {
             // Frost Troll — apply frost slow on melee hit
             if (b.type === 'boss_troll' && !nearest._frostSlowed) {
               nearest._frostSlowed = true;
+              this._hudDirty = true;
               nearest._speedMult = 0.55;
               this._log(`${nearest.charData.player} frost slowed  hp=${nearest.hp}/${nearest.maxHp}`, 'combat');
               this._showStatus('FROST SLOW! (-45% speed)', 1500);
@@ -506,6 +507,7 @@ Object.assign(GameScene.prototype, {
               this.time.delayedCall(3000, () => {
                 if (!nearest) return;
                 nearest._frostSlowed = false;
+                this._hudDirty = true;
                 nearest._speedMult = 1;
                 this._log(`${nearest.charData.player} frost slow expired`, 'combat');
                 if (nearest.spr?.active) nearest.spr.clearTint();
@@ -689,12 +691,14 @@ Object.assign(GameScene.prototype, {
             // Spider Queen web: root player briefly (1.5s)
             if (b.type === 'boss_spider' && !p._webbed) {
               p._webbed = true;
+              this._hudDirty = true;
               p._speedMult = 0;
               this._log(`${p.charData.player} webbed by boss_spider – immobilised 1.5s hp=${p.hp}/${p.maxHp}`, 'combat');
               this._showStatus('WEBBED! Can\'t move!', 1500);
               this.time.delayedCall(1500, () => {
                 if (!p) return;
                 p._webbed = false;
+                this._hudDirty = true;
                 p._speedMult = 1;
                 this._log(`${p.charData.player} web expired`, 'combat');
                 if (!p.spr?.active) return;
