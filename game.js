@@ -45,7 +45,7 @@
 //                          ControlsScene, BootScene, ModeSelectScene,
 //                          SettingsScene, CharSelectScene
 //
-//   src/game-scene.js    — GameScene: gameplay systems 2-3, 5-7 and 9-22 (see list below)
+//   src/game-scene.js    — GameScene: gameplay systems 3, 5-7 and 9-22 (see list below)
 //                          Also: GameScene.RECIPES static property (system 8's recipe list)
 //
 //   src/world-gen.js     — System 1, added to GameScene.prototype; loads after game-scene.js
@@ -53,6 +53,8 @@
 //   src/waves-bosses.js  — System 4, added to GameScene.prototype; loads after world-gen.js
 //
 //   src/building-crafting.js — System 8, added to GameScene.prototype; loads after waves-bosses.js
+//
+//   src/enemy-ai.js      — System 2, added to GameScene.prototype; loads after building-crafting.js
 //
 //   src/game-over.js     — GameOverScene (death + stats screen)
 //
@@ -77,12 +79,12 @@
 //          river canvas); _pondWaterTiles, _shimmerTable (pond/lake alpha shimmer)
 //    log:  [WORLD ]
 //
-// 2. ENEMY AI / PATHFINDING / DAMAGE
-//    fns:  updateEnemies, _steerToward, _hasLOS, _losBlocked,
-//          _findWallOnPath, applyTerrainEffects, _hurtEnemy,
+// 2. ENEMY AI / PATHFINDING / DAMAGE  (src/enemy-ai.js)
+//    fns:  updateEnemies, _steerToward, _hasLOS,
+//          _findWallOnPath, _hurtEnemy,
 //          killEnemy, _startDormantIfFar
 //    spawn: spawnEnemies, _spawnGroup, _spawnBiomeEnemy,
-//           _spawnWaterLurker, spawnHuntingParty
+//           _spawnWaterLurker
 //    cfg:  MAX_ENEMIES, MAX_ACTIVE_ENEMIES, DORMANT_RADIUS, WAKE_RADIUS
 //    data: enemies[], ENEMY_STATS, ENEMY_LOOT
 //    log:  [COMBAT], [WORLD ]
@@ -155,7 +157,7 @@
 //     data: _relicPOIs, relicsHeld, altarPos, altarDiscovered, _fireGlows
 //
 // 12. RAIDERS (camps + raid events)
-//     fns:  updateRaiders, placeRaiderCamp, spawnRaiders,
+//     fns:  updateRaiders, placeRaiderCamp, spawnRaiders, spawnHuntingParty,
 //           checkRaidCacheRange, openRaidCache, _fireRaiderShot
 //     data: raidCamp, raidRespawnDay, raiders
 //
@@ -177,7 +179,7 @@
 //     data: hudCam, hudRelicText, minimapGfx, minimapDots, mmBounds, _scoutPanel, _hudDirty
 //
 // 16. FOG OF WAR
-//     fns:  revealFog, updateFog, _hasLOS, _losBlocked
+//     fns:  revealFog, updateFog, _losBlocked
 //     cfg:  FOG_REVEAL_R, FOG_UPDATE_INTERVAL
 //     data: fogRevealed (Uint8Array), fogVisible, _fogVisibleBuilding
 //
