@@ -2156,7 +2156,9 @@ class GameScene extends Phaser.Scene {
   // Show a contextual tip. Hints are now QUEUED rather than overwriting:
   // a new call while one is on screen waits in line, so rapid events
   // (e.g. revive + frost + web in close succession) all get to read.
-  hint(text, duration) {
+  // opts.title: bold heading line (tutorial tips). opts.urgent: jump the queue and cut a
+  // tutorial tip short, so a boss alert is never stuck behind a 7 s tip.
+  hint(text, duration, opts = {}) {
     this._log(`HINT: ${text}`, 'player');
     duration = Math.max(duration || 2500, 800);
     this._hintQueue = this._hintQueue || [];
@@ -2166,19 +2168,24 @@ class GameScene extends Phaser.Scene {
     const last = this._hintQueue[this._hintQueue.length - 1];
     if (last && last.text === text) return;
     if (this._activeHint && this._activeHint._hintText === text && this._hintQueue.length === 0) return;
-    // Cap queue length so a chaotic moment doesn't trail tips long after.
-    if (this._hintQueue.length >= 4) this._hintQueue.shift();
-    this._hintQueue.push({ text, duration });
+    const item = { text, duration, title: opts.title };
+    if (opts.urgent) {
+      this._hintQueue.unshift(item);
+      if (this._activeHint?._isTip && this._hintHide) { this._hintTimer?.remove(); this._hintTimer = null; this._hintHide(); }
+    } else {
+      // Cap queue length so a chaotic moment doesn't trail tips long after.
+      if (this._hintQueue.length >= 4) this._hintQueue.shift();
+      this._hintQueue.push(item);
+    }
     this._processHintQueue();
   }
 
   _processHintQueue() {
-    if (this._tutBusy) return; // wait until tutorial panel is gone
     if (this._activeHint && this._activeHint.active) return;
     if (!this._hintQueue || this._hintQueue.length === 0) return;
-    const { text, duration } = this._hintQueue.shift();
+    const { text, duration, title } = this._hintQueue.shift();
     const { W } = CFG;
-    const PW = 560, PH = 46, PX = (W - PW) / 2, PY = 108;
+    const PW = 560, PH = title ? 88 : 46, PX = (W - PW) / 2, PY = 108;
 
     const bg = this.add.graphics().setDepth(160).setAlpha(0);
     bg.fillStyle(0x050d05, 0.88);
@@ -2187,30 +2194,42 @@ class GameScene extends Phaser.Scene {
     bg.strokeRoundedRect(PX, PY, PW, PH, 8);
     this.cameras.main.ignore(bg);
 
-    const h = this.add.text(W / 2, PY + PH / 2, text, {
+    const h = this.add.text(W / 2, title ? PY + 56 : PY + PH / 2, text, {
       fontFamily:'monospace', fontSize:'15px', color:'#ccdfc8',
       stroke:'#000', strokeThickness:2,
       wordWrap:{ width: PW - 32 },
     }).setOrigin(0.5).setDepth(161).setAlpha(0);
     this.cameras.main.ignore(h);
     h._hintText = text;
+    h._isTip = !!title;
+    const parts = [bg, h];
+    if (title) {
+      const t = this.add.text(W / 2, PY + 16, title, {
+        fontFamily:'monospace', fontSize:'18px', color:'#aadd88',
+        stroke:'#000', strokeThickness:3,
+      }).setOrigin(0.5).setDepth(161).setAlpha(0);
+      this.cameras.main.ignore(t);
+      parts.push(t);
+    }
     this._activeHint = h;
     this._activeHintBg = bg;
 
-    this.tweens.add({ targets:[bg, h], alpha:1, duration:280,
+    const hide = () => {
+      this._hintHide = null;
+      this.tweens.killTweensOf(parts);
+      this.tweens.add({ targets:parts, alpha:0, duration:450,
+        onComplete:() => {
+          if (h === this._activeHint) { this._activeHint = null; this._activeHintBg = null; }
+          parts.forEach(o => o.destroy());
+          // Small gap so consecutive hints don't bleed into each other visually.
+          this.time.delayedCall(150, () => this._processHintQueue());
+        }
+      });
+    };
+    this._hintHide = hide;
+    this.tweens.add({ targets:parts, alpha:1, duration:280,
       onComplete:() => {
-        this._hintTimer = this.time.delayedCall(duration, () => {
-          this._hintTimer = null;
-          this.tweens.add({ targets:[bg, h], alpha:0, duration:450,
-            onComplete:() => {
-              if (h === this._activeHint) { this._activeHint = null; this._activeHintBg = null; }
-              bg.destroy();
-              h.destroy();
-              // Small gap so consecutive hints don't bleed into each other visually.
-              this.time.delayedCall(150, () => this._processHintQueue());
-            }
-          });
-        });
+        this._hintTimer = this.time.delayedCall(duration, () => { this._hintTimer = null; hide(); });
       }
     });
   }
@@ -2244,18 +2263,14 @@ class GameScene extends Phaser.Scene {
   // ── TUTORIAL ─────────────────────────────────────────────────
   // Context-triggered tip banners. Only MOVE + ATTACK show at game start;
   // all other tips fire when the relevant event first occurs.
-  // Each panel auto-advances after 7 s or on click. SKIP dismisses all.
+  // Tips go through hint() with a title, so they share its queue and timing.
   // Disabled if settings.tutorial === false.
   startTutorial() {
     if (loadSettings().tutorial === false) return;
     this._tutActive = true;
-    this._tutObjs = [];
-    this._tutTimer = null;
     // Seed from localStorage so returning players skip tips they've already seen
     const _savedTips = (() => { try { return JSON.parse(localStorage.getItem('iw_tutorial_state') || '{}'); } catch(e) { return {}; } })();
     this._tutShown = new Set(Object.keys(_savedTips).filter(k => _savedTips[k]));
-    this._tutQueue = [];
-    this._tutBusy  = false;
     // Show controls tips immediately; everything else is context-triggered
     this._tutTrigger('move');
     this._tutTrigger('attack');
@@ -2282,90 +2297,11 @@ class GameScene extends Phaser.Scene {
       minimap:  { title: 'MINIMAP',       text: 'Top-right minimap shows biome edges, enemies (red dots), and points of interest.  Stay aware!' },
     };
     const step = TIPS[key];
-    if (!step) return;
-    this._tutQueue.push(step);
-    if (!this._tutBusy) this._showNextTutTip();
-  }
-
-  _showNextTutTip() {
-    if (!this._tutActive || !this._tutQueue.length) {
-      this._tutBusy = false;
-      this._processHintQueue(); // release any hints that were waiting
-      return;
-    }
-    this._tutBusy = true;
-    this._showTutPanel(this._tutQueue.shift());
-  }
-
-  _showTutPanel(step) {
-    const { W } = CFG;
-    const PW = 580, PH = 100, PX = (W - PW) / 2, PY = 8;
-
-    this._clearTutObjs();
-
-    const push = o => { this._tutObjs.push(o); this._h(o); return o; };
-
-    // Panel background
-    const bg = push(this.add.graphics().setDepth(170).setAlpha(0));
-    bg.fillStyle(0x050d05, 0.88);
-    bg.fillRoundedRect(PX, PY, PW, PH, 8);
-    bg.lineStyle(2, 0x4a7a38, 0.80);
-    bg.strokeRoundedRect(PX, PY, PW, PH, 8);
-
-    // Title
-    push(this.add.text(PX + 16, PY + 14, step.title, {
-      fontFamily:'monospace', fontSize:'18px', color:'#aadd88',
-      stroke:'#000', strokeThickness:3,
-    }).setDepth(171).setAlpha(0));
-
-    // Body text
-    push(this.add.text(PX + 16, PY + 46, step.text, {
-      fontFamily:'monospace', fontSize:'14px', color:'#ccdfc8',
-      stroke:'#000', strokeThickness:2,
-      wordWrap:{ width: PW - 32 },
-    }).setDepth(171).setAlpha(0));
-
-    // SKIP button
-    const skipBtn = push(this.add.text(PX + PW - 12, PY + 12, '[ SKIP ]', {
-      fontFamily:'monospace', fontSize:'11px', color:'#667755', stroke:'#000', strokeThickness:1,
-    }).setOrigin(1, 0).setDepth(172).setAlpha(0).setInteractive({ useHandCursor: true }));
-    skipBtn.on('pointerover', () => skipBtn.setStyle({ color:'#aaddaa' }));
-    skipBtn.on('pointerout',  () => skipBtn.setStyle({ color:'#667755' }));
-    skipBtn.on('pointerdown', (ptr) => { ptr.event.stopPropagation(); this._endTutorial(); });
-
-    // Click panel to advance early
-    const hitZone = push(this.add.zone(PX, PY, PW, PH).setOrigin(0).setDepth(173).setInteractive({ useHandCursor: true }));
-    hitZone.on('pointerdown', () => {
-      if (this._tutTimer) { this._tutTimer.remove(); this._tutTimer = null; }
-      this._clearTutObjs();
-      this._showNextTutTip();
-    });
-
-    // Fade in
-    const fadeTargets = this._tutObjs.filter(o => o.setAlpha && o !== hitZone);
-    this.tweens.add({ targets: fadeTargets, alpha: 1, duration: 300 });
-
-    // Auto-advance after 7 s
-    this._tutTimer = this.time.delayedCall(CFG.TUT_AUTO_ADVANCE_MS, () => { this._clearTutObjs(); this._showNextTutTip(); });
-  }
-
-  _clearTutObjs() {
-    if (this._tutTimer) { this._tutTimer.remove(); this._tutTimer = null; }
-    if (this._tutObjs && this._tutObjs.length) {
-      const tgts = this._tutObjs.filter(o => o.active);
-      if (tgts.length) {
-        this.tweens.add({ targets: tgts, alpha: 0, duration: 250,
-          onComplete: () => tgts.forEach(o => { if (o.active) o.destroy(); }) });
-      }
-      this._tutObjs = [];
-    }
+    if (step) this.hint(step.text, CFG.TUT_AUTO_ADVANCE_MS, { title: step.title });
   }
 
   _endTutorial() {
     this._tutActive = false;
-    this._tutQueue = [];
-    this._tutBusy = false;
-    this._clearTutObjs();
   }
 
   // ── UPDATE ────────────────────────────────────────────────────
