@@ -104,7 +104,7 @@
 //
 // 5. PLAYER MOVEMENT & INPUT  (src/game-scene.js; getControls in src/textures.js)
 //    fns:  movePlayer, aimAtMouse (faces the cursor while _mouseAt is recent), _faceAngle,
-//          applyTouchInput, applyTerrainEffects,
+//          applyTouchInput, applyTerrainEffects, _makeResPanel,
 //          getControls, initTouchControls, _onTouchDown/Move/Up,
 //          openPauseSettings, _walkStep,
 //          tryInteract (the Interact key: build teardown, barracks, radio tower, raid cache, bed, relics, altar)
