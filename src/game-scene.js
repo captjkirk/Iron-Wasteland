@@ -130,7 +130,7 @@ class GameScene extends Phaser.Scene {
     this._grassPhase = -1;
 
     // Water animation — rivers scroll a shared texture; ponds/lakes shimmer alpha.
-    this._pondWaterTiles = [];  // Image tiles — alpha pulse via shimmer table
+    this._pondWaterTiles = [];  // Water-layer tiles — alpha pulse via shimmer table
     this._riverTex     = this.textures.exists('water_river') ? this.textures.get('water_river') : null;
     this._riverScroll  = 0;     // accumulated downstream offset (px)
     this._riverOffLast = -1;    // last integer offset uploaded — skip redundant refreshes
@@ -2486,7 +2486,7 @@ class GameScene extends Phaser.Scene {
       if (this._shimmerTable && this._pondWaterTiles.length) {
         const _si = Math.floor(time / 55); // ~3.3 s full shimmer cycle
         for (const _pt of this._pondWaterTiles) {
-          _pt.setAlpha(this._shimmerTable[(_si + _pt._shimmerOff) % 60]);
+          _pt.alpha = this._shimmerTable[(_si + _pt._shimmerOff) % 60];
         }
       }
       this._perfBudget.water += performance.now() - _t; }
