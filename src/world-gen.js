@@ -505,10 +505,10 @@ Object.assign(GameScene.prototype, {
       this._w(this.add.image(px, py, 'mountain_base').setScale(sc).setDepth(1.5));
       const ob = this.obstacles.create(px, py, key);
       ob.setOrigin(0.5, 160 / 176).setScale(sc).setDepth(this._sortDepth(py)).setImmovable(true);
-      // Footprint along the base of the peak (texture x 32-192, y 124-160). Ridges sit 2 tiles
-      // apart, so neighbouring footprints overlap and a ridge stays solid; the sky around each
-      // peak stays open, and the Y-sort draws a player there behind the mountain.
-      staticHitbox(ob, 160, 36, 32, 124);
+      // Blocks the body of the peak (texture x 40-184, y 64-160), so nobody walks behind a mountain
+      // (#301); the open sky beside the slopes and above the summit stays walkable (#268). Ridges sit
+      // 2 tiles apart, so neighbouring boxes overlap and a ridge stays solid.
+      staticHitbox(ob, 144, 96, 40, 64);
       mtns.push({ tx, ty });
     };
 
