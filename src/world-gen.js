@@ -574,6 +574,30 @@ Object.assign(GameScene.prototype, {
     this._log('buildWorld: _buildRivers start', 'world');
     this._buildRivers(stx, sty);
 
+    // Shorelines: a land cell with a corner on water gets a bank tile (ground tileset rows 4-35, see
+    // buildTextures and drawEdgeVariants). Ice counts as land here; tundra ice edges are deferred (#217).
+    {
+      const MW = CFG.MAP_W, MH = CFG.MAP_H, NG = GROUND_KEYS.length;
+      const kind = new Uint8Array(MW * MH); // 1 = still water, 2 = river
+      for (let ty = 0; ty < MH; ty++) for (let tx = 0; tx < MW; tx++) {
+        const w = this._waterLayer.getTileAt(tx, ty);
+        if (this._riverLayer.getTileAt(tx, ty)) kind[tx + ty * MW] = 2;
+        else if (w && w.index !== WATER_TILE.ice) kind[tx + ty * MW] = 1;
+      }
+      const at = (x, y) => (x < 0 || y < 0 || x >= MW || y >= MH) ? 0 : kind[x + y * MW];
+      let banks = 0;
+      for (let ty = 0; ty < MH; ty++) for (let tx = 0; tx < MW; tx++) {
+        if (kind[tx + ty * MW] || this._waterLayer.getTileAt(tx, ty)) continue; // water, or ice
+        const n = at(tx, ty - 1), e = at(tx + 1, ty), s = at(tx, ty + 1), w = at(tx - 1, ty);
+        const c = [n || e || at(tx + 1, ty - 1), s || e || at(tx + 1, ty + 1), s || w || at(tx - 1, ty + 1), n || w || at(tx - 1, ty - 1)];
+        const v = (c[0] ? 1 : 0) | (c[1] ? 2 : 0) | (c[2] ? 4 : 0) | (c[3] ? 8 : 0);
+        if (!v) continue;
+        ground.putTileAt((4 + (Math.max(...c) - 1) * 16 + v) * NG + (groundTile[getBiome(tx, ty)] || 0), tx, ty);
+        banks++;
+      }
+      this._log(`shoreline bank tiles: ${banks}`, 'world');
+    }
+
     // ── TERRAIN OVERLAP CLEANUP ───────────────────────────────────────────────
     // Sweep every tree, rock, and biome spire placed earlier in buildWorld and
     // destroy any that landed on water (shallow or deep) or inside a mountain zone.
