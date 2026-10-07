@@ -54,7 +54,7 @@ const CFG = {
   CAMPFIRE_HEAL_MS: 2000,  // a campfire heals nearby players this often; the amount is hc.campfireHeal
   CAMPFIRE_HEAL_R: 80,     // px from the campfire
   // Global scoreboard web app URL (tools/scoreboard/SETUP.md). Empty: no network call at all.
-  SCOREBOARD_URL: '',
+  SCOREBOARD_URL: 'https://script.google.com/macros/s/AKfycbw-F_cH3aDvkIVX2Wycd64OreVQAykeu656VZ4wqZBnF6rUozi2NB7Th9MAptIKS9Hh/exec',
 };
 
 // ── ENEMY LOOT TABLES ─────────────────────────────────────────
