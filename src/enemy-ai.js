@@ -211,15 +211,17 @@ Object.assign(GameScene.prototype, {
       const guardDiff = this._diffMult();
       const guardSpeed = this._diffSpeedMult();
       const biomeGuardType = { grass:'wolf', tundra:'wolf', swamp:'rat', waste:'bear', fungal:'bog_lurker', desert:'dust_hound' };
+      const GUARD_DEFS = { wolf:      {key:'wolf',      hp:70, speed:95, dmg:10,baseScale:1.0, w:40,h:24},
+                           rat:       {key:'rat',       hp:38, speed:145,dmg:7, baseScale:0.8, w:30,h:18},
+                           bear:      {key:'bear',      hp:160,speed:58, dmg:20,baseScale:1.2, w:48,h:36},
+                           bog_lurker:{key:'bog_lurker',hp:65, speed:60, dmg:14,baseScale:0.9, w:40,h:28},
+                           dust_hound:{key:'dust_hound',hp:35, speed:125,dmg:6, baseScale:0.65,w:36,h:24,atkInterval:1500} };
       for (const loc of this._structureLocs) {
-        const type = biomeGuardType[loc.biome] || 'wolf';
-        const t = { wolf:      {key:'wolf',      hp:70, speed:95, dmg:10,baseScale:1.0, w:40,h:24},
-                    rat:       {key:'rat',       hp:38, speed:145,dmg:7, baseScale:0.8, w:30,h:18},
-                    bear:      {key:'bear',      hp:160,speed:58, dmg:20,baseScale:1.2, w:48,h:36},
-                    bog_lurker:{key:'bog_lurker',hp:65, speed:60, dmg:14,baseScale:0.9, w:40,h:28},
-                    dust_hound:{key:'dust_hound',hp:35, speed:125,dmg:6, baseScale:0.65,w:36,h:24,atkInterval:1500} }[type];
-        const count = Phaser.Math.Between(2, 4);
+        // An authored structure names its guards; otherwise 2-4 of the biome's animal.
+        const types = loc.guards || Array.from({ length: Phaser.Math.Between(2, 4) }, () => biomeGuardType[loc.biome] || 'wolf');
+        const count = types.length;
         for (let i = 0; i < count; i++) {
+          const type = types[i], t = GUARD_DEFS[type];
           const ang = (i / count) * Math.PI * 2;
           const dist = Phaser.Math.Between(30, 90);
           const ex = loc.x + Math.cos(ang) * dist;
@@ -234,7 +236,7 @@ Object.assign(GameScene.prototype, {
           spr.body.setSize(t.w, t.h);
           if (this.hudCam) this.hudCam.ignore(spr);
           this.physics.add.collider(spr, this.obstacles);
-          const aggroR = { wolf:220, rat:140, bear:320 }[type] * 1.3; // very aggressive
+          const aggroR = { wolf:220, rat:140, bear:320, dust_hound:200, bog_lurker:180 }[type] * 1.3; // very aggressive
           const eGuard = {
             spr, type: t.key,
             hp: Math.floor(t.hp * sizeMult * guardDiff), maxHp: Math.floor(t.hp * sizeMult * guardDiff),

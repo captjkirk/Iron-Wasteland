@@ -1238,7 +1238,6 @@ Object.assign(GameScene.prototype, {
   buildBiomeStructures(stx, sty, TILE) {
     this._structureLocs = [];
     const { MAP_W, MAP_H, SAFE_R } = CFG;
-    const W = 7, H = 5; // structure footprint in tiles
 
     const biomeConfig = [
       { biome: 'grass',  wallKey: 'plank_wall',    floorKey: 'plank_floor',     label: 'FARMHOUSE'    },
@@ -1249,7 +1248,13 @@ Object.assign(GameScene.prototype, {
       { biome: 'desert', wallKey: 'sandstone_wall',floorKey: 'sandstone_floor', label: 'DESERT OUTPOST'},
     ];
 
+    const _paintMinimap = (tx, ty) => { // the radar shows a structure's floor as gray
+      if (this._mmColorMap && tx >= 0 && tx < MAP_W && ty >= 0 && ty < MAP_H) this._mmColorMap[tx + ty * MAP_W] = 0x7a7a8a;
+    };
+
     for (const { biome, wallKey, floorKey, label } of biomeConfig) {
+      const layout = STRUCTURE_LAYOUTS[biome] || null;
+      const W = layout ? layout.rows[0].length : 7, H = layout ? layout.rows.length : 5; // footprint, tiles
       // Use pre-computed positions (fjord-protected + tree-clear guaranteed).
       // Fall back to random if pre-computation returned nothing for this biome.
       // Filter pre-computed positions whose footprint landed on water/ice — these
@@ -1268,10 +1273,19 @@ Object.assign(GameScene.prototype, {
         }
         return fb;
       })();
-      for (const pos of _positions) {
+      for (const [slot, pos] of _positions.entries()) {
         const cx = pos.tx, cy = pos.ty;
         const x0 = cx - Math.floor(W / 2);
         const y0 = cy - Math.floor(H / 2);
+
+        // The first slot with room is the authored layout (if the biome has one); the rest are boxes.
+        if (layout && slot === 0) {
+          this._buildAuthoredStructure(layout, { wallKey, floorKey }, x0, y0, TILE, _paintMinimap);
+          this._structureLocs.push({ x: cx * TILE, y: cy * TILE, biome, guards: layout.guards });
+          continue;
+        }
+        // Generic box: its interior shows as floor on the radar (7×5, interior 5×3).
+        for (let dx = 1; dx < 6; dx++) for (let dy = 1; dy < 4; dy++) _paintMinimap(x0 + dx, y0 + dy);
 
         // Floor tiles (tundra only — ice_floor)
         if (floorKey) {
@@ -1329,6 +1343,49 @@ Object.assign(GameScene.prototype, {
         this._structureLocs.push({ x: cx * TILE, y: cy * TILE, biome });
       }
     }
+  },
+
+  // Builds one authored structure (see STRUCTURE_LAYOUTS in src/structures.js) with its top-left
+  // tile at (x0, y0). paintMinimap(tx, ty) marks a floor tile on the radar.
+  _buildAuthoredStructure(layout, { wallKey, floorKey }, x0, y0, TILE, paintMinimap) {
+    const { MAP_W, MAP_H } = CFG;
+    const solid = (tx, ty, key) => {
+      const w = this.obstacles.create(tx * TILE + 16, ty * TILE + 16, key);
+      w.setDepth(5 + ty * 0.01).setImmovable(true);
+      w.body.setSize(32, 32); w.refreshBody();
+      this._wallTileSet.add(tx + ',' + ty);
+    };
+    layout.rows.forEach((row, dy) => {
+      for (let dx = 0; dx < row.length; dx++) {
+        const ch = row[dx], tx = x0 + dx, ty = y0 + dy;
+        if (tx < 2 || tx > MAP_W - 3 || ty < 2 || ty > MAP_H - 3) continue;
+        const cx = tx * TILE + TILE / 2, cy = ty * TILE + TILE / 2;
+        const loot = STRUCTURE_LOOT[ch.toLowerCase()];
+        if (ch === ',' || (loot && ch === ch.toLowerCase())) { // floor, under indoor loot too
+          this._w(this.add.image(tx * TILE, ty * TILE, floorKey).setOrigin(0).setDepth(0.65));
+          paintMinimap(tx, ty);
+        }
+        if (ch === '#') solid(tx, ty, wallKey);
+        else if (ch === 'R') solid(tx, ty, 'ruin_block');
+        else if (ch === 'P') {
+          const p = this.obstacles.create(cx, ty * TILE + TILE - 4, 'pillar');
+          p.setOrigin(0.5, 1).setDepth(this._sortDepth(ty * TILE + TILE - 4)).setImmovable(true);
+          p.refreshBody(); p.body.setSize(14, 14, false); p.body.setOffset((p.displayWidth - 14) / 2, p.displayHeight - 14);
+        } else if (ch === 'T') this._spawnTorch(cx, cy);
+        else if (ch === 'C') this._w(this.add.image(cx, cy, 'supply_cache').setScale(2.5).setDepth(6));
+        else if (loot) {
+          const item = this.physics.add.image(cx, cy, loot).setScale(2).setDepth(6);
+          item.body.allowGravity = false; item.body.setImmovable(true);
+          item.itemType = loot.replace('item_', '');
+          this._w(item);
+          this.worldCrates.push(item);
+        }
+      }
+    });
+    const labelX = (x0 + layout.rows[0].length / 2) * TILE, labelY = y0 * TILE - 12;
+    this._w(this.add.text(labelX, labelY, layout.label, {
+      fontFamily: 'monospace', fontSize: '8px', color: '#cc9944', stroke: '#000', strokeThickness: 2,
+    }).setOrigin(0.5).setDepth(7).setAlpha(0.85));
   },
 
   // ── SCENERY PLACEMENT ───────────────────────────────────────

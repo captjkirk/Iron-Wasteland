@@ -989,21 +989,7 @@ class GameScene extends Phaser.Scene {
           this._mmColorMap[tx + ty * MAP_W] = _FLOOR_COL;
       }
     }
-    // Biome structures: W=7 H=5, interior dx:1..5 dy:1..3, centered on _preStructureTiles pos
-    if (this._preStructureTiles) {
-      for (const positions of Object.values(this._preStructureTiles)) {
-        for (const pos of positions) {
-          const x0 = pos.tx - 3, y0 = pos.ty - 2; // floor(7/2)=3, floor(5/2)=2
-          for (let dx = 1; dx <= 5; dx++) {
-            for (let dy = 1; dy <= 3; dy++) {
-              const tx = x0 + dx, ty = y0 + dy;
-              if (tx >= 0 && tx < MAP_W && ty >= 0 && ty < MAP_H)
-                this._mmColorMap[tx + ty * MAP_W] = _FLOOR_COL;
-            }
-          }
-        }
-      }
-    }
+    // Biome structure floors are painted by buildBiomeStructures once it knows what it built.
 
     // Ruins + biome structure walls — bright white outline so structures are clearly legible
     if (this._wallTileSet) {
