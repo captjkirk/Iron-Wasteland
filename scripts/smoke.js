@@ -55,6 +55,13 @@ async function pass(browser, name, url, run) {
       for (const o of _phaserGame.scene.getScene('Game').children.list) if (o.canvas) n += o.canvas.width * o.canvas.height;
       return n;
     });
+    // Scenery hitboxes cover the base, not the whole sprite (#268: refreshBody() after setSize
+    // silently reset them to the full picture, blocking open ground beside every mountain).
+    const fat = await page.evaluate(() => _phaserGame.scene.getScene('Game').obstacles.getChildren()
+      .filter(o => /^(mountain|ice_spire|rock_spire|mangrove_roots|pillar)/.test(o.texture.key))
+      .filter(o => o.body.height > o.displayHeight * 0.75)
+      .map(o => o.texture.key));
+    if (fat.length) throw new Error(`${fat.length} scenery hitboxes are nearly the whole sprite (first: ${fat[0]})`);
     const mb = Math.round(px * 4 / 1e6);
     console.log(`in play: ${mb} MB of pixel memory (budget ${PIXEL_BUDGET_MB} MB)`);
     if (mb > PIXEL_BUDGET_MB) throw new Error(`pixel memory ${mb} MB is over the ${PIXEL_BUDGET_MB} MB budget`);
