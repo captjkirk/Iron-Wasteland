@@ -95,7 +95,13 @@ Object.assign(GameScene.prototype, {
     this._waterLayer = _layer('water', 'water_tileset');
     this._riverLayer = _layer('river', 'water_river');
     for (let tx = 0; tx < CFG.MAP_W; tx++) {
-      for (let ty = 0; ty < CFG.MAP_H; ty++) ground.putTileAt(groundTile[getBiome(tx, ty)] || 0, tx, ty);
+      for (let ty = 0; ty < CFG.MAP_H; ty++) {
+        // Row 0 of the tileset is the base tile, rows 1-3 its variants (see buildTextures). A hash of the
+        // cell picks the row, so a seed always paints the same ground: 55% base, 15% each variant.
+        const h = _biomeHash(tx * 3 + 1, ty * 5 + 2);
+        const row = h < 0.55 ? 0 : h < 0.70 ? 1 : h < 0.85 ? 2 : 3;
+        ground.putTileAt(row * GROUND_KEYS.length + (groundTile[getBiome(tx, ty)] || 0), tx, ty);
+      }
     }
     this._log(`ground tile layer: ${CFG.MAP_W * CFG.MAP_H} tiles, display objects ${_before} -> ${this.children.length}`, 'world');
 
@@ -122,15 +128,6 @@ Object.assign(GameScene.prototype, {
       }
     }
 
-    // Grass variants in grassland areas
-    for (let i = 0; i < 100; i++) {
-      const tx = Phaser.Math.Between(2, CFG.MAP_W-3), ty = Phaser.Math.Between(2, CFG.MAP_H-3);
-      if (Math.abs(tx-stx)<SAFE_R+5 && Math.abs(ty-sty)<SAFE_R+5) continue;
-      if (getBiome(tx, ty) !== 'grass') continue;
-      const variant = ['grass2','grass3'][Math.floor(Math.random()*2)];
-      this._w(this.add.image(tx*TILE, ty*TILE, variant).setOrigin(0).setDepth(1).setAlpha(0.65));
-    }
-
     // One density mask for the scatter below: low-frequency noise gives dense patches and bare flats.
     // A tile is kept when _worldRng() <= density. The mean density is ~0.47, so each scatter loop
     // runs SCATTER_X times as many tries to keep the total near what an even sprinkle gave.
@@ -139,8 +136,8 @@ Object.assign(GameScene.prototype, {
     const _sparse = (tx, ty) => _worldRng() > _density(tx, ty);
 
     // Tall grass — biome-specific decorative blades (depth 4 = below player, above ground)
-    const tallGrassMap = { grass:'tall_grass', waste:'tall_grass_waste', tundra:'tall_grass_tundra', swamp:'tall_grass_swamp' };
-    for (let i = 0; i < 600 * SCATTER_X; i++) {
+    const tallGrassMap = { grass:'tall_grass', waste:'tall_grass_waste', tundra:'tall_grass_tundra', swamp:'tall_grass_swamp', desert:'tall_grass_waste' };
+    for (let i = 0; i < 2500 * SCATTER_X; i++) {
       const tx = Phaser.Math.Between(2, CFG.MAP_W-3), ty = Phaser.Math.Between(2, CFG.MAP_H-3);
       if (_sparse(tx, ty)) continue;
       if (Math.abs(tx-stx) < SAFE_R+3 && Math.abs(ty-sty) < SAFE_R+3) continue;
@@ -149,7 +146,7 @@ Object.assign(GameScene.prototype, {
       if (!key) continue; // ruins gets no tall grass
       const sc = Phaser.Math.FloatBetween(0.7, 1.3);
       const ox = Phaser.Math.Between(-10, 10), oy = Phaser.Math.Between(-8, 8);
-      const _gs = this._w(this.add.image(tx*TILE+ox, ty*TILE+oy, key)
+      const _gs = this._w(this.add.image(tx*TILE+ox, ty*TILE+oy, key + ['', '_2', '_3'][Phaser.Math.Between(0, 2)])
         .setOrigin(0.5, 1).setScale(sc).setDepth(4 + ty*0.001).setAlpha(0.82));
       this._grassGroups[i % 3].push(_gs);
     }
@@ -638,7 +635,7 @@ Object.assign(GameScene.prototype, {
           if (Math.abs(tx - stx) < SAFE_R + 3 && Math.abs(ty - sty) < SAFE_R + 3) continue;
           const sc = Phaser.Math.FloatBetween(0.7, 1.3);
           const ox = Phaser.Math.Between(-10, 10), oy = Phaser.Math.Between(-8, 8);
-          const reed = this._w(this.add.image(tx*TILE + ox, ty*TILE + oy, 'tall_grass_swamp')
+          const reed = this._w(this.add.image(tx*TILE + ox, ty*TILE + oy, 'tall_grass_swamp' + ['', '_2', '_3'][Phaser.Math.Between(0, 2)])
             .setOrigin(0.5, 1).setScale(sc).setDepth(4 + ty*0.001).setAlpha(0.82));
           this._grassGroups[_reeds % 3].push(reed);
           _reeds++;
