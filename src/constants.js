@@ -53,6 +53,8 @@ const CFG = {
   SPIKE_TRAP_DMG: 35,      // one hit, then the trap is spent
   CAMPFIRE_HEAL_MS: 2000,  // a campfire heals nearby players this often; the amount is hc.campfireHeal
   CAMPFIRE_HEAL_R: 80,     // px from the campfire
+  // Global scoreboard web app URL (tools/scoreboard/SETUP.md). Empty: no network call at all.
+  SCOREBOARD_URL: '',
 };
 
 // ── ENEMY LOOT TABLES ─────────────────────────────────────────
