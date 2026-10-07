@@ -67,7 +67,7 @@
 // 1. WORLD / TERRAIN GENERATION  (src/world-gen.js; biome fns in src/constants.js; the ambient anim stays in update())
 //    ground: one Tilemap layer (32 px steps between biomes) from the 'ground_tileset' texture, tile index = row * GROUND_KEYS.length + biome (row 0 base, rows 1-3 variants picked by _biomeHash, rows from 4 shoreline banks from drawEdgeVariants by side and lone-corner bits (EDGE_MASKS); src/textures.js).
 //            No full-world grass TileSprite exists any more (removed in #238).
-//    fns:  buildWorld, _buildPonds, _buildLakes, _buildRivers,
+//    fns:  buildWorld, _buildPonds, _buildLakes, _buildRivers, _fillWaterIslands,
 //          buildPOIs, buildRuinsCity, buildBiomeStructures, _buildAuthoredStructure,
 //          _placeScenery (trees/rocks stand on their tile base; body set after refreshBody)
 //    biome: getBiome, _biomeHash, _biomeNoise, _computeBiomeRaw,

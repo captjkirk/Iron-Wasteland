@@ -5,6 +5,25 @@
 
 // Tile index in 'water_tileset' (see buildTextures).
 const WATER_TILE = { shallow: 0, deep: 1, ice: 2 };
+// The deep part of a pond or lake ('x,y' keys): cells whose eight neighbours are all in the blob,
+// kept only where four of them make a 2×2 square. So deep water is a solid core at least one tile
+// in from every shore, never a lone dark square or a one-tile line.
+function _deepCore(tileSet) {
+  const has = (x, y) => tileSet.has(x + ',' + y);
+  const cand = new Set();
+  tileSet.forEach(key => {
+    const [x, y] = key.split(',').map(Number);
+    if ([-1, 0, 1].every(dx => [-1, 0, 1].every(dy => has(x + dx, y + dy)))) cand.add(key);
+  });
+  const c = (x, y) => cand.has(x + ',' + y);
+  const core = new Set();
+  cand.forEach(key => {
+    const [x, y] = key.split(',').map(Number);
+    if ([[-1, -1], [0, -1], [-1, 0], [0, 0]].some(([ox, oy]) =>
+      c(x + ox, y + oy) && c(x + ox + 1, y + oy) && c(x + ox, y + oy + 1) && c(x + ox + 1, y + oy + 1))) core.add(key);
+  });
+  return core;
+}
 
 Object.assign(GameScene.prototype, {
   // Scatter Voronoi biome seeds randomly — called once before buildWorld each session
@@ -435,6 +454,7 @@ Object.assign(GameScene.prototype, {
     // Larger lakes (6–8 per map) with water-den spawners
     this._log('buildWorld: _buildLakes start', 'world');
     this._buildLakes(stx, sty);
+    this._fillWaterIslands();
     this._log(`buildWorld: _buildLakes done  water=${(this.waterTiles||[]).length} ice=${(this.iceTiles||[]).length} dens=${(this.waterDens||[]).length}`, 'world');
 
     // _preCacheTiles already populated above (all POI positions, before tree/rock placement)
@@ -573,6 +593,7 @@ Object.assign(GameScene.prototype, {
     // overlap cleanup (so trees/rocks on river tiles are auto-culled below).
     this._log('buildWorld: _buildRivers start', 'world');
     this._buildRivers(stx, sty);
+    this._fillWaterIslands();
 
     // Shorelines: a land cell touching water, by a side or only by a corner, gets a bank tile (ground
     // tileset rows from 4, see buildTextures and drawEdgeVariants). Ice counts as land here; tundra ice edges are deferred (#217).
@@ -1508,14 +1529,12 @@ Object.assign(GameScene.prototype, {
       // Discard blobs smaller than minimum — prevents isolated puddles
       if (tileSet.size < (PLACEMENT.POND_MIN_SIZE || 12)) { _pondSkipBlob++; continue; }
       // Classify and place tiles
+      const deepSet = isIce ? new Set() : _deepCore(tileSet);
       tileSet.forEach(key => {
         const [tx, ty] = key.split(',').map(Number);
         if (tx < 1 || ty < 1 || tx >= CFG.MAP_W - 1 || ty >= CFG.MAP_H - 1) return;
         const x = tx * TILE, y = ty * TILE;
-        const neighbors = [[tx-1,ty],[tx+1,ty],[tx,ty-1],[tx,ty+1]];
-        const neighborCount = neighbors.filter(([nx, ny]) => tileSet.has(`${nx},${ny}`)).length;
-        // Deep water only when fully surrounded (no dry-ground border)
-        const isDeep = !isIce && neighborCount === 4;
+        const isDeep = deepSet.has(key);
         if (isIce) {
           // Visual only — detection via _iceMap per-frame (see applyTerrainEffects)
           const tile = this._waterLayer.putTileAt(WATER_TILE.ice, tx, ty);
@@ -1542,6 +1561,44 @@ Object.assign(GameScene.prototype, {
       this._log(`pond ${biome} placed  tiles=${tileSet.size} cx=${cx},cy=${cy}`, 'world');
     }
     this._log(`_buildPonds done  placed=${_pondPlaced} skip_center=${_pondSkipCenter} skip_blob=${_pondSkipBlob}  water=${this.waterTiles.length} ice=${this.iceTiles.length} deep=${this.deepWaterTiles.length}`, 'world');
+  },
+
+  // Islands and slivers: a dry cell with water on three or four sides (left where two ponds, a pond
+  // and a lake, or a river and a lake meet) becomes water too, repeated until none is left, so no
+  // one- or two-tile island or one-tile spit of land survives. Ice if all its wet sides are ice,
+  // river if all are river, else shallow. Mountains stay. Runs after lakes and again after rivers.
+  _fillWaterIslands() {
+    const { MAP_W, MAP_H } = CFG;
+    const kindAt = (x, y) => {
+      if (this._riverLayer.getTileAt(x, y)) return 'river';
+      const w = this._waterLayer.getTileAt(x, y);
+      return w ? (w.index === WATER_TILE.ice ? 'ice' : 'still') : null;
+    };
+    let filled = 0, more = true;
+    while (more) { more = false; for (let ty = 1; ty < MAP_H - 1; ty++) for (let tx = 1; tx < MAP_W - 1; tx++) {
+      if (kindAt(tx, ty) || (this._solidTileSet && this._solidTileSet.has(tx + ',' + ty))) continue;
+      const k = [kindAt(tx, ty - 1), kindAt(tx + 1, ty), kindAt(tx, ty + 1), kindAt(tx - 1, ty)].filter(Boolean);
+      if (k.length < 3) continue;
+      more = true;
+      const i = tx + ty * MAP_W;
+      if (k.every(x => x === 'ice')) {
+        const tile = this._waterLayer.putTileAt(WATER_TILE.ice, tx, ty);
+        tile.alpha = 0.75;
+        this.iceTiles.push(tile);
+        this._iceMap[i] = 1;
+      } else if (k.every(x => x === 'river')) {
+        this.waterTiles.push(this._riverLayer.putTileAt(0, tx, ty));
+        this._waterMap[i] = 1;
+      } else {
+        const tile = this._waterLayer.putTileAt(WATER_TILE.shallow, tx, ty);
+        tile._shimmerOff = (tx * 7 + ty * 13) % 60;
+        this.waterTiles.push(tile);
+        this._pondWaterTiles.push(tile);
+        this._waterMap[i] = 1;
+      }
+      filled++;
+    } }
+    this._log(`island and sliver cells filled: ${filled}`, 'world');
   },
 
   // ── LAKE GENERATION ──────────────────────────────────────────────────────
@@ -1613,17 +1670,7 @@ Object.assign(GameScene.prototype, {
       // Lakes need to be substantial — skip tiny results
       if (tileSet.size < (PLACEMENT.LAKE_MIN_SIZE || 25)) { _lakeSkipBlob++; this._log(`lake ${biome} blob too small (${tileSet.size}) – skipped`, 'world'); continue; }
 
-      // Classify deep tiles: fully surrounded by water on all 4 orthogonal sides
-      const deepLakeTiles = new Set();
-      if (biome !== 'tundra') {
-        tileSet.forEach(key => {
-          const [tx, ty] = key.split(',').map(Number);
-          if ([[tx-1,ty],[tx+1,ty],[tx,ty-1],[tx,ty+1]]
-              .every(([nx,ny]) => tileSet.has(`${nx},${ny}`))) {
-            deepLakeTiles.add(key);
-          }
-        });
-      }
+      const deepLakeTiles = biome === 'tundra' ? new Set() : _deepCore(tileSet);
 
       // Place tiles — deep center uses water_deep (traversable); shallow edges stay water_shallow
       tileSet.forEach(key => {
