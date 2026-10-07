@@ -768,7 +768,7 @@ function buildTextures(scene) {
   g.generateTexture('water_shallow', 32, 32);
 
   // River tile (32×32) — a SHARED animated CanvasTexture (not a per-tile TileSprite).
-  // River tiles are plain add.image('water_river') objects so they batch into one
+  // River cells use this canvas as the tileset of the river layer (see buildWorld), so they batch into one
   // draw call; GameScene scrolls this single canvas each frame (see drawRiverFrame +
   // the river block in update()), animating every river tile at once with one upload.
   {
@@ -810,6 +810,16 @@ function buildTextures(scene) {
   g.beginPath(); g.moveTo(10, 8); g.lineTo(10, 18); g.strokePath();
   g.beginPath(); g.moveTo(22, 14); g.lineTo(22, 28); g.strokePath();
   g.generateTexture('water_ice', 32, 32);
+
+  // One tileset image for the still-water layer: shallow, deep and ice side by side
+  // (WATER_TILE order). The river is a layer of its own, using the shared animated
+  // 'water_river' canvas as its tileset, so one redraw animates every river cell.
+  {
+    const ts = scene.textures.createCanvas('water_tileset', 3 * 32, 32);
+    ['water_shallow', 'water_deep', 'water_ice'].forEach((key, i) =>
+      ts.context.drawImage(scene.textures.get(key).getSourceImage(), i * 32, 0));
+    ts.refresh();
+  }
 
 
   // Ice spire — tundra biome, jagged ice spike cluster (16×32)
