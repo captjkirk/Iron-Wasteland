@@ -175,13 +175,13 @@ Object.assign(GameScene.prototype, {
       this._paintMinimapTile(x, y, 0xff8833);
       // Campfire heals nearby players over time
       this.time.addEvent({
-        delay: 2000, loop: true,
+        delay: CFG.CAMPFIRE_HEAL_MS, loop: true,
         callback: () => {
           if (!cf.active) return;
           [this.p1, this.p2].filter(Boolean).forEach(pl => {
             if (pl.isDowned) return;
             const d = Phaser.Math.Distance.Between(pl.spr.x, pl.spr.y, cf.x, cf.y);
-            if (d < 80) {
+            if (d < CFG.CAMPFIRE_HEAL_R) {
               const _cfHeal = this.hc.campfireHeal;
               const _cfHpBefore = pl.hp;
               pl.hp = Math.min(pl.maxHp, pl.hp + _cfHeal);

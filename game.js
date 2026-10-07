@@ -147,6 +147,7 @@
 //          _removeWallFromBuckets, _wallBucketKey, _wallNearby,
 //          _refreshWallClustersNear, _addFireGlow
 //    data: structures, spikes, _wallBuckets, _wallTileSet
+//    cfg:  SPIKE_TRAP_DMG, CAMPFIRE_HEAL_MS, CAMPFIRE_HEAL_R (campfire heal lives in building-crafting.js)
 //    log:  [COMBAT], [BUILD ]
 //
 // 10. DAY/NIGHT & DIFFICULTY

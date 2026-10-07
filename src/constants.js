@@ -50,6 +50,9 @@ const CFG = {
   ITEM_DESPAWN_MS: 20000, // harvested / dropped item pickups auto-expire after this long
   TUT_AUTO_ADVANCE_MS: 7000, // how long each tutorial tip stays on screen before advancing
   MINIMAP_HINT_DELAY_MS: 20000, // delay before minimap contextual tip first appears
+  SPIKE_TRAP_DMG: 35,      // one hit, then the trap is spent
+  CAMPFIRE_HEAL_MS: 2000,  // a campfire heals nearby players this often; the amount is hc.campfireHeal
+  CAMPFIRE_HEAL_R: 80,     // px from the campfire
   // Global scoreboard web app URL (tools/scoreboard/SETUP.md). Empty: no network call at all.
   SCOREBOARD_URL: '',
 };
@@ -59,9 +62,9 @@ const CFG = {
 // Chance > 1 = always drops (e.g. bears always drop metal, boss_wolf always drops food).
 const _RAIDER_LOOT = [['item_ammo', 0.6, 0], ['item_metal', 0.4, 0], ['item_food', 0.3, 1]];
 
-// Canonical base stats for wave/biome enemies. Structure and tower guards keep
-// their own tuned values (they're tuned harder to make POIs dangerous); these
-// apply to _spawnGroup (wave spawns) and _spawnBiomeEnemy (day>=2 biome enemies).
+// Canonical base stats for wave, biome and den enemies (_spawnGroup, _spawnBiomeEnemy,
+// updateEnemyDens). Structure guards override some of them (GUARD_DEFS in enemy-ai.js);
+// the radio-tower spiders keep their own table.
 // HP/dmg/speed/atkInterval are scaled at spawn time by _diffMult().
 // w/h = physics body in TEXTURE pixels (the full texture size). Enemy textures
 // are drawn at 2× pixel density, so baseScale is half the old value and w/h are
