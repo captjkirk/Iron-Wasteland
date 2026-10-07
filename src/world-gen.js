@@ -574,8 +574,8 @@ Object.assign(GameScene.prototype, {
     this._log('buildWorld: _buildRivers start', 'world');
     this._buildRivers(stx, sty);
 
-    // Shorelines: a land cell with a corner on water gets a bank tile (ground tileset rows 4-35, see
-    // buildTextures and drawEdgeVariants). Ice counts as land here; tundra ice edges are deferred (#217).
+    // Shorelines: a land cell touching water, by a side or only by a corner, gets a bank tile (ground
+    // tileset rows from 4, see buildTextures and drawEdgeVariants). Ice counts as land here; tundra ice edges are deferred (#217).
     {
       const MW = CFG.MAP_W, MH = CFG.MAP_H, NG = GROUND_KEYS.length;
       const kind = new Uint8Array(MW * MH); // 1 = still water, 2 = river
@@ -589,10 +589,13 @@ Object.assign(GameScene.prototype, {
       for (let ty = 0; ty < MH; ty++) for (let tx = 0; tx < MW; tx++) {
         if (kind[tx + ty * MW] || this._waterLayer.getTileAt(tx, ty)) continue; // water, or ice
         const n = at(tx, ty - 1), e = at(tx + 1, ty), s = at(tx, ty + 1), w = at(tx - 1, ty);
-        const c = [n || e || at(tx + 1, ty - 1), s || e || at(tx + 1, ty + 1), s || w || at(tx - 1, ty + 1), n || w || at(tx - 1, ty - 1)];
-        const v = (c[0] ? 1 : 0) | (c[1] ? 2 : 0) | (c[2] ? 4 : 0) | (c[3] ? 8 : 0);
-        if (!v) continue;
-        ground.putTileAt((4 + (Math.max(...c) - 1) * 16 + v) * NG + (groundTile[getBiome(tx, ty)] || 0), tx, ty);
+        // A corner counts only when both its sides are dry (EDGE_MASKS).
+        const ne = n || e ? 0 : at(tx + 1, ty - 1), se = s || e ? 0 : at(tx + 1, ty + 1);
+        const sw = s || w ? 0 : at(tx - 1, ty + 1), nw = n || w ? 0 : at(tx - 1, ty - 1);
+        const m = (n && 1) | (e && 2) | (s && 4) | (w && 8) | (ne && 16) | (se && 32) | (sw && 64) | (nw && 128);
+        if (!m) continue;
+        const k = Math.max(n, e, s, w, ne, se, sw, nw) - 1;
+        ground.putTileAt((4 + k * EDGE_MASKS.length + EDGE_MASKS.indexOf(m)) * NG + (groundTile[getBiome(tx, ty)] || 0), tx, ty);
         banks++;
       }
       this._log(`shoreline bank tiles: ${banks}`, 'world');

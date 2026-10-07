@@ -43,35 +43,37 @@ function drawRiverFrame(ctx, off) {
   }
 }
 
-// Edge autotiles: the 16 variants of a border onto a neighbouring terrain, side by side on one
-// 512×32 canvas, transparent where the tile's own ground shows. Variant bits mark the corners that
-// touch the neighbour: 1=NE, 2=SE, 4=SW, 8=NW (corners, not sides, so a convex corner of the
-// neighbour gets rounded too). The neighbour `fill` reaches R px into the tile along each side whose
-// two corners touch it and in a radius-R quarter circle round a lone corner, so tiles join; a light
-// line of `fill` and a band of `rim` follow it. Shorelines use it (water, mud); biome edges next.
+// Edge autotiles: a border onto a neighbouring terrain, one 32 px variant per entry of EDGE_MASKS,
+// side by side on one canvas, transparent where the tile's own ground shows. Mask bits: the sides
+// that touch the neighbour (1=N, 2=E, 4=S, 8=W) and the lone corners, whose cell touches it only
+// diagonally (16=NE, 32=SE, 64=SW, 128=NW; a corner counts only when both its sides are clear,
+// which leaves 47 masks). The neighbour `fill` reaches R px in along each such side and in a
+// radius-R quarter circle round each lone corner, so tiles join and convex corners come out round;
+// a light line of `fill` and a band of `rim` follow it. Shorelines use it (water, mud); biome edges next.
+const EDGE_MASKS = [...Array(256).keys()].filter(m =>
+  [[16, 1, 2], [32, 4, 2], [64, 4, 8], [128, 1, 8]].every(([c, a, b]) => !(m & c) || !(m & (a | b))));
 function drawEdgeVariants(fill, rim) {
-  const R = 6, cv = document.createElement('canvas');
-  cv.width = 16 * 32; cv.height = 32;
-  const c2 = cv.getContext('2d'), img = c2.createImageData(16 * 32, 32), px = img.data;
-  const corners = [[32, 0], [32, 32], [0, 32], [0, 0]]; // NE, SE, SW, NW = bits 1, 2, 4, 8
+  const R = 6, N = EDGE_MASKS.length, cv = document.createElement('canvas');
+  cv.width = N * 32; cv.height = 32;
+  const c2 = cv.getContext('2d'), img = c2.createImageData(N * 32, 32), px = img.data;
+  const corners = [[16, 32, 0], [32, 32, 32], [64, 0, 32], [128, 0, 0]]; // bit, x, y
   const lit = (c, k) => Math.round(c + (255 - c) * k);
   const put = (i, c, a, k = 0) => {
     px[i] = lit(c >> 16, k); px[i + 1] = lit((c >> 8) & 255, k); px[i + 2] = lit(c & 255, k); px[i + 3] = a * 255;
   };
-  for (let v = 1; v < 16; v++) for (let y = 0; y < 32; y++) for (let x = 0; x < 32; x++) {
+  EDGE_MASKS.forEach((m, v) => { for (let y = 0; y < 32; y++) for (let x = 0; x < 32; x++) {
     const cx = x + 0.5, cy = y + 0.5;
     let d = Infinity;
-    for (let j = 0; j < 4; j++) {
-      if (!(v >> j & 1)) continue;
-      const [ax, ay] = corners[j], [bx] = corners[(j + 1) % 4];
-      d = Math.min(d, Math.hypot(cx - ax, cy - ay));
-      if (v >> ((j + 1) % 4) & 1) d = Math.min(d, ax === bx ? Math.abs(cx - ax) : Math.abs(cy - ay));
-    }
-    const i = (y * 16 * 32 + v * 32 + x) * 4;
+    if (m & 1) d = Math.min(d, cy);
+    if (m & 2) d = Math.min(d, 32 - cx);
+    if (m & 4) d = Math.min(d, 32 - cy);
+    if (m & 8) d = Math.min(d, cx);
+    for (const [bit, ax, ay] of corners) if (m & bit) d = Math.min(d, Math.hypot(cx - ax, cy - ay));
+    const i = (y * N * 32 + v * 32 + x) * 4;
     if (d < R) put(i, fill, 0.92);
     else if (d < R + 1.5) put(i, fill, 0.7, 0.45); // light line at the edge
     else if (d < R + 5) put(i, rim, 0.45);
-  }
+  } });
   c2.putImageData(img, 0, 0);
   return cv;
 }
@@ -757,7 +759,7 @@ function buildTextures(scene) {
   // allocated a canvas each and got the tab killed on iPhone, #238).
   // Variants only draw inside a 3 px inset, so every edge matches the base tile and any two tiles join.
   const N = GROUND_KEYS.length;
-  const tileset = scene.textures.createCanvas('ground_tileset', N * 32, 36 * 32);
+  const tileset = scene.textures.createCanvas('ground_tileset', N * 32, (4 + 2 * EDGE_MASKS.length) * 32);
   const ctx = tileset.context;
   const DETAIL = [ // per biome: [pebble color, pebble highlight, flower colors or null]
     [0x7d7d72, 0xa5a598, [0xe8d94a, 0xf2f2f2, 0xd96aa8]], // grass
@@ -797,14 +799,14 @@ function buildTextures(scene) {
       }
     }
   });
-  // Bank tiles, rows 4-35: base ground with a shoreline over it, row 4 + kind * 16 + corner variant
-  // (drawEdgeVariants); kind 0 is still water, 1 the river. Row 4 and row 20 (variant 0) stay unused.
+  // Bank tiles, from row 4: base ground with a shoreline over it, row 4 + kind * 47 + the mask's
+  // index in EDGE_MASKS (drawEdgeVariants); kind 0 is still water, 1 the river. Mask 0 stays unused.
   [0x226688, 0x2277aa].forEach((water, k) => {
     const edges = drawEdgeVariants(water, 0x5a4a30);
     GROUND_KEYS.forEach((key, b) => {
       const base = scene.textures.get(key).getSourceImage();
-      for (let v = 1; v < 16; v++) {
-        const ox = b * 32, oy = (4 + k * 16 + v) * 32;
+      for (let v = 1; v < EDGE_MASKS.length; v++) {
+        const ox = b * 32, oy = (4 + k * EDGE_MASKS.length + v) * 32;
         ctx.drawImage(base, ox, oy);
         ctx.drawImage(edges, v * 32, 0, 32, 32, ox, oy, 32, 32);
       }
