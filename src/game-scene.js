@@ -3268,8 +3268,7 @@ class GameScene extends Phaser.Scene {
         if (den.liveCount >= 4) return;
         const types = ['wolf','rat','rat'];
         const type = types[Phaser.Math.Between(0, types.length-1)];
-        const typeDef = { wolf:{hp:60,speed:75,dmg:6,baseScale:0.9,w:40,h:24}, rat:{hp:30,speed:105,dmg:4,baseScale:0.7,w:30,h:18} };
-        const t = typeDef[type];
+        const t = ENEMY_STATS[type];
         const sizeMult = Phaser.Math.FloatBetween(1.0, 1.3);
         const sc = t.baseScale * sizeMult;
         const ex = den.x + Phaser.Math.Between(-60, 60);
@@ -3283,9 +3282,8 @@ class GameScene extends Phaser.Scene {
         const hp  = Math.floor(t.hp  * sizeMult * D);
         const dmg = Math.max(1, Math.floor(t.dmg * sizeMult * D));
         const spd = t.speed * this._diffSpeedMult() * (sizeMult < 0.85 ? 1.3 : sizeMult > 1.2 ? 0.8 : 1);
-        const atkInterval = Math.max(500, Math.round(({ wolf:1600, rat:1200, bear:2400 }[type] || 1400) / D));
-        const denBaseAggro = { wolf: 190, rat: 110, bear: 290 }[type] || 160;
-        const e = { spr, hp, maxHp:hp, speed:spd, dmg, atkInterval, type, attackTimer:0, wanderTimer:0, aggroRange:denBaseAggro, attackRange:30*sizeMult, sizeMult, _den: den, home: { x: den.x, y: den.y } };
+        const atkInterval = Math.max(500, Math.round(t.atkInterval / D));
+        const e = { spr, hp, maxHp:hp, speed:spd, dmg, atkInterval, type, attackTimer:0, wanderTimer:0, aggroRange:t.aggro, attackRange:30*sizeMult, sizeMult, _den: den, home: { x: den.x, y: den.y } };
         den.liveCount++;
         this._startDormantIfFar(e, ex, ey);
         this._log(`Den respawn: ${type}  total_enemies=${this.enemies.length+1}  den_pop=${den.liveCount}/4`, 'world');
@@ -4386,7 +4384,7 @@ class GameScene extends Phaser.Scene {
         if (e.dying || !e.spr.active) continue;
         if (Phaser.Math.Distance.Between(e.spr.x, e.spr.y, st.x, st.y) < 26) {
           // Credit the trap's builder so kill counts track correctly in HUD / game-over.
-          this._hurtEnemy(e, 35, st.x, st.y, 0xff2233, st._builder || null);
+          this._hurtEnemy(e, CFG.SPIKE_TRAP_DMG, st.x, st.y, 0xff2233, st._builder || null);
           st.destroy();
           this.spikeTraps.splice(si, 1);
           break; // trap gone — move to next trap

@@ -211,11 +211,15 @@ Object.assign(GameScene.prototype, {
       const guardDiff = this._diffMult();
       const guardSpeed = this._diffSpeedMult();
       const biomeGuardType = { grass:'wolf', tundra:'wolf', swamp:'rat', waste:'bear', fungal:'bog_lurker', desert:'dust_hound' };
-      const GUARD_DEFS = { wolf:      {key:'wolf',      hp:70, speed:95, dmg:10,baseScale:1.0, w:40,h:24},
-                           rat:       {key:'rat',       hp:38, speed:145,dmg:7, baseScale:0.8, w:30,h:18},
-                           bear:      {key:'bear',      hp:160,speed:58, dmg:20,baseScale:1.2, w:48,h:36},
-                           bog_lurker:{key:'bog_lurker',hp:65, speed:60, dmg:14,baseScale:0.9, w:40,h:28},
-                           dust_hound:{key:'dust_hound',hp:35, speed:125,dmg:6, baseScale:0.65,w:36,h:24,atkInterval:1500} };
+      // Guards are ENEMY_STATS with these overrides: tougher, faster and bigger than wildlife so a
+      // structure is a danger zone, and a wider aggro (times 1.3 below). Body size comes from ENEMY_STATS.
+      const GUARD_DEFS = Object.fromEntries(Object.entries({
+        wolf:       { hp:70,  speed:95,  dmg:10, baseScale:1.0, aggro:220 },
+        rat:        { hp:38,  speed:145, dmg:7,  baseScale:0.8, aggro:140 },
+        bear:       { hp:160, speed:58,  dmg:20, baseScale:1.2, aggro:320 },
+        bog_lurker: { hp:65,  speed:60,  dmg:14,                aggro:180 },
+        dust_hound: { hp:35,  speed:125, dmg:6 },
+      }).map(([type, o]) => [type, { ...ENEMY_STATS[type], ...o }]));
       for (const loc of this._structureLocs) {
         // An authored structure names its guards; otherwise 2-4 of the biome's animal.
         const types = loc.guards || Array.from({ length: Phaser.Math.Between(2, 4) }, () => biomeGuardType[loc.biome] || 'wolf');
@@ -230,15 +234,15 @@ Object.assign(GameScene.prototype, {
           const sc = t.baseScale * sizeMult;
           const spr = this.physics.add.image(
             Phaser.Math.Clamp(ex, CFG.TILE*4, worldW - CFG.TILE*4),
-            Phaser.Math.Clamp(ey, CFG.TILE*4, worldH - CFG.TILE*4), t.key
+            Phaser.Math.Clamp(ey, CFG.TILE*4, worldH - CFG.TILE*4), type
           ).setScale(sc).setDepth(8);
           spr.setCollideWorldBounds(true);
           spr.body.setSize(t.w, t.h);
           if (this.hudCam) this.hudCam.ignore(spr);
           this.physics.add.collider(spr, this.obstacles);
-          const aggroR = { wolf:220, rat:140, bear:320, dust_hound:200, bog_lurker:180 }[type] * 1.3; // very aggressive
+          const aggroR = t.aggro * 1.3; // very aggressive
           const eGuard = {
-            spr, type: t.key,
+            spr, type,
             hp: Math.floor(t.hp * sizeMult * guardDiff), maxHp: Math.floor(t.hp * sizeMult * guardDiff),
             speed: t.speed * (sizeMult > 1.2 ? 0.8 : 1) * guardSpeed, dmg: Math.max(1, Math.floor(t.dmg * sizeMult * guardDiff)),
             attackTimer: 0, wanderTimer: 0,
