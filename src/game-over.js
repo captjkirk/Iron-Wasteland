@@ -203,13 +203,11 @@ class GameOverScene extends Phaser.Scene {
     this._keys.g.on('down',     () => this._doDownload());
   }
 
-  // Download the session log as a .txt file.  Called from the on-screen button
-  // or G key — both are direct user gestures, so Safari allows the download.
-  _doDownload() {
-    if (!this._dbgEntries || !this._dbgEntries.length) return;
+  // The session log's header lines, down to the EVENT LOG rule; the entries follow them.
+  _logLines() {
     const t    = Math.floor(this.timeAlive || 0);
     const mode = `${this.mode === 1 ? 'Solo' : '2P'} ${this.difficulty === 'hardcore' ? 'Hardcore' : 'Survival'}`;
-    const lines = [
+    return [
       'IRON WASTELAND SESSION LOG',
       '─'.repeat(41),
       `Version  : ${typeof _fmtVersion === 'function' ? _fmtVersion(VERSION) : VERSION}`,
@@ -218,11 +216,27 @@ class GameOverScene extends Phaser.Scene {
       `Session  : ${Math.floor(t / 60)}m ${t % 60}s`,
       `Day      : ${this.days}`,
       `Kills    : ${this.kills}`,
+      `Seed     : ${this.seed == null ? '?' : this.seed}`,
       '─'.repeat(41),
-      `EVENT LOG (${this._dbgEntries.length} entries)`,
+      `EVENT LOG (${(this._dbgEntries || []).length} entries)`,
       '─'.repeat(41),
-      ...this._dbgEntries,
-    ].join('\n');
+    ];
+  }
+
+  // The log for the score row: the header and as many of the newest entries as fit one sheet
+  // cell (50,000 characters, tools/scoreboard/Code.gs), with a line saying how many were cut.
+  _logForSheet() {
+    const MAX = 49000, head = this._logLines().join('\n'), e = this._dbgEntries || [];
+    let n = e.length, len = head.length + 40; // 40: room for the trimmed line
+    while (n > 0 && len + e[n - 1].length + 1 <= MAX) len += e[--n].length + 1;
+    return [head, ...(n ? [`…trimmed ${n} entries…`] : []), ...e.slice(n)].join('\n');
+  }
+
+  // Download the session log as a .txt file.  Called from the on-screen button
+  // or G key — both are direct user gestures, so Safari allows the download.
+  _doDownload() {
+    if (!this._dbgEntries || !this._dbgEntries.length) return;
+    const lines = [...this._logLines(), ...this._dbgEntries].join('\n');
     const blob = new Blob([lines], { type: 'text/plain' });
     const url  = URL.createObjectURL(blob);
     const ts   = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
@@ -521,7 +535,7 @@ class GameOverScene extends Phaser.Scene {
     }
   }
 
-  // Global scoreboard (tools/scoreboard/Code.gs). The body goes as text/plain, which keeps it a
+  // Global scoreboard (tools/scoreboard/Code.gs): the score, with the run's session log. The body goes as text/plain, which keeps it a
   // simple request, so the browser sends no CORS preflight (Apps Script cannot answer one).
   _postScore(name) {
     if (!CFG.SCOREBOARD_URL) return;
@@ -530,7 +544,7 @@ class GameOverScene extends Phaser.Scene {
       chars: this.mode === 2 ? STATE.p1CharId + '+' + STATE.p2CharId : STATE.p1CharId,
       mode: this.mode, difficulty: this.difficulty, days: this.days, kills: this.kills,
       score: this._score, version: this.version || VERSION, seed: this.seed == null ? '' : String(this.seed),
-      device: this._deviceId(),
+      device: this._deviceId(), runId: this._runId, log: this._logForSheet(),
     };
     this._posted = fetch(CFG.SCOREBOARD_URL, { method: 'POST', body: JSON.stringify(body) })
       .catch(e => console.warn('scoreboard post failed:', e && e.message));

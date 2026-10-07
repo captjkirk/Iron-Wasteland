@@ -211,7 +211,8 @@
 //     fns:  _log, _qlog, _dbgRefresh, _downloadLog, hint
 //     log tags: [WORLD ], [PLAYER], [COMBAT], [BUILD ], [perf], [error]
 //     data: _dbgEntries (persists across runs), _perfBudget
-//     in-game: backtick ` toggles overlay; C copies, G downloads.
+//     in-game: backtick ` toggles overlay; C copies, G downloads. Game over and victory download nothing:
+//             the log goes with the score (_logForSheet) and, on home play, to code/logs/ via /save-log.
 //     CLAUDE.md: ALWAYS ASK FOR THE LOG when investigating bugs.
 //
 // 21. TUTORIAL
@@ -224,7 +225,8 @@
 //     fns:  triggerGameOver, _triggerVictory, checkBothDead, handleDeath
 //     scene: GameOverScene
 //     scores: _saveScore is the one save path (localStorage 'iw_scores', plus _postScore to the
-//             global scoreboard, tools/scoreboard/Code.gs); _showGlobalTop reads its top 10.
+//             global scoreboard, tools/scoreboard/Code.gs, with runId and the session log trimmed
+//             to one cell by _logForSheet; _logLines is the log header); _showGlobalTop reads its top 10.
 //     cfg:  SCOREBOARD_URL (empty: no network call)
 //     win condition: relicsDeposited === 5 (deposited at altar)
 //
