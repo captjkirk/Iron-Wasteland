@@ -55,8 +55,10 @@ On deploy, `.github/workflows/pages.yml` stamps `VERSION` with the publish time.
 ## The ticket loop
 
 A fully specified issue (it has a "Check" section) gets the `ready-for-agent` label. In Claude
-Code, `/next-ticket` claims the lowest such issue, builds it in its own worktree, and opens a PR;
-`/loop 30m /next-ticket` keeps going until the frontier is empty. After a few tickets the
+Code, `/next-ticket` first runs `/judge` in a fresh subagent, which merges green PRs whose
+ticket it can verify and labels the rest `needs-owner-look` for the owner (rules in
+`.claude/commands/judge.md`). Then it claims the lowest such issue, builds it in its own
+worktree, and opens a PR; `/loop 30m /next-ticket` keeps going until the frontier is empty. After a few tickets the
 session is no longer fresh: start a new one and run the loop again.
 
 ## Debug log
