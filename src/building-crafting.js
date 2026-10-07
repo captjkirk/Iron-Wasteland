@@ -743,6 +743,8 @@ Object.assign(GameScene.prototype, {
     if (newCh.id==='gunslinger') {
       player.ammo = 8;
       const maxReserve = 40 - player.ammo;
+      // A new Gunslinger starts at the cap (8 clip + 32 reserve), so carried ammo adds nothing here
+      // and is lost by design (Jared, October 6, 2026: accept the loss).
       const carried = player.carriedAmmo || 0;
       player.reserveAmmo = Math.min(maxReserve, 32 + carried);
       player.carriedAmmo = 0;
