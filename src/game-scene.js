@@ -1446,7 +1446,7 @@ class GameScene extends Phaser.Scene {
     ).setOrigin(0.5).setDepth(20);
     if (this.hudCam) this.hudCam.ignore(player.downText);
 
-    this.hint(player.charData.player + ' is DOWN! Get close and hold E / Enter to revive!', 5000);
+    this.hint(player.charData.player + ' is DOWN! Get close and hold E / Enter to revive!', 5000, { urgent: true });
   }
 
   updateDowned(delta) {
@@ -3147,7 +3147,7 @@ class GameScene extends Phaser.Scene {
       // Fire a "closing in" alert when the first hunt-party raider reaches ~1200px.
       if (raider.isHuntParty && !this._huntPartyAlertFired && nearDist < 1200) {
         this._huntPartyAlertFired = true;
-        this.hint('⚠ Raiders closing in — get ready!', 4000);
+        this.hint('⚠ Raiders closing in — get ready!', 4000, { urgent: true });
         this._log('Hunt party closing in  dist=' + nearDist.toFixed(0), 'world');
         SFX._play(200, 'sawtooth', 0.2, 0.6, 'drop');
       }
