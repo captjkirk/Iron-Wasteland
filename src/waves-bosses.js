@@ -5,7 +5,8 @@
 
 Object.assign(GameScene.prototype, {
   // ── BOSS SYSTEM ───────────────────────────────────────────────
-  spawnBoss() {
+  // forceKey ('boss_wolf', ...) skips the biome pick; _debugBossFromUrl uses it.
+  spawnBoss(forceKey) {
     if (this.bossSpawned) return;
     this.bossSpawned = true;
     this._stageTrace = false; // we made it — stop per-stage trace
@@ -17,7 +18,10 @@ Object.assign(GameScene.prototype, {
     // Pick boss type based on biome spread — random for now
     const bossTypes = [
       { key: 'boss_golem',  name: 'Iron Golem',   biome: 'waste',  hp: 600, speed: 55,  dmg: 22, armor: 4, specialType: 'slam',   specialInterval: 5000 },
-      { key: 'boss_wolf',   name: 'Alpha Wolf',    biome: 'grass',  hp: 420, speed: 100, dmg: 16, armor: 1, specialType: 'charge', specialInterval: 3500 },
+      // hitbox: texture px, facing right (x mirrors when the boss faces left); it covers the
+      // drawn body, head and legs but not the tail. shadowY/shadowW: below the paws, world px.
+      { key: 'boss_wolf',   name: 'Alpha Wolf',    biome: 'grass',  hp: 420, speed: 100, dmg: 16, armor: 1, specialType: 'charge', specialInterval: 3500,
+        hitbox: { x: 30, y: 42, w: 150, h: 88 }, shadowY: 92, shadowW: 230 },
       { key: 'boss_spider', name: 'Spider Queen',  biome: 'ruins',  hp: 480, speed: 85,  dmg: 18, armor: 2, specialType: 'spray',  specialInterval: 4200 },
       { key: 'boss_troll',  name: 'Frost Troll',   biome: 'tundra', hp: 700, speed: 65,  dmg: 28, armor: 5, specialType: 'slam',   specialInterval: 5800 },
       { key: 'boss_hydra',  name: 'Bog Hydra',     biome: 'swamp',  hp: 540, speed: 65,  dmg: 20, armor: 2, specialType: 'spray',  specialInterval: 4800 },
@@ -26,8 +30,8 @@ Object.assign(GameScene.prototype, {
     // players currently are, so the boss reads as something emerging from
     // the surrounding world instead of a random spawn. Falls back to random
     // if the current biome has no matching boss type.
-    let bt;
-    try {
+    let bt = forceKey && bossTypes.find(b => b.key === forceKey);
+    if (!bt) try {
       const anchor = (this.p1 && this.p1.spr) ? this.p1 : (this.p2 && this.p2.spr ? this.p2 : null);
       const pbiome = anchor ? getBiome(Math.floor(anchor.spr.x / TILE), Math.floor(anchor.spr.y / TILE)) : null;
       const matches = pbiome ? bossTypes.filter(b => b.biome === pbiome) : [];
@@ -52,7 +56,9 @@ Object.assign(GameScene.prototype, {
     const BOSS_SHADOW_SCALE_X = 2.7, BOSS_SHADOW_SCALE_Y = 2.4;
     const spr = this.physics.add.image(bx, by, bt.key).setScale(BOSS_SCALE).setDepth(12);
     spr.setCollideWorldBounds(true);
-    spr.body.setSize(56, 56);
+    const hb = bt.hitbox;
+    if (hb) spr.body.setSize(hb.w, hb.h, false).setOffset(hb.x, hb.y);
+    else spr.body.setSize(56, 56);
     if (this.hudCam) this.hudCam.ignore(spr);
     this._log('spawnBoss: sprite created; adding collider', 'world');
     this.physics.add.collider(spr, this.obstacles, (bSpr, obstacle) => {
@@ -75,8 +81,9 @@ Object.assign(GameScene.prototype, {
     this._log('spawnBoss: collider added', 'world');
 
     // Shadow — tracks boss every frame, sits below the sprite so terrain still reads.
-    const shadow = this.add.image(bx, by + 36, 'boss_shadow')
-      .setScale(BOSS_SHADOW_SCALE_X, BOSS_SHADOW_SCALE_Y)
+    const shadowY = bt.shadowY || 36;
+    const shadow = this.add.image(bx, by + shadowY, 'boss_shadow')
+      .setScale(bt.shadowW ? bt.shadowW / 56 : BOSS_SHADOW_SCALE_X, BOSS_SHADOW_SCALE_Y)
       .setDepth(3).setAlpha(0.75);
     if (this.hudCam) this.hudCam.ignore(shadow);
 
@@ -107,7 +114,7 @@ Object.assign(GameScene.prototype, {
       attackTimer: 0, atkInterval: 1900,
       aggroRange: 99999, attackRange: 70, wanderTimer: 0, sizeMult: 1,
       hpBg, hpBar,
-      shadow, baseScale: BOSS_SCALE, _hitTweenUntil: 0,
+      shadow, shadowY, hitbox: hb || null, baseScale: BOSS_SCALE, _hitTweenUntil: 0,
       specialType: bt.specialType, specialInterval: bt.specialInterval,
       specialTimer: bt.specialInterval * 0.6, // first special fires sooner
       _bossState: 'chase', _telegraphTimer: 0, _telegraphGfx: null,
@@ -231,6 +238,28 @@ Object.assign(GameScene.prototype, {
     }
   },
 
+  // Reach distance from a boss to (x, y). Every boss once had the same 84 px square body, and
+  // the bite, charge, slam and player-melee ranges were tuned as centre distances for it. A boss
+  // with a drawn-to-fit hitbox measures to the edge of that hitbox plus the old half-width (42),
+  // so the same ranges reach from its whole body, nose to rump.
+  _bossDist(b, x, y) {
+    const body = b.hitbox && b.spr.body;
+    if (!body) return Phaser.Math.Distance.Between(b.spr.x, b.spr.y, x, y);
+    const dx = Math.max(body.x - x, 0, x - body.right), dy = Math.max(body.y - y, 0, y - body.bottom);
+    return Math.hypot(dx, dy) + 42;
+  },
+
+  // ?boss=wolf (or golem, spider, troll, hydra) spawns that boss 3 s after the world is ready,
+  // to test a boss without playing to it. Called once at world-ready.
+  _debugBossFromUrl() {
+    let name = null;
+    try { name = new URLSearchParams(location.search).get('boss'); } catch (e) { return; }
+    if (!name) return;
+    const key = name.startsWith('boss_') ? name : 'boss_' + name;
+    this._log(`debug: ?boss=${name}, spawning ${key} in 3 s`, 'world');
+    this.time.delayedCall(3000, () => { if (!this.isOver && !this.bossSpawned) this.spawnBoss(key); });
+  },
+
   updateBoss(delta) {
     if (!this.boss || this.isOver) return;
     const b = this.boss;
@@ -257,7 +286,7 @@ Object.assign(GameScene.prototype, {
     // ── Animation: shadow, idle breathing, walk bob ─────────────
     // Shadow tracks the boss's true world position (not the bobbed sprite y).
     if (b.shadow && b.shadow.active) {
-      b.shadow.setPosition(b.spr.x, b.spr.y + 36);
+      b.shadow.setPosition(b.spr.x, b.spr.y + (b.shadowY || 36));
     }
     // Idle breath — gentle scale pulse. Walk bob — vertical sprite offset when moving.
     // Skipped while hit-squash tween is overriding scale (b._hitTweenUntil > now).
@@ -439,6 +468,10 @@ Object.assign(GameScene.prototype, {
         b.spr.setVelocity(vel.x, vel.y);
       }
       b.spr.setFlipX(foeX < b.spr.x);
+      if (b.hitbox) { // Arcade bodies do not mirror with flipX
+        const hb = b.hitbox;
+        b.spr.body.setOffset(b.spr.flipX ? b.spr.width - hb.x - hb.w : hb.x, hb.y);
+      }
 
       // Special attacks always target the nearest player even when fighting raiders
       if (b.specialTimer <= 0 && nearDist < 300) {
@@ -480,7 +513,7 @@ Object.assign(GameScene.prototype, {
       }
 
       // Melee — swipe nearest raider or player depending on what's in range
-      if (foeDist < 70) {
+      if (this._bossDist(b, foeX, foeY) < 70) {
         b.attackTimer -= delta;
         if (b.attackTimer <= 0) {
           b.attackTimer = b.atkInterval;
@@ -624,7 +657,7 @@ Object.assign(GameScene.prototype, {
       this.tweens.add({ targets: ring, alpha: 0, duration: 450, onComplete: () => ring.destroy() });
       // Damage
       players.forEach(p => {
-        if (Phaser.Math.Distance.Between(b.spr.x, b.spr.y, p.spr.x, p.spr.y) < 130) {
+        if (this._bossDist(b, p.spr.x, p.spr.y) < 130) {
           const slamDmg = this._knightShieldBlock(p, b.spr.x, b.spr.y, Math.round(b.dmg * 0.85));
           p.hp = Math.max(0, p.hp - slamDmg);
           this._log(`${p.charData.player} boss stomp  dmg=${slamDmg}  hp=${p.hp}/${p.maxHp}`, 'combat');
@@ -649,7 +682,7 @@ Object.assign(GameScene.prototype, {
         if (!b || !b.spr || !b.spr.active) return;
         b.spr.setVelocity(0, 0);
         players.forEach(p => {
-          if (Phaser.Math.Distance.Between(b.spr.x, b.spr.y, p.spr.x, p.spr.y) < 55) {
+          if (this._bossDist(b, p.spr.x, p.spr.y) < 55) {
             const chargeDmg = this._knightShieldBlock(p, b.spr.x, b.spr.y, Math.round(b.dmg * 1.3));
             p.hp = Math.max(0, p.hp - chargeDmg);
             this._log(`${p.charData.player} troll charge  dmg=${chargeDmg}  hp=${p.hp}/${p.maxHp}`, 'combat');
