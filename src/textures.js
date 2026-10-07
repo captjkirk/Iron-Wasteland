@@ -2,7 +2,7 @@
 // ── src/textures.js — Procedural texture generation (no image files) ─────────
 // Globals exported: drawWolf, drawRat, drawBear, drawIceCrawler,
 //                   drawSpiderRuins, drawBogLurker, drawDustHound, drawWaterLurker,
-//                   drawRiverFrame, buildTextures, buildAtlases, makeScaleProxy
+//                   drawRiverFrame, drawEdgeVariants, buildTextures, buildAtlases, makeScaleProxy
 // All draw* fns take (g: Phaser.GameObjects.Graphics).
 // buildTextures(scene) is called from BootScene.preload().
 // buildAtlases(scene) is called internally by buildTextures after all frames generated.
@@ -41,6 +41,41 @@ function drawRiverFrame(ctx, off) {
     ctx.fillStyle = 'rgba(170,238,255,0.20)';
     ctx.fillRect(4, 5 + dy, 5, 1); ctx.fillRect(19, 16 + dy, 4, 1); ctx.fillRect(7, 26 + dy, 5, 1);
   }
+}
+
+// Edge autotiles: a border onto a neighbouring terrain, one 32 px variant per entry of EDGE_MASKS,
+// side by side on one canvas, transparent where the tile's own ground shows. Mask bits: the sides
+// that touch the neighbour (1=N, 2=E, 4=S, 8=W) and the lone corners, whose cell touches it only
+// diagonally (16=NE, 32=SE, 64=SW, 128=NW; a corner counts only when both its sides are clear,
+// which leaves 47 masks). The neighbour `fill` reaches R px in along each such side and in a
+// radius-R quarter circle round each lone corner, so tiles join and convex corners come out round;
+// a light line of `fill` and a band of `rim` follow it. Shorelines use it (water, mud); biome edges next.
+const EDGE_MASKS = [...Array(256).keys()].filter(m =>
+  [[16, 1, 2], [32, 4, 2], [64, 4, 8], [128, 1, 8]].every(([c, a, b]) => !(m & c) || !(m & (a | b))));
+function drawEdgeVariants(fill, rim) {
+  const R = 6, N = EDGE_MASKS.length, cv = document.createElement('canvas');
+  cv.width = N * 32; cv.height = 32;
+  const c2 = cv.getContext('2d'), img = c2.createImageData(N * 32, 32), px = img.data;
+  const corners = [[16, 32, 0], [32, 32, 32], [64, 0, 32], [128, 0, 0]]; // bit, x, y
+  const lit = (c, k) => Math.round(c + (255 - c) * k);
+  const put = (i, c, a, k = 0) => {
+    px[i] = lit(c >> 16, k); px[i + 1] = lit((c >> 8) & 255, k); px[i + 2] = lit(c & 255, k); px[i + 3] = a * 255;
+  };
+  EDGE_MASKS.forEach((m, v) => { for (let y = 0; y < 32; y++) for (let x = 0; x < 32; x++) {
+    const cx = x + 0.5, cy = y + 0.5;
+    let d = Infinity;
+    if (m & 1) d = Math.min(d, cy);
+    if (m & 2) d = Math.min(d, 32 - cx);
+    if (m & 4) d = Math.min(d, 32 - cy);
+    if (m & 8) d = Math.min(d, cx);
+    for (const [bit, ax, ay] of corners) if (m & bit) d = Math.min(d, Math.hypot(cx - ax, cy - ay));
+    const i = (y * N * 32 + v * 32 + x) * 4;
+    if (d < R) put(i, fill, 0.92);
+    else if (d < R + 1.5) put(i, fill, 0.7, 0.45); // light line at the edge
+    else if (d < R + 5) put(i, rim, 0.45);
+  } });
+  c2.putImageData(img, 0, 0);
+  return cv;
 }
 
 // Enemy textures are drawn at the same pixel density as the player sprites
@@ -724,7 +759,7 @@ function buildTextures(scene) {
   // allocated a canvas each and got the tab killed on iPhone, #238).
   // Variants only draw inside a 3 px inset, so every edge matches the base tile and any two tiles join.
   const N = GROUND_KEYS.length;
-  const tileset = scene.textures.createCanvas('ground_tileset', N * 32, 4 * 32);
+  const tileset = scene.textures.createCanvas('ground_tileset', N * 32, (4 + 2 * EDGE_MASKS.length) * 32);
   const ctx = tileset.context;
   const DETAIL = [ // per biome: [pebble color, pebble highlight, flower colors or null]
     [0x7d7d72, 0xa5a598, [0xe8d94a, 0xf2f2f2, 0xd96aa8]], // grass
@@ -763,6 +798,19 @@ function buildTextures(scene) {
         }
       }
     }
+  });
+  // Bank tiles, from row 4: base ground with a shoreline over it, row 4 + kind * 47 + the mask's
+  // index in EDGE_MASKS (drawEdgeVariants); kind 0 is still water, 1 the river. Mask 0 stays unused.
+  [0x226688, 0x2277aa].forEach((water, k) => {
+    const edges = drawEdgeVariants(water, 0x5a4a30);
+    GROUND_KEYS.forEach((key, b) => {
+      const base = scene.textures.get(key).getSourceImage();
+      for (let v = 1; v < EDGE_MASKS.length; v++) {
+        const ox = b * 32, oy = (4 + k * EDGE_MASKS.length + v) * 32;
+        ctx.drawImage(base, ox, oy);
+        ctx.drawImage(edges, v * 32, 0, 32, 32, ox, oy, 32, 32);
+      }
+    });
   });
   tileset.refresh();
 
