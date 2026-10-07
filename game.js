@@ -112,13 +112,13 @@
 //    cfg:  CAM_PAD, CAM_ZOOM_MIN, CAM_ZOOM_MAX
 //
 // 6. PLAYER COMBAT (per-character abilities)
-//    fns:  doAttack, doAlt, meleeSwing, _triggerAtkAnim, _hitPause,
+//    fns:  doAttack, doAlt, _handOverAmmo, meleeSwing, _triggerAtkAnim, _hitPause,
 //          _floatDamage, _knightShieldBlock, _dropSpiderWeb,
 //          _emitCharmSparkle, _emitLurkerBubble,
 //          _fireArrow, _fireNailGun, _fireShieldThrow, deployTurret
 //    chars by id: knight, gunslinger, architect, charmer,
 //                 raider, spider, lurker, troll
-//    data: player.atkCooldown, player.ammo, player.reserveAmmo, teamAmmoPool
+//    data: player.atkCooldown, player.ammo, player.reserveAmmo, player.carriedAmmo
 //    log:  [COMBAT], [PLAYER]
 //
 // 7. DEATH & REVIVE
@@ -137,7 +137,7 @@
 //    barracks: openBarrack, closeBarrack, barrackNav, barrackConfirm,
 //              refreshBarrackCards, buildBarrackOverlay, checkBarrackRange
 //    data: buildType, buildRotation, buildOwner, RECIPES,
-//          structures, teamAmmoPool
+//          structures, player.carriedAmmo
 //    log:  [BUILD ], [PLAYER]
 //
 // 9. WALLS / SPIKES / STRUCTURE DAMAGE
