@@ -147,6 +147,7 @@
 //          _removeWallFromBuckets, _wallBucketKey, _wallNearby,
 //          _refreshWallClustersNear, _addFireGlow
 //    data: structures, spikes, _wallBuckets, _wallTileSet
+//    cfg:  SPIKE_TRAP_DMG, CAMPFIRE_HEAL_MS, CAMPFIRE_HEAL_R (campfire heal lives in building-crafting.js)
 //    log:  [COMBAT], [BUILD ]
 //
 // 10. DAY/NIGHT & DIFFICULTY
@@ -222,6 +223,9 @@
 // 22. GAME OVER / VICTORY  (src/game-scene.js; GameOverScene in src/game-over.js)
 //     fns:  triggerGameOver, _triggerVictory, checkBothDead, handleDeath
 //     scene: GameOverScene
+//     scores: _saveScore is the one save path (localStorage 'iw_scores', plus _postScore to the
+//             global scoreboard, tools/scoreboard/Code.gs); _showGlobalTop reads its top 10.
+//     cfg:  SCOREBOARD_URL (empty: no network call)
 //     win condition: relicsDeposited === 5 (deposited at altar)
 //
 // 23. SETTINGS / SAVE  (src/scenes.js; toggleSleep in src/game-scene.js)

@@ -287,17 +287,11 @@ class GameOverScene extends Phaser.Scene {
     if (this._saveTxt) this._saveTxt.setText('\u2713  ' + name).setColor('#66ee66');
     if (this._saveZone) this._saveZone.disableInteractive();
 
-    // Persist to localStorage
     const lb = this._loadLeaderboard();
     // isHighScore = true only if this score will appear in the visible top-5 after saving.
     // Compare against lb[4] (5th-best existing entry, 0-indexed) before the current run is added.
     const isHighScore = lb.length < 5 || this._score > (lb[4]?.score ?? -1);
-    const dateStr = new Date().toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
-    this._savedName = name; // stash for leaderboard highlight
-    lb.push({ name, score: this._score, days: this.days, time: Math.floor(this.timeAlive), date: dateStr });
-    lb.sort((a, b) => b.score - a.score);
-    lb.splice(10);
-    try { localStorage.setItem('iw_scores', JSON.stringify(lb)); } catch(e) {}
+    this._saveScore(name);
 
     // After short delay, hide save button and show feedback prompt
     this.time.delayedCall(700, () => {
@@ -453,7 +447,10 @@ class GameOverScene extends Phaser.Scene {
       y += 22;
     }
 
-    this.add.text(W/2 - 200, y, 'TOP SCORES', {
+    // With a global scoreboard the local list moves left and the global top 10 sits beside it.
+    const lx = CFG.SCOREBOARD_URL ? W/2 - 280 : W/2 - 200;
+    this._showGlobalTop(W/2 + 10, y);
+    this.add.text(lx, y, 'TOP SCORES', {
       fontFamily:'monospace', fontSize:'10px', color:'#445566',
     });
     y += 16;
@@ -468,7 +465,7 @@ class GameOverScene extends Phaser.Scene {
       const col = isMe ? '#ffdd44' : '#778899';
       const datePart = entry.date ? '  ' + entry.date : '';
       const txt = (i + 1) + '.  ' + entry.name.padEnd(14) + entry.score.toLocaleString() + '  Day ' + entry.days + datePart;
-      this.add.text(W/2 - 200, y + i * 14, txt, { fontFamily:'monospace', fontSize:'10px', color: col });
+      this.add.text(lx, y + i * 14, txt, { fontFamily:'monospace', fontSize:'10px', color: col });
     });
   }
 
@@ -481,37 +478,95 @@ class GameOverScene extends Phaser.Scene {
 
   // Save silently (no leaderboard reveal) — used when player navigates away before saving.
   _ensureSaved() {
-    if (!this._nameSaved) {
-      this._nameSaved = true;
-      const name = (this._htmlInp ? this._htmlInp.value.trim() : '') || this._defaultName || 'Player';
-      const lb = this._loadLeaderboard();
-      const dateStr = new Date().toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
-      const _runId = (this._runId ||= Date.now() + ':' + Math.random().toString(36).slice(2, 8));
-      lb.push({
-        name, score: this._score, days: this.days,
-        time: Math.floor(this.timeAlive), date: dateStr, runId: _runId,
-        // Verifiability metadata — lets top-score runs be reproduced/inspected
-        // later (same seed replays the same world) and tagged by game build.
-        difficulty: this.difficulty || null,
-        seed: this.seed || null,
-        version: this.version || null,
-        won: this.won || false,
-      });
-      lb.sort((a, b) => b.score - a.score);
-      lb.splice(10);
-      try {
-        localStorage.setItem('iw_scores', JSON.stringify(lb));
-      } catch(e) {
-        // Storage full / disabled: tell the player so they know the run
-        // didn't make it onto the leaderboard.
-        console.warn('iw_scores save failed:', e && e.message ? e.message : e);
-        const warn = this.add.text(CFG.W/2, CFG.H - 12, '⚠ Could not save score (storage full?)', {
-          fontFamily: 'monospace', fontSize: '10px', color: '#ff8844',
-          backgroundColor: '#000000cc', padding: { x: 6, y: 3 },
-        }).setOrigin(0.5).setDepth(500);
-        this.time.delayedCall(4500, () => { if (warn && warn.active) warn.destroy(); });
-      }
+    if (this._nameSaved) return;
+    this._nameSaved = true;
+    const name = (this._htmlInp ? this._htmlInp.value.trim() : '') || this._defaultName || 'Player';
+    if (!this._saveScore(name)) {
+      // Storage full / disabled: tell the player so they know the run
+      // didn't make it onto the leaderboard.
+      const warn = this.add.text(CFG.W/2, CFG.H - 12, '⚠ Could not save score (storage full?)', {
+        fontFamily: 'monospace', fontSize: '10px', color: '#ff8844',
+        backgroundColor: '#000000cc', padding: { x: 6, y: 3 },
+      }).setOrigin(0.5).setDepth(500);
+      this.time.delayedCall(4500, () => { if (warn && warn.active) warn.destroy(); });
     }
+  }
+
+  // The one save path, for the SAVE button and for leaving unsaved: the local top 10 in
+  // localStorage, and the global scoreboard when CFG.SCOREBOARD_URL is set.
+  // Returns false when localStorage refused the write.
+  _saveScore(name) {
+    this._savedName = name; // stash for leaderboard highlight
+    const lb = this._loadLeaderboard();
+    lb.push({
+      name, score: this._score, days: this.days, time: Math.floor(this.timeAlive),
+      date: new Date().toLocaleDateString('en-US', { month: 'short', day: 'numeric' }),
+      runId: (this._runId ||= Date.now() + ':' + Math.random().toString(36).slice(2, 8)),
+      // Verifiability metadata — lets top-score runs be reproduced/inspected
+      // later (same seed replays the same world) and tagged by game build.
+      difficulty: this.difficulty || null,
+      seed: this.seed || null,
+      version: this.version || null,
+      won: this.won || false,
+    });
+    lb.sort((a, b) => b.score - a.score);
+    lb.splice(10);
+    this._postScore(name);
+    try {
+      localStorage.setItem('iw_scores', JSON.stringify(lb));
+      return true;
+    } catch(e) {
+      console.warn('iw_scores save failed:', e && e.message ? e.message : e);
+      return false;
+    }
+  }
+
+  // Global scoreboard (tools/scoreboard/Code.gs). The body goes as text/plain, which keeps it a
+  // simple request, so the browser sends no CORS preflight (Apps Script cannot answer one).
+  _postScore(name) {
+    if (!CFG.SCOREBOARD_URL) return;
+    const body = {
+      name: name.slice(0, 16),
+      chars: this.mode === 2 ? STATE.p1CharId + '+' + STATE.p2CharId : STATE.p1CharId,
+      mode: this.mode, difficulty: this.difficulty, days: this.days, kills: this.kills,
+      score: this._score, version: this.version || VERSION, seed: this.seed == null ? '' : String(this.seed),
+      device: this._deviceId(),
+    };
+    this._posted = fetch(CFG.SCOREBOARD_URL, { method: 'POST', body: JSON.stringify(body) })
+      .catch(e => console.warn('scoreboard post failed:', e && e.message));
+  }
+
+  // A random id per device, so the script can rate-limit one device; nothing else about the player.
+  _deviceId() {
+    try {
+      let id = localStorage.getItem('iw_device');
+      if (!id) localStorage.setItem('iw_device', id = Math.random().toString(36).slice(2, 12) + Date.now().toString(36));
+      return id;
+    } catch(e) { return (this._sessionDevice ||= Math.random().toString(36).slice(2, 12) + Date.now().toString(36)); }
+  }
+
+  // Stand-in list (#278 decides its final shape): the global top 10, read after our own post lands.
+  _showGlobalTop(x, y) {
+    if (!CFG.SCOREBOARD_URL) return;
+    const head = this.add.text(x, y, 'GLOBAL TOP 10', { fontFamily:'monospace', fontSize:'10px', color:'#445566' });
+    const status = this.add.text(x, y + 12, 'loading\u2026', { fontFamily:'monospace', fontSize:'10px', color:'#556677' });
+    Promise.resolve(this._posted)
+      .then(() => fetch(CFG.SCOREBOARD_URL))
+      .then(r => r.json())
+      .then(rows => {
+        if (!head.active) return; // scene left while loading
+        if (!Array.isArray(rows)) throw new Error('bad reply');
+        status.setText(rows.length ? '' : 'no scores yet');
+        rows.slice(0, 10).forEach((r, i) => {
+          const isMe = r.name === this._savedName && r.score === this._score;
+          const txt = String(i + 1).padEnd(4) + String(r.name).slice(0, 16).padEnd(17) + Number(r.score).toLocaleString() + '  Day ' + r.days;
+          this.add.text(x, y + 12 + i * 11, txt, { fontFamily:'monospace', fontSize:'10px', color: isMe ? '#ffdd44' : '#778899' });
+        });
+      })
+      .catch(e => {
+        console.warn('scoreboard read failed:', e && e.message);
+        if (status.active) status.setText('Global scores unavailable');
+      });
   }
 
   _loadLeaderboard() {
