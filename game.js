@@ -19,6 +19,8 @@
 // ── FILE MAP ─────────────────────────────────────────────────
 //   game.js              — THIS FILE. Header + Phaser.Game init only.
 //
+//   src/structures.js    — Authored biome structures (data only): STRUCTURE_LAYOUTS, STRUCTURE_LOOT
+//
 //   src/constants.js     — Global config + shared state
 //                          VERSION, CFG, ENEMY_STATS, RAIDER_STATS, ENEMY_LOOT,
 //                          _makeMulberry32, _worldRng, _pendingLogMsgs, _qlog,
@@ -66,7 +68,7 @@
 //    ground: one Tilemap layer (32 px steps between biomes) from the 'ground_tileset' texture, tile index = GROUND_KEYS order (src/textures.js).
 //            No full-world grass TileSprite exists any more (removed in #238).
 //    fns:  buildWorld, _buildPonds, _buildLakes, _buildRivers,
-//          buildPOIs, buildRuinsCity, buildBiomeStructures,
+//          buildPOIs, buildRuinsCity, buildBiomeStructures, _buildAuthoredStructure,
 //          _placeScenery (trees/rocks stand on their tile base; body set after refreshBody)
 //    biome: getBiome, _biomeHash, _biomeNoise, _computeBiomeRaw,
 //           _initBiomeSeeds, _buildBiomeMap, _buildBiomeMapChunked
