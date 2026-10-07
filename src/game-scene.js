@@ -729,7 +729,7 @@ class GameScene extends Phaser.Scene {
     spr.body.setSize(20, 24).setOffset(13, 31); // frame is padded 1px for the outline
 
     const lbl = this._w(this.add.text(x, y-50, charData.player, {
-      fontFamily:'monospace', fontSize:'11px',
+      fontFamily:'monospace', fontSize:'12px',
       color: pNum===1 ? '#6699ff' : '#ff9944', stroke:'#000', strokeThickness:2,
     }).setOrigin(0.5).setDepth(11));
 
@@ -771,26 +771,26 @@ class GameScene extends Phaser.Scene {
     this._hudDirty = true;
 
     this.ammoIcons = { p1:null, p2:null };
-    if (STATE.p1CharId==='gunslinger') this.ammoIcons.p1 = this.makeAmmoRow(14, 14, 0x6699ff);
-    if (!this.solo && STATE.p2CharId==='gunslinger') this.ammoIcons.p2 = this.makeAmmoRow(W-108, 14, 0xff9944);
+    if (STATE.p1CharId==='gunslinger') this.ammoIcons.p1 = this.makeAmmoRow(14, 52, 0x6699ff);
+    if (!this.solo && STATE.p2CharId==='gunslinger') this.ammoIcons.p2 = this.makeAmmoRow(W-108, 52, 0xff9944);
     if (this.ammoIcons.p1) this.ammoIcons.p1.forEach(ic => this._h(ic));
     if (this.ammoIcons.p2) this.ammoIcons.p2.forEach(ic => this._h(ic));
 
     // Reserve ammo counter (shown below clip icons for gunslinger players)
     this.ammoReserveText = { p1: null, p2: null };
     if (STATE.p1CharId === 'gunslinger') {
-      this.ammoReserveText.p1 = this._h(this.add.text(14, 30, '', {
-        fontFamily:'monospace', fontSize:'9px', color:'#aaaacc',
+      this.ammoReserveText.p1 = this._h(this.add.text(14, 62, '', {
+        fontFamily:'monospace', fontSize:'12px', color:'#aaaacc',
       }).setDepth(101));
     }
     if (!this.solo && STATE.p2CharId === 'gunslinger') {
-      this.ammoReserveText.p2 = this._h(this.add.text(W - 12, 30, '', {
-        fontFamily:'monospace', fontSize:'9px', color:'#ccaa88',
+      this.ammoReserveText.p2 = this._h(this.add.text(W - 12, 62, '', {
+        fontFamily:'monospace', fontSize:'12px', color:'#ccaa88',
       }).setOrigin(1, 0).setDepth(101));
     }
 
     const dayBg = this._h(this.add.graphics().setDepth(100));
-    dayBg.fillStyle(0x000000, 0.6); dayBg.fillRoundedRect(W/2-95, 5, 190, 50, 8);
+    dayBg.fillStyle(0x000000, 0.6); dayBg.fillRoundedRect(W/2-95, 5, 190, 66, 8);
     this.dayText = this._h(this.add.text(W/2, 10, 'DAY 1', { fontFamily:'monospace', fontSize:'13px', color:'#ffee44' }).setOrigin(0.5,0).setDepth(101));
     this.clockGfx = this._h(this.add.graphics().setDepth(102));
 
@@ -800,7 +800,7 @@ class GameScene extends Phaser.Scene {
 
     const diffColor = this.hardcore ? '#ff4444' : '#44cc66';
     const diffLabel = this.hardcore ? '\u2620 HARDCORE' : '\u2665 SURVIVAL';
-    this._h(this.add.text(W/2, 42, diffLabel, { fontFamily:'monospace', fontSize:'9px', color:diffColor }).setOrigin(0.5,0).setDepth(101));
+    this._h(this.add.text(W/2, 52, diffLabel, { fontFamily:'monospace', fontSize:'12px', color:diffColor }).setOrigin(0.5,0).setDepth(101));
 
     // Persistent MENU button — bottom-right, works for both keyboard and touch
     const menuBtn = this._h(this.add.text(W - 14, H - 12, '\u2630  MENU', {
@@ -812,27 +812,27 @@ class GameScene extends Phaser.Scene {
     menuBtn.on('pointerdown', () => { if (!this.isOver) this.toggleControls(); });
 
     // Down status texts
-    this.p1DownStatus = this._h(this.add.text(12, 54, '', { fontFamily:'monospace', fontSize:'11px', color:'#ff4444' }).setDepth(103));
-    this.p2DownStatus = this._h(this.add.text(W-12, 54, '', { fontFamily:'monospace', fontSize:'11px', color:'#ff4444' }).setOrigin(1,0).setDepth(103));
+    this.p1DownStatus = this._h(this.add.text(12, 80, '', { fontFamily:'monospace', fontSize:'12px', color:'#ff4444' }).setDepth(103));
+    this.p2DownStatus = this._h(this.add.text(W-12, 80, '', { fontFamily:'monospace', fontSize:'12px', color:'#ff4444' }).setOrigin(1,0).setDepth(103));
 
     // Inventory display (bottom left for P1, bottom right for P2)
-    const invStyle = { fontFamily:'monospace', fontSize:'10px', color:'#aabb88', stroke:'#000', strokeThickness:2 };
+    const invStyle = { fontFamily:'monospace', fontSize:'12px', color:'#aabb88', stroke:'#000', strokeThickness:2 };
     this.p1InvText = this._h(this.add.text(12, H-50, '', invStyle).setDepth(101));
     if (this.p2) this.p2InvText = this._h(this.add.text(W-12, H-50, '', invStyle).setOrigin(1,0).setDepth(101));
 
     // Relic progress tracker — hidden until first relic activity
-    this.hudRelicText = this._h(this.add.text(W/2, 58, '', {
-      fontFamily: 'monospace', fontSize: '10px', color: '#cc44ff',
+    this.hudRelicText = this._h(this.add.text(W/2, 76, '', {
+      fontFamily: 'monospace', fontSize: '12px', color: '#cc44ff',
       stroke: '#000', strokeThickness: 2,
     }).setOrigin(0.5, 0).setDepth(101).setVisible(false));
 
     // P1 name badge (top-left)
     this.p1Badge = this._h(this.add.text(12, 10, this.p1.charData.player + ' \u2014 ' + this.p1.charData.title, {
-      fontFamily:'monospace', fontSize:'11px', color:'#6699ff',
+      fontFamily:'monospace', fontSize:'12px', color:'#6699ff',
     }).setDepth(102));
     if (this.p2) {
       this.p2Badge = this._h(this.add.text(W-12, 10, this.p2.charData.player + ' \u2014 ' + this.p2.charData.title, {
-        fontFamily:'monospace', fontSize:'11px', color:'#ff9944',
+        fontFamily:'monospace', fontSize:'12px', color:'#ff9944',
       }).setOrigin(1,0).setDepth(102));
     }
 
@@ -854,7 +854,7 @@ class GameScene extends Phaser.Scene {
     // Store radar geometry for boss indicator positioning
     this.radarCenter = { x: mmCX, y: mmCY, r: mmR };
     this._h(this.add.text(mmCX, mmY - 11, 'RADAR', {
-      fontFamily:'monospace', fontSize:'8px', color:'#667788',
+      fontFamily:'monospace', fontSize:'12px', color:'#667788',
     }).setOrigin(0.5).setDepth(111));
 
     // Circular clip mask — tiles drawn outside the circle are hidden
@@ -1261,7 +1261,7 @@ class GameScene extends Phaser.Scene {
     const list = this._activeStatuses(p), key = list.join();
     if (this[cacheKey] === key) return;
     this[cacheKey] = key;
-    const SZ = 13, GAP = 3, y = 41, W = this.scale.width;
+    const SZ = 13, GAP = 3, y = 28, W = this.scale.width;
     gfx.clear();
     list.forEach((name, i) => {
       const x = rightAlign ? W - 12 - SZ - i * (SZ + GAP) : 12 + i * (SZ + GAP);
@@ -1882,7 +1882,7 @@ class GameScene extends Phaser.Scene {
           lastHp: p.hp,
           bar: this._w(this.add.graphics().setDepth(25)),
           label: this._w(this.add.text(nearest.x, nearest.y - 36, 'Retrieving... 3.0s', {
-            fontFamily: 'monospace', fontSize: '10px', color: '#cc88ff', stroke: '#000', strokeThickness: 2,
+            fontFamily: 'monospace', fontSize: '12px', color: '#cc88ff', stroke: '#000', strokeThickness: 2,
           }).setOrigin(0.5, 0.5).setDepth(25)),
         };
         if (this.hudCam) { this.hudCam.ignore(state.bar); this.hudCam.ignore(state.label); }
@@ -3000,11 +3000,11 @@ class GameScene extends Phaser.Scene {
     const cacheSpr = this._w(this.add.image(cx, cy + 52, 'raid_cache').setScale(2.5).setDepth(6));
     if (this.hudCam) this.hudCam.ignore(cacheSpr);
     const cacheLbl = this._w(this.add.text(cx, cy + 52 - 30, '\uD83D\uDD12 LOCKED', {
-      fontFamily: 'monospace', fontSize: '9px', color: '#ff4444', stroke: '#000000', strokeThickness: 2,
+      fontFamily: 'monospace', fontSize: '12px', color: '#ff4444', stroke: '#000000', strokeThickness: 2,
     }).setOrigin(0.5).setDepth(8));
     if (this.hudCam) this.hudCam.ignore(cacheLbl);
     const cachePrompt = this._w(this.add.text(cx, cy + 52 - 46, 'E \u2014 open cache', {
-      fontFamily: 'monospace', fontSize: '10px', color: '#ccaa00',
+      fontFamily: 'monospace', fontSize: '12px', color: '#ccaa00',
       stroke: '#000000', strokeThickness: 2, backgroundColor: '#00000088', padding: { x: 4, y: 2 },
     }).setOrigin(0.5).setDepth(8).setVisible(false));
     if (this.hudCam) this.hudCam.ignore(cachePrompt);
@@ -3442,7 +3442,7 @@ class GameScene extends Phaser.Scene {
       if (parts.length) {
         if (!p._cdText) {
           p._cdText = this.add.text(0, 0, '', {
-            fontFamily: 'monospace', fontSize: '9px', color: '#ccddff',
+            fontFamily: 'monospace', fontSize: '12px', color: '#ccddff',
             stroke: '#000', strokeThickness: 2,
           }).setOrigin(0.5, 0).setDepth(21);
           if (this.hudCam) this.hudCam.ignore(p._cdText);
@@ -4337,10 +4337,10 @@ class GameScene extends Phaser.Scene {
     if (!this._scoutPanel) {
       this._scoutPanel = {
         bg:   this._h(this.add.graphics().setDepth(105)),
-        name: this._h(this.add.text(0, 0, '', { fontFamily:'monospace', fontSize:'11px', color:'#ffddaa', stroke:'#000', strokeThickness:2 }).setDepth(106)),
-        atk:  this._h(this.add.text(0, 0, '', { fontFamily:'monospace', fontSize:'9px',  color:'#ff9966' }).setDepth(106)),
-        weak: this._h(this.add.text(0, 0, '', { fontFamily:'monospace', fontSize:'9px',  color:'#88ff88' }).setDepth(106)),
-        note: this._h(this.add.text(0, 0, '', { fontFamily:'monospace', fontSize:'8px',  color:'#ddccff', wordWrap:{ width: 160 } }).setDepth(106)),
+        name: this._h(this.add.text(0, 0, '', { fontFamily:'monospace', fontSize:'12px', color:'#ffddaa', stroke:'#000', strokeThickness:2 }).setDepth(106)),
+        atk:  this._h(this.add.text(0, 0, '', { fontFamily:'monospace', fontSize:'12px', color:'#ff9966' }).setDepth(106)),
+        weak: this._h(this.add.text(0, 0, '', { fontFamily:'monospace', fontSize:'12px', color:'#88ff88' }).setDepth(106)),
+        note: this._h(this.add.text(0, 0, '', { fontFamily:'monospace', fontSize:'12px', color:'#ddccff', wordWrap:{ width: 160 } }).setDepth(106)),
         visible: false,
       };
     }
@@ -4350,13 +4350,13 @@ class GameScene extends Phaser.Scene {
     const nameStr = nearest.type.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
 
     p.bg.clear();
-    p.bg.fillStyle(0x000000, 0.75); p.bg.fillRoundedRect(px - 178, py - 6, 178, 90, 6);
-    p.bg.lineStyle(1, 0x886633, 0.8); p.bg.strokeRoundedRect(px - 178, py - 6, 178, 90, 6);
+    p.bg.fillStyle(0x000000, 0.75); p.bg.fillRoundedRect(px - 178, py - 6, 178, 104, 6);
+    p.bg.lineStyle(1, 0x886633, 0.8); p.bg.strokeRoundedRect(px - 178, py - 6, 178, 104, 6);
 
     p.name.setText('>> ' + nameStr).setPosition(px - 172, py);
-    p.atk.setText('ATK: ' + data.atk).setPosition(px - 172, py + 16);
-    p.weak.setText('WEAK: ' + data.weak).setPosition(px - 172, py + 30);
-    p.note.setText(data.note).setPosition(px - 172, py + 46);
+    p.atk.setText('ATK: ' + data.atk).setPosition(px - 172, py + 18);
+    p.weak.setText('WEAK: ' + data.weak).setPosition(px - 172, py + 34);
+    p.note.setText(data.note).setPosition(px - 172, py + 52);
 
     if (!p.visible) {
       p.visible = true;
