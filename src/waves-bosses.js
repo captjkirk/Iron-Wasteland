@@ -376,7 +376,7 @@ Object.assign(GameScene.prototype, {
       b.speed = Math.floor(b.speed * 1.15);
       b.dmg   = Math.ceil(b.dmg * 1.10);
       this._log(`boss enraged (66%)  type=${b.type}  newSpeed=${b.speed}  newDmg=${b.dmg}`, 'world');
-      this.hint('⚠ ' + b.name.toUpperCase() + ' is ENRAGED!', 2500);
+      this.hint('⚠ ' + b.name.toUpperCase() + ' is ENRAGED!', 2500, { urgent: true });
       if (typeof SFX !== 'undefined' && SFX._play) SFX._play(130, 'sawtooth', 0.3, 0.4, 'drop');
       b.spr.setTint(0xffbb88);
       this.time.delayedCall(240, () => { if (b.spr && b.spr.active) b.spr.clearTint(); });
@@ -387,7 +387,7 @@ Object.assign(GameScene.prototype, {
       b.speed = Math.floor(b.speed * 1.20);
       b.dmg   = Math.ceil(b.dmg * 1.15);
       this._log(`boss FERAL (33%)  type=${b.type}  newSpeed=${b.speed}  newDmg=${b.dmg}`, 'world');
-      this.hint('⚠ ' + b.name.toUpperCase() + ' is FERAL!', 2500);
+      this.hint('⚠ ' + b.name.toUpperCase() + ' is FERAL!', 2500, { urgent: true });
       if (typeof SFX !== 'undefined' && SFX._play) SFX._play(100, 'sawtooth', 0.4, 0.6, 'drop');
       b.spr.setTint(0xff5533);
       this.time.delayedCall(320, () => { if (b.spr && b.spr.active) b.spr.clearTint(); });
@@ -454,7 +454,7 @@ Object.assign(GameScene.prototype, {
         b._howlTimer -= delta;
         if (b._howlTimer <= 0) {
           b._howlTimer = 12000;
-          this.hint('\u2620 Alpha Wolf HOWLS! Wolves incoming!', 2000);
+          this.hint('\u2620 Alpha Wolf HOWLS! Wolves incoming!', 2000, { urgent: true });
           SFX._play(180, 'sawtooth', 0.2, 0.65, 'drop');
           this.cameras.main.shake(400, 0.007);
           const wW = CFG.MAP_W * CFG.TILE, wH = CFG.MAP_H * CFG.TILE;
@@ -750,7 +750,7 @@ Object.assign(GameScene.prototype, {
         this._spawnBiomeEnemy('dust_hound',   'waste',  _take(Math.min(3 * wn, 9)),  3);
       }
       this._log('Wave ' + this.waveNum + ' day=' + this.dayNum + ' diff=' + this._diffMult().toFixed(1) + 'x  speed=' + this._diffSpeedMult().toFixed(1) + 'x  w=' + w + ' r=' + r + ' b=' + b, 'world');
-      this.hint('Wave ' + this.waveNum + '! Enemies approaching from the wastes!', 3000);
+      this.hint('Wave ' + this.waveNum + '! Enemies approaching from the wastes!', 3000, { urgent: true });
       SFX._play(150, 'triangle', 0.55, 0.12, 'drop');
     }
   },
