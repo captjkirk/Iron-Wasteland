@@ -490,7 +490,12 @@ Object.assign(GameScene.prototype, {
       }
     }
 
-    // Large mountain clusters in outer biomes — 8-15 mountains each
+    // Large mountain clusters in outer biomes — 8-15 mountains each. Per seed: each centre is
+    // jittered by up to +/-8% of the map size, and 1-2 of the eight clusters are dropped. Everything
+    // here draws from _worldRng, so the same seed gives the same cluster layout.
+    const _crng = _worldRng;
+    const _cint = (a, b) => a + Math.floor(_crng() * (b - a + 1));
+    const _jit = size => Math.round((_crng() * 2 - 1) * size * 0.08);
     const clusterCenters = [
       { tx: Math.round(stx - CFG.MAP_W*0.3), ty: Math.round(sty - CFG.MAP_H*0.3) }, // tundra
       { tx: Math.round(stx + CFG.MAP_W*0.3), ty: Math.round(sty - CFG.MAP_H*0.25) }, // ruins
@@ -501,11 +506,16 @@ Object.assign(GameScene.prototype, {
       { tx: Math.round(stx - CFG.MAP_W*0.38), ty: Math.round(sty + CFG.MAP_H*0.05) }, // far west
       { tx: Math.round(stx + CFG.MAP_W*0.38), ty: Math.round(sty - CFG.MAP_H*0.05) }, // far east
     ];
+    for (const cc of clusterCenters) { // jitter, but keep the whole cluster (+/-8 tiles) on the map
+      cc.tx = Phaser.Math.Clamp(cc.tx + _jit(CFG.MAP_W), 10, CFG.MAP_W - 11);
+      cc.ty = Phaser.Math.Clamp(cc.ty + _jit(CFG.MAP_H), 10, CFG.MAP_H - 11);
+    }
+    for (let drop = _cint(1, 2); drop > 0; drop--) clusterCenters.splice(_cint(0, clusterCenters.length - 1), 1);
     for (const cc of clusterCenters) {
-      const count = Phaser.Math.Between(8, 15);
+      const count = _cint(8, 15);
       for (let i = 0; i < count; i++) {
-        const tx = cc.tx + Phaser.Math.Between(-8, 8);
-        const ty = cc.ty + Phaser.Math.Between(-8, 8);
+        const tx = cc.tx + _cint(-8, 8);
+        const ty = cc.ty + _cint(-8, 8);
         if (tx < 2 || tx > CFG.MAP_W-3 || ty < 2 || ty > CFG.MAP_H-3) continue;
         placeMtn(tx, ty, pickMtn(), Phaser.Math.FloatBetween(1.0, 1.4));
       }
