@@ -19,6 +19,8 @@
 // ── FILE MAP ─────────────────────────────────────────────────
 //   game.js              — THIS FILE. Header + Phaser.Game init only.
 //
+//   src/structures.js    — Authored biome structures (data only): STRUCTURE_LAYOUTS, STRUCTURE_LOOT
+//
 //   src/constants.js     — Global config + shared state
 //                          VERSION, CFG, ENEMY_STATS, RAIDER_STATS, ENEMY_LOOT,
 //                          _makeMulberry32, _worldRng, _pendingLogMsgs, _qlog,
@@ -31,7 +33,7 @@
 //   src/sprites.js       — Player + raider art as hand-placed pixel grids (one char = one pixel)
 //                          paintGrid, pixelActorFrames, buildPixelActors,
 //                          SPRITE_ART, PLAYER_PAL, LEGS;
-//                          scenery (trees, rocks, bush, mushroom, wall): SCENERY_SPECS, buildScenery, ART_SCALE, WALL_SCALE
+//                          scenery (trees, rocks, bush, mushroom, wall, stumps): SCENERY_SPECS, buildScenery, ART_SCALE, WALL_SCALE, TREE_STUMP
 //
 //   src/textures.js      — Procedural texture generation (no image files)
 //                          drawWolf, drawRat, drawBear, drawIceCrawler,
@@ -66,7 +68,7 @@
 //    ground: one Tilemap layer (32 px steps between biomes) from the 'ground_tileset' texture, tile index = GROUND_KEYS order (src/textures.js).
 //            No full-world grass TileSprite exists any more (removed in #238).
 //    fns:  buildWorld, _buildPonds, _buildLakes, _buildRivers,
-//          buildPOIs, buildRuinsCity, buildBiomeStructures,
+//          buildPOIs, buildRuinsCity, buildBiomeStructures, _buildAuthoredStructure,
 //          _placeScenery (trees/rocks stand on their tile base; body set after refreshBody)
 //    biome: getBiome, _biomeHash, _biomeNoise, _computeBiomeRaw,
 //           _initBiomeSeeds, _buildBiomeMap, _buildBiomeMapChunked
@@ -104,7 +106,7 @@
 //
 // 5. PLAYER MOVEMENT & INPUT  (src/game-scene.js; getControls in src/textures.js)
 //    fns:  movePlayer, aimAtMouse (faces the cursor while _mouseAt is recent), _faceAngle,
-//          applyTouchInput, applyTerrainEffects,
+//          applyTouchInput, applyTerrainEffects, _makeResPanel,
 //          getControls, initTouchControls, _onTouchDown/Move/Up,
 //          openPauseSettings, _walkStep,
 //          tryInteract (the Interact key: build teardown, barracks, radio tower, raid cache, bed, relics, altar)

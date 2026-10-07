@@ -1733,6 +1733,12 @@ function buildPixelActors(scene) {
 // Shapes are seeded, so every load paints the same pixels.
 // grep: "SCENERY_SPECS"  "buildScenery"  "placeScenery"
 const ART_SCALE = 1.5;
+// Which stump a felled tree leaves, by the tree's texture key (the great trees leave the common ones).
+const TREE_STUMP = {
+  tree: 'stump', tree_snow: 'stump_snow', tree_dead: 'stump_dead', tree_swamp: 'stump_swamp',
+  tree_mushroom: 'stump_mushroom', tree_cactus: 'stump_cactus',
+  great_oak: 'stump', great_pine: 'stump_snow', great_mangrove: 'stump_swamp',
+};
 
 function _buf(w, h) { return { w, h, c: new Array(w * h).fill(null) }; }
 function _put(b, x, y, col) {
@@ -1976,6 +1982,15 @@ function _wall(seed) {
   return _bufCanvas(b, null, null);
 }
 
+// A felled tree: a short trunk with a flat cut face (rings) on top. ramp = the tree's bark, cut = the
+// colour of the cut wood.
+function _stump(w, h, seed, ramp, cut) {
+  const b = _buf(w, h), cx = w / 2, base = h - 2, top = Math.round(h * 0.4);
+  _trunk(b, cx, top, base, w * 0.72, w * 0.86, ramp, seed);
+  _blob(b, cx, top, w * 0.38, Math.max(2, h * 0.17), cut, seed + 3, 0.05, 0);
+  return _bufCanvas(b, SC_OUT, [cx, base, w * 0.44, Math.max(2, h * 0.14)]);
+}
+
 // key → list of [w, h] variants (art pixels) and the painter. Heights are measured against a
 // person, who is about 55 art pixels tall: trees 1.2-1.9 people, rocks knee to waist.
 const SCENERY_SPECS = {
@@ -1993,6 +2008,12 @@ const SCENERY_SPECS = {
   ice_rock:       { sizes: [[18, 13], [26, 18], [34, 24]], paint: (w, h, s) => _rock(w, h, s, SC_PAL.ice) },
   bush:           { sizes: [[16, 12], [22, 15], [26, 18]], paint: (w, h, s) => _bush(w, h, s, s % 3 === 0) },
   mushroom:       { sizes: [[14, 12], [18, 15]],           paint: (w, h, s) => _mushrooms(w, h, s) },
+  stump:          { sizes: [[10, 9], [12, 11], [14, 13]], paint: (w, h, s) => _stump(w, h, s, SC_PAL.bark, ['#a8884e', '#c8a868', '#dcc080']) },
+  stump_snow:     { sizes: [[10, 9], [12, 11], [14, 13]], paint: (w, h, s) => _stump(w, h, s, SC_PAL.bark, SC_PAL.snow) },
+  stump_dead:     { sizes: [[10, 9], [12, 11], [14, 13]], paint: (w, h, s) => _stump(w, h, s, SC_PAL.dead, ['#7a6e60', '#8a7e70', '#a09484']) },
+  stump_swamp:    { sizes: [[10, 9], [12, 11], [14, 13]], paint: (w, h, s) => _stump(w, h, s, SC_PAL.bark, SC_PAL.moss) },
+  stump_mushroom: { sizes: [[10, 9], [12, 11], [14, 13]], paint: (w, h, s) => _stump(w, h, s, SC_PAL.stalk, ['#cfc2ae', '#e8dcc8']) },
+  stump_cactus:   { sizes: [[8, 8], [10, 10], [12, 12]],  paint: (w, h, s) => _stump(w, h, s, SC_PAL.cactus, SC_PAL.cactus) },
   wall:           { sizes: [[21, 30]],                      paint: (w, h, s) => _wall(s) },
 };
 

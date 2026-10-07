@@ -3,6 +3,9 @@
 // Loads right after src/game-scene.js and adds these methods to GameScene (ADR 0002).
 // create() calls _initBiomeSeeds and buildWorld; updateTreeSeeds reuses _placeScenery.
 
+// Tile index in 'water_tileset' (see buildTextures).
+const WATER_TILE = { shallow: 0, deep: 1, ice: 2 };
+
 Object.assign(GameScene.prototype, {
   // Scatter Voronoi biome seeds randomly — called once before buildWorld each session
   _initBiomeSeeds() {
@@ -81,6 +84,16 @@ Object.assign(GameScene.prototype, {
     const tiles = map.addTilesetImage('ground', 'ground_tileset', TILE, TILE, 0, 0);
     const ground = map.createBlankLayer('ground', tiles, 0, 0).setDepth(0.5);
     this._w(ground);
+    // Water: two more layers, each on a map of its own so tile indices start at 0 in every tileset
+    // (tilesets that share one map share one index space). 'water' holds shallow, deep and ice
+    // cells; 'river' holds river cells, whose tileset is the shared animated 'water_river' canvas
+    // (see GameScene update). Deep ponds also keep an invisible physics sprite each, so they block.
+    const _layer = (name, tileset) => {
+      const m = this.make.tilemap({ tileWidth: TILE, tileHeight: TILE, width: CFG.MAP_W, height: CFG.MAP_H });
+      return this._w(m.createBlankLayer(name, m.addTilesetImage(name, tileset, TILE, TILE, 0, 0), 0, 0).setDepth(0.75));
+    };
+    this._waterLayer = _layer('water', 'water_tileset');
+    this._riverLayer = _layer('river', 'water_river');
     for (let tx = 0; tx < CFG.MAP_W; tx++) {
       for (let ty = 0; ty < CFG.MAP_H; ty++) ground.putTileAt(groundTile[getBiome(tx, ty)] || 0, tx, ty);
     }
@@ -1225,7 +1238,6 @@ Object.assign(GameScene.prototype, {
   buildBiomeStructures(stx, sty, TILE) {
     this._structureLocs = [];
     const { MAP_W, MAP_H, SAFE_R } = CFG;
-    const W = 7, H = 5; // structure footprint in tiles
 
     const biomeConfig = [
       { biome: 'grass',  wallKey: 'plank_wall',    floorKey: 'plank_floor',     label: 'FARMHOUSE'    },
@@ -1236,7 +1248,13 @@ Object.assign(GameScene.prototype, {
       { biome: 'desert', wallKey: 'sandstone_wall',floorKey: 'sandstone_floor', label: 'DESERT OUTPOST'},
     ];
 
+    const _paintMinimap = (tx, ty) => { // the radar shows a structure's floor as gray
+      if (this._mmColorMap && tx >= 0 && tx < MAP_W && ty >= 0 && ty < MAP_H) this._mmColorMap[tx + ty * MAP_W] = 0x7a7a8a;
+    };
+
     for (const { biome, wallKey, floorKey, label } of biomeConfig) {
+      const layout = STRUCTURE_LAYOUTS[biome] || null;
+      const W = layout ? layout.rows[0].length : 7, H = layout ? layout.rows.length : 5; // footprint, tiles
       // Use pre-computed positions (fjord-protected + tree-clear guaranteed).
       // Fall back to random if pre-computation returned nothing for this biome.
       // Filter pre-computed positions whose footprint landed on water/ice — these
@@ -1255,10 +1273,19 @@ Object.assign(GameScene.prototype, {
         }
         return fb;
       })();
-      for (const pos of _positions) {
+      for (const [slot, pos] of _positions.entries()) {
         const cx = pos.tx, cy = pos.ty;
         const x0 = cx - Math.floor(W / 2);
         const y0 = cy - Math.floor(H / 2);
+
+        // The first slot with room is the authored layout (if the biome has one); the rest are boxes.
+        if (layout && slot === 0) {
+          this._buildAuthoredStructure(layout, { wallKey, floorKey }, x0, y0, TILE, _paintMinimap);
+          this._structureLocs.push({ x: cx * TILE, y: cy * TILE, biome, guards: layout.guards });
+          continue;
+        }
+        // Generic box: its interior shows as floor on the radar (7×5, interior 5×3).
+        for (let dx = 1; dx < 6; dx++) for (let dy = 1; dy < 4; dy++) _paintMinimap(x0 + dx, y0 + dy);
 
         // Floor tiles (tundra only — ice_floor)
         if (floorKey) {
@@ -1316,6 +1343,49 @@ Object.assign(GameScene.prototype, {
         this._structureLocs.push({ x: cx * TILE, y: cy * TILE, biome });
       }
     }
+  },
+
+  // Builds one authored structure (see STRUCTURE_LAYOUTS in src/structures.js) with its top-left
+  // tile at (x0, y0). paintMinimap(tx, ty) marks a floor tile on the radar.
+  _buildAuthoredStructure(layout, { wallKey, floorKey }, x0, y0, TILE, paintMinimap) {
+    const { MAP_W, MAP_H } = CFG;
+    const solid = (tx, ty, key) => {
+      const w = this.obstacles.create(tx * TILE + 16, ty * TILE + 16, key);
+      w.setDepth(5 + ty * 0.01).setImmovable(true);
+      w.body.setSize(32, 32); w.refreshBody();
+      this._wallTileSet.add(tx + ',' + ty);
+    };
+    layout.rows.forEach((row, dy) => {
+      for (let dx = 0; dx < row.length; dx++) {
+        const ch = row[dx], tx = x0 + dx, ty = y0 + dy;
+        if (tx < 2 || tx > MAP_W - 3 || ty < 2 || ty > MAP_H - 3) continue;
+        const cx = tx * TILE + TILE / 2, cy = ty * TILE + TILE / 2;
+        const loot = STRUCTURE_LOOT[ch.toLowerCase()];
+        if (ch === ',' || (loot && ch === ch.toLowerCase())) { // floor, under indoor loot too
+          this._w(this.add.image(tx * TILE, ty * TILE, floorKey).setOrigin(0).setDepth(0.65));
+          paintMinimap(tx, ty);
+        }
+        if (ch === '#') solid(tx, ty, wallKey);
+        else if (ch === 'R') solid(tx, ty, 'ruin_block');
+        else if (ch === 'P') {
+          const p = this.obstacles.create(cx, ty * TILE + TILE - 4, 'pillar');
+          p.setOrigin(0.5, 1).setDepth(this._sortDepth(ty * TILE + TILE - 4)).setImmovable(true);
+          p.refreshBody(); p.body.setSize(14, 14, false); p.body.setOffset((p.displayWidth - 14) / 2, p.displayHeight - 14);
+        } else if (ch === 'T') this._spawnTorch(cx, cy);
+        else if (ch === 'C') this._w(this.add.image(cx, cy, 'supply_cache').setScale(2.5).setDepth(6));
+        else if (loot) {
+          const item = this.physics.add.image(cx, cy, loot).setScale(2).setDepth(6);
+          item.body.allowGravity = false; item.body.setImmovable(true);
+          item.itemType = loot.replace('item_', '');
+          this._w(item);
+          this.worldCrates.push(item);
+        }
+      }
+    });
+    const labelX = (x0 + layout.rows[0].length / 2) * TILE, labelY = y0 * TILE - 12;
+    this._w(this.add.text(labelX, labelY, layout.label, {
+      fontFamily: 'monospace', fontSize: '8px', color: '#cc9944', stroke: '#000', strokeThickness: 2,
+    }).setOrigin(0.5).setDepth(7).setAlpha(0.85));
   },
 
   // ── SCENERY PLACEMENT ───────────────────────────────────────
@@ -1424,19 +1494,20 @@ Object.assign(GameScene.prototype, {
         const isDeep = !isIce && neighborCount === 4;
         if (isIce) {
           // Visual only — detection via _iceMap per-frame (see applyTerrainEffects)
-          const tile = this._w(this.add.image(x, y, 'water_ice').setOrigin(0.5).setDepth(0.6).setAlpha(0.75));
-          if (this.hudCam) this.hudCam.ignore(tile);
+          const tile = this._waterLayer.putTileAt(WATER_TILE.ice, tx, ty);
+          tile.alpha = 0.75;
           this.iceTiles.push(tile);
           this._iceMap[tx + ty * CFG.MAP_W] = 1;
         } else if (isDeep) {
-          const tile = this.obstacles.create(x, y, 'water_deep').setDepth(0.6).setAlpha(1);
-          if (this.hudCam) this.hudCam.ignore(tile);
+          // The cell is drawn on the water layer; an invisible sprite on the cell carries the
+          // physics body (and the x/y the minimap and impassable set read from deepWaterTiles).
+          this._waterLayer.putTileAt(WATER_TILE.deep, tx, ty);
+          const tile = this.obstacles.create(x + TILE / 2, y + TILE / 2, 'water_deep').setVisible(false);
           tile.refreshBody();
           this.deepWaterTiles.push(tile);
         } else {
           // Pure visual ground tile — no physics body. Detection via _waterMap per-frame.
-          const tile = this._w(this.add.image(x, y, 'water_shallow').setOrigin(0).setDepth(0.75));
-          if (this.hudCam) this.hudCam.ignore(tile);
+          const tile = this._waterLayer.putTileAt(WATER_TILE.shallow, tx, ty);
           this.waterTiles.push(tile);
           this._waterMap[tx + ty * CFG.MAP_W] = 1;
           tile._shimmerOff = (tx * 7 + ty * 13) % 60;
@@ -1537,21 +1608,19 @@ Object.assign(GameScene.prototype, {
         const x = tx * TILE, y = ty * TILE;
         if (biome === 'tundra') {
           // Tundra lakes become ice — visual only, detection via _iceMap per-frame
-          const tile = this._w(this.add.image(x, y, 'water_ice').setOrigin(0.5).setDepth(0.6).setAlpha(0.75));
-          if (this.hudCam) this.hudCam.ignore(tile);
+          const tile = this._waterLayer.putTileAt(WATER_TILE.ice, tx, ty);
+          tile.alpha = 0.75;
           this.iceTiles.push(tile);
           this._iceMap[tx + ty * CFG.MAP_W] = 1;
         } else if (deepLakeTiles.has(key)) {
           // Deep center — visually dark, traversable (no physics obstacle)
-          const tile = this._w(this.add.image(x, y, 'water_deep').setOrigin(0).setDepth(0.75));
-          if (this.hudCam) this.hudCam.ignore(tile);
+          const tile = this._waterLayer.putTileAt(WATER_TILE.deep, tx, ty);
           this.waterTiles.push(tile);
           this._waterMap[tx + ty * CFG.MAP_W] = 1;
           tile._shimmerOff = (tx * 7 + ty * 13) % 60;
           this._pondWaterTiles.push(tile);
         } else {
-          const tile = this._w(this.add.image(x, y, 'water_shallow').setOrigin(0).setDepth(0.75));
-          if (this.hudCam) this.hudCam.ignore(tile);
+          const tile = this._waterLayer.putTileAt(WATER_TILE.shallow, tx, ty);
           this.waterTiles.push(tile);
           this._waterMap[tx + ty * CFG.MAP_W] = 1;
           tile._shimmerOff = (tx * 7 + ty * 13) % 60;
@@ -1788,11 +1857,9 @@ Object.assign(GameScene.prototype, {
         if (rtx < 1 || rty < 1 || rtx >= MAP_W - 1 || rty >= MAP_H - 1) return;
         if (_inExcl(rtx, rty)) return;
         if (this._waterMap[rtx + rty * MAP_W]) return; // already water — skip
-        // Plain image sharing the animated 'water_river' canvas — batches into one
-        // draw call. (Was a per-tile TileSprite; with ~5,000 river tiles that meant
-        // ~5,000 unique WebGL textures + no culling → killed iPad framerate.)
-        const tile = this._w(this.add.image(rtx * TILE, rty * TILE, 'water_river').setOrigin(0).setDepth(0.75));
-        if (this.hudCam) this.hudCam.ignore(tile);
+        // A cell on the river layer, whose tileset is the shared animated 'water_river' canvas:
+        // one redraw per frame animates every river cell, with no per-cell object.
+        const tile = this._riverLayer.putTileAt(0, rtx, rty);
         this.waterTiles.push(tile);
         this._waterMap[rtx + rty * MAP_W] = 1;
         tilesPlaced++;

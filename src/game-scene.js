@@ -130,7 +130,7 @@ class GameScene extends Phaser.Scene {
     this._grassPhase = -1;
 
     // Water animation — rivers scroll a shared texture; ponds/lakes shimmer alpha.
-    this._pondWaterTiles = [];  // Image tiles — alpha pulse via shimmer table
+    this._pondWaterTiles = [];  // Water-layer tiles — alpha pulse via shimmer table
     this._riverTex     = this.textures.exists('water_river') ? this.textures.get('water_river') : null;
     this._riverScroll  = 0;     // accumulated downstream offset (px)
     this._riverOffLast = -1;    // last integer offset uploaded — skip redundant refreshes
@@ -790,9 +790,10 @@ class GameScene extends Phaser.Scene {
     }
 
     const dayBg = this._h(this.add.graphics().setDepth(100));
-    dayBg.fillStyle(0x000000, 0.6); dayBg.fillRoundedRect(W/2-95, 5, 190, 66, 8);
-    this.dayText = this._h(this.add.text(W/2, 10, 'DAY 1', { fontFamily:'monospace', fontSize:'13px', color:'#ffee44' }).setOrigin(0.5,0).setDepth(101));
+    dayBg.fillStyle(0x000000, 0.6); dayBg.fillRoundedRect(W/2-95, 5, 190, 70, 8);
+    this.dayText = this._h(this.add.text(W/2, 8, 'DAY 1', { fontFamily:'monospace', fontSize:'13px', color:'#ffee44' }).setOrigin(0.5,0).setDepth(101));
     this.clockGfx = this._h(this.add.graphics().setDepth(102));
+    this.dayBarGfx = this._h(this.add.graphics().setDepth(102)); // dawn-to-dusk bar under the day label
 
     // Off-screen threat indicators — issue #81. Drawn in HUD space; redrawn each frame
     // by _drawThreatIndicators() so the arrows track the camera as it pans.
@@ -800,7 +801,7 @@ class GameScene extends Phaser.Scene {
 
     const diffColor = this.hardcore ? '#ff4444' : '#44cc66';
     const diffLabel = this.hardcore ? '\u2620 HARDCORE' : '\u2665 SURVIVAL';
-    this._h(this.add.text(W/2, 52, diffLabel, { fontFamily:'monospace', fontSize:'12px', color:diffColor }).setOrigin(0.5,0).setDepth(101));
+    this._h(this.add.text(W/2, 57, diffLabel, { fontFamily:'monospace', fontSize:'12px', color:diffColor }).setOrigin(0.5,0).setDepth(101));
 
     // Persistent MENU button — bottom-right, works for both keyboard and touch
     const menuBtn = this._h(this.add.text(W - 14, H - 12, '\u2630  MENU', {
@@ -815,13 +816,13 @@ class GameScene extends Phaser.Scene {
     this.p1DownStatus = this._h(this.add.text(12, 80, '', { fontFamily:'monospace', fontSize:'12px', color:'#ff4444' }).setDepth(103));
     this.p2DownStatus = this._h(this.add.text(W-12, 80, '', { fontFamily:'monospace', fontSize:'12px', color:'#ff4444' }).setOrigin(1,0).setDepth(103));
 
-    // Inventory display (bottom left for P1, bottom right for P2)
-    const invStyle = { fontFamily:'monospace', fontSize:'12px', color:'#aabb88', stroke:'#000', strokeThickness:2 };
-    this.p1InvText = this._h(this.add.text(12, H-50, '', invStyle).setDepth(101));
-    if (this.p2) this.p2InvText = this._h(this.add.text(W-12, H-50, '', invStyle).setOrigin(1,0).setDepth(101));
+    // Resource panel: item icon + count, always visible. Bottom-left for P1, bottom-right for P2
+    // (above the MENU button). Below the joystick hint ring, clear of the touch buttons (1P only).
+    this.p1InvText = this._makeResPanel(12, H - 46, false);
+    if (this.p2) this.p2InvText = this._makeResPanel(W - 12, H - 80, true);
 
     // Relic progress tracker — hidden until first relic activity
-    this.hudRelicText = this._h(this.add.text(W/2, 76, '', {
+    this.hudRelicText = this._h(this.add.text(W/2, 81, '', {
       fontFamily: 'monospace', fontSize: '12px', color: '#cc44ff',
       stroke: '#000', strokeThickness: 2,
     }).setOrigin(0.5, 0).setDepth(101).setVisible(false));
@@ -988,21 +989,7 @@ class GameScene extends Phaser.Scene {
           this._mmColorMap[tx + ty * MAP_W] = _FLOOR_COL;
       }
     }
-    // Biome structures: W=7 H=5, interior dx:1..5 dy:1..3, centered on _preStructureTiles pos
-    if (this._preStructureTiles) {
-      for (const positions of Object.values(this._preStructureTiles)) {
-        for (const pos of positions) {
-          const x0 = pos.tx - 3, y0 = pos.ty - 2; // floor(7/2)=3, floor(5/2)=2
-          for (let dx = 1; dx <= 5; dx++) {
-            for (let dy = 1; dy <= 3; dy++) {
-              const tx = x0 + dx, ty = y0 + dy;
-              if (tx >= 0 && tx < MAP_W && ty >= 0 && ty < MAP_H)
-                this._mmColorMap[tx + ty * MAP_W] = _FLOOR_COL;
-            }
-          }
-        }
-      }
-    }
+    // Biome structure floors are painted by buildBiomeStructures once it knows what it built.
 
     // Ruins + biome structure walls — bright white outline so structures are clearly legible
     if (this._wallTileSet) {
@@ -1281,6 +1268,38 @@ class GameScene extends Phaser.Scene {
     });
   }
 
+  // A row of item icon + count for wood, metal, fiber and food, plus carried ammo when a
+  // non-Gunslinger holds some. A zero count is dimmed, not hidden, so the panel never jumps.
+  _makeResPanel(x, y, right) {
+    const SLOTS = [['wood', 'item_wood'], ['metal', 'item_metal'], ['fiber', 'item_fiber'], ['food', 'item_food'], ['carriedAmmo', 'item_ammo']];
+    const SLOT_W = 52, PAD = 8, H = 28;
+    const bg = this._h(this.add.graphics().setDepth(100));
+    const slots = SLOTS.map(([key, tex]) => ({
+      key,
+      icon: this._h(this.add.image(0, 0, tex).setScale(2).setDepth(101)),
+      txt: this._h(this.add.text(0, 0, '0', { fontFamily:'monospace', fontSize:'12px', color:'#ddeecc', stroke:'#000', strokeThickness:2 }).setOrigin(0, 0.5).setDepth(101)),
+    }));
+    let lastKey = '', shown = true;
+    return {
+      setVisible(v) { shown = v; bg.setVisible(v); lastKey = ''; slots.forEach(sl => { sl.icon.setVisible(false); sl.txt.setVisible(false); }); },
+      update(p) {
+        if (!shown || !p) return;
+        const vals = SLOTS.map(([key]) => (key === 'carriedAmmo' ? p.carriedAmmo : p.inv[key]) || 0);
+        const k = vals.join(',');
+        if (k === lastKey) return;
+        lastKey = k;
+        const n = vals[4] > 0 ? 5 : 4;
+        const w = n * SLOT_W + PAD, x0 = right ? x - w : x;
+        bg.clear().fillStyle(0x000000, 0.5).fillRoundedRect(x0, y, w, H, 6);
+        slots.forEach((sl, i) => {
+          const on = i < n, dim = vals[i] > 0 ? 1 : 0.4;
+          sl.icon.setVisible(on).setPosition(x0 + PAD + i * SLOT_W + 12, y + H / 2).setAlpha(dim);
+          sl.txt.setVisible(on).setPosition(x0 + PAD + i * SLOT_W + 26, y + H / 2).setText(String(vals[i])).setAlpha(dim);
+        });
+      },
+    };
+  }
+
   redrawHUD() {
     this._drawStatusStrip(this.p1StatusGfx, this.p1, false, '_lastStatusP1');
     if (this.p2StatusGfx) this._drawStatusStrip(this.p2StatusGfx, this.p2, true, '_lastStatusP2');
@@ -1311,26 +1330,9 @@ class GameScene extends Phaser.Scene {
       if (this._lastBadgeP2 !== _b2) { this._lastBadgeP2 = _b2; this.p2Badge.setText(_b2); }
     }
 
-    // Inventory display
-    const invStr = p => {
-      if (!p) return '';
-      const i = p.inv;
-      const parts = [];
-      if (i.wood > 0) parts.push('Wood:' + i.wood);
-      if (i.metal > 0) parts.push('Metal:' + i.metal);
-      if (i.fiber > 0) parts.push('Fiber:' + i.fiber);
-      if (i.food > 0) parts.push('Food:' + i.food);
-      if (p.carriedAmmo > 0) parts.push('Ammo:' + p.carriedAmmo);
-      return parts.length ? parts.join('  ') : '';
-    };
-    if (this.p1InvText) {
-      const _i1 = invStr(this.p1);
-      if (this._lastInvP1 !== _i1) { this._lastInvP1 = _i1; this.p1InvText.setText(_i1); }
-    }
-    if (this.p2InvText) {
-      const _i2 = invStr(this.p2);
-      if (this._lastInvP2 !== _i2) { this._lastInvP2 = _i2; this.p2InvText.setText(_i2); }
-    }
+    // Resource panels — each redraws only when its counts change
+    if (this.p1InvText) this.p1InvText.update(this.p1);
+    if (this.p2InvText) this.p2InvText.update(this.p2);
 
     // Relic progress tracker
     if (this.hudRelicText) {
@@ -2471,7 +2473,7 @@ class GameScene extends Phaser.Scene {
       if (this._shimmerTable && this._pondWaterTiles.length) {
         const _si = Math.floor(time / 55); // ~3.3 s full shimmer cycle
         for (const _pt of this._pondWaterTiles) {
-          _pt.setAlpha(this._shimmerTable[(_si + _pt._shimmerOff) % 60]);
+          _pt.alpha = this._shimmerTable[(_si + _pt._shimmerOff) % 60];
         }
       }
       this._perfBudget.water += performance.now() - _t; }
@@ -4687,6 +4689,14 @@ class GameScene extends Phaser.Scene {
             this.time.delayedCall(CFG.ITEM_DESPAWN_MS, () => { if (item.active) item.destroy(); });
           }
           SFX._play(220, 'sawtooth', 0.15, 0.3, 'drop');
+          // A stump stays where the tree stood: decoration only (no body), sorted like other scenery.
+          const _stumpKey = TREE_STUMP[nearestTree.texture.key];
+          if (_stumpKey) {
+            const _st = this.add.image(nearestTree.x, nearestTree.y, _stumpKey, Math.min(2, Number(nearestTree.frame.name) || 0))
+              .setOrigin(0.5, 1).setScale(ART_SCALE).setDepth(this._sortDepth(nearestTree.y));
+            this._w(_st);
+            if (this.hudCam) this.hudCam.ignore(_st);
+          }
           this.obstacles.remove(nearestTree, true, true);
           player.harvestProgress = 0;
           player.harvestTarget = null;
@@ -4958,6 +4968,24 @@ class GameScene extends Phaser.Scene {
 
     this._updateDayLabel();
 
+    // Dawn-to-dusk bar: empty at dawn, full when night falls (cycle = 60% of the day, the point
+    // where isNight turns on), red for the last 20 s of game time before that, then it stays full
+    // (dim blue) until the next dawn resets it. Redrawn only when it moves a pixel or changes colour.
+    if (this.dayBarGfx) {
+      const BAR_W = 150, dayMs = this.DAY_DUR * 0.6;
+      const night = cycle >= dayMs;
+      const px = night ? BAR_W : Math.floor(cycle / dayMs * BAR_W);
+      const red = !night && dayMs - cycle <= 20000;
+      const barKey = px * 4 + (red ? 1 : 0) + (night ? 2 : 0);
+      if (this._lastDayBar !== barKey) {
+        this._lastDayBar = barKey;
+        const x = CFG.W / 2 - BAR_W / 2, y = 27;
+        this.dayBarGfx.clear();
+        this.dayBarGfx.fillStyle(0x333344, 0.8).fillRect(x, y, BAR_W, 4);
+        this.dayBarGfx.fillStyle(night ? 0x4466aa : red ? 0xff3344 : 0xffdd44, 1).fillRect(x, y, px, 4);
+      }
+    }
+
     // Draw clock arc indicator — only refresh when pct crosses a 0.5% step
     // (≈ 200 redraws per in-game day instead of 60fps × DAY_DUR).
     if (this.clockGfx) {
@@ -4965,7 +4993,7 @@ class GameScene extends Phaser.Scene {
       if (this._lastClockStep !== pctStep) {
         this._lastClockStep = pctStep;
         this.clockGfx.clear();
-        const cx = CFG.W / 2, cy = 38, r = 10;
+        const cx = CFG.W / 2, cy = 43, r = 10;
         // Background circle
         this.clockGfx.lineStyle(2, 0x333344, 0.6);
         this.clockGfx.strokeCircle(cx, cy, r);
