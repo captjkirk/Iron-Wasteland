@@ -118,10 +118,18 @@ Object.assign(GameScene.prototype, {
       this._w(this.add.image(tx*TILE, ty*TILE, variant).setOrigin(0).setDepth(1).setAlpha(0.65));
     }
 
+    // One density mask for the scatter below: low-frequency noise gives dense patches and bare flats.
+    // A tile is kept when _worldRng() <= density. The mean density is ~0.47, so each scatter loop
+    // runs SCATTER_X times as many tries to keep the total near what an even sprinkle gave.
+    const SCATTER_X = 2;
+    const _density = (tx, ty) => Math.min(1, Math.max(0, (_biomeNoise(tx, ty, 50) - 0.3) * 2));
+    const _sparse = (tx, ty) => _worldRng() > _density(tx, ty);
+
     // Tall grass — biome-specific decorative blades (depth 4 = below player, above ground)
     const tallGrassMap = { grass:'tall_grass', waste:'tall_grass_waste', tundra:'tall_grass_tundra', swamp:'tall_grass_swamp' };
-    for (let i = 0; i < 600; i++) {
+    for (let i = 0; i < 600 * SCATTER_X; i++) {
       const tx = Phaser.Math.Between(2, CFG.MAP_W-3), ty = Phaser.Math.Between(2, CFG.MAP_H-3);
+      if (_sparse(tx, ty)) continue;
       if (Math.abs(tx-stx) < SAFE_R+3 && Math.abs(ty-sty) < SAFE_R+3) continue;
       const biome = getBiome(tx, ty);
       const key = tallGrassMap[biome];
@@ -239,8 +247,9 @@ Object.assign(GameScene.prototype, {
     }
 
     // Scattered fringe trees outside clusters (sparse woodland, not in clusters)
-    for (let i = 0; i < 180; i++) {
+    for (let i = 0; i < 180 * SCATTER_X; i++) {
       const tx = Phaser.Math.Between(2, CFG.MAP_W-2), ty = Phaser.Math.Between(2, CFG.MAP_H-2);
+      if (_sparse(tx, ty)) continue;
       placeTree(tx, ty, getBiome(tx, ty));
     }
 
@@ -267,8 +276,9 @@ Object.assign(GameScene.prototype, {
     }
 
     // Rocks — biome-appropriate
-    for (let i = 0; i < CFG.ROCKS; i++) {
+    for (let i = 0; i < CFG.ROCKS * SCATTER_X; i++) {
       const tx = Phaser.Math.Between(1, CFG.MAP_W-2), ty = Phaser.Math.Between(1, CFG.MAP_H-2);
+      if (_sparse(tx, ty)) continue;
       if (Math.abs(tx-stx)<SAFE_R && Math.abs(ty-sty)<SAFE_R) continue;
       const biome = getBiome(tx, ty);
       const rockKey = biome === 'tundra' ? 'ice_rock' : biome === 'desert' ? 'rock_desert' : 'rock';
@@ -276,16 +286,18 @@ Object.assign(GameScene.prototype, {
     }
 
     // Extra rocks in wasteland
-    for (let i = 0; i < 180; i++) {
+    for (let i = 0; i < 180 * SCATTER_X; i++) {
       const tx = Phaser.Math.Between(1, CFG.MAP_W-2), ty = Phaser.Math.Between(1, CFG.MAP_H-2);
+      if (_sparse(tx, ty)) continue;
       if (getBiome(tx, ty) !== 'waste') continue;
       this._placeScenery(tx, ty, 'rock');
     }
 
     // ── BIOME-SPECIFIC TERRAIN OBSTACLES ────────────────────────
     // Ice spires — tundra (impassable jagged ice formations)
-    for (let i = 0; i < 80; i++) {
+    for (let i = 0; i < 80 * SCATTER_X; i++) {
       const tx = Phaser.Math.Between(2, CFG.MAP_W-2), ty = Phaser.Math.Between(2, CFG.MAP_H-2);
+      if (_sparse(tx, ty)) continue;
       if (getBiome(tx, ty) !== 'tundra') continue;
       if (Math.abs(tx-stx)<SAFE_R+3 && Math.abs(ty-sty)<SAFE_R+3) continue;
       const sc = Phaser.Math.FloatBetween(1.2, 2.2);
@@ -295,8 +307,9 @@ Object.assign(GameScene.prototype, {
       spr.refreshBody();
     }
     // Rock spires — wasteland (impassable jagged rock pillars)
-    for (let i = 0; i < 80; i++) {
+    for (let i = 0; i < 80 * SCATTER_X; i++) {
       const tx = Phaser.Math.Between(2, CFG.MAP_W-2), ty = Phaser.Math.Between(2, CFG.MAP_H-2);
+      if (_sparse(tx, ty)) continue;
       if (getBiome(tx, ty) !== 'waste') continue;
       if (Math.abs(tx-stx)<SAFE_R+3 && Math.abs(ty-sty)<SAFE_R+3) continue;
       const sc = Phaser.Math.FloatBetween(1.2, 2.0);
@@ -306,8 +319,9 @@ Object.assign(GameScene.prototype, {
       spr.refreshBody();
     }
     // Mangrove root clusters — swamp (impassable tangled roots)
-    for (let i = 0; i < 55; i++) {
+    for (let i = 0; i < 55 * SCATTER_X; i++) {
       const tx = Phaser.Math.Between(2, CFG.MAP_W-2), ty = Phaser.Math.Between(2, CFG.MAP_H-2);
+      if (_sparse(tx, ty)) continue;
       if (getBiome(tx, ty) !== 'swamp') continue;
       if (Math.abs(tx-stx)<SAFE_R+4 && Math.abs(ty-sty)<SAFE_R+4) continue;
       const sc = Phaser.Math.FloatBetween(1.0, 1.8);
@@ -326,8 +340,9 @@ Object.assign(GameScene.prototype, {
     }
 
     // Bushes/mushrooms — biome-appropriate decorative
-    for (let i = 0; i < 120; i++) {
+    for (let i = 0; i < 120 * SCATTER_X; i++) {
       const tx = Phaser.Math.Between(2, CFG.MAP_W-3), ty = Phaser.Math.Between(2, CFG.MAP_H-3);
+      if (_sparse(tx, ty)) continue;
       if (Math.abs(tx-stx)<SAFE_R+3 && Math.abs(ty-sty)<SAFE_R+3) continue;
       const biome = getBiome(tx, ty);
       let decKey = 'bush';
@@ -345,8 +360,9 @@ Object.assign(GameScene.prototype, {
     this._log('buildWorld: buildRuinsCity done', 'world');
 
     // Decorative craters — visual only, non-blocking
-    for (let i = 0; i < 36; i++) {
+    for (let i = 0; i < 36 * SCATTER_X; i++) {
       const tx = Phaser.Math.Between(3, CFG.MAP_W-4), ty = Phaser.Math.Between(3, CFG.MAP_H-4);
+      if (_sparse(tx, ty)) continue;
       if (Math.abs(tx-stx) < SAFE_R+4 && Math.abs(ty-sty) < SAFE_R+4) continue;
       const b = getBiome(tx, ty);
       if (b !== 'waste' && b !== 'ruins') continue;
@@ -358,8 +374,9 @@ Object.assign(GameScene.prototype, {
       this._w(this.add.image(tx*TILE, ty*TILE, key).setScale(sc).setDepth(1.5).setAlpha(alpha));
     }
     // Dense small craters in wasteland core + extras
-    for (let i = 0; i < 55; i++) {
+    for (let i = 0; i < 55 * SCATTER_X; i++) {
       const tx = Phaser.Math.Between(3, CFG.MAP_W-4), ty = Phaser.Math.Between(3, CFG.MAP_H-4);
+      if (_sparse(tx, ty)) continue;
       if (getBiome(tx, ty) !== 'waste') continue;
       const sc = Phaser.Math.FloatBetween(0.4, 1.8);
       this._w(this.add.image(tx*TILE + Phaser.Math.Between(-8, 8), ty*TILE + Phaser.Math.Between(-8, 8), 'crater_small').setScale(sc).setDepth(1.5).setAlpha(0.55));
