@@ -556,6 +556,57 @@ Object.assign(GameScene.prototype, {
       this._log(`terrain overlap cleanup  removed=${_overlapRemoved}`, 'world');
     }
 
+    // Clear banks: no tree within 1 tile of water or ice, and reeds (the swamp tall-grass texture)
+    // within 2 tiles of it, at a far higher density than the ambient tall grass.
+    {
+      const MW = CFG.MAP_W, MH = CFG.MAP_H;
+      const wet = new Uint8Array(MW * MH);
+      for (let i = 0; i < wet.length; i++) if (this._waterMap[i] || (this._iceMap && this._iceMap[i])) wet[i] = 1;
+      for (const dt of this.deepWaterTiles) {
+        const dx = Math.floor(dt.x / TILE), dy = Math.floor(dt.y / TILE);
+        if (dx >= 0 && dx < MW && dy >= 0 && dy < MH) wet[dx + dy * MW] = 1;
+      }
+      // dist[i]: 1 or 2 for a dry tile that many (Chebyshev) steps from wet, else 0
+      const dist = new Uint8Array(MW * MH);
+      for (let ty = 2; ty < MH - 2; ty++) {
+        for (let tx = 2; tx < MW - 2; tx++) {
+          if (wet[tx + ty * MW]) continue;
+          let d = 0;
+          for (let dy = -2; dy <= 2 && d !== 1; dy++) {
+            for (let dx = -2; dx <= 2; dx++) {
+              if (!wet[(tx + dx) + (ty + dy) * MW]) continue;
+              const cd = Math.max(Math.abs(dx), Math.abs(dy));
+              if (d === 0 || cd < d) d = cd;
+              if (d === 1) break;
+            }
+          }
+          dist[tx + ty * MW] = d;
+        }
+      }
+      let _banksCleared = 0;
+      this.obstacles.getChildren().slice().forEach(ob => {
+        if (!ob.isTree) return;
+        const tx = Math.floor(ob.x / TILE), ty = Math.floor(ob.y / TILE);
+        if (wet[tx + ty * MW] || dist[tx + ty * MW] === 1) { ob.destroy(); _banksCleared++; } // on ice, or on the bank
+      });
+      let _reeds = 0;
+      const REED_P = 0.1;
+      for (let ty = 2; ty < MH - 2; ty++) {
+        for (let tx = 2; tx < MW - 2; tx++) {
+          if (!dist[tx + ty * MW] || Math.random() > REED_P) continue;
+          if (this._impassableTileSet.has(tx + ',' + ty)) continue;
+          if (Math.abs(tx - stx) < SAFE_R + 3 && Math.abs(ty - sty) < SAFE_R + 3) continue;
+          const sc = Phaser.Math.FloatBetween(0.7, 1.3);
+          const ox = Phaser.Math.Between(-10, 10), oy = Phaser.Math.Between(-8, 8);
+          const reed = this._w(this.add.image(tx*TILE + ox, ty*TILE + oy, 'tall_grass_swamp')
+            .setOrigin(0.5, 1).setScale(sc).setDepth(4 + ty*0.001).setAlpha(0.82));
+          this._grassGroups[_reeds % 3].push(reed);
+          _reeds++;
+        }
+      }
+      this._log(`clear banks  trees removed=${_banksCleared}  reeds=${_reeds}`, 'world');
+    }
+
     // Post-water POI relocation — pre-computed positions were picked before ponds/
     // lakes/rivers, so some may now sit on water. Find nearest dry tile for each.
     {
