@@ -31,7 +31,7 @@
 //   src/sprites.js       — Player + raider art as hand-placed pixel grids (one char = one pixel)
 //                          paintGrid, pixelActorFrames, buildPixelActors,
 //                          SPRITE_ART, PLAYER_PAL, LEGS;
-//                          scenery (trees, rocks, bush, mushroom, wall): SCENERY_SPECS, buildScenery, ART_SCALE, WALL_SCALE
+//                          scenery (trees, rocks, bush, mushroom, wall, stumps): SCENERY_SPECS, buildScenery, ART_SCALE, WALL_SCALE, TREE_STUMP
 //
 //   src/textures.js      — Procedural texture generation (no image files)
 //                          drawWolf, drawRat, drawBear, drawIceCrawler,

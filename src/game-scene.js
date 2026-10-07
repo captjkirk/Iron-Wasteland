@@ -4687,6 +4687,14 @@ class GameScene extends Phaser.Scene {
             this.time.delayedCall(CFG.ITEM_DESPAWN_MS, () => { if (item.active) item.destroy(); });
           }
           SFX._play(220, 'sawtooth', 0.15, 0.3, 'drop');
+          // A stump stays where the tree stood: decoration only (no body), sorted like other scenery.
+          const _stumpKey = TREE_STUMP[nearestTree.texture.key];
+          if (_stumpKey) {
+            const _st = this.add.image(nearestTree.x, nearestTree.y, _stumpKey, Math.min(2, Number(nearestTree.frame.name) || 0))
+              .setOrigin(0.5, 1).setScale(ART_SCALE).setDepth(this._sortDepth(nearestTree.y));
+            this._w(_st);
+            if (this.hudCam) this.hudCam.ignore(_st);
+          }
           this.obstacles.remove(nearestTree, true, true);
           player.harvestProgress = 0;
           player.harvestTarget = null;
