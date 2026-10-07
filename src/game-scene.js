@@ -790,10 +790,9 @@ class GameScene extends Phaser.Scene {
     }
 
     const dayBg = this._h(this.add.graphics().setDepth(100));
-    dayBg.fillStyle(0x000000, 0.6); dayBg.fillRoundedRect(W/2-95, 5, 190, 70, 8);
-    this.dayText = this._h(this.add.text(W/2, 8, 'DAY 1', { fontFamily:'monospace', fontSize:'13px', color:'#ffee44' }).setOrigin(0.5,0).setDepth(101));
+    dayBg.fillStyle(0x000000, 0.6); dayBg.fillRoundedRect(W/2-95, 5, 190, 66, 8);
+    this.dayText = this._h(this.add.text(W/2, 10, 'DAY 1', { fontFamily:'monospace', fontSize:'13px', color:'#ffee44' }).setOrigin(0.5,0).setDepth(101));
     this.clockGfx = this._h(this.add.graphics().setDepth(102));
-    this.dayBarGfx = this._h(this.add.graphics().setDepth(102)); // dawn-to-dusk bar under the day label
 
     // Off-screen threat indicators — issue #81. Drawn in HUD space; redrawn each frame
     // by _drawThreatIndicators() so the arrows track the camera as it pans.
@@ -801,7 +800,7 @@ class GameScene extends Phaser.Scene {
 
     const diffColor = this.hardcore ? '#ff4444' : '#44cc66';
     const diffLabel = this.hardcore ? '\u2620 HARDCORE' : '\u2665 SURVIVAL';
-    this._h(this.add.text(W/2, 57, diffLabel, { fontFamily:'monospace', fontSize:'12px', color:diffColor }).setOrigin(0.5,0).setDepth(101));
+    this._h(this.add.text(W/2, 52, diffLabel, { fontFamily:'monospace', fontSize:'12px', color:diffColor }).setOrigin(0.5,0).setDepth(101));
 
     // Persistent MENU button — bottom-right, works for both keyboard and touch
     const menuBtn = this._h(this.add.text(W - 14, H - 12, '\u2630  MENU', {
@@ -822,7 +821,7 @@ class GameScene extends Phaser.Scene {
     if (this.p2) this.p2InvText = this._makeResPanel(W - 12, H - 80, true);
 
     // Relic progress tracker — hidden until first relic activity
-    this.hudRelicText = this._h(this.add.text(W/2, 81, '', {
+    this.hudRelicText = this._h(this.add.text(W/2, 76, '', {
       fontFamily: 'monospace', fontSize: '12px', color: '#cc44ff',
       stroke: '#000', strokeThickness: 2,
     }).setOrigin(0.5, 0).setDepth(101).setVisible(false));
@@ -4966,51 +4965,29 @@ class GameScene extends Phaser.Scene {
 
     this._updateDayLabel();
 
-    // Dawn-to-dusk bar: empty at dawn, full when night falls (cycle = 60% of the day, the point
-    // where isNight turns on), red for the last 20 s of game time before that, then it stays full
-    // (dim blue) until the next dawn resets it. Redrawn only when it moves a pixel or changes colour.
-    if (this.dayBarGfx) {
-      const BAR_W = 150, dayMs = this.DAY_DUR * 0.6;
-      const night = cycle >= dayMs;
-      const px = night ? BAR_W : Math.floor(cycle / dayMs * BAR_W);
-      const red = !night && dayMs - cycle <= 20000;
-      const barKey = px * 4 + (red ? 1 : 0) + (night ? 2 : 0);
-      if (this._lastDayBar !== barKey) {
-        this._lastDayBar = barKey;
-        const x = CFG.W / 2 - BAR_W / 2, y = 27;
-        this.dayBarGfx.clear();
-        this.dayBarGfx.fillStyle(0x333344, 0.8).fillRect(x, y, BAR_W, 4);
-        this.dayBarGfx.fillStyle(night ? 0x4466aa : red ? 0xff3344 : 0xffdd44, 1).fillRect(x, y, px, 4);
-      }
-    }
-
-    // Draw clock arc indicator — only refresh when pct crosses a 0.5% step
-    // (≈ 200 redraws per in-game day instead of 60fps × DAY_DUR).
+    // Clock ring: the track shades the night span (where isNight is true: 60% to ~97% of the
+    // cycle, from the nightAlpha ramp above), so the gap from the hand to it is the time left
+    // before night. The arc turns red for the last 20 s of game time before night (#266).
+    // Redrawn only when pct crosses a 0.5% step or the warning flips.
     if (this.clockGfx) {
-      const pctStep = Math.round(pct * 200);
-      if (this._lastClockStep !== pctStep) {
-        this._lastClockStep = pctStep;
+      const NIGHT_START = 0.6, NIGHT_END = 0.9667;
+      const warn = !this.isNight && pct < NIGHT_START && (NIGHT_START - pct) * this.DAY_DUR <= 20000;
+      const clockKey = Math.round(pct * 200) * 2 + (warn ? 1 : 0);
+      if (this._lastClockStep !== clockKey) {
+        this._lastClockStep = clockKey;
         this.clockGfx.clear();
-        const cx = CFG.W / 2, cy = 43, r = 10;
-        // Background circle
-        this.clockGfx.lineStyle(2, 0x333344, 0.6);
-        this.clockGfx.strokeCircle(cx, cy, r);
-        // Progress arc (sun = gold, dusk = orange, night = blue, dawn = pink)
-        let arcColor;
-        if (pct < 0.55) arcColor = 0xffdd44;        // day
-        else if (pct < 0.7) arcColor = 0xff8833;     // dusk
-        else if (pct < 0.9) arcColor = 0x4466cc;     // night
-        else arcColor = 0xdd7799;                     // dawn
-        this.clockGfx.lineStyle(3, arcColor, 0.9);
-        this.clockGfx.beginPath();
-        this.clockGfx.arc(cx, cy, r, -Math.PI/2, -Math.PI/2 + pct * Math.PI * 2, false, 0.02);
-        this.clockGfx.strokePath();
-        // Small icon dot at current position
-        const dotAngle = -Math.PI/2 + pct * Math.PI * 2;
-        const dx = cx + Math.cos(dotAngle) * r;
-        const dy = cy + Math.sin(dotAngle) * r;
-        this.clockGfx.fillStyle(arcColor, 1);
-        this.clockGfx.fillCircle(dx, dy, 3);
+        const cx = CFG.W / 2, cy = 38, r = 12, top = -Math.PI / 2, TAU = Math.PI * 2;
+        this.clockGfx.lineStyle(4, 0x333344, 0.7).strokeCircle(cx, cy, r);
+        this.clockGfx.lineStyle(4, 0x223366, 0.9).beginPath()
+          .arc(cx, cy, r, top + NIGHT_START * TAU, top + NIGHT_END * TAU, false, 0.02).strokePath();
+        const arcColor = warn ? 0xff3344
+          : this.isNight ? 0x6688ff
+          : pct >= NIGHT_END ? 0xdd7799  // dawn
+          : 0xffdd44;                    // day (the warning covers dusk)
+        this.clockGfx.lineStyle(4, arcColor, 0.95).beginPath()
+          .arc(cx, cy, r, top, top + pct * TAU, false, 0.02).strokePath();
+        const a = top + pct * TAU;
+        this.clockGfx.fillStyle(arcColor, 1).fillCircle(cx + Math.cos(a) * r, cy + Math.sin(a) * r, 3.5);
       }
     }
   }
