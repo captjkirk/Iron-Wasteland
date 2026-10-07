@@ -50,6 +50,8 @@ const CFG = {
   ITEM_DESPAWN_MS: 20000, // harvested / dropped item pickups auto-expire after this long
   TUT_AUTO_ADVANCE_MS: 7000, // how long each tutorial tip stays on screen before advancing
   MINIMAP_HINT_DELAY_MS: 20000, // delay before minimap contextual tip first appears
+  // Global scoreboard web app URL (tools/scoreboard/SETUP.md). Empty: no network call at all.
+  SCOREBOARD_URL: '',
 };
 
 // ── ENEMY LOOT TABLES ─────────────────────────────────────────
