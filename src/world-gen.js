@@ -6,6 +6,15 @@
 // Tile index in 'water_tileset' (see buildTextures).
 const WATER_TILE = { shallow: 0, deep: 1, ice: 2 };
 
+// Static hitbox in texture pixels, scaled with the sprite. refreshBody() resets a static body to
+// the whole sprite and drops its offset (Phaser 3.60), so it runs first, then size and offset (#268).
+function staticHitbox(spr, w, h, ox, oy) {
+  const s = spr.scaleX;
+  spr.refreshBody();
+  spr.body.setSize(w * s, h * s, false).setOffset(ox * s, oy * s);
+  return spr;
+}
+
 Object.assign(GameScene.prototype, {
   // Scatter Voronoi biome seeds randomly — called once before buildWorld each session
   _initBiomeSeeds() {
@@ -313,8 +322,7 @@ Object.assign(GameScene.prototype, {
       const sc = Phaser.Math.FloatBetween(1.2, 2.2);
       const spr = this.obstacles.create(tx*TILE+8, ty*TILE+6, 'ice_spire');
       spr.setScale(sc).setDepth(5 + ty*0.01).setImmovable(true);
-      spr.body.setSize(6, 8).setOffset(5, 22);
-      spr.refreshBody();
+      staticHitbox(spr, 6, 8, 5, 22);
     }
     // Rock spires — wasteland (impassable jagged rock pillars)
     for (let i = 0; i < 80 * SCATTER_X; i++) {
@@ -325,8 +333,7 @@ Object.assign(GameScene.prototype, {
       const sc = Phaser.Math.FloatBetween(1.2, 2.0);
       const spr = this.obstacles.create(tx*TILE+7, ty*TILE+8, 'rock_spire');
       spr.setScale(sc).setDepth(5 + ty*0.01).setImmovable(true);
-      spr.body.setSize(6, 8).setOffset(4, 26);
-      spr.refreshBody();
+      staticHitbox(spr, 6, 8, 4, 26);
     }
     // Mangrove root clusters — swamp (impassable tangled roots)
     for (let i = 0; i < 55 * SCATTER_X; i++) {
@@ -337,8 +344,7 @@ Object.assign(GameScene.prototype, {
       const sc = Phaser.Math.FloatBetween(1.0, 1.8);
       const spr = this.obstacles.create(tx*TILE+18, ty*TILE+9, 'mangrove_roots');
       spr.setScale(sc).setDepth(5 + ty*0.01).setImmovable(true);
-      spr.body.setSize(28, 8).setOffset(4, 6);
-      spr.refreshBody();
+      staticHitbox(spr, 28, 8, 4, 6);
     }
     // Spiderwebs — ruins (decorative, visual only)
     for (let i = 0; i < 90; i++) {
@@ -479,15 +485,10 @@ Object.assign(GameScene.prototype, {
       this._w(this.add.image(px, py, 'mountain_base').setScale(sc).setDepth(1.5));
       const ob = this.obstacles.create(px, py, key);
       ob.setOrigin(0.5, 160 / 176).setScale(sc).setDepth(this._sortDepth(py)).setImmovable(true);
-      // Scale-compensated circle hitbox: world radius stays ~13px regardless of mountain scale.
-      // StaticBody world radius = r * scale, so divide desired world radius by sc. Body offsets
-      // are from the frame's top-left, independent of origin.
-      {
-        const R = 13;
-        const r = Math.round(R / sc);
-        ob.body.setCircle(r, Math.round(112 / sc - r), Math.round(148 / sc - r)); // base centre at sprite (112, 148)
-      }
-      ob.refreshBody();
+      // Footprint along the base of the peak (texture x 32-192, y 124-160). Ridges sit 2 tiles
+      // apart, so neighbouring footprints overlap and a ridge stays solid; the sky around each
+      // peak stays open, and the Y-sort draws a player there behind the mountain.
+      staticHitbox(ob, 160, 36, 32, 124);
       mtns.push({ tx, ty });
     };
 
@@ -1099,8 +1100,7 @@ Object.assign(GameScene.prototype, {
       if (Math.abs(tx-stx) < CFG.SAFE_R+3 && Math.abs(ty-sty) < CFG.SAFE_R+3) return;
       const w = this.obstacles.create(tx*TILE+16, ty*TILE+16, 'ruin_block');
       w.setDepth(5 + ty*0.01).setImmovable(true);
-      w.body.setSize(28, 28); // slightly smaller than full tile for passability at seams
-      w.refreshBody();
+      staticHitbox(w, 28, 28, 2, 2); // slightly smaller than full tile for passability at seams
       w.hp = 200; w.maxHp = 200;
       this._wallTileSet.add(tx + ',' + ty);
     };
@@ -1199,8 +1199,7 @@ Object.assign(GameScene.prototype, {
       if (Math.random() < 0.5) {
         const p = this.obstacles.create(tx*TILE+11, ty*TILE+18, 'pillar');
         p.setScale(sc).setDepth(5 + ty*0.01).setImmovable(true);
-        p.body.setSize(10, 20).setOffset(6, 16);
-        p.refreshBody();
+        staticHitbox(p, 10, 20, 6, 16);
       } else {
         placeWall(tx, ty);
       }
