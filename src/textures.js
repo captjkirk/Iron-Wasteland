@@ -456,33 +456,31 @@ function buildTextures(scene) {
   g.fillStyle(0x4a7c2f); g.fillRect(17, 5, 2, 2); g.fillRect(25, 14, 2, 2); g.fillRect(6, 13, 2, 2);
   g.generateTexture('grass3', 32, 32);
 
-  // Tall grass — grassland biome (bright green blades)
-  g.clear();
-  g.fillStyle(0x3a6820); g.fillRect(6, 10, 3, 14); g.fillRect(11, 8, 3, 16); g.fillRect(16, 11, 2, 13); g.fillRect(21, 9, 3, 15);
-  g.fillStyle(0x4e8a2a); g.fillRect(7, 6, 2, 8); g.fillRect(12, 4, 2, 9); g.fillRect(17, 7, 2, 7); g.fillRect(22, 5, 2, 8);
-  g.fillStyle(0x62aa36); g.fillRect(7, 3, 1, 5); g.fillRect(12, 1, 2, 5); g.fillRect(17, 4, 1, 5); g.fillRect(22, 2, 1, 5);
-  g.generateTexture('tall_grass', 32, 24);
-
-  // Tall grass — wasteland (dry yellow-brown stalks)
-  g.clear();
-  g.fillStyle(0x6a5020); g.fillRect(5, 12, 3, 12); g.fillRect(11, 10, 2, 14); g.fillRect(16, 13, 3, 11); g.fillRect(22, 11, 2, 13);
-  g.fillStyle(0x8a6e30); g.fillRect(5, 7, 2, 7); g.fillRect(11, 6, 2, 6); g.fillRect(16, 8, 2, 7); g.fillRect(22, 7, 2, 6);
-  g.fillStyle(0xaa8c44); g.fillRect(5, 4, 2, 4); g.fillRect(11, 3, 2, 4); g.fillRect(16, 5, 2, 4); g.fillRect(22, 4, 1, 4);
-  g.generateTexture('tall_grass_waste', 32, 24);
-
-  // Tall grass — tundra (pale blue-white frost grass)
-  g.clear();
-  g.fillStyle(0x8899aa); g.fillRect(6, 12, 3, 12); g.fillRect(12, 10, 2, 14); g.fillRect(17, 13, 3, 11); g.fillRect(23, 11, 2, 13);
-  g.fillStyle(0xaabbcc); g.fillRect(6, 7, 2, 7); g.fillRect(12, 6, 2, 6); g.fillRect(17, 8, 2, 7); g.fillRect(23, 7, 2, 6);
-  g.fillStyle(0xddeeff); g.fillRect(6, 4, 2, 4); g.fillRect(12, 3, 2, 4); g.fillRect(17, 5, 2, 4); g.fillRect(23, 4, 1, 4);
-  g.generateTexture('tall_grass_tundra', 32, 24);
-
-  // Tall grass — swamp (dark murky reeds)
-  g.clear();
-  g.fillStyle(0x2a4a1a); g.fillRect(5, 8, 3, 16); g.fillRect(11, 6, 2, 18); g.fillRect(17, 9, 3, 15); g.fillRect(23, 7, 2, 17);
-  g.fillStyle(0x3a6628); g.fillRect(5, 4, 2, 6); g.fillRect(11, 2, 2, 6); g.fillRect(17, 5, 2, 6); g.fillRect(23, 3, 2, 6);
-  g.fillStyle(0x1a3010); g.fillRect(4, 12, 2, 4); g.fillRect(10, 14, 2, 4); g.fillRect(16, 11, 2, 4); g.fillRect(22, 13, 2, 4);
-  g.generateTexture('tall_grass_swamp', 32, 24);
+  // Tall grass — three shapes per biome: tall_grass (4 blades), _2 (two tall blades), _3 (six short blades).
+  // Blades are [x, top, width]; each is a dark base, a mid body and a light tip, in the biome's palette.
+  const TALL = {
+    tall_grass:        [0x3a6820, 0x4e8a2a, 0x62aa36], // grassland: bright green
+    tall_grass_waste:  [0x6a5020, 0x8a6e30, 0xaa8c44], // wasteland: dry stalks
+    tall_grass_tundra: [0x8899aa, 0xaabbcc, 0xddeeff], // tundra: frost grass
+    tall_grass_swamp:  [0x2a4a1a, 0x3a6628, 0x4f8a38], // swamp: murky reeds
+  };
+  const SHAPES = ['', '_2', '_3'];
+  const BLADES = [
+    [[6, 3, 3], [11, 1, 3], [16, 4, 2], [21, 2, 3]],
+    [[9, 0, 3], [20, 2, 3]],
+    [[3, 10, 2], [8, 8, 2], [13, 11, 2], [18, 9, 2], [23, 12, 2], [28, 10, 2]],
+  ];
+  for (const [key, [dark, mid, light]] of Object.entries(TALL)) {
+    BLADES.forEach((blades, i) => {
+      g.clear();
+      for (const [x, top, w] of blades) {
+        g.fillStyle(dark);  g.fillRect(x, top + 7, w, 24 - top - 7);
+        g.fillStyle(mid);   g.fillRect(x, top + 3, w - 1, 8);
+        g.fillStyle(light); g.fillRect(x, top, w - 1, 5);
+      }
+      g.generateTexture(key + SHAPES[i], 32, 24);
+    });
+  }
 
 
 
@@ -720,11 +718,52 @@ function buildTextures(scene) {
   g.fillStyle(0xaa8855); g.fillCircle(20, 5, 1); g.fillCircle(4, 24, 1);
   g.generateTexture('ground_desert', 32, 32);
 
-  // One tileset image holding every biome ground tile side by side, in GROUND_KEYS order.
+  // One tileset image: row 0 is every biome's base ground in GROUND_KEYS order; rows 1-3 are its
+  // variants (lighter patch, darker patch, detail). Tile index = row * GROUND_KEYS.length + biome.
   // buildWorld paints the ground as a single Tilemap layer from it (a TileSprite per patch
   // allocated a canvas each and got the tab killed on iPhone, #238).
-  const tileset = scene.textures.createCanvas('ground_tileset', GROUND_KEYS.length * 32, 32);
-  GROUND_KEYS.forEach((key, i) => tileset.context.drawImage(scene.textures.get(key).getSourceImage(), i * 32, 0));
+  // Variants only draw inside a 3 px inset, so every edge matches the base tile and any two tiles join.
+  const N = GROUND_KEYS.length;
+  const tileset = scene.textures.createCanvas('ground_tileset', N * 32, 4 * 32);
+  const ctx = tileset.context;
+  const DETAIL = [ // per biome: [pebble color, pebble highlight, flower colors or null]
+    [0x7d7d72, 0xa5a598, [0xe8d94a, 0xf2f2f2, 0xd96aa8]], // grass
+    [0x5a4a38, 0x8a7458, null],                           // waste
+    [0x2c3a24, 0x5a6e4a, [0xd8e070, 0x9ad0c0]],           // swamp
+    [0x8a97a6, 0xdfe9f5, null],                           // tundra
+    [0x555560, 0x8c8c9a, null],                           // ruins
+    [0x6a3a8a, 0xb07ad8, [0x7af0c8, 0xe070e0]],           // fungal
+    [0x9a7040, 0xd4b080, null],                           // desert
+  ];
+  const hex = (c, a = 1) => `rgba(${c >> 16}, ${(c >> 8) & 255}, ${c & 255}, ${a})`;
+  GROUND_KEYS.forEach((key, b) => {
+    const base = scene.textures.get(key).getSourceImage();
+    for (let row = 0; row < 4; row++) {
+      const ox = b * 32, oy = row * 32;
+      ctx.drawImage(base, ox, oy);
+      let seed = (b + 1) * 7919 + row * 104729; // a fixed look per tile, not per session
+      const rnd = n => { seed = (Math.imul(seed, 1103515245) + 12345) & 0x7fffffff; return 3 + seed % (n - 6); };
+      if (row === 1 || row === 2) { // shade patch: a few blocky blobs, light or dark
+        ctx.fillStyle = row === 1 ? 'rgba(255,255,255,0.11)' : 'rgba(0,0,0,0.15)';
+        for (let k = 0; k < 3; k++) {
+          const x = rnd(32), y = rnd(32);
+          ctx.fillRect(ox + x, oy + y, Math.min(9, 29 - x) + 0, Math.min(6, 29 - y));
+          ctx.fillRect(ox + x - (x > 6 ? 2 : 0), oy + y + 2, 3, Math.min(5, 29 - y - 2));
+        }
+      } else if (row === 3) { // detail: pebbles, plus flowers where the biome has them
+        const [dark, lit, flowers] = DETAIL[b];
+        for (let k = 0; k < 3; k++) {
+          const x = rnd(32), y = rnd(32);
+          ctx.fillStyle = hex(dark); ctx.fillRect(ox + x, oy + y, 3, 2);
+          ctx.fillStyle = hex(lit);  ctx.fillRect(ox + x, oy + y, 2, 1);
+        }
+        if (flowers) for (let k = 0; k < 4; k++) {
+          ctx.fillStyle = hex(flowers[k % flowers.length]);
+          ctx.fillRect(ox + rnd(32), oy + rnd(32), 2, 2);
+        }
+      }
+    }
+  });
   tileset.refresh();
 
   // Broken stone pillar — for ruins biome
