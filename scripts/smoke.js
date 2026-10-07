@@ -10,8 +10,8 @@ const server = require('../server.js');
 const PLAY_MS = 10000;
 const PIXEL_BUDGET_MB = 64; // RGBA bytes; an iPhone tab dies well short of 1 GB in total
 
-async function pass(browser, name, url, run) {
-  const page = await browser.newPage();
+async function pass(browser, name, url, run, opts = {}) {
+  const page = await browser.newPage(opts);
   const errors = [];
   page.on('console', m => { if (m.type() === 'error') errors.push('console error: ' + m.text()); });
   page.on('pageerror', e => errors.push('page error: ' + e.message));
@@ -38,6 +38,19 @@ async function pass(browser, name, url, run) {
   let failures = 0;
 
   failures += await pass(browser, 'title screen', base, async () => {});
+
+  // Character screen at both layouts: 1280x720, and the 640x360 phone layout (a touch device
+  // whose short side is under 600 px). Turns the wheel both ways and fails on any page error.
+  for (const [name, opts] of [['character screen 1280x720', {}],
+    ['character screen 640x360', { viewport: { width: 740, height: 390 }, hasTouch: true }]]) {
+    failures += await pass(browser, name, base, async page => {
+      await page.evaluate(() => { STATE.mode = 1; _phaserGame.scene.start('CharSelect'); });
+      await page.waitForFunction(() => _phaserGame.scene.isActive('CharSelect'), null, { timeout: 10000 });
+      for (const k of ['d', 'd', 'a', 'ArrowLeft']) { await page.keyboard.press(k); await page.waitForTimeout(300); }
+      const w = await page.evaluate(() => CFG.W);
+      if (w !== (opts.hasTouch ? 640 : 1280)) throw new Error(`canvas is ${w} wide`);
+    }, opts);
+  }
 
   failures += await pass(browser, 'in play', base + '?seed=1&renderer=canvas', async page => {
     await page.evaluate(() => { STATE.mode = 1; STATE.p1CharId = 'knight'; _phaserGame.scene.start('Game'); });
