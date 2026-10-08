@@ -782,6 +782,12 @@ class GameScene extends Phaser.Scene {
   buildHUD() {
     const { W, H } = CFG;
     this._hudDirty = true;
+    const P = this.solo && CFG.W <= 640 ? PHONE1P : null; // phone, 1 player (#388)
+    // Shrink a HUD object about (ax, ay) and make it see-through, as the phone layout asks.
+    const hudSize = (o, ax, ay) => {
+      if (!P) return o;
+      return o.setScale(P.hudScale).setPosition(ax + (o.x - ax) * P.hudScale, ay + (o.y - ay) * P.hudScale).setAlpha(P.hudSolid);
+    };
 
     this.ammoIcons = { p1:null, p2:null };
     if (STATE.p1CharId==='gunslinger') this.ammoIcons.p1 = this.makeAmmoRow(14, 52, 0x6699ff);
@@ -803,9 +809,12 @@ class GameScene extends Phaser.Scene {
     }
 
     const dayBg = this._h(this.add.graphics().setDepth(100));
-    dayBg.fillStyle(0x000000, 0.6); dayBg.fillRoundedRect(W/2-95, 5, 190, 66, 8);
+    dayBg.fillStyle(0x000000, P ? 1 : 0.6); dayBg.fillRoundedRect(W/2-95, 5, 190, 66, 8);
     this.dayText = this._h(this.add.text(W/2, 10, 'DAY 1', { fontFamily:'monospace', fontSize:'13px', color:'#ffee44' }).setOrigin(0.5,0).setDepth(101));
     this.clockGfx = this._h(this.add.graphics().setDepth(102));
+    [dayBg, this.dayText, this.clockGfx].forEach(o => hudSize(o, W/2, 5));
+    const dk = P ? P.hudScale : 1;
+    this._hudRects = { day: { x: W/2 - 95 * dk, y: 5, w: 190 * dk, h: 66 * dk } }; // read by the smoke run (#388)
 
     // Off-screen threat indicators — issue #81. Drawn in HUD space; redrawn each frame
     // by _drawThreatIndicators() so the arrows track the camera as it pans.
@@ -813,13 +822,16 @@ class GameScene extends Phaser.Scene {
 
     const diffColor = this.hardcore ? '#ff4444' : '#44cc66';
     const diffLabel = this.hardcore ? '\u2620 HARDCORE' : '\u2665 SURVIVAL';
-    this._h(this.add.text(W/2, 52, diffLabel, { fontFamily:'monospace', fontSize:'12px', color:diffColor }).setOrigin(0.5,0).setDepth(101));
+    hudSize(this._h(this.add.text(W/2, 52, diffLabel, { fontFamily:'monospace', fontSize:'12px', color:diffColor }).setOrigin(0.5,0).setDepth(101)), W/2, 5);
 
     // Persistent MENU button — bottom-right, works for both keyboard and touch
-    const menuBtn = this._h(this.add.text(W - 14, H - 12, '\u2630  MENU', {
+    const menuBtn = this._h(this.add.text(P ? P.menuText.cx * W : W - 14, P ? P.menuText.cy * H : H - 12, '\u2630  MENU', {
       fontFamily:'monospace', fontSize:'12px', color:'#557755',
       backgroundColor:'#00000088', padding:{ x:8, y:4 },
-    }).setOrigin(1, 1).setDepth(104).setInteractive({ useHandCursor: true }));
+    }).setOrigin(P ? 0.5 : 1, P ? 0.5 : 1).setDepth(104).setInteractive({ useHandCursor: true }));
+    if (P) menuBtn.setScale(P.hudScale).setAlpha(P.hudSolid);
+    const mb = menuBtn.getBounds();
+    this._hudRects.menu = { x: mb.x, y: mb.y, w: mb.width, h: mb.height };
     menuBtn.on('pointerover', () => menuBtn.setColor('#aaffaa'));
     menuBtn.on('pointerout',  () => menuBtn.setColor('#557755'));
     menuBtn.on('pointerdown', () => { if (!this.isOver) this.toggleControls(); });
@@ -854,8 +866,8 @@ class GameScene extends Phaser.Scene {
     if (this.p2) this.p2StatusGfx = this._h(this.add.graphics().setDepth(102));
 
     // ── MINIMAP ─────────────────────────────────────────────────
-    const mmW = 160, mmH = 160;
-    const mmX = W - mmW - 10, mmY = 96; // top-right so it doesn't overlap P2 inventory
+    const mmW = P ? P.radar.d * H : 160, mmH = mmW;
+    const mmX = P ? P.radar.cx * W - mmW / 2 : W - mmW - 10, mmY = P ? P.radar.cy * H - mmH / 2 : 96; // top-right so it doesn't overlap P2 inventory
     const mmCX = mmX + mmW / 2, mmCY = mmY + mmH / 2, mmR = mmW / 2;
     // Circular background
     const mmBg = this._h(this.add.graphics().setDepth(110));
@@ -863,12 +875,13 @@ class GameScene extends Phaser.Scene {
     mmBg.lineStyle(1.5, 0x445566, 0.9); mmBg.strokeCircle(mmCX, mmCY, mmR + 3);
     this.minimapGfx = this._h(this.add.graphics().setDepth(111));
     this.minimapDots = this._h(this.add.graphics().setDepth(112));
+    if (P) [mmBg, this.minimapGfx, this.minimapDots].forEach(o => o.setAlpha(P.radar.solid));
     this.mmBounds = { x: mmX, y: mmY, w: mmW, h: mmH };
     // Store radar geometry for boss indicator positioning
     this.radarCenter = { x: mmCX, y: mmCY, r: mmR };
-    this._h(this.add.text(mmCX, mmY - 11, 'RADAR', {
+    this._h(this.add.text(mmCX, P ? mmY + mmH + 8 : mmY - 11, 'RADAR', {
       fontFamily:'monospace', fontSize:'12px', color:'#667788',
-    }).setOrigin(0.5).setDepth(111));
+    }).setOrigin(0.5).setDepth(111).setAlpha(P ? P.radar.solid : 1));
 
     // Circular clip mask — tiles drawn outside the circle are hidden
     const _mmMaskGfx = this._h(this.add.graphics());
@@ -1288,12 +1301,14 @@ class GameScene extends Phaser.Scene {
   // non-Gunslinger holds some. A zero count is dimmed, not hidden, so the panel never jumps.
   _makeResPanel(x, y, right) {
     const SLOTS = [['wood', 'item_wood'], ['metal', 'item_metal'], ['fiber', 'item_fiber'], ['food', 'item_food'], ['carriedAmmo', 'item_ammo']];
-    const SLOT_W = 52, PAD = 8, H = 28;
-    const bg = this._h(this.add.graphics().setDepth(100));
+    const P = this.solo && CFG.W <= 640 ? PHONE1P : null; // phone, 1 player: 90% size, 45% solid (#388)
+    const k = P ? P.hudScale : 1, sol = P ? P.hudSolid : 1;
+    const SLOT_W = 52 * k, PAD = 8 * k, H = 28 * k;
+    const bg = this._h(this.add.graphics().setDepth(100).setAlpha(sol));
     const slots = SLOTS.map(([key, tex]) => ({
       key,
-      icon: this._h(this.add.image(0, 0, tex).setScale(2).setDepth(101)),
-      txt: this._h(this.add.text(0, 0, '0', { fontFamily:'monospace', fontSize:'12px', color:'#ddeecc', stroke:'#000', strokeThickness:2 }).setOrigin(0, 0.5).setDepth(101)),
+      icon: this._h(this.add.image(0, 0, tex).setScale(2 * k).setDepth(101)),
+      txt: this._h(this.add.text(0, 0, '0', { fontFamily:'monospace', fontSize:(12 * k) + 'px', color:'#ddeecc', stroke:'#000', strokeThickness:2 }).setOrigin(0, 0.5).setDepth(101)),
     }));
     let lastKey = '', shown = true;
     return {
@@ -1306,11 +1321,11 @@ class GameScene extends Phaser.Scene {
         lastKey = k;
         const n = vals[4] > 0 ? 5 : 4;
         const w = n * SLOT_W + PAD, x0 = right ? x - w : x;
-        bg.clear().fillStyle(0x000000, 0.5).fillRoundedRect(x0, y, w, H, 6);
+        bg.clear().fillStyle(0x000000, P ? 1 : 0.5).fillRoundedRect(x0, y, w, H, 6);
         slots.forEach((sl, i) => {
           const on = i < n, dim = vals[i] > 0 ? 1 : 0.4;
-          sl.icon.setVisible(on).setPosition(x0 + PAD + i * SLOT_W + 12, y + H / 2).setAlpha(dim);
-          sl.txt.setVisible(on).setPosition(x0 + PAD + i * SLOT_W + 26, y + H / 2).setText(String(vals[i])).setAlpha(dim);
+          sl.icon.setVisible(on).setPosition(x0 + PAD + i * SLOT_W + 12 * k, y + H / 2).setAlpha(dim * sol);
+          sl.txt.setVisible(on).setPosition(x0 + PAD + i * SLOT_W + 26 * k, y + H / 2).setText(String(vals[i])).setAlpha(dim * sol);
         });
       },
     };
@@ -2204,27 +2219,29 @@ class GameScene extends Phaser.Scene {
     if (!this._hintQueue || this._hintQueue.length === 0) return;
     const { text, duration, title } = this._hintQueue.shift();
     const { W } = CFG;
-    const PW = 560, PH = title ? 88 : 46, PX = (W - PW) / 2, PY = 108;
+    const P = this.solo && CFG.W <= 640 ? PHONE1P : null; // phone, 1 player: 80% size, 75% solid (#388)
+    const k = P ? P.tipScale : 1, sol = P ? P.tipSolid : 1;
+    const PW = 560 * k, PH = (title ? 88 : 46) * k, PX = (W - PW) / 2, PY = 108;
 
     const bg = this.add.graphics().setDepth(160).setAlpha(0);
-    bg.fillStyle(0x050d05, 0.88);
+    bg.fillStyle(0x050d05, P ? 1 : 0.88);
     bg.fillRoundedRect(PX, PY, PW, PH, 8);
     bg.lineStyle(2, 0x4a7a38, 0.80);
     bg.strokeRoundedRect(PX, PY, PW, PH, 8);
     this.cameras.main.ignore(bg);
 
-    const h = this.add.text(W / 2, title ? PY + 56 : PY + PH / 2, text, {
-      fontFamily:'monospace', fontSize:'15px', color:'#ccdfc8',
+    const h = this.add.text(W / 2, title ? PY + 56 * k : PY + PH / 2, text, {
+      fontFamily:'monospace', fontSize:(15 * k) + 'px', color:'#ccdfc8',
       stroke:'#000', strokeThickness:2,
-      wordWrap:{ width: PW - 32 },
+      wordWrap:{ width: PW - 32 * k },
     }).setOrigin(0.5).setDepth(161).setAlpha(0);
     this.cameras.main.ignore(h);
     h._hintText = text;
     h._isTip = !!title;
     const parts = [bg, h];
     if (title) {
-      const t = this.add.text(W / 2, PY + 16, title, {
-        fontFamily:'monospace', fontSize:'18px', color:'#aadd88',
+      const t = this.add.text(W / 2, PY + 16 * k, title, {
+        fontFamily:'monospace', fontSize:(18 * k) + 'px', color:'#aadd88',
         stroke:'#000', strokeThickness:3,
       }).setOrigin(0.5).setDepth(161).setAlpha(0);
       this.cameras.main.ignore(t);
@@ -2246,7 +2263,7 @@ class GameScene extends Phaser.Scene {
       });
     };
     this._hintHide = hide;
-    this.tweens.add({ targets:parts, alpha:1, duration:280,
+    this.tweens.add({ targets:parts, alpha:sol, duration:280,
       onComplete:() => {
         this._hintTimer = this.time.delayedCall(duration, () => { this._hintTimer = null; hide(); });
       }

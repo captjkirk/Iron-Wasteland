@@ -19,18 +19,29 @@ Object.assign(GameScene.prototype, {
     const stick = () => ({ active: false, pointerId: -1, baseX: 0, baseY: 0, knobX: 0, knobY: 0, radius: 72, vec: { x: 0, y: 0 } });
     const btn = (hx, hy, r, col, label) => ({ hx, hy, r, down: false, pid: -1, col, label });
     if (this.solo) {
-      // Layout: ATK bottom-right, ALT above ATK, USE left of ATK, BLD left of ALT, MENU top-right.
-      // The stick takes the left 45% of the screen, bottom 55%.
+      // Layout: ATK, ALT, USE, BLD in a diamond (ATK bottom, ALT right, USE left, BLD top);
+      // the stick takes the left 45% of the screen, bottom 65%. On a phone (#388) the sizes and
+      // positions are shares of the screen height, from PHONE1P.
+      const P = CFG.W <= 640 ? PHONE1P : null;
+      let hx = W * 0.12, hy = H * 0.82, hr = 55;
+      let attack = btn(W - 100, H - 100, 52, 0xff6644, '⚔ ATK');
+      let alt = btn(W - 185, H - 195, 44, 0x6699ff, '★ ALT');
+      let interact = btn(W - 195, H - 95, 40, 0x44cc66, 'E USE');
+      let build = btn(W - 282, H - 195, 40, 0xccaa33, '■ BLD');
+      let menu = btn(W - 32, 32, 28, 0x888888, '☰');
+      if (P) {
+        const r = P.btn.d * H / 2, g = P.btn.gap * r, cx = P.btn.cx * W, cy = P.btn.cy * H;
+        attack = btn(cx, cy + g, r, 0xff6644, '⚔ ATK');
+        alt = btn(cx + g, cy, r, 0x6699ff, '★ ALT');
+        interact = btn(cx - g, cy, r, 0x44cc66, 'E USE');
+        build = btn(cx, cy - g, r, 0xccaa33, '■ BLD');
+        menu = btn(P.menuBtn.cx * W, P.menuBtn.cy * H, 20, 0x888888, '☰');
+        hx = P.stick.cx * W; hy = P.stick.cy * H; hr = P.stick.d * H / 2;
+      }
       this._pads = [{
-        who: 'p1', x0: 0, x1: W, joy: stick(), hintX: W * 0.12,
+        who: 'p1', x0: 0, x1: W, joy: stick(), hintX: hx, hintY: hy, hintR: hr,
         stickZone: (px, py) => px < W * 0.45 && py > H * 0.35,
-        btns: {
-          attack:   btn(W - 100, H - 100, 52, 0xff6644, '⚔ ATK'),
-          alt:      btn(W - 185, H - 195, 44, 0x6699ff, '★ ALT'),
-          interact: btn(W - 195, H - 95,  40, 0x44cc66, 'E USE'),
-          build:    btn(W - 282, H - 195, 40, 0xccaa33, '■ BLD'),
-          menu:     btn(W - 32,  32,      28, 0x888888, '☰'),
-        },
+        btns: { attack, alt, interact, build, menu },
       }];
     } else {
       // Each half: the stick in its left 60%, bottom 55%; ATK at its bottom-right corner.
@@ -207,7 +218,7 @@ Object.assign(GameScene.prototype, {
     gfx.clear();
 
     const { H } = CFG;
-    for (const { joy, btns, hintX } of this._pads) {
+    for (const { joy, btns, hintX, hintY = H * 0.82, hintR = 55 } of this._pads) {
       if (joy.active) {
         // Base ring
         gfx.lineStyle(2, 0xffffff, 0.35);
@@ -222,14 +233,14 @@ Object.assign(GameScene.prototype, {
       } else {
         // Hint ring — very faint, shows where joystick zone is
         gfx.lineStyle(1, 0xffffff, 0.1);
-        gfx.strokeCircle(hintX, H * 0.82, 55);
+        gfx.strokeCircle(hintX, hintY, hintR);
         gfx.fillStyle(0xffffff, 0.03);
-        gfx.fillCircle(hintX, H * 0.82, 55);
+        gfx.fillCircle(hintX, hintY, hintR);
       }
 
       // Action buttons
       for (const btn of Object.values(btns)) {
-        const alpha = btn.down ? 0.75 : 0.4;
+        const alpha = btn.down ? 0.75 : (CFG.W <= 640 && this.solo ? 0.35 : 0.4);
         gfx.fillStyle(btn.col, alpha * 0.38);
         gfx.fillCircle(btn.hx, btn.hy, btn.r);
         gfx.lineStyle(2, btn.col, alpha);
