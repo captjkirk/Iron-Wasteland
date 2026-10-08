@@ -4,7 +4,8 @@
 //      Game scene, so the canvas renderer stands in), starts a solo game, waits for the world,
 //      plays PLAY_MS and fails on any console or page error. WebGL-only bugs stay invisible.
 //      Walks east for the first WALK_MS and fails unless that leaves boot prints, none on water.
-//      Fires wave 1 at the start and fails unless it is awake and closing on the player.
+//      Fires wave 1 at the start and fails unless it is awake and closing on the player, and its
+//      first group is small (night 1 comes in groups, not all at once).
 //      Also fails when textures and object canvases hold more than PIXEL_BUDGET_MB of pixels.
 //      Then spawns each boss beside the knight and fails unless its hitbox fits the drawing and
 //      mirrors, and a knight swing from 20 px outside it, left and right, deals damage and one
@@ -23,6 +24,7 @@ const PLAY_MS = 10000;
 const WALK_MS = 3000; // spent walking east before the wave check
 const PIXEL_BUDGET_MB = 64; // RGBA bytes; an iPhone tab dies well short of 1 GB in total
 const HARDCORE_MS = 5000;
+const FIRST_WAVE_MAX = 10; // night 1's first group; matches _spawnFirstWave's cap
 const ASK_MS = 10000; // a page call that takes longer means the game's main thread is stuck
 
 // page.evaluate with a deadline: Playwright waits forever on a page whose script never yields.
@@ -181,6 +183,11 @@ async function bossReach(page) {
     console.log(`in play: wave 1 spawned ${march0.spawned}, ${march0.marching} awake and marching, ` +
       `${closed} closed in by 100+ px in ${PLAY_MS / 1000} s`);
     if (!march0.marching || !closed) throw new Error('wave 1 did not march on the players (#330)');
+    // Night 1 arrives in small groups: no more than FIRST_WAVE_MAX of wave 1 awake in its first group
+    // (all 21 at once swarmed a young player). The later groups would reach the knight during the
+    // checks below, so the pacing timer is stopped.
+    await ask(page, () => { _phaserGame.scene.getScene('Game')._firstWaveTimer?.remove(); });
+    if (march0.spawned > FIRST_WAVE_MAX) throw new Error(`wave 1 sent ${march0.spawned} animals at once, over ${FIRST_WAVE_MAX}`);
     // The wave would kill a knight who stands still in about 20 s; clear it so the checks
     // below run on a living player.
     await ask(page, () => {
