@@ -5,6 +5,7 @@
 //      plays PLAY_MS and fails on any console or page error. WebGL-only bugs stay invisible.
 //      Fires wave 1 at the start and fails unless it is awake and closing on the player.
 //      Also fails when textures and object canvases hold more than PIXEL_BUDGET_MB of pixels.
+//      Then jumps to boss days 5 and 10 and fails unless each brings a boss, of two types.
 //      Then lines up three 1-HP enemies in front of the knight and fails unless one swing kills all three.
 //      Then ends the run and types a two-word name on the game over screen (#328).
 //   3. Hardcore: the same start with STATE.difficulty = 'hardcore'; fails unless timeAlive
@@ -155,6 +156,26 @@ async function pass(browser, name, url, run, opts = {}) {
     const mb = Math.round(px * 4 / 1e6);
     console.log(`in play: ${mb} MB of pixel memory (budget ${PIXEL_BUDGET_MB} MB)`);
     if (mb > PIXEL_BUDGET_MB) throw new Error(`pixel memory ${mb} MB is over the ${PIXEL_BUDGET_MB} MB budget`);
+    // Boss days (#329): the day-5 boss spawns, dies, and day 10 brings a second boss of
+    // another type. The day is set directly; the day-10 roll is forced to 100%.
+    const bosses = [];
+    for (const day of [5, 10]) {
+      await page.evaluate(day => {
+        const s = _phaserGame.scene.getScene('Game');
+        s._bossChance = 1;
+        s.dayTimer = (day - 1) * s.DAY_DUR + 1000;
+        s.p1.hp = s.p1.maxHp;
+      }, day);
+      await page.waitForFunction(() => _phaserGame.scene.getScene('Game').boss, null, { timeout: 30000 })
+        .catch(() => { throw new Error(`no boss spawned on day ${day} (bosses so far: ${bosses.join(', ') || 'none'})`); });
+      bosses.push(await page.evaluate(() => {
+        const s = _phaserGame.scene.getScene('Game'), b = s.boss;
+        s._hurtEnemy(b, 1e6);
+        return b.type;
+      }));
+    }
+    console.log(`in play: boss days 5 and 10 brought ${bosses.join(', ')}`);
+    if (bosses[0] === bosses[1]) throw new Error(`day 10 brought the same boss again (${bosses[1]})`);
     // Game over name field: Phaser preventDefaults every key any scene ever captured (WASD,
     // Space, F…) unless the field keeps its keys; a name once came out as "nKi" (#328).
     await page.evaluate(() => _phaserGame.scene.getScene('Game').triggerGameOver('Smoke run over.'));

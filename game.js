@@ -113,8 +113,10 @@
 // 4. WAVES & BOSSES  (src/waves-bosses.js)
 //    fns:  updateWaves, updateBoss, spawnBoss, _bossExecuteSpecial,
 //          _bossSmash, _bossTelegraph, _bossDist (reach to a drawn-to-fit hitbox),
-//          _debugBossFromUrl (?boss=wolf spawns a boss for testing)
-//    data: waveNum, waveTimer, boss, _bossChance, huntNextDay
+//          _debugBossFromUrl (?boss=wolf spawns a boss for testing),
+//          _pickBossType (every boss once per round, biome match first)
+//    data: waveNum, waveTimer, boss, bossSpawned (false again once the boss dies),
+//          _bossesSeen, _bossChance, huntNextDay
 //    log:  [WORLD ], [COMBAT]
 //
 // 5. PLAYER MOVEMENT & INPUT  (src/game-scene.js; getControls in src/textures.js)

@@ -47,6 +47,7 @@ the MANIFEST lists, update the MANIFEST in the same commit.
   file that loads after it, which ESLint passes. The second loads `?seed=1&renderer=canvas`
   (headless WebKit loses the WebGL context in play, so the canvas renderer stands in), starts
   a solo game, waits for the world, plays ten seconds and fails on any console or page error.
+  It then jumps to days 5 and 10 and fails unless each brings a boss, of two different types.
   Then it ends the run, types a two-word name on the game over screen and presses Enter; the
   global scoreboard is stubbed, so no smoke run posts a real score. The third starts the same
   game in Hardcore and fails unless the clock runs for five seconds; a page that stops answering
