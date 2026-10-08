@@ -2836,7 +2836,7 @@ class GameScene extends Phaser.Scene {
       const stats = RAIDER_STATS[rtype];
 
       const raider = {
-        spr, type: rtype, isRaider: true,
+        spr, type: rtype, isRaider: true, isCampRaider: true, // only these hold the camp's lock
         hp: Math.floor(stats.hp * diffScale), maxHp: Math.floor(stats.hp * diffScale),
         speed: stats.speed * Math.min(1.6, diffScale),
         dmg: Math.floor(stats.dmg * diffScale),
@@ -2848,6 +2848,7 @@ class GameScene extends Phaser.Scene {
       this.raiders.push(raider);
       this.enemies.push(raider); // raiders participate in the normal enemy array so updateEnemies handles them
     }
+    this._refreshCampLock();
   }
 
   // Periodic hunting party — spawns at a random map edge and actively seeks the

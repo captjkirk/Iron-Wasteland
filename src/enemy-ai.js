@@ -119,25 +119,15 @@ Object.assign(GameScene.prototype, {
         });
       }
     }
-    // Raider kill — check if camp cleared
+    // Raider kill — only camp raiders hold the camp's lock (#320); a hunter is logged on its own
     if (e.isRaider) {
       const _ri = this.raiders.indexOf(e); if (_ri !== -1) this.raiders.splice(_ri, 1);
-      if (this.raiders.length === 0 && this.raidCamp) {
-        const _raidDays = this.hc.raidRespawnDays;
-        this._log(`Raider camp cleared!  day=${this.dayNum}  kills=${this.kills}  raiders_return_day=${this.dayNum+_raidDays}`, 'world');
-        this.hint('Raider camp cleared! Loot cache unlocked — raiders return in ' + _raidDays + ' days…', 4500);
-        this.raidRespawnDay = this.dayNum + _raidDays;
-        if (this.raidCamp.spr && this.raidCamp.spr.active) this.raidCamp.spr.setTint(0x555555);
-        // Unlock the loot cache
-        const cache = this.raidCamp.cache;
-        if (cache && cache.locked && cache.spr.active) {
-          cache.locked = false;
-          cache.lbl.setText('LOOT CACHE').setStyle({ color: '#ccaa00', stroke: '#000000', strokeThickness: 2 });
-          // Unlock pop animation
-          this.tweens.add({ targets: cache.spr, scale: 3.3, duration: 180, yoyo: true, ease: 'Back.Out' });
-          SFX._play(660, 'triangle', 0.12, 0.3, 'rise');
-          SFX._play(880, 'triangle', 0.10, 0.25, 'rise');
-        }
+      if (e.isCampRaider) {
+        this._log(`camp raider killed  left=${this._campRaidersLeft()}  day=${this.dayNum}`, 'combat');
+        this._refreshCampLock();
+      } else {
+        const _hunters = this.raiders.filter(r => !r.isCampRaider && r.hp > 0 && !r.dying).length;
+        this._log(`hunt raider killed  hunters_left=${_hunters}  day=${this.dayNum}`, 'combat');
       }
     }
     // Boss kill — play a full death flourish: shake, scale-up tween, particle
@@ -1068,5 +1058,45 @@ Object.assign(GameScene.prototype, {
         }
       }
     });
+  },
+
+  // Living camp raiders: those spawnRaiders put at the camp (isCampRaider), not hunt-party
+  // raiders, which share this.raiders but can be anywhere on the map (#320).
+  _campRaidersLeft() {
+    return (this.raiders || []).filter(r => r.isCampRaider && r.hp > 0 && !r.dying).length;
+  },
+
+  // Locks the raider camp's loot cache while any camp raider lives and shows how many are left;
+  // unlocks it when the last one dies. Called after spawnRaiders (first visit and each return)
+  // and on each camp raider's death. An opened cache is gone, so returning raiders lock nothing.
+  _refreshCampLock() {
+    const camp = this.raidCamp;
+    if (!camp) return;
+    const cache = camp.cache, left = this._campRaidersLeft();
+    const cacheUp = cache && !cache.opened && cache.lbl && cache.lbl.active;
+    if (left > 0) {
+      camp.cleared = false;
+      if (camp.spr && camp.spr.active) camp.spr.clearTint();
+      if (cacheUp) {
+        cache.locked = true;
+        cache.lbl.setText(`\uD83D\uDD12 LOCKED \u00b7 ${left} RAIDER${left === 1 ? '' : 'S'} LEFT`)
+          .setStyle({ color: '#ff4444', stroke: '#000000', strokeThickness: 2 });
+      }
+      return;
+    }
+    if (camp.cleared) return;
+    camp.cleared = true;
+    const _raidDays = this.hc.raidRespawnDays;
+    this._log(`Raider camp cleared!  day=${this.dayNum}  kills=${this.kills}  raiders_return_day=${this.dayNum+_raidDays}`, 'world');
+    this.hint('Raider camp cleared! Loot cache unlocked — raiders return in ' + _raidDays + ' days…', 4500);
+    this.raidRespawnDay = this.dayNum + _raidDays;
+    if (camp.spr && camp.spr.active) camp.spr.setTint(0x555555);
+    if (cacheUp && cache.locked) {
+      cache.locked = false;
+      cache.lbl.setText('LOOT CACHE').setStyle({ color: '#ccaa00', stroke: '#000000', strokeThickness: 2 });
+      this.tweens.add({ targets: cache.spr, scale: 3.3, duration: 180, yoyo: true, ease: 'Back.Out' });
+      SFX._play(660, 'triangle', 0.12, 0.3, 'rise');
+      SFX._play(880, 'triangle', 0.10, 0.25, 'rise');
+    }
   },
 });
