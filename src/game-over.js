@@ -1,4 +1,33 @@
 'use strict';
+// ── FEEDBACK TO THE GLOBAL SHEET ────────────────────────────────────────────
+// A feedback message lands in the run's row (tools/scoreboard/Code.gs). The script answers HTTP 200 even
+// when it refuses a message, so only {ok:true} counts as sent. Anything else is kept in localStorage and
+// resent quietly at the next start, up to 5 tries each.
+// Every scoreboard call gives up after 8 s, so a hung script never leaves "loading\u2026" up for good.
+function _fetchJson(opts) {
+  const ac = new window.AbortController();
+  const timer = setTimeout(() => ac.abort(), 8000);
+  return fetch(CFG.SCOREBOARD_URL, { ...opts, signal: ac.signal }).then(r => r.json()).finally(() => clearTimeout(timer));
+}
+function _postFeedback(msg) {
+  return _fetchJson({ method: 'POST', body: JSON.stringify(msg) }).then(r => !!r && r.ok === true).catch(() => false);
+}
+function _queueFeedback(msg, tries) {
+  try {
+    const q = JSON.parse(localStorage.getItem('iw_pending_feedback') || '[]');
+    q.push({ msg, tries: tries || 0 });
+    localStorage.setItem('iw_pending_feedback', JSON.stringify(q.slice(-5)));
+  } catch(e) { console.warn('iw_pending_feedback save failed:', e && e.message); }
+}
+function flushPendingFeedback() {
+  if (!CFG.SCOREBOARD_URL) return;
+  let q = [];
+  try { q = JSON.parse(localStorage.getItem('iw_pending_feedback') || '[]'); localStorage.removeItem('iw_pending_feedback'); } catch(e) {}
+  if (!Array.isArray(q)) return;
+  q.forEach(it => _postFeedback(it.msg).then(ok => { if (!ok && it.tries < 4) _queueFeedback(it.msg, it.tries + 1); }));
+}
+setTimeout(flushPendingFeedback, 3000);
+
 // ── SCENE: GAME OVER ─────────────────────────────────────────
 class GameOverScene extends Phaser.Scene {
   constructor() { super('GameOver'); }
@@ -398,11 +427,28 @@ class GameOverScene extends Phaser.Scene {
     uiObjs.forEach(o => { if (o?.destroy) o.destroy(); });
 
     if (text) {
+      this._sendFeedback(text);
       if (this._dbgEntries) this._dbgEntries.push(`[FEEDBK] ${text}`);
       _qlog(`feedback: ${text.replace(/\n/g, ' ')}  score=${this._score}  day=${this.days}  kills=${this.kills}`, 'feedback');
       this._downloadFeedbackLog(text);
     }
     this._showLeaderboard(isHighScore);
+  }
+
+  // Send the comment to the run's row in the global sheet, and say how it went.
+  _sendFeedback(text) {
+    if (!CFG.SCOREBOARD_URL) return;
+    const msg = {
+      ...this._scoreBody(this._savedName || 'Player'), kind: 'feedback', comment: text,
+      platform: ('ontouchstart' in window || navigator.maxTouchPoints > 0 ? 'touch ' : 'keyboard ') + window.innerWidth + 'x' + window.innerHeight,
+    };
+    const note = this.add.text(CFG.W/2, this._postSaveY - 16, 'Sending\u2026', {
+      fontFamily:'monospace', fontSize:'11px', color:'#8899aa',
+    }).setOrigin(0.5);
+    _postFeedback(msg).then(ok => {
+      if (!ok) _queueFeedback(msg);
+      if (note.active) note.setText(ok ? 'Sent, thanks!' : "Saved, it will send when you're online").setColor(ok ? '#66ee66' : '#ddaa44');
+    });
   }
 
   _cleanupFeedback() {
@@ -541,17 +587,22 @@ class GameOverScene extends Phaser.Scene {
 
   // Global scoreboard (tools/scoreboard/Code.gs): the score, with the run's session log. The body goes as text/plain, which keeps it a
   // simple request, so the browser sends no CORS preflight (Apps Script cannot answer one).
-  _postScore(name) {
-    if (!CFG.SCOREBOARD_URL) return;
-    const body = {
+  _scoreBody(name) {
+    return {
       name: name.slice(0, 16),
       chars: this.mode === 2 ? STATE.p1CharId + '+' + STATE.p2CharId : STATE.p1CharId,
       mode: this.mode, difficulty: this.difficulty, days: this.days, kills: this.kills,
       score: this._score, version: this.version || VERSION, seed: this.seed == null ? '' : String(this.seed),
-      device: this._deviceId(), runId: this._runId, log: this._logForSheet(),
+      device: this._deviceId(), runId: this._runId,
     };
-    this._posted = fetch(CFG.SCOREBOARD_URL, { method: 'POST', body: JSON.stringify(body) })
-      .catch(e => console.warn('scoreboard post failed:', e && e.message));
+  }
+
+  _postScore(name) {
+    if (!CFG.SCOREBOARD_URL) return;
+    const body = { ...this._scoreBody(name), log: this._logForSheet() };
+    // Resolves to the script's reply, or null when the post failed; _showGlobalTop says so when it was refused.
+    this._posted = _fetchJson({ method: 'POST', body: JSON.stringify(body) })
+      .catch(e => { console.warn('scoreboard post failed:', e && e.message); return null; });
   }
 
   // A random id per device, so the script can rate-limit one device; nothing else about the player.
@@ -569,8 +620,10 @@ class GameOverScene extends Phaser.Scene {
     const head = this.add.text(x, y, 'GLOBAL TOP 10', { fontFamily:'monospace', fontSize:'10px', color:'#445566' });
     const status = this.add.text(x, y + 12, 'loading\u2026', { fontFamily:'monospace', fontSize:'10px', color:'#556677' });
     Promise.resolve(this._posted)
-      .then(() => fetch(CFG.SCOREBOARD_URL))
-      .then(r => r.json())
+      .then(reply => {
+        if (reply && reply.ok === false && head.active) head.setText('GLOBAL TOP 10  \u2022  Score not accepted').setColor('#cc8844');
+        return _fetchJson();
+      })
       .then(rows => {
         if (!head.active) return; // scene left while loading
         if (!Array.isArray(rows)) throw new Error('bad reply');
