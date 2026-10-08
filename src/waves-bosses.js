@@ -17,14 +17,21 @@ Object.assign(GameScene.prototype, {
 
     // Pick boss type based on biome spread — random for now
     const bossTypes = [
-      { key: 'boss_golem',  name: 'Iron Golem',   biome: 'waste',  hp: 600, speed: 55,  dmg: 22, armor: 4, specialType: 'slam',   specialInterval: 5000 },
-      // hitbox: texture px, facing right (x mirrors when the boss faces left); it covers the
-      // drawn body, head and legs but not the tail. shadowY/shadowW: below the paws, world px.
+      // hitbox: texture px, facing right (x mirrors when the boss faces left); it covers the drawn
+      // body and head, not the thin bits (the wolf's tail, the spider's outer legs, the troll's horn
+      // and spike tips). Redraw a boss texture, refit its box: `node tools/render-texture.js <key>`.
+      // shadowY/shadowW: centre below the sprite centre and width of the shadow, world px; it sits
+      // under the feet.
+      { key: 'boss_golem',  name: 'Iron Golem',   biome: 'waste',  hp: 600, speed: 55,  dmg: 22, armor: 4, specialType: 'slam',   specialInterval: 5000,
+        hitbox: { x: 2, y: 4, w: 112, h: 118 }, shadowY: 86, shadowW: 160 },
       { key: 'boss_wolf',   name: 'Alpha Wolf',    biome: 'grass',  hp: 420, speed: 100, dmg: 16, armor: 1, specialType: 'charge', specialInterval: 3500,
         hitbox: { x: 30, y: 42, w: 150, h: 88 }, shadowY: 92, shadowW: 230 },
-      { key: 'boss_spider', name: 'Spider Queen',  biome: 'ruins',  hp: 480, speed: 85,  dmg: 18, armor: 2, specialType: 'spray',  specialInterval: 4200 },
-      { key: 'boss_troll',  name: 'Frost Troll',   biome: 'tundra', hp: 700, speed: 65,  dmg: 28, armor: 5, specialType: 'slam',   specialInterval: 5800 },
-      { key: 'boss_hydra',  name: 'Bog Hydra',     biome: 'swamp',  hp: 540, speed: 65,  dmg: 20, armor: 2, specialType: 'spray',  specialInterval: 4800 },
+      { key: 'boss_spider', name: 'Spider Queen',  biome: 'ruins',  hp: 480, speed: 85,  dmg: 18, armor: 2, specialType: 'spray',  specialInterval: 4200,
+        hitbox: { x: 20, y: 18, w: 74, h: 85 }, shadowY: 66, shadowW: 150 },
+      { key: 'boss_troll',  name: 'Frost Troll',   biome: 'tundra', hp: 700, speed: 65,  dmg: 28, armor: 5, specialType: 'slam',   specialInterval: 5800,
+        hitbox: { x: 1, y: 10, w: 113, h: 112 }, shadowY: 86, shadowW: 160 },
+      { key: 'boss_hydra',  name: 'Bog Hydra',     biome: 'swamp',  hp: 540, speed: 65,  dmg: 20, armor: 2, specialType: 'spray',  specialInterval: 4800,
+        hitbox: { x: 5, y: 2, w: 104, h: 118 }, shadowY: 83, shadowW: 150 },
     ];
     // Biome-anchored pick — prefer a boss whose biome matches where the
     // players currently are, among the bosses this run has not met yet (#329).
@@ -43,13 +50,13 @@ Object.assign(GameScene.prototype, {
     this._log(`spawnBoss: picked ${bt.name} at (${bx|0},${by|0})`, 'world');
     // Boss sprite: 1.5× on 112×120 textures ≈ 168×180 in-game (same pixel density as the players).
     const BOSS_SCALE = 1.5;
-    // The 'boss_shadow' texture was not redrawn, so it keeps the old 3× base.
-    const BOSS_SHADOW_SCALE_X = 2.7, BOSS_SHADOW_SCALE_Y = 2.4;
+    // The 'boss_shadow' texture (56 px wide) was not redrawn: height keeps the old 3× base,
+    // width comes from each boss's shadowW.
+    const BOSS_SHADOW_SCALE_Y = 2.4;
     const spr = this.physics.add.image(bx, by, bt.key).setScale(BOSS_SCALE).setDepth(12);
     spr.setCollideWorldBounds(true);
     const hb = bt.hitbox;
-    if (hb) spr.body.setSize(hb.w, hb.h, false).setOffset(hb.x, hb.y);
-    else spr.body.setSize(56, 56);
+    spr.body.setSize(hb.w, hb.h, false).setOffset(hb.x, hb.y);
     if (this.hudCam) this.hudCam.ignore(spr);
     this._log('spawnBoss: sprite created; adding collider', 'world');
     this.physics.add.collider(spr, this.obstacles, (bSpr, obstacle) => {
@@ -72,9 +79,9 @@ Object.assign(GameScene.prototype, {
     this._log('spawnBoss: collider added', 'world');
 
     // Shadow — tracks boss every frame, sits below the sprite so terrain still reads.
-    const shadowY = bt.shadowY || 36;
+    const shadowY = bt.shadowY;
     const shadow = this.add.image(bx, by + shadowY, 'boss_shadow')
-      .setScale(bt.shadowW ? bt.shadowW / 56 : BOSS_SHADOW_SCALE_X, BOSS_SHADOW_SCALE_Y)
+      .setScale(bt.shadowW / 56, BOSS_SHADOW_SCALE_Y)
       .setDepth(3).setAlpha(0.75);
     if (this.hudCam) this.hudCam.ignore(shadow);
 
@@ -105,7 +112,7 @@ Object.assign(GameScene.prototype, {
       attackTimer: 0, atkInterval: 1900,
       aggroRange: 99999, attackRange: 70, wanderTimer: 0, sizeMult: 1,
       hpBg, hpBar,
-      shadow, shadowY, hitbox: hb || null, baseScale: BOSS_SCALE, _hitTweenUntil: 0,
+      shadow, shadowY, hitbox: hb, baseScale: BOSS_SCALE, _hitTweenUntil: 0,
       specialType: bt.specialType, specialInterval: bt.specialInterval,
       specialTimer: bt.specialInterval * 0.6, // first special fires sooner
       _bossState: 'chase', _telegraphTimer: 0, _telegraphGfx: null,
@@ -249,9 +256,9 @@ Object.assign(GameScene.prototype, {
   },
 
   // Reach distance from a boss to (x, y). Every boss once had the same 84 px square body, and
-  // the bite, charge, slam and player-melee ranges were tuned as centre distances for it. A boss
-  // with a drawn-to-fit hitbox measures to the edge of that hitbox plus the old half-width (42),
-  // so the same ranges reach from its whole body, nose to rump.
+  // the bite, charge, slam and player-melee ranges were tuned as centre distances for it. Each
+  // boss now has a drawn-to-fit hitbox (#312, #317) and measures to the edge of that hitbox plus
+  // the old half-width (42), so the same ranges reach from its whole body, not just its middle.
   _bossDist(b, x, y) {
     const body = b.hitbox && b.spr.body;
     if (!body) return Phaser.Math.Distance.Between(b.spr.x, b.spr.y, x, y);
@@ -297,7 +304,7 @@ Object.assign(GameScene.prototype, {
     // ── Animation: shadow, idle breathing, walk bob ─────────────
     // Shadow tracks the boss's true world position (not the bobbed sprite y).
     if (b.shadow && b.shadow.active) {
-      b.shadow.setPosition(b.spr.x, b.spr.y + (b.shadowY || 36));
+      b.shadow.setPosition(b.spr.x, b.spr.y + b.shadowY);
     }
     // Idle breath — gentle scale pulse. Walk bob — vertical sprite offset when moving.
     // Skipped while hit-squash tween is overriding scale (b._hitTweenUntil > now).

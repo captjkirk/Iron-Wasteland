@@ -1310,8 +1310,9 @@ function buildTextures(scene) {
 
   // Boss sprites — one per biome boss type, drawn at 112×120-ish (twice the
   // old 56×60) so their pixels match the player sprites. BOSS_SCALE in
-  // game-scene.js is 1.5 (was 3), so the in-game footprint is unchanged.
-  // No silhouette outline here: shading ramps carry the form.
+  // spawnBoss is 1.5 (was 3), so the in-game footprint is unchanged.
+  // No silhouette outline here: shading ramps carry the form. Each boss's hitbox in
+  // spawnBoss is fitted to its drawing: refit it when a boss is redrawn.
 
   // Iron Golem (wasteland) — hulking, cracked, battle-damaged colossus
   g.clear();
