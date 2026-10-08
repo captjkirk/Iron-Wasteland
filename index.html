@@ -38,6 +38,8 @@
       align-items: center;
       justify-content: center;
       background: #0a0a0a;
+      /* Keep the picture inside the notch and rounded corners of a phone (#385). */
+      padding: env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left);
     }
 
     canvas {

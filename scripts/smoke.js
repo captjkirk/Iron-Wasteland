@@ -137,7 +137,7 @@ async function bossReach(page) {
   // Character screen at both layouts: 1280x720, and the 640x360 phone layout (a touch device
   // whose short side is under 600 px). Turns the wheel both ways and fails on any page error.
   for (const [name, opts] of [['character screen 1280x720', {}],
-    ['character screen 640x360', { viewport: { width: 740, height: 390 }, hasTouch: true }]]) {
+    ['character screen 640x360', { viewport: { width: 640, height: 360 }, hasTouch: true }]]) {
     failures += await pass(browser, name, base, async page => {
       await page.evaluate(() => { STATE.mode = 1; _phaserGame.scene.start('CharSelect'); });
       await page.waitForFunction(() => _phaserGame.scene.isActive('CharSelect'), null, { timeout: 10000 });
@@ -310,7 +310,7 @@ async function bossReach(page) {
   // controls and panels and fails when the radar, the four buttons or the stick differ from the
   // agreed sizes by more than 2% of the screen height, or when any circle or box overlaps another
   // or runs off the screen. The stick ring is left out: it only appears where the thumb lands.
-  for (const [name, vp] of [['phone layout 640x360', { width: 740, height: 390 }], ['phone layout 874x402', { width: 874, height: 402 }], ['iPad layout 1180x820', { width: 1180, height: 820 }]]) {
+  for (const [name, vp] of [['phone layout 640x360', { width: 640, height: 360 }], ['phone layout 874x402', { width: 874, height: 402 }], ['iPad layout 1180x820', { width: 1180, height: 820 }]]) {
     failures += await pass(browser, name, base + '?seed=1&renderer=canvas', async page => {
       await page.evaluate(() => {
         saveSettings({ inputMode: 'touch', tutorial: false });
@@ -320,7 +320,8 @@ async function bossReach(page) {
       await page.waitForTimeout(1500);
       const err = await page.evaluate(() => {
         const g = _phaserGame.scene.getScene('Game'), { W, H } = CFG, tol = 0.02 * H;
-                const b = g._pads[0].btns, items = [], bad = [];
+        if (_isMobile && Math.abs(W / H - innerWidth / innerHeight) > 0.01) return `canvas is ${W}x${H}, not the shape of the screen`;
+        const b = g._pads[0].btns, items = [], bad = [];
         const diam = (what, got, share) => { if (Math.abs(got - share * H) > tol) bad.push(`${what} is ${Math.round(got)} px across, wanted ${Math.round(share * H)}`); };
         const circle = (n, c) => items.push({ n, circle: true, ...c });
         const rd = g.radarCenter; diam('radar', rd.r * 2, PHONE1P.radar.d); circle('radar', { x: rd.x, y: rd.y, r: rd.r });
@@ -344,6 +345,32 @@ async function bossReach(page) {
     }, { viewport: vp, hasTouch: true });
   }
 
+  // Canvas shape (#385): the canvas widens to the screen shape between 16:9 and 2.4:1 and keeps its
+  // height; 16:9 and narrower screens stay exactly as before. At 874x402 (a phone) it fills the
+  // viewport with no bars, and every text on the mode, character and settings screens lies inside it.
+  for (const [vw, vh, touch, wantW, wantH] of [[874, 402, true, 0, 360], [640, 360, true, 640, 360], [1280, 720, false, 1280, 720],
+    [1000, 700, false, 1280, 720], [2400, 720, false, 1728, 720]]) {
+    failures += await pass(browser, `canvas shape ${vw}x${vh}`, base, async page => {
+      const got = await page.evaluate(() => { const c = _phaserGame.canvas.getBoundingClientRect(); return { W: CFG.W, H: CFG.H, cw: c.width, ch: c.height }; });
+      if (got.H !== wantH || (wantW && got.W !== wantW)) throw new Error(`canvas is ${got.W}x${got.H}, wanted ${wantW || 'any'}x${wantH}`);
+      if (!wantW) {
+        if (Math.abs(got.W / got.H - vw / vh) > 0.01) throw new Error(`canvas shape ${got.W}x${got.H} does not match the ${vw}x${vh} screen`);
+        if (Math.abs(got.cw - vw) > 1 || Math.abs(got.ch - vh) > 1) throw new Error(`canvas fills ${Math.round(got.cw)}x${Math.round(got.ch)} of the ${vw}x${vh} screen: black bars`);
+        for (const key of ['ModeSelect', 'CharSelect', 'Settings']) {
+          const off = await page.evaluate(async key => {
+            STATE.mode = 1; _phaserGame.scene.start(key);
+            await new Promise(r => setTimeout(r, 800));
+            const sc = _phaserGame.scene.getScene(key), { W, H } = CFG, bad = [];
+            for (const o of sc.children.list) if (o.type === 'Text' && o.visible && o.text) {
+              const b = o.getBounds(); if (b.x < -1 || b.y < -1 || b.right > W + 1 || b.bottom > H + 1) bad.push(o.text.slice(0, 24));
+            }
+            return bad;
+          }, key);
+          if (off.length) throw new Error(`${key}: text outside the canvas: ${off.join(' | ')}`);
+        }
+      }
+    }, { viewport: { width: vw, height: vh }, hasTouch: touch });
+  }
   // Touch USE button (#397): on a phone the keyboard key is never pressed, so the relic hold must
   // read the USE button. Player 1 stands next to a relic and holds it; fails unless the hold starts
   // and, 3.5 s later, the relic is picked up.
