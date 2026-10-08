@@ -17,7 +17,7 @@ const ctx = {
     appendRow: r => rows.push(r),
     getDataRange: () => ({ getValues: () => rows.map(r => r.slice()) }),
   }) }) },
-  CacheService: { getScriptCache: () => ({ get: k => cache.get(k) || null, put: k => cache.set(k, '1') }) },
+  CacheService: { getScriptCache: () => ({ get: k => cache.get(k) || null, put: (k, v) => cache.set(k, String(v)) }) },
   LockService: { getScriptLock: () => ({ waitLock() {}, releaseLock() {} }) },
   ContentService: { MimeType: { JSON: 'json' }, createTextOutput: s => ({ setMimeType: () => JSON.parse(s) }) },
   Utilities: { formatDate: d => d.toISOString().slice(0, 10) },
@@ -31,11 +31,11 @@ const post = d => ctx.doPost({ postData: { contents: typeof d === 'string' ? d :
 
 assert.deepStrictEqual(post(good), { ok: true });
 assert.strictEqual(rows.length, 3, 'header row, the old row, and one score');
-assert.deepStrictEqual([...rows[0]], [...OLD, 'runId', 'log'], 'the old header gained the new columns');
+assert.deepStrictEqual([...rows[0]], [...OLD, 'runId', 'log', 'feedback', 'platform'], 'the old header gained the new columns');
 assert.strictEqual(rows[1][0], 'Old', 'the old row stayed');
-assert.deepStrictEqual([...rows[2].slice(11)], ['', ''], 'a post without runId or log still lands');
+assert.deepStrictEqual([...rows[2].slice(11)], ['', '', '', ''], 'a post without runId or log still lands');
 assert.deepStrictEqual(post({ ...good, device: 'withlog0001', runId: '1759000000000:abc123', log: 'IRON WASTELAND SESSION LOG\nx' }), { ok: true });
-assert.deepStrictEqual([...rows[3].slice(11)], ['1759000000000:abc123', 'IRON WASTELAND SESSION LOG\nx']);
+assert.deepStrictEqual([...rows[3].slice(11)], ['1759000000000:abc123', 'IRON WASTELAND SESSION LOG\nx', '', '']);
 rows.splice(3, 1);
 assert.strictEqual(post(good).error, 'too soon');
 assert.strictEqual(post('not json').ok, false);
@@ -54,6 +54,33 @@ assert.strictEqual(rows.length, 3, 'no bad score was written');
 post({ ...good, name: '=HYPERLINK("x")', log: '=1+1', device: 'formula0001' });
 assert.strictEqual(rows[3][0], '\'=HYPERLINK("x")', 'a formula name is stored as text');
 assert.strictEqual(rows[3][12], '\'=1+1', 'a formula log is stored as text');
+// Feedback: lands in the run's own row; creates the row when the score is not there yet; capped, limited, validated.
+const saved = rows.map(r => r.slice()); // the feedback cases add rows; put the sheet back after
+rows.splice(3, 1);
+const fb = (o) => post({ ...good, kind: 'feedback', platform: 'touch 1024x768', ...o });
+assert.deepStrictEqual(post({ ...good, device: 'fbdevice001', runId: 'run:1' }), { ok: true });
+assert.deepStrictEqual(fb({ device: 'fbdevice001', runId: 'run:1', comment: 'too hard' }), { ok: true });
+assert.strictEqual(rows.length, 4, 'feedback for a saved run adds no row');
+assert.deepStrictEqual([...rows[3].slice(11)], ['run:1', '', 'too hard', 'touch 1024x768']);
+assert.deepStrictEqual(fb({ device: 'fbdevice002', runId: 'run:2', comment: '=1+1' }), { ok: true });
+assert.strictEqual(rows.length, 5, 'feedback before its score creates the row');
+assert.strictEqual(rows[4][13], "'=1+1", 'a formula comment is stored as text');
+assert.deepStrictEqual(post({ ...good, device: 'fbdevice002', runId: 'run:2', log: 'L' }), { ok: true });
+assert.strictEqual(rows.length, 5, 'the late score fills the feedback row, no second row');
+assert.deepStrictEqual([rows[4][7], rows[4][12], rows[4][13]], [900, 'L', "'=1+1"], 'score filled in, feedback kept');
+assert.deepStrictEqual(fb({ device: 'fbdevice003', runId: 'run:3', comment: 'x'.repeat(2500) }), { ok: true });
+assert.strictEqual(rows[5][13].length, 2000, 'the comment is capped at 2,000 characters');
+for (let i = 0; i < 2; i++) assert.strictEqual(fb({ device: 'fbdevice003', runId: 'run:3', comment: 'again' + i }).ok, true);
+assert.strictEqual(fb({ device: 'fbdevice003', runId: 'run:3', comment: 'fourth' }).error, 'too many');
+const before = rows.length;
+for (const b of [{ comment: '' }, { comment: 5 }, { runId: '' }, { name: '' }]) {
+  assert.strictEqual(fb({ device: 'fbdevice004', runId: 'run:4', comment: 'ok', ...b }).ok, false, JSON.stringify(b));
+}
+assert.strictEqual(rows.length, before, 'no bad feedback was written');
+fb({ device: 'fbdevice004', runId: 'run:4', comment: 'ok', platform: '<b>' });
+assert.strictEqual(rows[rows.length - 1][14], '', 'a bad platform is dropped, the comment still lands');
+rows.length = 0;
+rows.push(...saved);
 for (let i = 0; i < 12; i++) post({ ...good, name: 'P' + i, score: i * 100, device: 'dev0000' + String(i).padStart(4, '0') });
 const top = ctx.doGet();
 assert.strictEqual(top.length, 10);

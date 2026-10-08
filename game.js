@@ -228,6 +228,9 @@
 //     scores: _saveScore is the one save path (localStorage 'iw_scores', plus _postScore to the
 //             global scoreboard, tools/scoreboard/Code.gs, with runId and the session log trimmed
 //             to one cell by _logForSheet; _logLines is the log header); _showGlobalTop reads its top 10.
+//     feedback: _sendFeedback posts the comment to the run's row (_scoreBody is the shared message);
+//             a send without {ok:true} is queued by _queueFeedback in localStorage 'iw_pending_feedback'
+//             and resent by flushPendingFeedback at the next start.
 //     cfg:  SCOREBOARD_URL (empty: no network call)
 //     win condition: relicsDeposited === 5 (deposited at altar)
 //
