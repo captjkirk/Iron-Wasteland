@@ -122,7 +122,7 @@ Object.assign(GameScene.prototype, {
 
     // Screen-edge indicator \u2014 pulsing arrow visible on HUD when boss is off-screen
     const _bossInd = this.add.graphics().setDepth(200);
-    this.cameras.main.ignore(_bossInd); // HUD-only: main camera skips it, hudCam renders it
+    this._ignoreInWorldCams(_bossInd); // HUD-only: main camera skips it, hudCam renders it
     this.boss._indicator = _bossInd;
 
     // Announce arrival
@@ -142,7 +142,7 @@ Object.assign(GameScene.prototype, {
     this._log('spawnBoss: music scheduled', 'world');
 
     // Camera shake
-    this.cameras.main.shake(800, 0.012);
+    this._camFx('shake', [800, 0.012]);
     this._log('spawnBoss: shake scheduled', 'world');
 
     // Schedule entourage — 4-8 regular enemies nearby, spaced across frames so the
@@ -247,7 +247,7 @@ Object.assign(GameScene.prototype, {
         });
       }
 
-      this.cameras.main.shake(180, 0.009);
+      this._camFx('shake', [180, 0.009]);
       this._log('boss smash  type=' + (this.boss?.type || '?') + '  tile=(' + tx + ',' + ty + ')', 'world');
       obstacle.destroy();
     } catch (e) {
@@ -507,7 +507,7 @@ Object.assign(GameScene.prototype, {
           b._howlTimer = 12000;
           this.hint('\u2620 Alpha Wolf HOWLS! Wolves incoming!', 2000, { urgent: true });
           SFX._play(180, 'sawtooth', 0.2, 0.65, 'drop');
-          this.cameras.main.shake(400, 0.007);
+          this._camFx('shake', [400, 0.007]);
           const wW = CFG.MAP_W * CFG.TILE, wH = CFG.MAP_H * CFG.TILE;
           for (let i = 0; i < 2; i++) {
             const ang = Math.random() * Math.PI * 2;
@@ -544,7 +544,7 @@ Object.assign(GameScene.prototype, {
             SFX.playerHurt();
             this._floatDamage(nearest.spr.x, nearest.spr.y - 18, b.dmg);
             nearest.spr.setTint(0xff0000);
-            this.cameras.main.shake(300, 0.008);
+            this._camFx('shake', [300, 0.008]);
             this.time.delayedCall(200, () => {
               if (!nearest.spr?.active) return;
               if (nearest._frostSlowed) nearest.spr.setTint(0x88ccff);
@@ -665,7 +665,7 @@ Object.assign(GameScene.prototype, {
 
     if (b.specialType === 'slam') {
       // ── Ground Slam: AoE damage within 130px, big shake ──────
-      this.cameras.main.shake(500, 0.02);
+      this._camFx('shake', [500, 0.02]);
       SFX._play(55, 'sawtooth', 0.45, 0.55, 'drop');
       // Impact ring flash
       const ring = this.add.graphics().setDepth(20);
@@ -707,7 +707,7 @@ Object.assign(GameScene.prototype, {
             SFX.playerHurt();
             this._floatDamage(p.spr.x, p.spr.y - 18, chargeDmg);
             p.spr.setTint(0xff8800);
-            this.cameras.main.shake(250, 0.01);
+            this._camFx('shake', [250, 0.01]);
             this.time.delayedCall(200, () => {
               if (!p.spr?.active) return;
               if (p._frostSlowed) p.spr.setTint(0x88ccff);

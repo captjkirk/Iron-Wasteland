@@ -111,6 +111,9 @@ class GameScene extends Phaser.Scene {
       resourceDropMult: 1.0, rareDropsBossOnly: false, fogRevealMult: 1.0, minimapDefaultOff: false,
     };
     this.isOver      = false;
+    // Face-to-face iPad: 2 players on touch, tablet-sized screen (#387). _isMobile is read once at load.
+    this._split = !this.solo && !_isMobile && activeInputMode() === 'touch';
+    this.cam2 = null;
     this.timeAlive   = 0;
     this.barrackOpen = false;
     this.barrackOwner = null;
@@ -124,7 +127,7 @@ class GameScene extends Phaser.Scene {
     // Two-camera tracking lists
     this._wo = []; this._ho = [];
     this._w = o => { this._wo.push(o); return o; };
-    this._h = o => { this._ho.push(o); return o; };
+    this._h = o => { this._ho.push(o); if (this.hudCam) this._ignoreInWorldCams(o); return o; };
 
     // Ambient grass sway — 3 staggered phase groups, updated only when frame changes
     this._grassGroups = [[], [], []];
@@ -439,6 +442,8 @@ class GameScene extends Phaser.Scene {
             if (this.solo) {
               this.cameras.main.startFollow(this.p1.spr, true, 0.1, 0.1);
               this.cameras.main.setZoom(CFG.CAM_ZOOM_MAX);
+            } else if (this._split) {
+              this._initSplitCams();
             } else {
               this.cameras.main.setZoom(0.8);
               this.cameras.main.centerOn(cx, cy);
@@ -458,7 +463,7 @@ class GameScene extends Phaser.Scene {
 
               // Set up HUD camera (fixed zoom=1, no scroll)
               this.hudCam = this.cameras.add(0, 0, CFG.W, CFG.H).setZoom(1).setName('hud');
-              this.cameras.main.ignore(this._ho);
+              this._worldCams().forEach(c => c.ignore(this._ho));
               this.hudCam.ignore(this._wo);
               this.hudCam.ignore(this.obstacles.getChildren());
 
@@ -488,7 +493,7 @@ class GameScene extends Phaser.Scene {
               // ── Stage 5 (t≈144 ms): finalize ─────────────
               this.time.delayedCall(16, () => {
                 _destroyBar();
-                this.cameras.main.fadeIn(600, 0, 0, 0);
+                this._camFx('fadeIn', [600, 0, 0, 0]);
 
                 // Opening hints (delayed to appear after the startup controls popup fades)
                 const modeNote = this.hardcore ? '\u2620 HARDCORE \u2014 death is permanent!' : '\u2665 SURVIVAL mode';
@@ -666,7 +671,6 @@ class GameScene extends Phaser.Scene {
     if (this._fogFrame % CFG.FOG_UPDATE_INTERVAL !== 0) return;
 
     const TILE = CFG.TILE;
-    const cam = this.cameras.main;
 
     // Reveal around players (radius-bounded, wall-blocked) — skip the reveal pass
     // entirely if neither player has moved tiles since the last update. This is
@@ -698,8 +702,9 @@ class GameScene extends Phaser.Scene {
 
     // Paint the viewport's tiles into the fog texture: unexplored = dark,
     // explored-but-not-in-LOS = dim, in-LOS = clear.
-    const vx = cam.worldView.x, vy = cam.worldView.y;
-    const vw = cam.worldView.width, vh = cam.worldView.height;
+    for (const wc of this._worldCams()) {
+    const wr = this._worldRect(wc);
+    const vx = wr.x, vy = wr.y, vw = wr.width, vh = wr.height;
     const startTX = Math.max(0, Math.floor(vx / TILE) - 3);
     const startTY = Math.max(0, Math.floor(vy / TILE) - 3);
     const endTX = Math.min(CFG.MAP_W - 1, Math.ceil((vx + vw) / TILE) + 3);
@@ -729,6 +734,7 @@ class GameScene extends Phaser.Scene {
       d[(y * w + x) * 4 + 3] = sum / 5;
     }
     ctx.putImageData(img, startTX, startTY);
+    }
     this._fogTex.refresh();
     // pixelArt mode re-uploads canvases with NEAREST filtering; set LINEAR after every refresh.
     this._fogTex.setFilter(Phaser.Textures.FilterMode.LINEAR);
@@ -1179,7 +1185,7 @@ class GameScene extends Phaser.Scene {
       this._h(ic);
       // If hudCam already exists (late creation after barrack swap), update ignore lists
       if (this.hudCam) {
-        this.cameras.main.ignore(ic);
+        this._ignoreInWorldCams(ic);
       }
       icons.push(ic);
     }
@@ -1193,6 +1199,7 @@ class GameScene extends Phaser.Scene {
     const g = this.threatGfx;
     if (!g || !g.active) return;
     g.clear();
+    if (this._split) return; // ponytail: arrows are drawn for one camera; slice 2 (#389) does one per half
     if (this.isOver || !this.enemies || this.enemies.length === 0) return;
 
     const cam = this.cameras.main;
@@ -1467,8 +1474,8 @@ class GameScene extends Phaser.Scene {
         SFX._play(200, 'sawtooth', 0.25, 0.35, 'drop');
         SFX._play(140, 'triangle', 0.20, 0.50, 'drop');
       }
-      this.cameras.main.flash(260, 90, 10, 10, true);
-      this.cameras.main.shake(200, 0.004);
+      this._camFx('flash', [260, 90, 10, 10, true]);
+      this._camFx('shake', [200, 0.004]);
     } catch(e) {}
     player.downTimer = CFG.DOWN_TIME;
     player.spr.setTint(0xaa0000);
@@ -1630,7 +1637,7 @@ class GameScene extends Phaser.Scene {
     if (this.p2 && this.p2.spr && this.p2.spr.body) this.p2.spr.setVelocity(0, 0);
 
     Music.stop();
-    this.cameras.main.fadeOut(800, 0, 0, 0);
+    this._camFx('fadeOut', [800, 0, 0, 0]);
     this.time.delayedCall(900, () => {
       this.scene.start('GameOver', {
         reason,
@@ -1664,7 +1671,7 @@ class GameScene extends Phaser.Scene {
     if (this.p1 && this.p1.spr && this.p1.spr.body) this.p1.spr.setVelocity(0, 0);
     if (this.p2 && this.p2.spr && this.p2.spr.body) this.p2.spr.setVelocity(0, 0);
     Music.stop();
-    this.cameras.main.fadeOut(800, 0, 0, 0);
+    this._camFx('fadeOut', [800, 0, 0, 0]);
     this.time.delayedCall(900, () => {
       this.scene.start('GameOver', {
         won: true,
@@ -1751,7 +1758,7 @@ class GameScene extends Phaser.Scene {
       this._log('controls: SETTINGS button pressed – launching Settings scene', 'player');
       this.ctrlObjs.forEach(o => o.setVisible(false));
       this.controlsVis = false;
-      this.cameras.main.fadeOut(200, 0, 0, 0);
+      this._camFx('fadeOut', [200, 0, 0, 0]);
       this.time.delayedCall(200, () => {
         this.scene.pause();
         this.scene.launch('Settings', { returnTo: 'Game' });
@@ -2004,7 +2011,7 @@ class GameScene extends Phaser.Scene {
         }
         if (carrier) _e.target = carrier;
       }
-      this.cameras.main.shake(700, 0.015);
+      this._camFx('shake', [700, 0.015]);
       this._showRelicHint('Every living thing\nknows where you are.\nRun.');
     }
   }
@@ -2025,7 +2032,7 @@ class GameScene extends Phaser.Scene {
     const tints = [0xffffff, 0xddaaff, 0xbb66ff, 0x9944dd, 0x7722cc, 0x5500aa];
     if (this.altarPos?.spr?.active) this.altarPos.spr.setTint(tints[Math.min(dep, 5)]);
 
-    this.cameras.main.shake(200 + dep * 40, 0.006 + dep * 0.002);
+    this._camFx('shake', [200 + dep * 40, 0.006 + dep * 0.002]);
     this._floatPickup(this.altarPos.x, this.altarPos.y - 10, dep + '/5 Relics Deposited!');
     this._log(`Relic deposited  deposited=${dep}/5  diffMult=${this._diffMult().toFixed(2)}x`, 'world');
     this._hudDirty = true;
@@ -2237,14 +2244,14 @@ class GameScene extends Phaser.Scene {
     bg.fillRoundedRect(PX, PY, PW, PH, 8);
     bg.lineStyle(2, 0x4a7a38, 0.80);
     bg.strokeRoundedRect(PX, PY, PW, PH, 8);
-    this.cameras.main.ignore(bg);
+    this._ignoreInWorldCams(bg);
 
     const h = this.add.text(W / 2, title ? PY + 56 * k : PY + PH / 2, text, {
       fontFamily:'monospace', fontSize:(15 * k) + 'px', color:'#ccdfc8',
       stroke:'#000', strokeThickness:2,
       wordWrap:{ width: PW - 32 * k },
     }).setOrigin(0.5).setDepth(161).setAlpha(0);
-    this.cameras.main.ignore(h);
+    this._ignoreInWorldCams(h);
     h._hintText = text;
     h._isTip = !!title;
     const parts = [bg, h];
@@ -2253,7 +2260,7 @@ class GameScene extends Phaser.Scene {
         fontFamily:'monospace', fontSize:(18 * k) + 'px', color:'#aadd88',
         stroke:'#000', strokeThickness:3,
       }).setOrigin(0.5).setDepth(161).setAlpha(0);
-      this.cameras.main.ignore(t);
+      this._ignoreInWorldCams(t);
       parts.push(t);
     }
     this._activeHint = h;
@@ -2293,7 +2300,7 @@ class GameScene extends Phaser.Scene {
         fontFamily:'monospace', fontSize:'15px', color:'#ffffff',
         stroke:'#000', strokeThickness:3, backgroundColor:'#000000bb', padding:{x:14,y:7},
       }).setOrigin(0.5).setDepth(158).setAlpha(1);
-      this.cameras.main.ignore(this._statusTxt);
+      this._ignoreInWorldCams(this._statusTxt);
     }
     this._statusTimer = this.time.delayedCall(duration || 1500, () => {
       this._statusTimer = null;
@@ -3287,8 +3294,33 @@ class GameScene extends Phaser.Scene {
     if (this.p2) sync(this.p2);
   }
 
+  // World cameras: just the main one, or P1's and P2's in the face-to-face split (#387).
+  _worldCams() { return this.cam2 ? [this.cameras.main, this.cam2] : [this.cameras.main]; }
+  _ignoreInWorldCams(o) { for (const c of this._worldCams()) c.ignore(o); }
+  _camFx(fn, args) { for (const c of this._worldCams()) c[fn](...args); }
+
+  // Face-to-face split: the iPad lies flat with a player at each short end. P1 is the left half,
+  // P2 the right half, a strip between for the shared items (slice 2). Each half is turned a quarter
+  // turn so its world reads upright from its player's end: P1's view clockwise, P2's anticlockwise.
+  _initSplitCams() {
+    const { W, H } = CFG, halfW = (W - CFG.SPLIT_STRIP) / 2;
+    const p1 = this.cameras.main.setViewport(0, 0, halfW, H).setZoom(CFG.SPLIT_ZOOM).setRotation(Math.PI / 2);
+    p1.startFollow(this.p1.spr, true, 0.1, 0.1);
+    this.cam2 = this.cameras.add(W - halfW, 0, halfW, H).setName('p2').setZoom(CFG.SPLIT_ZOOM).setRotation(-Math.PI / 2);
+    this.cam2.startFollow(this.p2.spr, true, 0.1, 0.1);
+  }
+
+  // The world rectangle a camera shows. Phaser's worldView ignores rotation, so in the split
+  // (quarter-turned cameras) its width and height are swapped.
+  _worldRect(c) {
+    const v = c.worldView;
+    if (!this._split) return v;
+    const x = v.centerX - v.height / 2, y = v.centerY - v.width / 2;
+    return { x, y, width: v.height, height: v.width, right: x + v.height, bottom: y + v.width };
+  }
+
   updateCamera() {
-    if (this.solo) return;
+    if (this.solo || this._split) return;
     const cam = this.cameras.main;
     const a = this.p1.spr, b = this.p2.spr;
     const midX=(a.x+b.x)/2, midY=(a.y+b.y)/2;
@@ -4260,7 +4292,7 @@ class GameScene extends Phaser.Scene {
       onComplete: () => { if (cache.spr.active) cache.spr.destroy(); if (cache.lbl.active) cache.lbl.destroy(); }
     });
     SFX._play(440, 'triangle', 0.15, 0.35);
-    this.cameras.main.shake(160, 0.006);
+    this._camFx('shake', [160, 0.006]);
     this.dropResource(cache.x, cache.y, 'raid_cache');
     this.hint('Raider cache opened! Supplies recovered.', 3000);
   }

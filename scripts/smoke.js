@@ -288,31 +288,62 @@ async function bossReach(page) {
     if (!(ran >= 1)) throw new Error(`timeAlive advanced only ${ran} s in ${HARDCORE_MS / 1000} s of Hardcore play`);
   });
 
-  // 2-player on touch: split touch, one pad per half. Fingers on each half's stick move only that
-  // half's player; fails on any page error or when a player does not move.
-  failures += await pass(browser, '2-player touch', base + '?seed=1&renderer=canvas', async page => {
+  // 2-player on touch. Fingers on each player's stick move only that player; fails on any page error
+  // or when a player does not move the way their stick was dragged.
+  //  - phone (740x390, touch): left/right halves, P1 left and P2 right (#288).
+  //  - tablet (1280x720): face-to-face split, a player at each short end: P1 left half turned a quarter
+  //    turn clockwise, P2 right half turned anticlockwise (#387).
+  const twoPlayer = async (page, split) => {
     await page.evaluate(() => {
       saveSettings({ inputMode: 'touch', tutorial: false });
       STATE.mode = 2; STATE.p1CharId = 'knight'; STATE.p2CharId = 'gunslinger'; _phaserGame.scene.start('Game');
     });
     await page.waitForFunction(() => _phaserGame.scene.getScene('Game')._worldReady === true, null, { timeout: 60000 });
     await page.waitForTimeout(1500);
-    const moved = await page.evaluate(async () => {
+    const r = await page.evaluate(async (split) => {
       const g = _phaserGame.scene.getScene('Game'), { W, H } = CFG;
       if (!g._pads || g._pads.length !== 2) throw new Error('no split touch pads');
+      if (g._split !== split) throw new Error(`_split is ${g._split}, expected ${split}`);
       const at = () => [g.p1.spr.x, g.p1.spr.y, g.p2.spr.x, g.p2.spr.y];
       const before = at();
-      // P1's finger drags right on the left half, P2's drags left on the right half, at once.
-      g._onTouchDown({ id: 1, x: W * 0.15, y: H * 0.8 }); g._onTouchDown({ id: 2, x: W * 0.65, y: H * 0.8 });
-      g._onTouchMove({ id: 1, x: W * 0.15 + 60, y: H * 0.8 }); g._onTouchMove({ id: 2, x: W * 0.65 - 60, y: H * 0.8 });
+      // Phone: P1 drags right on the left half, P2 drags left on the right half. Split: both drag screen-down
+      // in their own stick zone (P1 near the left edge, top; P2 near the right edge, bottom); with the
+      // views turned, that is world-right for P1 and world-left for P2.
+      const p1s = split ? [100, 100] : [W * 0.15, H * 0.8], p2s = split ? [W - 100, H - 100 - 60] : [W * 0.65, H * 0.8];
+      const d1 = split ? [0, 60] : [60, 0], d2 = split ? [0, 60] : [-60, 0];
+      g._onTouchDown({ id: 1, x: p1s[0], y: p1s[1] }); g._onTouchDown({ id: 2, x: p2s[0], y: p2s[1] });
+      g._onTouchMove({ id: 1, x: p1s[0] + d1[0], y: p1s[1] + d1[1] });
+      g._onTouchMove({ id: 2, x: p2s[0] + d2[0], y: p2s[1] + d2[1] });
       await new Promise(r => setTimeout(r, 700));
       g._onTouchUp({ id: 1 }); g._onTouchUp({ id: 2 });
       const after = at();
-      return { p1: after[0] - before[0], p2: after[2] - before[2] };
-    });
-    console.log(`2-player touch: P1 moved ${Math.round(moved.p1)} px, P2 moved ${Math.round(moved.p2)} px`);
-    if (!(moved.p1 > 5 && moved.p2 < -5)) throw new Error('a player did not move the way their half was dragged');
-  });
+      const cams = split && {
+        count: g._worldCams().length, W, rot1: g.cameras.main.rotation, rot2: g.cam2.rotation,
+        w1: g.cameras.main.width, x1: g.cameras.main.x, w2: g.cam2.width, x2: g.cam2.x,
+        d1: Math.hypot(g.cameras.main.midPoint.x - g.p1.spr.x, g.cameras.main.midPoint.y - g.p1.spr.y),
+        d2: Math.hypot(g.cam2.midPoint.x - g.p2.spr.x, g.cam2.midPoint.y - g.p2.spr.y),
+      };
+      // Every pad matches the #388 sizes (shares of its own view's height) within 2%.
+      const Lh = split ? (W - CFG.SPLIT_STRIP) / 2 : H;
+      const sizes = g._pads.map(p => [p.joy.radius * 2 / Lh - PHONE1P.stick.d, p.btns.attack.r * 2 / Lh - PHONE1P.btn.d]);
+      return { p1: after[0] - before[0], p2: after[2] - before[2], cams, sizes };
+    }, split);
+    console.log(`2-player touch (${split ? 'split' : 'phone'}): P1 moved ${Math.round(r.p1)} px, P2 moved ${Math.round(r.p2)} px`);
+    // Phone: P2's finger dragged left. Split: P2's finger dragged screen-right, but P2's view is turned
+    // around, so P2 walks world-left. Either way P1 goes right and P2 goes left.
+    if (!(r.p1 > 5 && r.p2 < -5)) throw new Error('a player did not move the way their half was dragged');
+    if (r.sizes.flat().some(d => Math.abs(d) > 0.02)) throw new Error(`a stick or button is not the #388 size (off by ${r.sizes.flat().map(d => d.toFixed(3))})`);
+    if (split) {
+      const c = r.cams;
+      if (c.count !== 2 || Math.abs(c.rot1 - Math.PI / 2) > 1e-6 || Math.abs(c.rot2 + Math.PI / 2) > 1e-6) throw new Error('the two cameras are not turned a quarter turn each way');
+      if (!(c.x2 > c.x1 && c.w1 === c.w2 && c.w1 < c.W / 2)) throw new Error('the halves are not left and right with a strip between');
+      if (c.d1 > 60 || c.d2 > 60) throw new Error(`a half is not centred on its player (off by ${Math.round(c.d1)}, ${Math.round(c.d2)} px)`);
+    }
+  };
+  failures += await pass(browser, '2-player touch, phone', base + '?seed=1&renderer=canvas',
+    page => twoPlayer(page, false), { viewport: { width: 740, height: 390 }, hasTouch: true });
+  failures += await pass(browser, '2-player touch, tablet split', base + '?seed=1&renderer=canvas',
+    page => twoPlayer(page, true));
 
   // Phone layout, 1 player (#388): at 640x360 and at 874x402 (the canvas stays 640x360) reads the real
   // controls and panels and fails when the radar, the four buttons or the stick differ from the

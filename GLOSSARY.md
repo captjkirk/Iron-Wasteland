@@ -17,6 +17,16 @@ Avoid: bandit, human enemy, NPC.
 centre with its stats and ability, the others smaller and dimmed on an arc. Keys, a swipe or a tap turn it.
 Avoid: card row, character picker.
 
+**Two cameras** — the world camera (`cameras.main`) draws the map and everything in it; the HUD camera
+(`hudCam`) draws the screen furniture at a fixed zoom. Each object is drawn by one of them.
+Avoid: overlay camera, UI camera.
+
+**Split screen (face-to-face)** — an iPad (short side 600 points or more) lying flat in a 2-player touch game,
+one player at each short end. The screen is cut top to bottom: P1 gets the left half, P2 the right half, each
+turned a quarter turn so it reads upright from its player's end, with a thin centre strip for shared items.
+Each half has its own world camera, stick zone and attack button.
+Avoid: split view, side by side. Phones keep the left/right layout with nothing turned, called the phone layout.
+
 **Wave marcher** — wildlife a wave spawns (`_waveMarch`, #330): it appears off-screen 900–1,300 px
 from a player and walks in, awake, until it first reaches someone; then it is ordinary wildlife.
 Avoid: wave spawn, edge spawn, attacker.
