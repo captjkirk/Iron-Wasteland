@@ -16,3 +16,7 @@ Avoid: bandit, human enemy, NPC.
 **Carousel** — the character screen (`src/char-select.js`): the selected character large in the
 centre with its stats and ability, the others smaller and dimmed on an arc. Keys, a swipe or a tap turn it.
 Avoid: card row, character picker.
+
+**Wave marcher** — wildlife a wave spawns (`_waveMarch`, #330): it appears off-screen 900–1,300 px
+from a player and walks in, awake, until it first reaches someone; then it is ordinary wildlife.
+Avoid: wave spawn, edge spawn, attacker.

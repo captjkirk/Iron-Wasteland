@@ -155,6 +155,7 @@ class GameScene extends Phaser.Scene {
     this.kills = 0;
     this.resourcesGathered = 0;
     this.bossSpawned = false;
+    this._bossesSeen = []; // boss keys in spawn order; spawnBoss picks an unseen one (#329)
     this.bossDefeated = false;
     this.boss = null;
 

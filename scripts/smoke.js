@@ -4,7 +4,9 @@
 //      Game scene, so the canvas renderer stands in), starts a solo game, waits for the world,
 //      plays PLAY_MS and fails on any console or page error. WebGL-only bugs stay invisible.
 //      Walks east for the first WALK_MS and fails unless that leaves boot prints, none on water.
+//      Fires wave 1 at the start and fails unless it is awake and closing on the player.
 //      Also fails when textures and object canvases hold more than PIXEL_BUDGET_MB of pixels.
+//      Then jumps to boss days 5 and 10 and fails unless each brings a boss, of two types.
 //      Then lines up three 1-HP enemies in front of the knight and fails unless one swing kills all three.
 //      Then ends the run and types a two-word name on the game over screen (#328).
 //   3. Hardcore: the same start with STATE.difficulty = 'hardcore'; fails unless timeAlive
@@ -14,7 +16,7 @@ const { webkit } = require('playwright');
 process.env.PORT = '0'; // any free port, so a running `npm run serve` is no obstacle
 const server = require('../server.js');
 const PLAY_MS = 10000;
-const WALK_MS = 3000; // of PLAY_MS, spent walking east
+const WALK_MS = 3000; // spent walking east before the wave check
 const PIXEL_BUDGET_MB = 64; // RGBA bytes; an iPhone tab dies well short of 1 GB in total
 const HARDCORE_MS = 5000;
 const ASK_MS = 10000; // a page call that takes longer means the game's main thread is stuck
@@ -99,7 +101,33 @@ async function pass(browser, name, url, run, opts = {}) {
     console.log(`in play: walked ${WALK_MS / 1000} s and left ${tracks.n} boot prints, ${tracks.wet} on water`);
     if (!tracks.n) throw new Error('walking left no boot prints');
     if (tracks.wet) throw new Error(`${tracks.wet} boot prints sit on water`);
-    await page.waitForTimeout(PLAY_MS - WALK_MS);
+    // Fire wave 1 now, and play through its march. Waves used to spawn at the map edge
+    // and go dormant on their first frame, so nothing ever arrived (#330).
+    const march0 = await page.evaluate(() => {
+      const s = _phaserGame.scene.getScene('Game');
+      const before = new Set(s.enemies);
+      s.waveTimer = s.WAVE_INTERVAL;
+      s.updateWaves(0);
+      const near = e => Math.min(...[s.p1, s.p2].filter(p => p && p.spr && p.spr.active)
+        .map(p => Math.hypot(e.spr.x - p.spr.x, e.spr.y - p.spr.y)));
+      window._smokeWave = s.enemies.filter(e => !before.has(e) && e._waveMarch && !e._dormant)
+        .map(e => ({ e, d0: near(e) }));
+      window._smokeNear = near;
+      return { spawned: s.enemies.length - before.size, marching: window._smokeWave.length };
+    });
+    await page.waitForTimeout(PLAY_MS);
+    const closed = await page.evaluate(() => window._smokeWave
+      .filter(w => w.e.spr && w.e.spr.active && w.d0 - window._smokeNear(w.e) > 100).length);
+    console.log(`in play: wave 1 spawned ${march0.spawned}, ${march0.marching} awake and marching, ` +
+      `${closed} closed in by 100+ px in ${PLAY_MS / 1000} s`);
+    if (!march0.marching || !closed) throw new Error('wave 1 did not march on the players (#330)');
+    // The wave would kill a knight who stands still in about 20 s; clear it so the checks
+    // below run on a living player.
+    await ask(page, () => {
+      const s = _phaserGame.scene.getScene('Game');
+      window._smokeWave.forEach(w => { if (!w.e.dying && w.e.spr?.active) s._hurtEnemy(w.e, 1e6); });
+      s.p1.hp = s.p1.maxHp;
+    });
     const fps = await ask(page, () => Math.round(_phaserGame.loop.actualFps));
     console.log(`in play: world built, ${PLAY_MS / 1000} s played at ${fps} fps`);
     // Pixel memory: every texture plus every canvas a game object owns (TileSprite, Text).
@@ -141,6 +169,26 @@ async function pass(browser, name, url, run, opts = {}) {
     const mb = Math.round(px * 4 / 1e6);
     console.log(`in play: ${mb} MB of pixel memory (budget ${PIXEL_BUDGET_MB} MB)`);
     if (mb > PIXEL_BUDGET_MB) throw new Error(`pixel memory ${mb} MB is over the ${PIXEL_BUDGET_MB} MB budget`);
+    // Boss days (#329): the day-5 boss spawns, dies, and day 10 brings a second boss of
+    // another type. The day is set directly; the day-10 roll is forced to 100%.
+    const bosses = [];
+    for (const day of [5, 10]) {
+      await page.evaluate(day => {
+        const s = _phaserGame.scene.getScene('Game');
+        s._bossChance = 1;
+        s.dayTimer = (day - 1) * s.DAY_DUR + 1000;
+        s.p1.hp = s.p1.maxHp;
+      }, day);
+      await page.waitForFunction(() => _phaserGame.scene.getScene('Game').boss, null, { timeout: 30000 })
+        .catch(() => { throw new Error(`no boss spawned on day ${day} (bosses so far: ${bosses.join(', ') || 'none'})`); });
+      bosses.push(await page.evaluate(() => {
+        const s = _phaserGame.scene.getScene('Game'), b = s.boss;
+        s._hurtEnemy(b, 1e6);
+        return b.type;
+      }));
+    }
+    console.log(`in play: boss days 5 and 10 brought ${bosses.join(', ')}`);
+    if (bosses[0] === bosses[1]) throw new Error(`day 10 brought the same boss again (${bosses[1]})`);
     // Game over name field: Phaser preventDefaults every key any scene ever captured (WASD,
     // Space, F…) unless the field keeps its keys; a name once came out as "nKi" (#328).
     await page.evaluate(() => _phaserGame.scene.getScene('Game').triggerGameOver('Smoke run over.'));

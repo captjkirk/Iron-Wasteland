@@ -140,6 +140,7 @@ Object.assign(GameScene.prototype, {
       if (e._telegraphGfx && e._telegraphGfx.active) e._telegraphGfx.destroy();
       if (e._indicator && e._indicator.active) e._indicator.destroy();
       this.boss = null;
+      this.bossSpawned = false; // the next boss day may spawn again (#329)
       this.bossDefeated = true;
       this._log(`Boss defeated: ${e.name||e.type}  day=${this.dayNum}  kills=${this.kills}`, 'world');
       this.hint('BOSS DEFEATED! A rare material was left behind…', 5000);
@@ -206,6 +207,7 @@ Object.assign(GameScene.prototype, {
     // this.enemies already initialised in create() so water lurkers from _buildLakes are preserved
     this.waveNum = 0;
     this.waveTimer = 0;
+    this._waveContactLogged = 0;
     this.WAVE_INTERVAL = this.hc.waveInterval; // Survival 90s / Hardcore 75s
     this._spawnGroup(worldW, worldH, cx, cy, { wolf:15, rat:20, bear:6 }, false);
 
@@ -390,7 +392,7 @@ Object.assign(GameScene.prototype, {
   // duplicated 6 times.
   _startDormantIfFar(e, ex, ey) {
     const spr = e.spr;
-    if (!spr) return;
+    if (!spr || e._waveMarch) return; // a wave marcher stays awake until it reaches a player (#330)
     const p1 = this.p1, p2 = this.p2;
     let minD2 = Infinity;
     if (p1 && p1.spr && p1.spr.active) {
@@ -410,10 +412,75 @@ Object.assign(GameScene.prototype, {
     }
   },
 
-  _spawnGroup(worldW, worldH, cx, cy, counts, fromEdges) {
+  // A wave's wildlife spawns on a ring off-screen around one player and marches in (#330).
+  // It used to spawn at the map edge, ~4,800 px out, and went dormant on its first frame.
+  // Returns the ring's centre and the side the wave comes from (one with an open line to
+  // the player when there is one), or null with no player up.
+  _waveRing() {
+    const ps = [this.p1, this.p2].filter(p => p && p.spr && p.spr.active && !p.isDowned);
+    if (!ps.length) return null;
+    const p = Phaser.Utils.Array.GetRandom(ps);
+    const ring = { x: p.spr.x, y: p.spr.y, ang: Phaser.Math.FloatBetween(0, Math.PI * 2), open: false };
+    const mid = (CFG.WAVE_RING_MIN + CFG.WAVE_RING_MAX) / 2;
+    for (let i = 0; i < 12 && !ring.open; i++) {
+      const a = Phaser.Math.FloatBetween(0, Math.PI * 2);
+      if (this._waveLineClear(ring.x + Math.cos(a) * mid, ring.y + Math.sin(a) * mid, ring.x, ring.y)) { ring.ang = a; ring.open = true; }
+    }
+    return ring;
+  },
+
+  // True when no mountain or deep water lies on the straight line between two points, so a
+  // marcher spawned at one walks to the other. _steerToward only steers around what is close.
+  _waveLineClear(x1, y1, x2, y2) {
+    const set = this._impassableTileSet || this._solidTileSet;
+    if (!set) return true;
+    const T = CFG.TILE, steps = Math.ceil(Phaser.Math.Distance.Between(x1, y1, x2, y2) / 16);
+    for (let i = 1; i < steps; i++) {
+      const sx = x1 + (x2 - x1) * i / steps, sy = y1 + (y2 - y1) * i / steps;
+      if (set.has(Math.round(sx / T) + ',' + Math.round(sy / T)) || set.has(Math.floor(sx / T) + ',' + Math.floor(sy / T))) return false;
+    }
+    return true;
+  },
+
+  // A spawn point on the wave ring: dry, off-screen, at least WAVE_RING_MIN from every
+  // player and with an open line to the ring's player. Keeps to the wave's side, then tries
+  // all round, then (a player walled in by mountains) takes any dry point off-screen.
+  // The ring widens past the view's edge when a 2-player camera has zoomed out.
+  _waveSpawnPoint(ring, worldW, worldH) {
+    const { TILE, MAP_W, WAVE_RING_MIN, WAVE_RING_MAX } = CFG;
+    const view = this.cameras.main.worldView, PAD = 64;
+    const ps = [this.p1, this.p2].filter(p => p && p.spr && p.spr.active);
+    let x = ring.x, y = ring.y;
+    for (let i = 0; i < 24; i++) {
+      const a = ring.ang + Phaser.Math.FloatBetween(-1, 1) * (i < 10 ? 0.6 : Math.PI);
+      const c = Math.cos(a), sn = Math.sin(a);
+      const toEdge = Math.min(c > 0 ? (view.right - ring.x) / c : c < 0 ? (view.x - ring.x) / c : Infinity,
+                              sn > 0 ? (view.bottom - ring.y) / sn : sn < 0 ? (view.y - ring.y) / sn : Infinity);
+      const rMin = Math.max(WAVE_RING_MIN, toEdge + PAD);
+      const r = Phaser.Math.Between(rMin, rMin + WAVE_RING_MAX - WAVE_RING_MIN);
+      x = Phaser.Math.Clamp(ring.x + c * r, TILE * 3, worldW - TILE * 3);
+      y = Phaser.Math.Clamp(ring.y + sn * r, TILE * 3, worldH - TILE * 3);
+      if (this._waterMap && this._waterMap[Math.floor(x / TILE) + Math.floor(y / TILE) * MAP_W]) continue;
+      if (this._solidTileSet && this._solidTileSet.has(Math.round(x / TILE) + ',' + Math.round(y / TILE))) continue;
+      if (x > view.x - PAD && x < view.right + PAD && y > view.y - PAD && y < view.bottom + PAD) continue;
+      if (ps.some(p => Phaser.Math.Distance.Between(x, y, p.spr.x, p.spr.y) < WAVE_RING_MIN)) continue;
+      if (i < 20 && ring.open && !this._waveLineClear(x, y, ring.x, ring.y)) continue;
+      break;
+    }
+    return { x, y };
+  },
+
+  _spawnGroup(worldW, worldH, cx, cy, counts, asWave) {
     const { TILE, SAFE_R } = CFG;
     const D = this._diffMult();
     const S = this._diffSpeedMult();
+    // A wave marches: awake from spawn, so it fits in what MAX_ACTIVE_ENEMIES leaves.
+    const ring = asWave ? this._waveRing() : null;
+    if (asWave && !ring) return;
+    let marchRoom = asWave
+      ? Math.max(0, CFG.MAX_ACTIVE_ENEMIES - this.enemies.filter(e => e.spr?.active && !e._dormant).length)
+      : Infinity;
+    let asked = 0, marched = 0, nearest = Infinity;
     // Canonical stats live at module top (ENEMY_STATS). atkInterval is divided
     // by D so enemies attack faster on later days.
     const keys = Object.keys(counts);
@@ -423,13 +490,12 @@ Object.assign(GameScene.prototype, {
       const n = counts[key] || 0;
       for (let i=0; i<n; i++) {
         let ex, ey;
-        if (fromEdges) {
-          // Spawn from map edges
-          const side = Phaser.Math.Between(0,3);
-          if (side===0)      { ex = Phaser.Math.Between(TILE*3, worldW-TILE*3); ey = TILE*4; }
-          else if (side===1) { ex = Phaser.Math.Between(TILE*3, worldW-TILE*3); ey = worldH-TILE*4; }
-          else if (side===2) { ex = TILE*4; ey = Phaser.Math.Between(TILE*3, worldH-TILE*3); }
-          else               { ex = worldW-TILE*4; ey = Phaser.Math.Between(TILE*3, worldH-TILE*3); }
+        if (asWave) {
+          asked++;
+          if (marchRoom <= 0) continue;
+          marchRoom--; marched++;
+          ({ x: ex, y: ey } = this._waveSpawnPoint(ring, worldW, worldH));
+          nearest = Math.min(nearest, Phaser.Math.Distance.Between(ex, ey, ring.x, ring.y));
         } else {
           do {
             ex = Phaser.Math.Between(TILE*3, worldW-TILE*3);
@@ -465,10 +531,16 @@ Object.assign(GameScene.prototype, {
         const aggroR = (t.aggro || 160) * (sizeMult > 1.2 ? 1.2 : 1);
         const atkR = (30 + t.w/4) * sizeMult;
         const e = { spr, hp, maxHp:hp, speed:spd, dmg, atkInterval, type:key, attackTimer:0, wanderTimer:Phaser.Math.Between(0,2000), aggroRange:aggroR, attackRange:atkR, sizeMult };
+        if (asWave) { e._waveMarch = true; e._waveNum = this.waveNum; e._waveBorn = this.time.now; }
         this._startDormantIfFar(e, ex, ey);
         this.enemies.push(e);
       }
     });
+    if (asWave) {
+      const ang = Math.round(Phaser.Math.RadToDeg(ring.ang));
+      this._log(`Wave ${this.waveNum} marching  ${marched}/${asked} spawned  from ${ang}deg  nearest=${marched ? Math.round(nearest) + "px" : "-"}  open=${ring.open}` +
+        (marched < asked ? `  capped by MAX_ACTIVE_ENEMIES=${CFG.MAX_ACTIVE_ENEMIES}` : ''), 'world');
+    }
   },
 
   // Find the nearest player-built wall that sits between (ex,ey) and (px,py)
@@ -549,6 +621,23 @@ Object.assign(GameScene.prototype, {
     return { x: 0, y: 0 };
   },
 
+  // A wave marcher crosses ~1,000 px of trees and rocks, which _steerToward cannot see (it
+  // knows only mountains and walls), so it can push into a trunk forever. Once a second, if it
+  // has covered under a quarter of its speed, it sidesteps across its heading for 700 ms.
+  _unstickMarcher(e, spd, delta) {
+    e._marchCheckMs = (e._marchCheckMs || 0) + delta;
+    if (e._marchCheckMs < 1000) return;
+    e._marchCheckMs = 0;
+    const lx = e._marchLastX, ly = e._marchLastY;
+    e._marchLastX = e.spr.x; e._marchLastY = e.spr.y;
+    if (lx === undefined || Phaser.Math.Distance.Between(lx, ly, e.spr.x, e.spr.y) > spd * 0.25) return;
+    const v = e.spr.body.velocity;
+    const head = (v.x || v.y) ? Math.atan2(v.y, v.x) : Phaser.Math.FloatBetween(0, Math.PI * 2);
+    const ang = head + (Math.random() < 0.5 ? 1 : -1) * Phaser.Math.FloatBetween(1.2, 1.9);
+    e.spr.setVelocity(Math.cos(ang) * spd * 1.2, Math.sin(ang) * spd * 1.2);
+    e._escapeTimer = 700;
+  },
+
   updateEnemies(delta) {
     if (!this.enemies || this.isOver) return;
     // Reuse persistent scratch arrays/objects to avoid per-frame allocation
@@ -607,7 +696,8 @@ Object.assign(GameScene.prototype, {
 
       // ── Dormancy: wildlife enemies far from all players sleep (no AI, no physics) ──
       // Raiders + boss escorts are always aggressive — never dormant. Boss already excluded above.
-      if (!e.isRaider && !e._bossEscort) {
+      // A wave marcher is awake until it reaches a player (see the aggro check below).
+      if (!e.isRaider && !e._bossEscort && !e._waveMarch) {
         let _minDist2 = Infinity;
         for (const _pp of _pPos) {
           const _dx = e.spr.x - _pp.x, _dy = e.spr.y - _pp.y;
@@ -910,8 +1000,17 @@ Object.assign(GameScene.prototype, {
       if (!nearest) { e.spr.setVelocity(0,0); return; }
       const nightMult = (this.isNight) ? this.hc.nightMult : 1;
       const aggroRange = e.aggroRange * nightMult * _rp.aggroMult;
+      // A wave marcher chases from any distance until first contact or WAVE_MARCH_MS,
+      // then it is ordinary wildlife: its own aggro range, and dormant when left behind.
+      if (e._waveMarch && (nearDist < aggroRange || this.time.now - e._waveBorn > CFG.WAVE_MARCH_MS)) {
+        e._waveMarch = false;
+        if (nearDist < aggroRange && this._waveContactLogged !== e._waveNum) {
+          this._waveContactLogged = e._waveNum;
+          this._log(`Wave ${e._waveNum} reached ${nearest.charData.player}  type=${e.type}  after ${Math.round((this.time.now - e._waveBorn) / 1000)}s`, 'world');
+        }
+      }
 
-      if (nearDist < aggroRange) {
+      if (nearDist < aggroRange || e._waveMarch) {
         const spd = (e._effectiveSpeed !== undefined ? e._effectiveSpeed : e.speed) * nightMult * _rp.speedMult;
 
         // LOS check — can the enemy see the player through mountains/walls?
@@ -964,9 +1063,11 @@ Object.assign(GameScene.prototype, {
         }
 
         if (!attackingWall) {
-          // Chase toward player if visible, or toward last known position if blocked
-          const chaseX = e.lastKnownX !== undefined ? e.lastKnownX : nearest.spr.x;
-          const chaseY = e.lastKnownY !== undefined ? e.lastKnownY : nearest.spr.y;
+          // Chase toward player if visible, or toward last known position if blocked.
+          // A wave marcher always heads for the player: it is coming for the base, not a sighting.
+          const _useLast = e.lastKnownX !== undefined && !e._waveMarch;
+          const chaseX = _useLast ? e.lastKnownX : nearest.spr.x;
+          const chaseY = _useLast ? e.lastKnownY : nearest.spr.y;
           // Steer around obstacles instead of running straight into them
           const vel = this._steerToward(e, chaseX, chaseY, spd);
           e._escapeTimer = (e._escapeTimer || 0) - delta;
@@ -985,6 +1086,7 @@ Object.assign(GameScene.prototype, {
             e._stuckDur = 0;
             e.spr.setVelocity(vel.x, vel.y);
           }
+          if (e._waveMarch) this._unstickMarcher(e, spd, delta);
           // directional flip is handled below in the walk-cycle block
         }
 
