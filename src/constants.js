@@ -56,6 +56,24 @@ const CFG = {
   SPIKE_TRAP_DMG: 35,      // one hit, then the trap is spent
   CAMPFIRE_HEAL_MS: 2000,  // a campfire heals nearby players this often; the amount is hc.campfireHeal
   CAMPFIRE_HEAL_R: 80,     // px from the campfire
+  // Tracks (#308, src/tracks.js): how long a boot print lasts (ms) and how dark it starts
+  // (alpha), by the ground under it. Water takes no print. Starting values, tuned by eye.
+  TRACKS: {
+    GROUND: {
+      tundra: { life: 60000, alpha: 0.55 }, // snow
+      swamp:  { life: 45000, alpha: 0.5  }, // mud
+      desert: { life: 30000, alpha: 0.45 }, // sand
+      fungal: { life: 30000, alpha: 0.4  },
+      waste:  { life: 25000, alpha: 0.35 }, // dust, cracked earth
+      grass:  { life: 20000, alpha: 0.3  },
+      ruins:  { life: 15000, alpha: 0.15 }, // stone, rubble
+      ice:    { life: 15000, alpha: 0.15 },
+    },
+    FADE: 0.25,   // a print fades out over this last fraction of its life
+    STRIDE: 30,   // px between one print and the next (they alternate feet)
+    GAIT: 4,      // px each print sits left or right of the walking line
+    CAP: 320,     // live prints; when full, the oldest is recycled early
+  },
   // Global scoreboard web app URL (tools/scoreboard/SETUP.md). Empty: no network call at all.
   SCOREBOARD_URL: 'https://script.google.com/macros/s/AKfycbw-F_cH3aDvkIVX2Wycd64OreVQAykeu656VZ4wqZBnF6rUozi2NB7Th9MAptIKS9Hh/exec',
 };

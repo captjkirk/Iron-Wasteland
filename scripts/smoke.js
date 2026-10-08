@@ -3,6 +3,7 @@
 //   2. In play: loads ?seed=1&renderer=canvas (headless WebKit loses the WebGL context in the
 //      Game scene, so the canvas renderer stands in), starts a solo game, waits for the world,
 //      plays PLAY_MS and fails on any console or page error. WebGL-only bugs stay invisible.
+//      Walks east for the first WALK_MS and fails unless that leaves boot prints, none on water.
 //      Fires wave 1 at the start and fails unless it is awake and closing on the player.
 //      Also fails when textures and object canvases hold more than PIXEL_BUDGET_MB of pixels.
 //      Then spawns each boss beside the knight and fails unless its hitbox fits the drawing and
@@ -18,6 +19,7 @@ const { webkit } = require('playwright');
 process.env.PORT = '0'; // any free port, so a running `npm run serve` is no obstacle
 const server = require('../server.js');
 const PLAY_MS = 10000;
+const WALK_MS = 3000; // spent walking east before the wave check
 const PIXEL_BUDGET_MB = 64; // RGBA bytes; an iPhone tab dies well short of 1 GB in total
 const HARDCORE_MS = 5000;
 const ASK_MS = 10000; // a page call that takes longer means the game's main thread is stuck
@@ -147,6 +149,17 @@ async function bossReach(page) {
 
   failures += await pass(browser, 'in play', base + '?seed=1&renderer=canvas', async (page, posts) => {
     await play(page, 'survival', 0);
+    // Walk east for WALK_MS: the player must leave tracks, and none on water (#308).
+    await page.keyboard.down('d');
+    await page.waitForTimeout(WALK_MS);
+    await page.keyboard.up('d');
+    const tracks = await ask(page, () => {
+      const s = _phaserGame.scene.getScene('Game');
+      return { n: s.tracks.live.length, wet: s.tracks.live.filter(r => s._waterMap[r.tile]).length };
+    });
+    console.log(`in play: walked ${WALK_MS / 1000} s and left ${tracks.n} boot prints, ${tracks.wet} on water`);
+    if (!tracks.n) throw new Error('walking left no boot prints');
+    if (tracks.wet) throw new Error(`${tracks.wet} boot prints sit on water`);
     // Fire wave 1 now, and play through its march. Waves used to spawn at the map edge
     // and go dormant on their first frame, so nothing ever arrived (#330).
     const march0 = await page.evaluate(() => {

@@ -2,7 +2,7 @@
 // ── src/textures.js — Procedural texture generation (no image files) ─────────
 // Globals exported: drawWolf, drawRat, drawBear, drawIceCrawler,
 //                   drawSpiderRuins, drawBogLurker, drawDustHound, drawWaterLurker,
-//                   drawRiverFrame, drawEdgeVariants, buildTextures, buildAtlases, makeScaleProxy
+//                   drawRiverFrame, drawEdgeVariants, buildBootPrints, buildTextures, buildAtlases, makeScaleProxy
 // All draw* fns take (g: Phaser.GameObjects.Graphics).
 // buildTextures(scene) is called from BootScene.preload().
 // buildAtlases(scene) is called internally by buildTextures after all frames generated.
@@ -455,6 +455,50 @@ function makeScaleProxy(g, s) {
   };
 }
 
+// Boot prints for tracks (src/tracks.js): one right-foot print each, toe up; the left foot is
+// the same texture flipped. 'print_player' is a slim boot with bar lugs (l); 'print_raider' is a
+// wider, heavier boot with a cleated chevron tread. They differ by shape, not colour, so both
+// read on every ground. Gaps and faint pixels in a sole are the tread; the sprite's alpha sets the strength.
+function buildBootPrints(scene) {
+  const pal = { d: '#1a120b', l: 'rgba(26,18,11,0.4)' };
+  const prints = {
+    print_player: [
+      '.ddd..',
+      'ddddd.',
+      'dddddd',
+      'dlllld',
+      'dddddd',
+      'dlllld',
+      '.dddd.',
+      '..ddd.',
+      '......',
+      '.dddd.',
+      '.dlld.',
+      '.dddd.',
+    ],
+    print_raider: [
+      '.dddddd.',
+      'dddddddd',
+      'ddd..ddd',
+      'dd.dd.dd',
+      'd.dddd.d',
+      'ddd..ddd',
+      'dd.dd.dd',
+      'd.dddd.d',
+      'dddddddd',
+      '........',
+      '.dddddd.',
+      'ddd..ddd',
+      'dd.dd.dd',
+      '.dddddd.',
+    ],
+  };
+  for (const [key, rows] of Object.entries(prints)) {
+    if (scene.textures.exists(key)) continue;
+    scene.textures.addCanvas(key, paintGrid([{ at: [0, 0], rows }], pal, rows[0].length, rows.length));
+  }
+}
+
 // ── TEXTURE GENERATION ────────────────────────────────────────
 // Ground texture per biome; the index in this list is the tile index in 'ground_tileset'.
 const GROUND_KEYS = ['grass', 'ground_waste', 'ground_swamp', 'ground_tundra', 'ground_ruins', 'ground_fungal', 'ground_desert'];
@@ -550,6 +594,8 @@ function buildTextures(scene) {
   buildPixelActors(scene);
   // Trees, rocks, bushes and built walls: painted pixel by pixel in src/sprites.js
   buildScenery(scene);
+  // Boot prints for tracks (src/tracks.js)
+  buildBootPrints(scene);
 
   // Bullet
   g.clear();

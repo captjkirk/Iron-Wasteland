@@ -40,7 +40,8 @@
 //                          drawSpiderRuins, drawBogLurker, drawDustHound, drawWaterLurker
 //                          buildTextures, buildAtlases, drawEdgeVariants,
 //                          drawMountains, polishActors, polishActor,
-//                          makeScaleProxy, getControls (the controls help text)
+//                          makeScaleProxy, getControls (the controls help text),
+//                          buildBootPrints (print_player, print_raider for tracks)
 //
 //   src/scenes.js        — All non-gameplay scenes + input helpers
 //                          DEFAULT_BINDINGS, keyDisplayName,
@@ -66,6 +67,8 @@
 //   src/building-crafting.js — System 8, added to GameScene.prototype; loads after waves-bosses.js
 //
 //   src/enemy-ai.js      — System 2, added to GameScene.prototype; loads after building-crafting.js
+//
+//   src/tracks.js        — System 24, class Tracks (boot prints); scene.tracks, made at world ready
 //
 //   src/game-over.js     — GameOverScene (death + stats screen)
 //
@@ -217,7 +220,8 @@
 //     SFX wired into combat/pickup/build callsites.
 //
 // 18. PROCEDURAL TEXTURES (no image files)  (src/textures.js; character draws in src/sprites.js)
-//     fns:  buildTextures, makeScaleProxy, drawMountains, polishActors, polishActor
+//     fns:  buildTextures, makeScaleProxy, drawMountains, polishActors, polishActor,
+//           buildBootPrints
 //     enemy draws: drawWolf, drawRat, drawBear, drawIceCrawler,
 //                  drawSpiderRuins, drawBogLurker, drawDustHound, drawWaterLurker
 //     character draws: paintGrid, pixelActorFrames, buildPixelActors
@@ -256,6 +260,17 @@
 // 23. SETTINGS / SAVE  (src/scenes.js; toggleSleep in src/game-scene.js)
 //     fns:  loadSettings, saveSettings, toggleSleep
 //     data: STATE (mode/difficulty), persisted via localStorage
+//
+// 24. TRACKS (boot prints)  (src/tracks.js; table in CFG.TRACKS in src/constants.js)
+//     Players and raiders leave alternating left/right boot prints; animals do not. The ground
+//     under a print sets its life and strength; no print on water (_waterMap, plus deep water).
+//     Pooled sprites at depth 1: the cap, not the number of walkers, bounds the cost.
+//     class: Tracks
+//     fns:  newestNear (per-tile index of live prints, for raiders following tracks, #310),
+//           _step, _place, _take, _release
+//     cfg:  TRACKS
+//     data: tracks, byTile, live
+//     log:  [WORLD ] at ready, [PERF  ] every 30 s while walking
 //
 // ── COMMON GOTCHAS ───────────────────────────────────────────
 // • Two cameras: new world objects must call hudCam.ignore(obj).
