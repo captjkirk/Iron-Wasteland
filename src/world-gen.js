@@ -596,7 +596,7 @@ Object.assign(GameScene.prototype, {
     this._buildRivers(stx, sty);
     this._fillWaterIslands();
 
-    // Shorelines: a land cell touching water, by a side or only by a corner, gets a bank tile (ground
+    // Shorelines and biome edges. A land cell touching water, by a side or only by a corner, gets a bank tile (ground
     // tileset rows from 4, see buildTextures and drawEdgeVariants). Ice counts as land here; tundra ice edges are deferred (#217).
     {
       const MW = CFG.MAP_W, MH = CFG.MAP_H, NG = GROUND_KEYS.length;
@@ -621,6 +621,32 @@ Object.assign(GameScene.prototype, {
         banks++;
       }
       this._log(`shoreline bank tiles: ${banks}`, 'world');
+
+      // Biome edges: where two biomes meet on dry ground, the cell of the biome earlier in GROUND_KEYS
+      // gets the other's ground fading in from the sides that touch it (overlay layer over the ground,
+      // 'biome_edge_tileset'). Where several later biomes touch one cell, the latest wins. Water, ice
+      // and bank cells take no edge, and do not count as a neighbour.
+      const edgeLayer = _layer('biome_edges', 'biome_edge_tileset').setDepth(0.52);
+      const bio = new Int8Array(MW * MH).fill(-1);
+      for (let ty = 0; ty < MH; ty++) for (let tx = 0; tx < MW; tx++) {
+        if (ground.getTileAt(tx, ty).index < 4 * NG && !kind[tx + ty * MW] && !this._waterLayer.getTileAt(tx, ty))
+          bio[tx + ty * MW] = groundTile[getBiome(tx, ty)] || 0;
+      }
+      const bAt = (x, y) => (x < 0 || y < 0 || x >= MW || y >= MH) ? -1 : bio[x + y * MW];
+      let edges = 0;
+      for (let ty = 0; ty < MH; ty++) for (let tx = 0; tx < MW; tx++) {
+        const own = bio[tx + ty * MW];
+        if (own < 0) continue;
+        const nb = [[0, -1], [1, 0], [0, 1], [-1, 0], [1, -1], [1, 1], [-1, 1], [-1, -1]].map(([dx, dy]) => bAt(tx + dx, ty + dy));
+        const top = Math.max(...nb);
+        if (top <= own) continue;
+        const [n, e, s, w, ne, se, sw, nw] = nb.map(b => b === top);
+        const m = (n && 1) | (e && 2) | (s && 4) | (w && 8) | (ne && !n && !e && 16) | (se && !s && !e && 32)
+          | (sw && !s && !w && 64) | (nw && !n && !w && 128);
+        edgeLayer.putTileAt(EDGE_MASKS.indexOf(m) * NG + top, tx, ty);
+        edges++;
+      }
+      this._log(`biome edge tiles: ${edges}`, 'world');
     }
 
     // ── TERRAIN OVERLAP CLEANUP ───────────────────────────────────────────────
