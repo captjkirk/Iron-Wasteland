@@ -22,7 +22,8 @@ MANIFEST, an index of every gameplay system: read it first to find where a syste
 The pre-commit hook refuses a commit on `main`, and any commit from the main checkout (every
 session works in its own worktree; see `CLAUDE.md`, "Working directory"), then runs
 `npm run check`: a syntax check of `game.js` and every `src/*.js`, a check that every `src/*.js`
-has a `<script>` tag in `index.html`, the manifest check, the scoreboard check, the recipe check
+has a `<script>` tag in `index.html`, the manifest check, the scoreboard check, a check that every
+doorway in `STRUCTURE_LAYOUTS` is at least 2 tiles wide, the recipe check
 (`scripts/check-recipes.js`: every cost in `src/recipes.js` names a real resource and is what
 `getBuildCost` charges), and ESLint. A failure aborts the commit.
 
@@ -49,6 +50,8 @@ the MANIFEST lists, update the MANIFEST in the same commit.
   file that loads after it, which ESLint passes. The second loads `?seed=1&renderer=canvas`
   (headless WebKit loses the WebGL context in play, so the canvas renderer stands in), starts
   a solo game, waits for the world, plays ten seconds and fails on any console or page error.
+  It walks east for the first three seconds and fails unless that leaves boot prints (tracks),
+  none on water.
   Then it spawns each boss beside the knight and fails unless a sword swing reaches the boss's
   hitbox from 20 px outside it, on both sides, and not from 100 px out.
   It then jumps to days 5 and 10 and fails unless each brings a boss, of two different types.

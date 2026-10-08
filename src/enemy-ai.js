@@ -456,12 +456,12 @@ Object.assign(GameScene.prototype, {
     const ps = [this.p1, this.p2].filter(p => p && p.spr && p.spr.active);
     let x = ring.x, y = ring.y;
     for (let i = 0; i < 24; i++) {
-      const a = ring.ang + Phaser.Math.FloatBetween(-1, 1) * (i < 10 ? 0.6 : Math.PI);
+      const a = ring.ang + Phaser.Math.FloatBetween(-1, 1) * (i < 10 ? (ring.spread ? 1.4 : 0.6) : Math.PI);
       const c = Math.cos(a), sn = Math.sin(a);
       const toEdge = Math.min(c > 0 ? (view.right - ring.x) / c : c < 0 ? (view.x - ring.x) / c : Infinity,
                               sn > 0 ? (view.bottom - ring.y) / sn : sn < 0 ? (view.y - ring.y) / sn : Infinity);
       const rMin = Math.max(WAVE_RING_MIN, toEdge + PAD);
-      const r = Phaser.Math.Between(rMin, rMin + WAVE_RING_MAX - WAVE_RING_MIN);
+      const r = Phaser.Math.Between(rMin, rMin + WAVE_RING_MAX - WAVE_RING_MIN + (ring.spread || 0));
       x = Phaser.Math.Clamp(ring.x + c * r, TILE * 3, worldW - TILE * 3);
       y = Phaser.Math.Clamp(ring.y + sn * r, TILE * 3, worldH - TILE * 3);
       if (this._waterMap && this._waterMap[Math.floor(x / TILE) + Math.floor(y / TILE) * MAP_W]) continue;
@@ -474,13 +474,14 @@ Object.assign(GameScene.prototype, {
     return { x, y };
   },
 
-  _spawnGroup(worldW, worldH, cx, cy, counts, asWave) {
+  _spawnGroup(worldW, worldH, cx, cy, counts, asWave, spread = 0) {
     const { TILE, SAFE_R } = CFG;
     const D = this._diffMult();
     const S = this._diffSpeedMult();
     // A wave marches: awake from spawn, so it fits in what MAX_ACTIVE_ENEMIES leaves.
     const ring = asWave ? this._waveRing() : null;
     if (asWave && !ring) return;
+    if (ring) ring.spread = spread; // night 1 only: extra px of distance and arc so arrivals string out
     let marchRoom = asWave
       ? Math.max(0, CFG.MAX_ACTIVE_ENEMIES - this.enemies.filter(e => e.spr?.active && !e._dormant).length)
       : Infinity;

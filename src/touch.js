@@ -22,42 +22,57 @@ Object.assign(GameScene.prototype, {
     const stick = () => ({ active: false, pointerId: -1, baseX: 0, baseY: 0, knobX: 0, knobY: 0, radius: 72, vec: { x: 0, y: 0 } });
     const btn = (hx, hy, r, col, label) => ({ hx, hy, r, down: false, pid: -1, col, label });
     if (this.solo) {
-      // Layout: ATK bottom-right, ALT above ATK, USE left of ATK, BLD left of ALT, MENU top-right.
-      // The stick takes the left 45% of the screen, bottom 55%.
+      // Layout: ATK, ALT, USE, BLD in a diamond (ATK bottom, ALT right, USE left, BLD top);
+      // the stick takes the left 45% of the screen, bottom 65%. On a phone (#388) the sizes and
+      // positions are shares of the screen height, from PHONE1P.
+      const P = this._layout1p();
+      let hx = W * 0.12, hy = H * 0.82, hr = 55;
+      let attack = btn(W - 100, H - 100, 52, 0xff6644, '⚔ ATK');
+      let alt = btn(W - 185, H - 195, 44, 0x6699ff, '★ ALT');
+      let interact = btn(W - 195, H - 95, 40, 0x44cc66, 'E USE');
+      let build = btn(W - 282, H - 195, 40, 0xccaa33, '■ BLD');
+      let menu = btn(W - 32, 32, 28, 0x888888, '☰');
+      if (P) {
+        const r = P.btn.d * H / 2, g = P.btn.gap * r, cx = P.btn.cx * W, cy = P.btn.cy * H;
+        attack = btn(cx, cy + g, r, 0xff6644, '⚔ ATK');
+        alt = btn(cx + g, cy, r, 0x6699ff, '★ ALT');
+        interact = btn(cx - g, cy, r, 0x44cc66, 'E USE');
+        build = btn(cx, cy - g, r, 0xccaa33, '■ BLD');
+        menu = btn(P.menuBtn.cx * W, P.menuBtn.cy * H, 20, 0x888888, '☰');
+        hx = P.stick.cx * W; hy = P.stick.cy * H; hr = P.stick.d * H / 2;
+      }
       this._pads = [{
-        who: 'p1', x0: 0, x1: W, y0: 0, y1: H, joy: stick(), hintX: W * 0.12, hintY: H * 0.82,
+        who: 'p1', x0: 0, x1: W, y0: 0, y1: H, joy: stick(), hintX: hx, hintY: hy, hintR: hr,
         stickZone: (px, py) => px < W * 0.45 && py > H * 0.35,
-        btns: {
-          attack:   btn(W - 100, H - 100, 52, 0xff6644, '⚔ ATK'),
-          alt:      btn(W - 185, H - 195, 44, 0x6699ff, '★ ALT'),
-          interact: btn(W - 195, H - 95,  40, 0x44cc66, 'E USE'),
-          build:    btn(W - 282, H - 195, 40, 0xccaa33, '■ BLD'),
-          menu:     btn(W - 32,  32,      28, 0x888888, '☰'),
-        },
+        btns: { attack, alt, interact, build, menu },
       }];
-    } else if (this._split) {
-      const halfW = (W - CFG.SPLIT_STRIP) / 2;
+      if (P) this._pads[0].joy.radius = P.stick.d * H / 2; // scales with the screen height (#406)
+    } else {
+      // 2 players (#403): each pad mirrors the 1-player layout (PHONE1P) in its own view; sizes are shares
+      // of that view's height. Phone: the view is a half of the screen. Face-to-face (#387): the view is a
+      // half turned a quarter turn, so it is H wide and halfW tall. lx, ly are points in the player's own
+      // view (ly grows toward the near edge); toScreen and toLocal convert.
+      const P = PHONE1P, split = this._split;
+      const halfW = split ? (W - CFG.SPLIT_STRIP) / 2 : W / 2, Lw = split ? H : halfW, Lh = split ? halfW : H;
+      const sr = P.stick.d * Lh / 2, br = P.btn.d * Lh / 2, pad2 = 0.02 * Lh;
       this._pads = [0, 1].map(i => {
+        const x0 = i ? W - halfW : 0, x1 = x0 + halfW;
         // P1 (left end, view turned +90): near edge is screen-left; their left is screen-top.
         // P2 (right end, view turned -90): near edge is screen-right; their left is screen-bottom.
-        const x0 = i ? W - halfW : 0, x1 = x0 + halfW;
-        return {
-          who: i ? 'p2' : 'p1', x0, x1, y0: 0, y1: H, joy: stick(), rot: i ? -Math.PI / 2 : Math.PI / 2,
-          hintX: i ? x1 - 80 : x0 + 80, hintY: i ? H * 0.78 : H * 0.22,
-          stickZone: i ? (px, py) => px > x1 - halfW * 0.65 && py > H * 0.55
-                       : (px, py) => px < x0 + halfW * 0.65 && py < H * 0.45,
-          btns: { attack: btn(i ? x1 - 80 : x0 + 80, i ? 100 : H - 100, 56, i ? 0xff8844 : 0x4488ff, '⚔ ATK') },
+        const toScreen = !split ? (lx, ly) => [x0 + lx, ly]
+          : i ? (lx, ly) => [x1 - (Lh - ly), H - lx] : (lx, ly) => [x0 + (Lh - ly), lx];
+        const toLocal = !split ? (px, py) => [px - x0, py]
+          : i ? (px, py) => [H - py, Lh - (x1 - px)] : (px, py) => [py, Lh - (px - x0)];
+        const [hintX, hintY] = toScreen(Math.max(P.stick.cx * Lw, sr + pad2), P.stick.cy * Lh);
+        const [ax, ay] = toScreen(Lw - Math.max((1 - P.btn.cx) * Lw, br + pad2), P.btn.cy * Lh + P.btn.gap * br);
+        const pad = {
+          who: i ? 'p2' : 'p1', x0, x1, y0: 0, y1: H, joy: stick(), hintX, hintY, hintR: sr,
+          stickZone: (px, py) => { const [lx, ly] = toLocal(px, py); return lx < Lw * 0.6 && ly > Lh * 0.35; },
+          btns: { attack: btn(ax, ay, br, i ? 0xff8844 : 0x4488ff, '⚔ ATK') },
         };
-      });
-    } else {
-      // Each half: the stick in its left 60%, bottom 55%; ATK at its bottom-right corner.
-      this._pads = [0, 1].map(i => {
-        const x0 = i * W / 2, x1 = x0 + W / 2;
-        return {
-          who: i ? 'p2' : 'p1', x0, x1, y0: 0, y1: H, joy: stick(), hintX: x0 + W * 0.12, hintY: H * 0.82,
-          stickZone: (px, py) => px < x0 + W * 0.3 && py > H * 0.35,
-          btns: { attack: btn(x1 - 100, H - 100, 56, i ? 0xff8844 : 0x4488ff, '⚔ ATK') },
-        };
+        pad.joy.radius = sr;
+        if (split) pad.rot = i ? -Math.PI / 2 : Math.PI / 2;
+        return pad;
       });
     }
     this._joy = this._pads[0].joy;
@@ -102,6 +117,7 @@ Object.assign(GameScene.prototype, {
     const joy = pad.joy;
     if (pad.stickZone(px, py) && !joy.active) {
       Object.assign(joy, { active: true, pointerId: pointer.id, baseX: px, baseY: py, knobX: px, knobY: py, vec: { x: 0, y: 0 } });
+      this._logTouchStick('down', pad);
       return;
     }
 
@@ -146,12 +162,22 @@ Object.assign(GameScene.prototype, {
       const joy = pad.joy, p = this[pad.who];
       if (joy.active && pointer.id === joy.pointerId) {
         Object.assign(joy, { active: false, pointerId: -1, vec: { x: 0, y: 0 } });
+        this._logTouchStick('up', pad);
         if (p && p.spr && p.spr.body) p.spr.setVelocity(0, 0);
       }
       for (const btn of Object.values(pad.btns)) {
         if (btn.pid === pointer.id) { btn.down = false; btn.pid = -1; }
       }
     }
+  },
+
+  // 2-player only: both players' positions and stick vectors at each stick down/up, so a session log shows
+  // whether each finger drives its own player (#387).
+  _logTouchStick(what, pad) {
+    if (this.solo) return;
+    const f = p => p && p.spr ? `(${Math.round(p.spr.x)},${Math.round(p.spr.y)})` : '-';
+    const v = j => `(${j.vec.x.toFixed(2)},${j.vec.y.toFixed(2)})`;
+    this._log(`touch stick ${what}  pad=${pad.who}  p1=${f(this.p1)} p2=${f(this.p2)}  joy1=${v(this._pads[0].joy)} joy2=${v(this._pads[1].joy)}`, 'touch');
   },
 
   _onBtnPress(name, p = this.p1) {
@@ -224,7 +250,8 @@ Object.assign(GameScene.prototype, {
     this._tcHudHash = hash;
     gfx.clear();
 
-    for (const { joy, btns, hintX, hintY } of this._pads) {
+    const { H } = CFG;
+    for (const { joy, btns, hintX, hintY = H * 0.82, hintR = 55 } of this._pads) {
       if (joy.active) {
         // Base ring
         gfx.lineStyle(2, 0xffffff, 0.35);
@@ -239,14 +266,14 @@ Object.assign(GameScene.prototype, {
       } else {
         // Hint ring — very faint, shows where joystick zone is
         gfx.lineStyle(1, 0xffffff, 0.1);
-        gfx.strokeCircle(hintX, hintY, 55);
+        gfx.strokeCircle(hintX, hintY, hintR);
         gfx.fillStyle(0xffffff, 0.03);
-        gfx.fillCircle(hintX, hintY, 55);
+        gfx.fillCircle(hintX, hintY, hintR);
       }
 
       // Action buttons
       for (const btn of Object.values(btns)) {
-        const alpha = btn.down ? 0.75 : 0.4;
+        const alpha = btn.down ? 0.75 : (this._layout1p() ? 0.35 : 0.4);
         gfx.fillStyle(btn.col, alpha * 0.38);
         gfx.fillCircle(btn.hx, btn.hy, btn.r);
         gfx.lineStyle(2, btn.col, alpha);

@@ -40,7 +40,8 @@
 //                          drawSpiderRuins, drawBogLurker, drawDustHound, drawWaterLurker
 //                          buildTextures, buildAtlases, drawEdgeVariants,
 //                          drawMountains, polishActors, polishActor,
-//                          makeScaleProxy, getControls (the controls help text)
+//                          makeScaleProxy, getControls (the controls help text),
+//                          buildBootPrints (print_player, print_raider for tracks)
 //
 //   src/scenes.js        — All non-gameplay scenes + input helpers
 //                          DEFAULT_BINDINGS, keyDisplayName,
@@ -66,6 +67,8 @@
 //   src/building-crafting.js — System 8, added to GameScene.prototype; loads after waves-bosses.js
 //
 //   src/enemy-ai.js      — System 2, added to GameScene.prototype; loads after building-crafting.js
+//
+//   src/tracks.js        — System 24, class Tracks (boot prints); scene.tracks, made at world ready
 //
 //   src/game-over.js     — GameOverScene (death + stats screen)
 //
@@ -112,7 +115,7 @@
 //    data: enemyDens[], waterDens[]   (each: liveCount, type, pos, timer)
 //
 // 4. WAVES & BOSSES  (src/waves-bosses.js)
-//    fns:  updateWaves, updateBoss, spawnBoss, _bossExecuteSpecial,
+//    fns:  updateWaves, _spawnFirstWave, updateBoss, spawnBoss, _bossExecuteSpecial,
 //          _bossSmash, _bossTelegraph, _bossDist (reach to a drawn-to-fit hitbox),
 //          _debugBossFromUrl (?boss=wolf spawns a boss for testing),
 //          _pickBossType (every boss once per round, biome match first)
@@ -174,7 +177,7 @@
 //     data: dayNum, dayTimer, isNight, timeAlive, hardcore, hc
 //
 // 11. RELICS / RADIO TOWERS / ALTAR / CAMPFIRES
-//     fns:  updateRelicChannels, checkRadioTowerRange, _relicCarrier,
+//     fns:  updateRelicChannels, _useHeld (USE held: key or touch button; relic, revive, harvest), checkRadioTowerRange, _relicCarrier,
 //           _relicPressure, _cancelRelicChannel, _depositRelic,
 //           _pickupRelic, _showRelicHint, _processHintQueue,
 //           _spawnTorch, _addFireGlow, _updateFireGlows
@@ -217,7 +220,8 @@
 //     SFX wired into combat/pickup/build callsites.
 //
 // 18. PROCEDURAL TEXTURES (no image files)  (src/textures.js; character draws in src/sprites.js)
-//     fns:  buildTextures, makeScaleProxy, drawMountains, polishActors, polishActor
+//     fns:  buildTextures, makeScaleProxy, drawMountains, polishActors, polishActor,
+//           buildBootPrints
 //     enemy draws: drawWolf, drawRat, drawBear, drawIceCrawler,
 //                  drawSpiderRuins, drawBogLurker, drawDustHound, drawWaterLurker
 //     character draws: paintGrid, pixelActorFrames, buildPixelActors
@@ -225,7 +229,7 @@
 //
 // 19. INPUT MODES (kbd / gamepad / touch)  (src/scenes.js; getControls in src/textures.js; touch pads in src/touch.js; split cameras in src/game-scene.js)
 //     fns:  getControls, activeInputMode, isTouchDevice,
-//           initTouchControls, applyTouchInput, _onTouchDown/Move/Up, _onBtnPress, _drawTouchHUD,
+//           initTouchControls, applyTouchInput, _onTouchDown/Move/Up, _logTouchStick, _onBtnPress, _drawTouchHUD,
 //           keyDisplayName
 //     data: wasd, p2keys, _pads (one touch pad per player: stick, buttons, the screen area its fingers
 //           land in; 2P touch on a phone splits the screen left/right), _joy and _tcBtns (P1's pad),
@@ -254,12 +258,28 @@
 //     scores: _saveScore is the one save path (localStorage 'iw_scores', plus _postScore to the
 //             global scoreboard, tools/scoreboard/Code.gs, with runId and the session log trimmed
 //             to one cell by _logForSheet; _logLines is the log header); _showGlobalTop reads its top 10.
+//     net:  _fetchJson wraps every scoreboard call with an 8 s timeout; a refused score post shows
+//             "Score not accepted" on the global list header (_showGlobalTop).
+//     feedback: _sendFeedback posts the comment to the run's row (_scoreBody is the shared message);
+//             a send without {ok:true} is queued by _queueFeedback in localStorage 'iw_pending_feedback'
+//             and resent by flushPendingFeedback at the next start.
 //     cfg:  SCOREBOARD_URL (empty: no network call)
 //     win condition: relicsDeposited === 5 (deposited at altar)
 //
 // 23. SETTINGS / SAVE  (src/scenes.js; toggleSleep in src/game-scene.js)
 //     fns:  loadSettings, saveSettings, toggleSleep
 //     data: STATE (mode/difficulty), persisted via localStorage
+//
+// 24. TRACKS (boot prints)  (src/tracks.js; table in CFG.TRACKS in src/constants.js)
+//     Players and raiders leave alternating left/right boot prints; animals do not. The ground
+//     under a print sets its life and strength; no print on water (_waterMap, plus deep water).
+//     Pooled sprites at depth 1: the cap, not the number of walkers, bounds the cost.
+//     class: Tracks
+//     fns:  newestNear (per-tile index of live prints, for raiders following tracks, #310),
+//           _step, _place, _take, _release
+//     cfg:  TRACKS
+//     data: tracks, byTile, live
+//     log:  [WORLD ] at ready, [PERF  ] every 30 s while walking
 //
 // ── COMMON GOTCHAS ───────────────────────────────────────────
 // • Two cameras: new world objects must call hudCam.ignore(obj).

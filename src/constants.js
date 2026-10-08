@@ -28,8 +28,21 @@ const _isMobile = typeof navigator !== 'undefined' &&
   (navigator.maxTouchPoints > 0 || 'ontouchstart' in window) &&
   typeof window !== 'undefined' && Math.min(window.innerWidth, window.innerHeight) < 600;
 
+// Widen the canvas to the screen shape (#385): the height stays 360 (phone) or 720, the width follows
+// the screen between 16:9 and 2.4:1, so a phone shows more ground at the sides instead of black bars.
+// Measured once at load, from the game container inside the safe area (notch, rounded corners).
+const _screenAspect = (() => {
+  try {
+    const el = document.getElementById('game-container'), cs = window.getComputedStyle(el);
+    const w = el.clientWidth - parseFloat(cs.paddingLeft) - parseFloat(cs.paddingRight);
+    const h = el.clientHeight - parseFloat(cs.paddingTop) - parseFloat(cs.paddingBottom);
+    const a = Math.max(w, h) / Math.min(w, h); // landscape shape, whichever way the phone was held at load
+    return Math.min(2.4, Math.max(16 / 9, a)) || 16 / 9;
+  } catch (e) { return 16 / 9; }
+})();
+
 const CFG = {
-  W: _isMobile ? 640 : 1280, H: _isMobile ? 360 : 720,
+  H: _isMobile ? 360 : 720, W: Math.round((_isMobile ? 360 : 720) * _screenAspect),
   TILE: 32,
   MAP_W: 300, MAP_H: 300,
   SAFE_R: 10,
@@ -58,8 +71,36 @@ const CFG = {
   SPIKE_TRAP_DMG: 35,      // one hit, then the trap is spent
   CAMPFIRE_HEAL_MS: 2000,  // a campfire heals nearby players this often; the amount is hc.campfireHeal
   CAMPFIRE_HEAL_R: 80,     // px from the campfire
+  // Tracks (#308, src/tracks.js): how long a boot print lasts (ms) and how dark it starts
+  // (alpha), by the ground under it. Water takes no print. Starting values, tuned by eye.
+  TRACKS: {
+    GROUND: {
+      tundra: { life: 60000, alpha: 0.55 }, // snow
+      swamp:  { life: 45000, alpha: 0.5  }, // mud
+      desert: { life: 30000, alpha: 0.45 }, // sand
+      fungal: { life: 30000, alpha: 0.4  },
+      waste:  { life: 25000, alpha: 0.35 }, // dust, cracked earth
+      grass:  { life: 20000, alpha: 0.3  },
+      ruins:  { life: 15000, alpha: 0.15 }, // stone, rubble
+      ice:    { life: 15000, alpha: 0.15 },
+    },
+    FADE: 0.25,   // a print fades out over this last fraction of its life
+    STRIDE: 30,   // px between one print and the next (they alternate feet)
+    GAIT: 4,      // px each print sits left or right of the walking line
+    CAP: 320,     // live prints; when full, the oldest is recycled early
+  },
   // Global scoreboard web app URL (tools/scoreboard/SETUP.md). Empty: no network call at all.
   SCOREBOARD_URL: 'https://script.google.com/macros/s/AKfycbw-F_cH3aDvkIVX2Wycd64OreVQAykeu656VZ4wqZBnF6rUozi2NB7Th9MAptIKS9Hh/exec',
+};
+
+// Phone, 1 player layout (#388): sizes are a share of screen height (d = diameter), positions a
+// share of width (cx) and height (cy), so they hold on every phone. solid = see-through level.
+const PHONE1P = {
+  radar: { d: 0.39, cx: 0.88, cy: 0.21, solid: 0.60 },
+  stick: { d: 0.40, cx: 0.14, cy: 0.78 },
+  btn: { d: 0.18, cx: 0.87, cy: 0.77, gap: 1.5 }, // gap: centre distance from the diamond middle, in radii
+  menuBtn: { cx: 0.04, cy: 0.18 }, menuText: { cx: 0.07, cy: 0.09 },
+  hudScale: 0.9, hudSolid: 0.45, tipScale: 0.8, tipSolid: 0.75,
 };
 
 // ── ENEMY LOOT TABLES ─────────────────────────────────────────

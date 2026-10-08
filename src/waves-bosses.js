@@ -774,6 +774,24 @@ Object.assign(GameScene.prototype, {
     }
   },
 
+  // Night 1 comes in three small groups, 12 s apart, each strung out over a wide arc and distance, never more than 10 of the wave on the
+  // field at once, so a first-time player is met rather than swarmed (Hudson, Oct 2026: all 21
+  // animals reached him together). Day 1 only; every later wave spawns whole.
+  _spawnFirstWave(counts) {
+    const GROUPS = 3, GAP_MS = 12000, MAX_AT_ONCE = 10, GIVE_UP_MS = 60000, FIRST_WAVE_SPREAD = 1000; // px: the ring runs 900-2300 out, not 900-1300
+    const left = { ...counts }, wn = this.waveNum, t0 = this.time.now;
+    const send = () => {
+      if (this.isOver || !this.enemies) return;
+      let room = MAX_AT_ONCE - this.enemies.filter(e => e._waveNum === wn && e.spr?.active && !e.dying).length;
+      const g = {};
+      for (const k in left) { g[k] = Math.max(0, Math.min(left[k], Math.ceil(counts[k] / GROUPS), room)); room -= g[k]; left[k] -= g[k]; }
+      if (Object.values(g).some(n => n > 0)) this._spawnGroup(this.enemyWorldW, this.enemyWorldH, this.enemyCX, this.enemyCY, g, true, FIRST_WAVE_SPREAD);
+      // ponytail: a group sent while no player is up is lost, as a whole wave already was.
+      if (Object.values(left).some(n => n > 0) && this.time.now - t0 < GIVE_UP_MS) this._firstWaveTimer = this.time.delayedCall(GAP_MS, send);
+    };
+    send();
+  },
+
   updateWaves(delta) {
     this.waveTimer += delta;
     if (this.waveTimer >= this.WAVE_INTERVAL) {
@@ -792,7 +810,8 @@ Object.assign(GameScene.prototype, {
       const w = _take(Math.min(6 + this.waveNum * 2, 20));
       const r = _take(Math.min(8 + this.waveNum * 3, 30));
       const b = _take(Math.min(1 + this.waveNum, 8));
-      this._spawnGroup(this.enemyWorldW, this.enemyWorldH, this.enemyCX, this.enemyCY, { wolf:w, rat:r, bear:b }, true);
+      if (this.dayNum === 1) this._spawnFirstWave({ wolf:w, rat:r, bear:b });
+      else this._spawnGroup(this.enemyWorldW, this.enemyWorldH, this.enemyCX, this.enemyCY, { wolf:w, rat:r, bear:b }, true);
       if (this.dayNum >= 2) {
         const wn = this.waveNum;
         this._spawnBiomeEnemy('ice_crawler',  'tundra', _take(Math.min(2 + wn, 6)),  1);

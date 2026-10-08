@@ -268,19 +268,19 @@ Object.assign(GameScene.prototype, {
 
     // 55 forest clusters — each is a tight pack of 28-45 trees (scaled for 400×400 map)
     for (let f = 0; f < 55; f++) {
-      let cx, cy, attempts = 0;
+      let fx, fy, attempts = 0;
       do {
-        cx = Phaser.Math.Between(18, CFG.MAP_W-18);
-        cy = Phaser.Math.Between(18, CFG.MAP_H-18);
+        fx = Phaser.Math.Between(18, CFG.MAP_W-18);
+        fy = Phaser.Math.Between(18, CFG.MAP_H-18);
         attempts++;
-      } while (attempts < 40 && (Math.abs(cx-stx) < SAFE_R+20 && Math.abs(cy-sty) < SAFE_R+20));
-      const biome = getBiome(cx, cy);
+      } while (attempts < 40 && (Math.abs(fx-stx) < SAFE_R+20 && Math.abs(fy-sty) < SAFE_R+20));
+      const biome = getBiome(fx, fy);
       const radius = Phaser.Math.Between(6, 11); // larger radius clusters
       const count  = Phaser.Math.Between(28, 45); // denser clusters
       for (let i = 0; i < count; i++) {
         const angle = Math.random() * Math.PI * 2;
         const dist  = Math.sqrt(Math.random()) * radius; // sqrt = uniform density
-        placeTree(Math.round(cx + Math.cos(angle)*dist), Math.round(cy + Math.sin(angle)*dist), biome);
+        placeTree(Math.round(fx + Math.cos(angle)*dist), Math.round(fy + Math.sin(angle)*dist), biome);
       }
     }
 
@@ -1473,6 +1473,9 @@ Object.assign(GameScene.prototype, {
     const bw = o.displayWidth * 0.75, bh = o.displayHeight * 0.5;
     o.body.setSize(bw, bh, false);
     o.body.setOffset((o.displayWidth - bw) / 2, o.displayHeight - bh);
+    // World gen runs before the HUD camera exists (it ignores everything at once then); a tree
+    // regrown later must be ignored here or it is drawn a second time on the HUD (#346).
+    if (this.hudCam) this.hudCam.ignore(o);
     return o;
   },
 
