@@ -115,7 +115,7 @@
 //    data: enemyDens[], waterDens[]   (each: liveCount, type, pos, timer)
 //
 // 4. WAVES & BOSSES  (src/waves-bosses.js)
-//    fns:  updateWaves, updateBoss, spawnBoss, _bossExecuteSpecial,
+//    fns:  updateWaves, _spawnFirstWave, updateBoss, spawnBoss, _bossExecuteSpecial,
 //          _bossSmash, _bossTelegraph, _bossDist (reach to a drawn-to-fit hitbox),
 //          _debugBossFromUrl (?boss=wolf spawns a boss for testing),
 //          _pickBossType (every boss once per round, biome match first)
