@@ -25,3 +25,7 @@ one player at each short end. The screen is cut top to bottom: P1 gets the left 
 turned a quarter turn so it reads upright from its player's end, with a thin centre strip for shared items.
 Each half has its own world camera, stick zone and attack button.
 Avoid: split view, side by side. Phones keep the left/right layout with nothing turned, called the phone layout.
+
+**Wave marcher** — wildlife a wave spawns (`_waveMarch`, #330): it appears off-screen 900–1,300 px
+from a player and walks in, awake, until it first reaches someone; then it is ordinary wildlife.
+Avoid: wave spawn, edge spawn, attacker.

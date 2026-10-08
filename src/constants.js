@@ -47,6 +47,9 @@ const CFG = {
   FOG_UPDATE_INTERVAL: 4, // update fog every N frames
   DORMANT_RADIUS: 800,  // px — wildlife enemy goes dormant beyond this from all players
   WAKE_RADIUS:    700,  // px — hysteresis: dormant enemy wakes when closer than this
+  WAVE_RING_MIN: 900,   // px — a wave's wildlife spawns this far from a player (off-screen) ...
+  WAVE_RING_MAX: 1300,  // px — ... out to this, and marches in, never dormant until it reaches someone
+  WAVE_MARCH_MS: 60000, // a wave marcher that has reached nobody by then becomes ordinary wildlife
   MAX_ACTIVE_ENEMIES: 180, // hard cap on simultaneously active (non-dormant) enemies
   MAX_ENEMIES: 280, // hard cap on this.enemies.length across all spawners (den/wave)
   ITEM_DESPAWN_MS: 20000, // harvested / dropped item pickups auto-expire after this long

@@ -2,9 +2,11 @@
 // ── src/building-crafting.js — GameScene system 8: building & crafting ──────
 // Loads right after src/waves-bosses.js and adds these methods to GameScene (ADR 0002).
 // create() wires the build, craft and barracks keys; update() calls updateBuildMode,
-// updateCraftMenu and checkBarrackRange. GameScene.RECIPES stays in src/game-scene.js.
+// updateCraftMenu and checkBarrackRange. RECIPES (what everything costs) is in src/recipes.js.
 
 const CRAFTER_NAME = { gunslinger: 'Gunslinger', charmer: 'Lauren' };
+// Recipe cost by key, built once from RECIPES so getBuildCost charges what the craft menu shows.
+const RECIPE_COSTS = new Map(RECIPES.map(r => [r.key, r.cost]));
 
 Object.assign(GameScene.prototype, {
   // ── BUILD SYSTEM ──────────────────────────────────────────────
@@ -137,9 +139,10 @@ Object.assign(GameScene.prototype, {
       }
     }
     this._hudDirty = true;
+    this._shelterDirty = true; // a wall or a hearth can close a shelter (src/shelter.js)
 
     // Place the structure
-    this._log(`Build placed: ${this.buildType}  pos=(${Math.floor(x/CFG.TILE)},${Math.floor(y/CFG.TILE)})  by=${this.buildOwner?.charData?.player||'?'}`, 'build');
+    this._log(`Build placed: ${this.buildType}  pos=(${Math.floor(x/CFG.TILE)},${Math.floor(y/CFG.TILE)})  by=${this.buildOwner?.charData?.player||'?'}  cost=${JSON.stringify(cost)}`, 'build');
     if (this.buildType === 'wall') {
       const w = this._placeWallSprite(this.obstacles.create(x, y, 'wall'));
       w.hp = 200; w.maxHp = 200; // destructible
@@ -270,21 +273,9 @@ Object.assign(GameScene.prototype, {
     });
   },
 
+  // A recipe's cost, the same object the craft menu shows. {} for a key with no recipe.
   getBuildCost(type) {
-    const costs = {
-      wall:              { wood: 3 },
-      gate:              { wood: 4, metal: 2 },
-      campfire:          { wood: 5 },
-      craftbench:        { wood: 5, metal: 3 },
-      bed:               { wood: 8, fiber: 6, metal: 2 },
-      reinforced_wall:   { wood: 4, metal: 3 },
-      spike_trap:        { wood: 2, metal: 1 },
-      med_kit:           { fiber: 3, food: 2 },
-      knight_upgrade:    { metal: 3, fiber: 2 },
-      architect_upgrade: { metal: 3, wood: 2 },
-      gunslinger_upgrade:{ metal: 2, fiber: 1 },
-    };
-    return costs[type] || {};
+    return RECIPE_COSTS.get(type) || {};
   },
 
   // Built walls and gates: the front face covers exactly the 32 px tile at (x, y) and the
@@ -338,7 +329,6 @@ Object.assign(GameScene.prototype, {
       const PX = (W - PW) / 2, PY = H - PH - 20;
       const px = ptr.x, py = ptr.y;
       if (px < PX || px > PX + PW || py < PY || py > PY + PH) return;
-      const RECIPES = GameScene.RECIPES;
       const scroll = this.craftMenuScroll || 0;
       for (let visIdx = 0; visIdx < N_VISIBLE; visIdx++) {
         const idx = visIdx + scroll;
@@ -363,7 +353,7 @@ Object.assign(GameScene.prototype, {
       if (!this.craftMenuOpen) return;
       const PH = _isMobile ? 330 : 380;
       const ROW_H = 25, N_VISIBLE = Math.floor((PH - 94) / ROW_H);
-      const maxScroll = Math.max(0, GameScene.RECIPES.length - N_VISIBLE);
+      const maxScroll = Math.max(0, RECIPES.length - N_VISIBLE);
       this.craftMenuScroll = Phaser.Math.Clamp((this.craftMenuScroll || 0) + (deltaY > 0 ? 1 : -1), 0, maxScroll);
     };
     this.input.on('wheel', this._craftMenuWheelFn);
@@ -371,7 +361,7 @@ Object.assign(GameScene.prototype, {
 
   _craftScrollToSel() {
     const N_VISIBLE = Math.floor(((_isMobile ? 330 : 380) - 94) / 25);
-    const maxScroll = Math.max(0, GameScene.RECIPES.length - N_VISIBLE);
+    const maxScroll = Math.max(0, RECIPES.length - N_VISIBLE);
     let s = this.craftMenuScroll || 0;
     if (this.craftMenuSel < s) s = this.craftMenuSel;
     else if (this.craftMenuSel >= s + N_VISIBLE) s = this.craftMenuSel - N_VISIBLE + 1;
@@ -399,7 +389,6 @@ Object.assign(GameScene.prototype, {
 
   updateCraftMenu(delta) {
     if (!this.craftMenuOpen) return;
-    const RECIPES = GameScene.RECIPES;
 
     // Keyboard navigate up / down
     if (Phaser.Input.Keyboard.JustDown(this._craftNavUp) || Phaser.Input.Keyboard.JustDown(this._craftNavUp2)) {
@@ -429,7 +418,6 @@ Object.assign(GameScene.prototype, {
   },
 
   renderCraftMenu() {
-    const RECIPES = GameScene.RECIPES;
     const { W, H } = CFG;
     const team = this.getTeamInv();
     const PW = 440, PH = _isMobile ? 330 : 380;
@@ -534,7 +522,6 @@ Object.assign(GameScene.prototype, {
 
   craftSelected() {
     if (!this.craftMenuOpen) return;
-    const RECIPES = GameScene.RECIPES;
     const rec = RECIPES[this.craftMenuSel];
     const player = this.craftMenuOwner;
     const team = this.getTeamInv();
