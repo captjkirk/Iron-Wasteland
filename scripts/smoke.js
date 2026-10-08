@@ -3,8 +3,10 @@
 //   2. In play: loads ?seed=1&renderer=canvas (headless WebKit loses the WebGL context in the
 //      Game scene, so the canvas renderer stands in), starts a solo game, waits for the world,
 //      plays PLAY_MS and fails on any console or page error. WebGL-only bugs stay invisible.
+//      Fires wave 1 at the start and fails unless it is awake and closing on the player.
 //      Also fails when textures and object canvases hold more than PIXEL_BUDGET_MB of pixels.
 //      Then jumps to boss days 5 and 10 and fails unless each brings a boss, of two types.
+//      Then lines up three 1-HP enemies in front of the knight and fails unless one swing kills all three.
 //      Then ends the run and types a two-word name on the game over screen (#328).
 //   3. Hardcore: the same start with STATE.difficulty = 'hardcore'; fails unless timeAlive
 //      advances over HARDCORE_MS of play. Hardcore's own multipliers once froze the tab (#327).
@@ -85,7 +87,34 @@ async function pass(browser, name, url, run, opts = {}) {
   }
 
   failures += await pass(browser, 'in play', base + '?seed=1&renderer=canvas', async (page, posts) => {
-    await play(page, 'survival', PLAY_MS);
+    await play(page, 'survival', 0);
+    // Fire wave 1 now, and play through its march. Waves used to spawn at the map edge
+    // and go dormant on their first frame, so nothing ever arrived (#330).
+    const march0 = await page.evaluate(() => {
+      const s = _phaserGame.scene.getScene('Game');
+      const before = new Set(s.enemies);
+      s.waveTimer = s.WAVE_INTERVAL;
+      s.updateWaves(0);
+      const near = e => Math.min(...[s.p1, s.p2].filter(p => p && p.spr && p.spr.active)
+        .map(p => Math.hypot(e.spr.x - p.spr.x, e.spr.y - p.spr.y)));
+      window._smokeWave = s.enemies.filter(e => !before.has(e) && e._waveMarch && !e._dormant)
+        .map(e => ({ e, d0: near(e) }));
+      window._smokeNear = near;
+      return { spawned: s.enemies.length - before.size, marching: window._smokeWave.length };
+    });
+    await page.waitForTimeout(PLAY_MS);
+    const closed = await page.evaluate(() => window._smokeWave
+      .filter(w => w.e.spr && w.e.spr.active && w.d0 - window._smokeNear(w.e) > 100).length);
+    console.log(`in play: wave 1 spawned ${march0.spawned}, ${march0.marching} awake and marching, ` +
+      `${closed} closed in by 100+ px in ${PLAY_MS / 1000} s`);
+    if (!march0.marching || !closed) throw new Error('wave 1 did not march on the players (#330)');
+    // The wave would kill a knight who stands still in about 20 s; clear it so the checks
+    // below run on a living player.
+    await ask(page, () => {
+      const s = _phaserGame.scene.getScene('Game');
+      window._smokeWave.forEach(w => { if (!w.e.dying && w.e.spr?.active) s._hurtEnemy(w.e, 1e6); });
+      s.p1.hp = s.p1.maxHp;
+    });
     const fps = await ask(page, () => Math.round(_phaserGame.loop.actualFps));
     console.log(`in play: world built, ${PLAY_MS / 1000} s played at ${fps} fps`);
     // Pixel memory: every texture plus every canvas a game object owns (TileSprite, Text).
@@ -104,6 +133,26 @@ async function pass(browser, name, url, run, opts = {}) {
       .filter(o => o.body.height > o.displayHeight * 0.75)
       .map(o => o.texture.key));
     if (fat.length) throw new Error(`${fat.length} scenery hitboxes are nearly the whole sprite (first: ${fat[0]})`);
+    // One swing kills every 1-HP enemy in its arc (#341: a kill spliced this.enemies mid-loop,
+    // so the enemy after it in the array was skipped).
+    const swing = await page.evaluate(() => {
+      const s = _phaserGame.scene.getScene('Game'), p = s.p1, en = s.enemies;
+      const ok = e => e && !e.dying && !e.isBoss && !e.isRaider && e.spr?.active;
+      const i = en.findIndex((e, k) => ok(e) && ok(en[k + 1]) && ok(en[k + 2]));
+      if (i < 0) return 'no three live enemies in a row';
+      const three = en.slice(i, i + 3), a = s.getAimAngle(p);
+      three.forEach((e, k) => {
+        const off = (k - 1) * 8; // side by side, 30 px ahead of the knight
+        e.spr.setPosition(p.spr.x + Math.cos(a) * 30 - Math.sin(a) * off,
+                          p.spr.y + Math.sin(a) * 30 + Math.cos(a) * off);
+        e.hp = 1;
+      });
+      s.meleeSwing(p, 55, 0xdddddd, 0.18, 0);
+      const dead = three.filter(e => e.dying).length;
+      return dead === 3 ? '' : `a swing killed ${dead} of 3 lined-up 1-HP enemies`;
+    });
+    if (swing) throw new Error(swing);
+    console.log('in play: one swing killed all three lined-up enemies');
     const mb = Math.round(px * 4 / 1e6);
     console.log(`in play: ${mb} MB of pixel memory (budget ${PIXEL_BUDGET_MB} MB)`);
     if (mb > PIXEL_BUDGET_MB) throw new Error(`pixel memory ${mb} MB is over the ${PIXEL_BUDGET_MB} MB budget`);

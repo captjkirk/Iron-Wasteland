@@ -2837,7 +2837,7 @@ class GameScene extends Phaser.Scene {
       const stats = RAIDER_STATS[rtype];
 
       const raider = {
-        spr, type: rtype, isRaider: true,
+        spr, type: rtype, isRaider: true, isCampRaider: true, // only these hold the camp's lock
         hp: Math.floor(stats.hp * diffScale), maxHp: Math.floor(stats.hp * diffScale),
         speed: stats.speed * Math.min(1.6, diffScale),
         dmg: Math.floor(stats.dmg * diffScale),
@@ -2849,6 +2849,7 @@ class GameScene extends Phaser.Scene {
       this.raiders.push(raider);
       this.enemies.push(raider); // raiders participate in the normal enemy array so updateEnemies handles them
     }
+    this._refreshCampLock();
   }
 
   // Periodic hunting party — spawns at a random map edge and actively seeks the
@@ -3330,7 +3331,7 @@ class GameScene extends Phaser.Scene {
       pfx.strokeCircle(0, 0, 34);
       this.tweens.add({ targets: pfx, alpha: 0, scaleX: 1.4, scaleY: 1.4, duration: 400, onComplete: () => pfx.destroy() });
       const px = player.spr.x, py = player.spr.y;
-      this.enemies.forEach(e => {
+      this._forEachEnemy(e => {
         if (e.dying) return;
         const d = Phaser.Math.Distance.Between(px, py, e.spr.x, e.spr.y);
         if (d < PIRO_R) {
@@ -3383,7 +3384,7 @@ class GameScene extends Phaser.Scene {
           if (player._rangerUpgraded) {
             // Explosive arrow: splash damage to nearby enemies
             const ax = arrow.x, ay = arrow.y;
-            this.enemies.forEach(ne => {
+            this._forEachEnemy(ne => {
               if (ne === e || ne.dying) return;
               if (Phaser.Math.Distance.Between(ax, ay, ne.spr.x, ne.spr.y) < 60) {
                 this._hurtEnemy(ne, 20, ax, ay, 0xff8833, player);
@@ -3666,7 +3667,7 @@ class GameScene extends Phaser.Scene {
     fx.arc(cx, cy, range+6, startA+0.2, endA-0.2);
     fx.strokePath();
     if (this.enemies) {
-      this.enemies.forEach(e => {
+      this._forEachEnemy(e => {
         if (e.dying) return;
         const d = e.isBoss ? this._bossDist(e, player.spr.x, player.spr.y)
                            : Phaser.Math.Distance.Between(player.spr.x, player.spr.y, e.spr.x, e.spr.y);
