@@ -4,7 +4,10 @@
 // may post once per 30 seconds. Worst case is a fake score, deleted by hand in the sheet.
 
 var SHEET = 'Scores';
-var HEADER = ['name', 'date', 'chars', 'mode', 'difficulty', 'days', 'kills', 'score', 'version', 'seed', 'device'];
+// doGet reads columns by position, so new columns go on the end; scoresSheet_ adds them to a live sheet.
+var HEADER = ['name', 'date', 'chars', 'mode', 'difficulty', 'days', 'kills', 'score', 'version', 'seed', 'device',
+  'runId', 'log'];
+var LOG_MAX = 50000; // a Sheets cell holds at most 50,000 characters; the game trims to fit
 var CHARS = ['knight', 'gunslinger', 'architect', 'charmer', 'ranger'];
 var DIFFICULTIES = ['survival', 'hardcore'];
 var RATE_LIMIT_S = 30;
@@ -13,6 +16,8 @@ function scoresSheet_() {
   var ss = SpreadsheetApp.getActiveSpreadsheet();
   var sh = ss.getSheetByName(SHEET) || ss.insertSheet(SHEET);
   if (sh.getLastRow() === 0) sh.appendRow(HEADER);
+  var have = sh.getLastColumn();
+  if (have < HEADER.length) sh.getRange(1, have + 1, 1, HEADER.length - have).setValues([HEADER.slice(have)]);
   return sh;
 }
 
@@ -41,7 +46,14 @@ function validate_(d) {
   if (typeof d.version !== 'string' || d.version.length > 40 || /[^\w .:\-+]/.test(d.version)) return 'version';
   if (typeof d.seed !== 'string' || !/^[\w\-]{0,40}$/.test(d.seed)) return 'seed';
   if (typeof d.device !== 'string' || !/^[a-z0-9]{8,40}$/.test(d.device)) return 'device';
-  return [name, new Date(), d.chars, d.mode, d.difficulty, d.days, d.kills, d.score, d.version, d.seed, d.device];
+  // runId and log are optional: a game loaded before they existed still posts its score.
+  var runId = d.runId == null ? '' : d.runId;
+  if (typeof runId !== 'string' || !/^[\w:.\-]{0,40}$/.test(runId)) return 'runId';
+  var log = d.log == null ? '' : d.log;
+  if (typeof log !== 'string' || log.length > LOG_MAX - 1) return 'log';
+  if (/^[=+\-@]/.test(log)) log = "'" + log;
+  return [name, new Date(), d.chars, d.mode, d.difficulty, d.days, d.kills, d.score, d.version, d.seed, d.device,
+    runId, log];
 }
 
 function doPost(e) {
