@@ -48,7 +48,8 @@
 //                          SettingsScene, CharSelectScene
 //
 //   src/game-scene.js    — GameScene: gameplay systems 3, 5-7, 9-16 and 19-23 (see list below)
-//                          Also: GameScene.RECIPES static property (system 8's recipe list)
+//
+//   src/recipes.js       — The craft menu's recipes (data only): RECIPES, the one table of costs
 //
 //   src/world-gen.js     — System 1, added to GameScene.prototype; loads after game-scene.js
 //
@@ -132,14 +133,14 @@
 //    data: player.isDowned, player.downedTimer, reviving, reviveProgress
 //    log:  [PLAYER]
 //
-// 8. BUILDING & CRAFTING  (src/building-crafting.js; GameScene.RECIPES stays in src/game-scene.js)
+// 8. BUILDING & CRAFTING  (src/building-crafting.js; RECIPES in src/recipes.js)
 //    build: updateBuildMode, placeBuild, _buildSpotError, exitBuildMode, _placeWallSprite,
 //           _tryTeardownBuild, openGate, getBuildCost, getTeamInv
 //    craft: openCraftMenu, closeCraftMenu, updateCraftMenu, craftSelected,
 //           renderCraftMenu, _craftScrollToSel
 //    barracks: openBarrack, closeBarrack, barrackNav, barrackConfirm,
 //              refreshBarrackCards, buildBarrackOverlay, checkBarrackRange
-//    data: buildType, buildRotation, buildOwner, RECIPES,
+//    data: buildType, buildRotation, buildOwner, RECIPES, RECIPE_COSTS (getBuildCost's lookup),
 //          structures, player.carriedAmmo
 //    log:  [BUILD ], [PLAYER]
 //
