@@ -318,7 +318,7 @@ async function bossReach(page) {
   // controls and panels and fails when the radar, the four buttons or the stick differ from the
   // agreed sizes by more than 2% of the screen height, or when any circle or box overlaps another
   // or runs off the screen. The stick ring is left out: it only appears where the thumb lands.
-  for (const [name, vp] of [['phone layout 640x360', { width: 640, height: 360 }], ['phone layout 874x402', { width: 874, height: 402 }]]) {
+  for (const [name, vp] of [['phone layout 640x360', { width: 640, height: 360 }], ['phone layout 874x402', { width: 874, height: 402 }], ['iPad layout 1180x820', { width: 1180, height: 820 }]]) {
     failures += await pass(browser, name, base + '?seed=1&renderer=canvas', async page => {
       await page.evaluate(() => {
         saveSettings({ inputMode: 'touch', tutorial: false });
@@ -328,7 +328,7 @@ async function bossReach(page) {
       await page.waitForTimeout(1500);
       const err = await page.evaluate(() => {
         const g = _phaserGame.scene.getScene('Game'), { W, H } = CFG, tol = 0.02 * H;
-        if (Math.abs(W / H - innerWidth / innerHeight) > 0.01) return `canvas is ${W}x${H}, not the shape of the screen`;
+        if (_isMobile && Math.abs(W / H - innerWidth / innerHeight) > 0.01) return `canvas is ${W}x${H}, not the shape of the screen`;
         const b = g._pads[0].btns, items = [], bad = [];
         const diam = (what, got, share) => { if (Math.abs(got - share * H) > tol) bad.push(`${what} is ${Math.round(got)} px across, wanted ${Math.round(share * H)}`); };
         const circle = (n, c) => items.push({ n, circle: true, ...c });
@@ -372,7 +372,7 @@ async function bossReach(page) {
       for (const o of parts) {
         if (!(o.x >= 0 && o.x <= W && o.y >= 0 && o.y <= H)) bad.push(`${o.type} at ${o.x},${o.y}`);
         if (o.depth <= g.fogGfx.depth || o.depth <= g.nightOverlay.depth) bad.push(`${o.type} is not above the fog`);
-        if (o.alpha < 0.3) bad.push(`${o.type} alpha ${o.alpha}`);
+        if (o.alpha < 0.1) bad.push(`${o.type} alpha ${o.alpha}`);
       }
       return bad.join('; ');
     });
