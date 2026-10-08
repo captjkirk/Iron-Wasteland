@@ -97,6 +97,7 @@
 //    fns:  updateEnemies, _steerToward, _hasLOS,
 //          _findWallOnPath, _hurtEnemy,
 //          killEnemy, _startDormantIfFar,
+//          _forEachEnemy (any loop over enemies that can kill; splices wait for the loop end)
 //          applyTerrainEffects (also runs for raiders and animals)
 //    spawn: spawnEnemies, _spawnGroup, _spawnBiomeEnemy,
 //           _spawnWaterLurker
@@ -176,9 +177,11 @@
 //     cfg:  FOG_REVEAL_R, FOG_UPDATE_INTERVAL
 //     data: _relicPOIs, relicsHeld, altarPos, altarDiscovered, _fireGlows
 //
-// 12. RAIDERS (camps + raid events)  (src/game-scene.js)
+// 12. RAIDERS (camps + raid events)  (src/game-scene.js; the camp lock in src/enemy-ai.js)
 //     fns:  updateRaiders, placeRaiderCamp, spawnRaiders, spawnHuntingParty,
 //           checkRaidCacheRange, openRaidCache, _fireRaiderShot,
+//           _campRaidersLeft, _refreshCampLock (only isCampRaider raiders lock the cache;
+//           hunt-party raiders share raiders[] but not the lock),
 //           applyTerrainEffects (raiders slide on ice, slow on tundra)
 //     data: raidCamp, raidRespawnDay, raiders
 //
