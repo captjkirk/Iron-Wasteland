@@ -96,6 +96,7 @@
 //    fns:  updateEnemies, _steerToward, _hasLOS,
 //          _findWallOnPath, _hurtEnemy,
 //          killEnemy, _startDormantIfFar,
+//          _forEachEnemy (any loop over enemies that can kill; splices wait for the loop end)
 //          applyTerrainEffects (also runs for raiders and animals)
 //    spawn: spawnEnemies, _spawnGroup, _spawnBiomeEnemy,
 //           _spawnWaterLurker
