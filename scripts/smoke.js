@@ -3,7 +3,12 @@
 //   2. In play: loads ?seed=1&renderer=canvas (headless WebKit loses the WebGL context in the
 //      Game scene, so the canvas renderer stands in), starts a solo game, waits for the world,
 //      plays PLAY_MS and fails on any console or page error. WebGL-only bugs stay invisible.
+//      Fires wave 1 at the start and fails unless it is awake and closing on the player.
 //      Also fails when textures and object canvases hold more than PIXEL_BUDGET_MB of pixels.
+//      Then spawns each boss beside the knight and fails unless its hitbox fits the drawing and
+//      mirrors, and a knight swing from 20 px outside it, left and right, deals damage and one
+//      from 100 px out does not (#312, #317).
+//      Then jumps to boss days 5 and 10 and fails unless each brings a boss, of two types.
 //      Then lines up three 1-HP enemies in front of the knight and fails unless one swing kills all three.
 //      Then ends the run and types a two-word name on the game over screen (#328).
 //   3. Hardcore: the same start with STATE.difficulty = 'hardcore'; fails unless timeAlive
@@ -63,6 +68,62 @@ async function pass(browser, name, url, run, opts = {}) {
   return errors.length;
 }
 
+// Boss hitboxes fit the drawing (#312, #317): each box spans at least 60% of the drawn width and
+// height (the old 84 px square was under half), mirrors when the boss turns, and the knight's
+// sword (range 55, as doAttack swings it) reaches it from 20 px outside, not from 100 px.
+async function bossReach(page) {
+  const keys = ['boss_golem', 'boss_wolf', 'boss_spider', 'boss_troll', 'boss_hydra'];
+  const misses = [];
+  for (const key of keys) {
+    misses.push(...await page.evaluate(key => {
+      const g = _phaserGame.scene.getScene('Game');
+      g.bossSpawned = false; g.spawnBoss(key);
+      const b = g.boss; // stands still and holds its attacks
+      b.speed = 0; b.specialTimer = b.specialInterval = b.attackTimer = b.atkInterval = 1e9;
+      g.p1.hp = g.p1.maxHp = 1e6;
+      g._reachHome = g._reachHome || { x: g.p1.spr.x, y: g.p1.spr.y };
+      const img = g.textures.get(key).getSourceImage(), c = document.createElement('canvas');
+      c.width = img.width; c.height = img.height;
+      const ctx = c.getContext('2d'); ctx.drawImage(img, 0, 0);
+      const a = ctx.getImageData(0, 0, c.width, c.height).data;
+      let x0 = c.width, x1 = -1, y0 = c.height, y1 = -1;
+      for (let y = 0; y < c.height; y++) for (let x = 0; x < c.width; x++) {
+        if (a[(y * c.width + x) * 4 + 3] > 40) { x0 = Math.min(x0, x); x1 = Math.max(x1, x); y0 = Math.min(y0, y); y1 = y; }
+      }
+      const hb = b.hitbox, fit = Math.min(hb.w / (x1 - x0 + 1), hb.h / (y1 - y0 + 1));
+      return fit < 0.6 ? [`${key}: hitbox ${hb.w}x${hb.h} covers only ${Math.round(fit * 100)}% of the ${x1 - x0 + 1}x${y1 - y0 + 1} drawing`] : [];
+    }, key));
+    const offsets = [];
+    for (const side of [-1, 1]) {
+      await page.evaluate(side => { // the boss turns toward the knight and mirrors its box
+        const g = _phaserGame.scene.getScene('Game'), h = g._reachHome;
+        g.boss.spr.body.reset(h.x, h.y);
+        g.p1.spr.body.reset(h.x + side * 300, h.y);
+      }, side);
+      await page.waitForTimeout(300);
+      const r = await page.evaluate(({ key, side }) => {
+        const g = _phaserGame.scene.getScene('Game'), b = g.boss, body = b.spr.body, p = g.p1;
+        // The box's centre from its offset, in texture px off the frame centre. body.center - spr.x
+        // drifts while the big body is pushed off scenery or a hit tween rescales it (#317).
+        const out = [], offset = body.offset.x + b.hitbox.w / 2 - b.spr.width / 2;
+        for (const gap of [100, 20]) {
+          p.spr.setPosition(side < 0 ? body.left - gap : body.right + gap, body.center.y);
+          p.aimAngle = side < 0 ? 0 : Math.PI;
+          const hp = b.hp;
+          g.meleeSwing(p, 55, 0xdddddd, 0.18, 0);
+          if ((b.hp < hp) !== (gap === 20)) out.push(`${key}: swing ${gap} px ${side < 0 ? 'left' : 'right'} of the hitbox ${b.hp < hp ? 'hit' : 'missed'}`);
+        }
+        return { out, offset };
+      }, { key, side });
+      misses.push(...r.out); offsets.push(r.offset);
+    }
+    if (Math.abs(offsets[0] + offsets[1]) > 1) misses.push(`${key}: hitbox does not mirror (centre ${offsets.map(o => o.toFixed(1)).join(' vs ')} texture px off the sprite centre)`);
+    await page.evaluate(() => { const g = _phaserGame.scene.getScene('Game'); g.killEnemy(g.boss); });
+  }
+  if (misses.length) throw new Error(misses.join('; '));
+  console.log(`in play: ${keys.length} boss hitboxes fit, mirror, and the knight reaches them from 20 px out, not 100 px`);
+}
+
 (async () => {
   if (!server.listening) await new Promise(r => server.once('listening', r));
   const base = `http://localhost:${server.address().port}/`;
@@ -85,7 +146,34 @@ async function pass(browser, name, url, run, opts = {}) {
   }
 
   failures += await pass(browser, 'in play', base + '?seed=1&renderer=canvas', async (page, posts) => {
-    await play(page, 'survival', PLAY_MS);
+    await play(page, 'survival', 0);
+    // Fire wave 1 now, and play through its march. Waves used to spawn at the map edge
+    // and go dormant on their first frame, so nothing ever arrived (#330).
+    const march0 = await page.evaluate(() => {
+      const s = _phaserGame.scene.getScene('Game');
+      const before = new Set(s.enemies);
+      s.waveTimer = s.WAVE_INTERVAL;
+      s.updateWaves(0);
+      const near = e => Math.min(...[s.p1, s.p2].filter(p => p && p.spr && p.spr.active)
+        .map(p => Math.hypot(e.spr.x - p.spr.x, e.spr.y - p.spr.y)));
+      window._smokeWave = s.enemies.filter(e => !before.has(e) && e._waveMarch && !e._dormant)
+        .map(e => ({ e, d0: near(e) }));
+      window._smokeNear = near;
+      return { spawned: s.enemies.length - before.size, marching: window._smokeWave.length };
+    });
+    await page.waitForTimeout(PLAY_MS);
+    const closed = await page.evaluate(() => window._smokeWave
+      .filter(w => w.e.spr && w.e.spr.active && w.d0 - window._smokeNear(w.e) > 100).length);
+    console.log(`in play: wave 1 spawned ${march0.spawned}, ${march0.marching} awake and marching, ` +
+      `${closed} closed in by 100+ px in ${PLAY_MS / 1000} s`);
+    if (!march0.marching || !closed) throw new Error('wave 1 did not march on the players (#330)');
+    // The wave would kill a knight who stands still in about 20 s; clear it so the checks
+    // below run on a living player.
+    await ask(page, () => {
+      const s = _phaserGame.scene.getScene('Game');
+      window._smokeWave.forEach(w => { if (!w.e.dying && w.e.spr?.active) s._hurtEnemy(w.e, 1e6); });
+      s.p1.hp = s.p1.maxHp;
+    });
     const fps = await ask(page, () => Math.round(_phaserGame.loop.actualFps));
     console.log(`in play: world built, ${PLAY_MS / 1000} s played at ${fps} fps`);
     // Pixel memory: every texture plus every canvas a game object owns (TileSprite, Text).
@@ -127,6 +215,27 @@ async function pass(browser, name, url, run, opts = {}) {
     const mb = Math.round(px * 4 / 1e6);
     console.log(`in play: ${mb} MB of pixel memory (budget ${PIXEL_BUDGET_MB} MB)`);
     if (mb > PIXEL_BUDGET_MB) throw new Error(`pixel memory ${mb} MB is over the ${PIXEL_BUDGET_MB} MB budget`);
+    await bossReach(page);
+    // Boss days (#329): the day-5 boss spawns, dies, and day 10 brings a second boss of
+    // another type. The day is set directly; the day-10 roll is forced to 100%.
+    const bosses = [];
+    for (const day of [5, 10]) {
+      await page.evaluate(day => {
+        const s = _phaserGame.scene.getScene('Game');
+        s._bossChance = 1;
+        s.dayTimer = (day - 1) * s.DAY_DUR + 1000;
+        s.p1.hp = s.p1.maxHp;
+      }, day);
+      await page.waitForFunction(() => _phaserGame.scene.getScene('Game').boss, null, { timeout: 30000 })
+        .catch(() => { throw new Error(`no boss spawned on day ${day} (bosses so far: ${bosses.join(', ') || 'none'})`); });
+      bosses.push(await page.evaluate(() => {
+        const s = _phaserGame.scene.getScene('Game'), b = s.boss;
+        s._hurtEnemy(b, 1e6);
+        return b.type;
+      }));
+    }
+    console.log(`in play: boss days 5 and 10 brought ${bosses.join(', ')}`);
+    if (bosses[0] === bosses[1]) throw new Error(`day 10 brought the same boss again (${bosses[1]})`);
     // Game over name field: Phaser preventDefaults every key any scene ever captured (WASD,
     // Space, F…) unless the field keeps its keys; a name once came out as "nKi" (#328).
     await page.evaluate(() => _phaserGame.scene.getScene('Game').triggerGameOver('Smoke run over.'));
