@@ -1822,7 +1822,7 @@ class GameScene extends Phaser.Scene {
       for (const _rel of this._relicPOIs) {
         if (!_rel.spr || !_rel.spr.active) continue;
         const _rd = Phaser.Math.Distance.Between(player.spr.x, player.spr.y, _rel.x, _rel.y);
-        if (_rd < 70) {
+        if (_rd < CFG.RELIC_RANGE) {
           this.hint('Hold Interact for 3s to retrieve relic', 1800);
           return;
         }
@@ -1846,7 +1846,7 @@ class GameScene extends Phaser.Scene {
   // Interact key held for 3s, cancels on out-of-range / release / downed /
   // damage taken mid-channel. Completes into _pickupRelic.
   updateRelicChannels(delta) {
-    const RANGE = 70, RANGE2 = RANGE * RANGE;
+    const RANGE2 = CFG.RELIC_RANGE * CFG.RELIC_RANGE;
     const HOLD_DUR = 3000;
     const BAR_W = 70, BAR_H = 6;
     const list = [

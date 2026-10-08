@@ -829,6 +829,9 @@ Object.assign(GameScene.prototype, {
       });
     }
 
+    // Last of the world's bodies are in place: make sure every relic can be picked up.
+    this._keepRelicsInReach(cx, cy);
+
     // Night overlay — fill the world once at full alpha, then modulate .alpha per frame
     // (avoids clearing + re-filling a ~9600x9600 px rect every tick in updateDayNight).
     this.nightOverlay = this._w(this.add.graphics().setDepth(49));
@@ -882,34 +885,6 @@ Object.assign(GameScene.prototype, {
         if (!_isImpassable(tx, ty)) return { tx, ty };
       }
       return { tx: Phaser.Math.Between(20, MAP_W - 20), ty: Phaser.Math.Between(20, MAP_H - 20) };
-    };
-
-    // BFS flood-fill from spawn — confirms a tile is physically walkable-to.
-    // Catches the relic-in-mountain-cluster case where _isImpassable passes the
-    // tile itself but the surrounding ring of physics bodies makes it unreachable.
-    const _reachableFromSpawn = (rtx, rty) => {
-      const visited = new Uint8Array(MAP_W * MAP_H);
-      const startIdx = stx + sty * MAP_W;
-      visited[startIdx] = 1;
-      const q = [startIdx];
-      let head = 0;
-      const target = rtx + rty * MAP_W;
-      while (head < q.length) {
-        const idx = q[head++];
-        if (idx === target) return true;
-        const tx = idx % MAP_W, ty = (idx / MAP_W) | 0;
-        for (let d = 0; d < 4; d++) {
-          const ntx = tx + (d === 0 ? -1 : d === 1 ? 1 : 0);
-          const nty = ty + (d === 2 ? -1 : d === 3 ? 1 : 0);
-          if (ntx < 0 || ntx >= MAP_W || nty < 0 || nty >= MAP_H) continue;
-          const ni = ntx + nty * MAP_W;
-          if (visited[ni]) continue;
-          if (_isImpassable(ntx, nty)) continue;
-          visited[ni] = 1;
-          q.push(ni);
-        }
-      }
-      return false;
     };
 
     // Supply Caches — use pre-computed positions (fjord + tree-clear guaranteed)
@@ -1051,22 +1026,15 @@ Object.assign(GameScene.prototype, {
       const RELIC_BIOMES = ['waste', 'swamp', 'tundra', 'ruins', 'fungal'];
       const D = this._diffMult();
       const S = this._diffSpeedMult();
-      const RELIC_ALTAR_MIN = 18; // tiles — keep relics away from the altar so E doesn't conflict
       this._relicPOIs = [];
-      // Find a valid relic position: right biome, clear of altar, reachable from spawn
+      // Right biome, clear of the altar so E doesn't conflict. Reach is settled once the whole
+      // world stands (_keepRelicsInReach), since structures and trees are placed after this.
       const _findRelicPos = (biome) => {
-        const _altarClear = (p) => {
-          if (!this.altarPos) return p;
-          for (let _t = 0; _t < 8; _t++) {
-            const dtx = p.tx - this.altarPos.tx, dty = p.ty - this.altarPos.ty;
-            if (dtx*dtx + dty*dty >= RELIC_ALTAR_MIN*RELIC_ALTAR_MIN) return p;
-            p = findInBiome(biome, 80);
-          }
-          return p;
-        };
-        let p = _altarClear(findInBiome(biome, 80));
-        for (let _r = 0; _r < 5 && !_reachableFromSpawn(p.tx, p.ty); _r++) {
-          p = _altarClear(findInBiome(biome, 80));
+        let p = findInBiome(biome, 80);
+        for (let _t = 0; _t < 8 && this.altarPos; _t++) {
+          const dtx = p.tx - this.altarPos.tx, dty = p.ty - this.altarPos.ty;
+          if (dtx*dtx + dty*dty >= CFG.RELIC_ALTAR_MIN*CFG.RELIC_ALTAR_MIN) break;
+          p = findInBiome(biome, 80);
         }
         return p;
       };
@@ -1080,7 +1048,8 @@ Object.assign(GameScene.prototype, {
           fontFamily: 'monospace', fontSize: '8px', color: '#cc44ff',
           stroke: '#000', strokeThickness: 2,
         }).setOrigin(0.5).setDepth(8).setVisible(false));
-        this._relicPOIs.push({ x: px, y: py, tx: pos.tx, ty: pos.ty, spr, lbl, biome });
+        const guards = []; // moved with the relic by _keepRelicsInReach
+        this._relicPOIs.push({ x: px, y: py, tx: pos.tx, ty: pos.ty, spr, lbl, biome, guards });
         this.pois.push({ type: 'relic', tx: pos.tx, ty: pos.ty, spr });
 
         // Elite guard bears — 1.4× HP, 1.3× damage, spawn dormant nearby
@@ -1107,6 +1076,7 @@ Object.assign(GameScene.prototype, {
           if (guardspr.body) { guardspr.body.enable = false; this.physics.world.bodies.delete(guardspr.body); }
           if (this.enemies.length < CFG.MAX_ENEMIES) {
             this.enemies.push(eg);
+            guards.push(guardspr);
           } else {
             guardspr.destroy();
           }
@@ -1114,6 +1084,102 @@ Object.assign(GameScene.prototype, {
         this._log(`Relic placed  biome=${biome}  tx=${pos.tx}  ty=${pos.ty}`, 'world');
       }
     }
+  },
+
+  // ── RELIC REACH (#122, #314) ──────────────────────────────────
+  // Flood fill from (x, y) over the real static bodies. A cell is open when the player's body
+  // (PLAYER_BODY) centred on it touches no obstacle. Trees count as solid although players can chop
+  // them: a relic should never need chopping to reach. Returns the cells reached.
+  _walkableFrom(x, y) {
+    const C = 8, { w: BW, h: BH } = PLAYER_BODY;
+    const W = Math.ceil(CFG.MAP_W * CFG.TILE / C), H = Math.ceil(CFG.MAP_H * CFG.TILE / C);
+    const blocked = new Uint8Array(W * H);
+    for (const o of this.obstacles.getChildren()) {
+      const b = o.body;
+      if (!o.active || !b || b.enable === false) continue;
+      // cells whose centre lies inside the body grown by half the player's body
+      const x0 = Math.max(0, Math.ceil((b.x - BW / 2) / C - 0.5)), x1 = Math.min(W - 1, Math.floor((b.right + BW / 2) / C - 0.5));
+      const y0 = Math.max(0, Math.ceil((b.y - BH / 2) / C - 0.5)), y1 = Math.min(H - 1, Math.floor((b.bottom + BH / 2) / C - 0.5));
+      for (let cy = y0; cy <= y1; cy++) blocked.fill(1, x0 + cy * W, x1 + cy * W + 1);
+    }
+    // start on the open cell nearest (x, y): spawn itself is clear, this only guards a bad caller
+    let start = -1;
+    const sx = Math.floor(x / C), sy = Math.floor(y / C);
+    for (let r = 0; r < 16 && start < 0; r++) {
+      for (let dy = -r; dy <= r && start < 0; dy++) for (let dx = -r; dx <= r; dx++) {
+        const cx = sx + dx, cy = sy + dy;
+        if (cx >= 0 && cy >= 0 && cx < W && cy < H && !blocked[cx + cy * W]) { start = cx + cy * W; break; }
+      }
+    }
+    const seen = new Uint8Array(W * H);
+    if (start < 0) return { C, W, H, seen };
+    const q = new Int32Array(W * H);
+    let head = 0, tail = 0;
+    q[tail++] = start; seen[start] = 1;
+    while (head < tail) {
+      const i = q[head++], cx = i % W;
+      if (cx > 0 && !seen[i - 1] && !blocked[i - 1]) { seen[i - 1] = 1; q[tail++] = i - 1; }
+      if (cx < W - 1 && !seen[i + 1] && !blocked[i + 1]) { seen[i + 1] = 1; q[tail++] = i + 1; }
+      if (i >= W && !seen[i - W] && !blocked[i - W]) { seen[i - W] = 1; q[tail++] = i - W; }
+      if (i < W * (H - 1) && !seen[i + W] && !blocked[i + W]) { seen[i + W] = 1; q[tail++] = i + W; }
+    }
+    return { C, W, H, seen };
+  },
+
+  // The nearest reached cell within maxD px, as the point a player's sprite stands on there (the body
+  // centre is PLAYER_BODY.dy below it), that passes ok(px, py); null when none does.
+  _nearestStandPoint(reach, x, y, ok, maxD = Infinity) {
+    const { C, W, H, seen } = reach, by = y + PLAYER_BODY.dy; // the body centre that stands at (x, y)
+    const x0 = Math.max(0, Math.floor((x - maxD) / C)), x1 = Math.min(W - 1, Math.floor((x + maxD) / C));
+    const y0 = Math.max(0, Math.floor((by - maxD) / C)), y1 = Math.min(H - 1, Math.floor((by + maxD) / C));
+    let best = null, bestD2 = maxD * maxD;
+    for (let cy = y0; cy <= y1; cy++) for (let cx = x0; cx <= x1; cx++) {
+      if (!seen[cx + cy * W]) continue;
+      const px = cx * C + C / 2, py = cy * C + C / 2 - PLAYER_BODY.dy;
+      const d2 = (px - x) * (px - x) + (py - y) * (py - y);
+      if (d2 <= bestD2 && ok(px, py)) { bestD2 = d2; best = { x: px, y: py, d: Math.sqrt(d2) }; }
+    }
+    return best;
+  },
+
+  // Runs once the whole world stands (structures built, trees cleared): a relic with no ground a
+  // player can reach within a tile of it moves, with its guards, to the nearest such point in its
+  // biome. A tile, not CFG.RELIC_RANGE: on ?seed=12 a relic buried in a mountain was 65 px from one
+  // reachable spot, in range only if you find that spot. Walls, trees, structures and mountains all
+  // count, because the fill reads their bodies.
+  _keepRelicsInReach(cx, cy) {
+    if (!this._relicPOIs || !this._relicPOIs.length) return;
+    const { TILE, SAFE_R } = CFG;
+    const t0 = performance.now();
+    const reach = this._walkableFrom(cx, cy + PLAYER_BODY.dy);
+    const stx = cx / TILE, sty = cy / TILE;
+    let moved = 0;
+    for (const rel of this._relicPOIs) {
+      if (this._nearestStandPoint(reach, rel.x, rel.y, () => true, TILE)) continue;
+      const here = this._nearestStandPoint(reach, rel.x, rel.y, () => true);
+      const fits = (px, py, biome) => {
+        const tx = Math.floor(px / TILE), ty = Math.floor(py / TILE);
+        if (Math.abs(tx - stx) < SAFE_R + 8 && Math.abs(ty - sty) < SAFE_R + 8) return false;
+        if (this._waterMap && this._waterMap[tx + ty * CFG.MAP_W]) return false;
+        if (biome && getBiome(tx, ty) !== biome) return false;
+        if (!this.altarPos) return true;
+        const dtx = tx - this.altarPos.tx, dty = ty - this.altarPos.ty;
+        return dtx * dtx + dty * dty >= CFG.RELIC_ALTAR_MIN * CFG.RELIC_ALTAR_MIN;
+      };
+      const to = this._nearestStandPoint(reach, rel.x, rel.y, (px, py) => fits(px, py, rel.biome))
+              || this._nearestStandPoint(reach, rel.x, rel.y, (px, py) => fits(px, py, null));
+      if (!to) { this._log(`relic stuck  biome=${rel.biome}  tx=${rel.tx}  ty=${rel.ty}  no reachable ground found`, 'world'); continue; }
+      const dx = to.x - rel.x, dy = to.y - rel.y;
+      const poi = this.pois.find(p => p.type === 'relic' && p.spr === rel.spr);
+      rel.x = to.x; rel.y = to.y; rel.tx = Math.floor(to.x / TILE); rel.ty = Math.floor(to.y / TILE);
+      rel.spr.setPosition(rel.x, rel.y);
+      rel.lbl.setPosition(rel.x, rel.y - 22);
+      if (poi) { poi.tx = rel.tx; poi.ty = rel.ty; }
+      for (const g of rel.guards) if (g.active) g.setPosition(g.x + dx, g.y + dy);
+      moved++;
+      this._log(`relic moved  biome=${rel.biome}  to tx=${rel.tx} ty=${rel.ty}  ${Math.round(to.d)}px  closest reach was ${here ? Math.round(here.d) + 'px' : 'none'}`, 'world');
+    }
+    this._log(`relic reach  checked=${this._relicPOIs.length}  moved=${moved}  ${Math.round(performance.now() - t0)}ms`, 'world');
   },
 
   // ── RUINS CITY ────────────────────────────────────────────────
