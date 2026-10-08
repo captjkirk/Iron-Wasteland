@@ -52,7 +52,8 @@
 //                          _buildWheel, _layoutWheel, _spinTo, _settle, nav, confirm, refresh, _turn
 //
 //   src/game-scene.js    — GameScene: gameplay systems 3, 5-7, 9-16 and 19-23 (see list below)
-//                          Also: GameScene.RECIPES static property (system 8's recipe list)
+//
+//   src/recipes.js       — The craft menu's recipes (data only): RECIPES, the one table of costs
 //
 //   src/touch.js         — System 19's touch pads (one per player), added to GameScene.prototype
 //
@@ -145,7 +146,7 @@
 //    data: player.isDowned, player.downedTimer, reviving, reviveProgress
 //    log:  [PLAYER]
 //
-// 8. BUILDING & CRAFTING  (src/building-crafting.js; GameScene.RECIPES stays in src/game-scene.js; shelter in src/shelter.js)
+// 8. BUILDING & CRAFTING  (src/building-crafting.js; RECIPES in src/recipes.js; shelter in src/shelter.js)
 //    build: updateBuildMode, placeBuild, _buildSpotError, exitBuildMode, _placeWallSprite,
 //           _tryTeardownBuild, openGate, getBuildCost, getTeamInv
 //    craft: openCraftMenu, closeCraftMenu, updateCraftMenu, craftSelected,
@@ -156,7 +157,7 @@
 //             or bed; 8-way flood fill, so a corner-only join is a gap), _updateShelter (rechecks
 //             on a new tile or when _shelterDirty after a build or a destroyed wall; sets p._sheltered,
 //             shown as the 'shelter' status icon)
-//    data: buildType, buildRotation, buildOwner, RECIPES,
+//    data: buildType, buildRotation, buildOwner, RECIPES, RECIPE_COSTS (getBuildCost's lookup),
 //          structures, player.carriedAmmo
 //    log:  [BUILD ], [PLAYER]
 //

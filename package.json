@@ -5,7 +5,7 @@
   "description": "Phaser 3 browser game, plain script files in src/. Edit and refresh, no build step.",
   "scripts": {
     "serve": "node server.js",
-    "check": "for f in game.js src/*.js; do node --check \"$f\" || exit 1; done && for f in src/*.js; do grep -q \"src=\\\"$f\\\"\" index.html || { echo \"check: $f has no <script> tag in index.html\"; exit 1; }; done && node scripts/check-manifest.js && node scripts/check-scoreboard.js && node scripts/check-shelter.js && node scripts/check-structures.js && npm run -s lint",
+    "check": "for f in game.js src/*.js; do node --check \"$f\" || exit 1; done && for f in src/*.js; do grep -q \"src=\\\"$f\\\"\" index.html || { echo \"check: $f has no <script> tag in index.html\"; exit 1; }; done && node scripts/check-manifest.js && node scripts/check-scoreboard.js && node scripts/check-shelter.js && node scripts/check-recipes.js && node scripts/check-structures.js && npm run -s lint",
     "lint": "npx --yes eslint@10.12.0 game.js src/",
     "smoke": "npm install --no-save playwright@1.63.0 && npx playwright install --with-deps webkit && node scripts/smoke.js"
   }
