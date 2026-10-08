@@ -9,16 +9,18 @@ const assert = require('assert');
 const OLD = ['name', 'date', 'chars', 'mode', 'difficulty', 'days', 'kills', 'score', 'version', 'seed', 'device'];
 const rows = [OLD.slice(), ['Old', new Date(), 'knight', 1, 'survival', 1, 0, 50, 'v', '', 'olddevice01']];
 const cache = new Map();
+let lockBusy = false;
 const ctx = {
   SpreadsheetApp: { getActiveSpreadsheet: () => ({ getSheetByName: () => ({
     getLastRow: () => rows.length,
     getLastColumn: () => rows[0].length,
     getRange: (r, c, nr, nc) => ({ setValues: v => v.forEach((line, i) => rows[r - 1 + i].splice(c - 1, nc, ...line)) }),
     appendRow: r => rows.push(r),
+    deleteRow: i => rows.splice(i - 1, 1),
     getDataRange: () => ({ getValues: () => rows.map(r => r.slice()) }),
   }) }) },
-  CacheService: { getScriptCache: () => ({ get: k => cache.get(k) || null, put: (k, v) => cache.set(k, String(v)) }) },
-  LockService: { getScriptLock: () => ({ waitLock() {}, releaseLock() {} }) },
+  CacheService: { getScriptCache: () => ({ get: k => cache.get(k) || null, put: (k, v) => cache.set(k, String(v)), remove: k => cache.delete(k) }) },
+  LockService: { getScriptLock: () => ({ waitLock() { if (lockBusy) throw new Error('timeout'); }, releaseLock() {} }) },
   ContentService: { MimeType: { JSON: 'json' }, createTextOutput: s => ({ setMimeType: () => JSON.parse(s) }) },
   Utilities: { formatDate: d => d.toISOString().slice(0, 10) },
 };
@@ -85,6 +87,30 @@ for (let i = 0; i < 12; i++) post({ ...good, name: 'P' + i, score: i * 100, devi
 const top = ctx.doGet();
 assert.strictEqual(top.length, 10);
 assert.deepStrictEqual(top.map(r => r.score), [1100, 1000, 900, 900, 900, 800, 700, 600, 500, 400]);
+// Hardening: an implausible run, a rude or empty name, a held lock, the row cap, and the cached top 10.
+const fresh2 = () => 'plaus' + String(n++).padStart(6, '0');
+const refused = (o, why) => assert.strictEqual(post({ ...good, device: fresh2(), ...o }).ok, false, why);
+refused({ score: 99999999, days: 1 }, 'a 100-million score on day 1');
+refused({ score: 40000, days: 1, kills: 0 }, 'a score no run can reach');
+refused({ kills: 500, days: 1 }, 'more kills than a day holds');
+for (const name of ['!!!', '...', 'Fuck', 'xXfUcKXx', 'big dick', 'SH1T'.toLowerCase().replace('1', 'i')]) refused({ name }, 'name ' + name);
+assert.strictEqual(post({ ...good, name: '  Dad   and  Kids ', device: fresh2() }).ok, true, 'spaces collapse, name is fine');
+assert.strictEqual(rows[rows.length - 1][0], 'Dad and Kids', 'whitespace collapsed');
+for (const name of ['Dickens', 'Hancock', 'Cassidy', 'Skyler']) assert.strictEqual(post({ ...good, name, device: fresh2() }).ok, true, 'name ' + name);
+assert.strictEqual(post({ ...good, score: 30000, days: 10, kills: 100, difficulty: 'hardcore', device: fresh2() }).ok, true, 'a long hardcore run is plausible');
+lockBusy = true;
+assert.deepStrictEqual(post({ ...good, device: fresh2() }), { ok: false, error: 'busy' }, 'a held lock answers JSON');
+lockBusy = false;
+const cachedTop = ctx.doGet();
+post({ ...good, name: 'Newtop', score: 31000, days: 5, device: fresh2() });
+assert.strictEqual(ctx.doGet()[0].name, 'Newtop', 'a new score clears the cached top 10');
+assert.deepStrictEqual(ctx.doGet(), ctx.doGet(), 'the second read is the cached one');
+assert.notDeepStrictEqual(cachedTop, ctx.doGet());
+ctx.MAX_ROWS = rows.length - 1; // as many rows as there are now; the next post must push the lowest out
+const lowest = Math.min(...rows.slice(1).map(r => r[7]));
+assert.ok(post({ ...good, name: 'Fits', score: lowest + 5, device: fresh2() }).ok);
+assert.strictEqual(rows.length - 1, ctx.MAX_ROWS, 'the sheet is held at its cap');
+assert.ok(!rows.slice(1).some(r => r[7] === lowest) && rows.some(r => r[0] === 'Fits'), 'the lowest went, the new row stayed');
 // GameOverScene._logForSheet: a log too long for a cell keeps its header and newest entries.
 const go = fs.readFileSync('src/game-over.js', 'utf8');
 const fn = vm.runInNewContext('(' + go.match(/\n  (_logForSheet\([\s\S]*?\n  \})\n/)[1].replace(/^_logForSheet/, 'function') + ')');

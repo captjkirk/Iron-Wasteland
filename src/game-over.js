@@ -3,9 +3,14 @@
 // A feedback message lands in the run's row (tools/scoreboard/Code.gs). The script answers HTTP 200 even
 // when it refuses a message, so only {ok:true} counts as sent. Anything else is kept in localStorage and
 // resent quietly at the next start, up to 5 tries each.
+// Every scoreboard call gives up after 8 s, so a hung script never leaves "loading\u2026" up for good.
+function _fetchJson(opts) {
+  const ac = new window.AbortController();
+  const timer = setTimeout(() => ac.abort(), 8000);
+  return fetch(CFG.SCOREBOARD_URL, { ...opts, signal: ac.signal }).then(r => r.json()).finally(() => clearTimeout(timer));
+}
 function _postFeedback(msg) {
-  return fetch(CFG.SCOREBOARD_URL, { method: 'POST', body: JSON.stringify(msg) })
-    .then(r => r.json()).then(r => !!r && r.ok === true).catch(() => false);
+  return _fetchJson({ method: 'POST', body: JSON.stringify(msg) }).then(r => !!r && r.ok === true).catch(() => false);
 }
 function _queueFeedback(msg, tries) {
   try {
@@ -591,8 +596,9 @@ class GameOverScene extends Phaser.Scene {
   _postScore(name) {
     if (!CFG.SCOREBOARD_URL) return;
     const body = { ...this._scoreBody(name), log: this._logForSheet() };
-    this._posted = fetch(CFG.SCOREBOARD_URL, { method: 'POST', body: JSON.stringify(body) })
-      .catch(e => console.warn('scoreboard post failed:', e && e.message));
+    // Resolves to the script's reply, or null when the post failed; _showGlobalTop says so when it was refused.
+    this._posted = _fetchJson({ method: 'POST', body: JSON.stringify(body) })
+      .catch(e => { console.warn('scoreboard post failed:', e && e.message); return null; });
   }
 
   // A random id per device, so the script can rate-limit one device; nothing else about the player.
@@ -610,8 +616,10 @@ class GameOverScene extends Phaser.Scene {
     const head = this.add.text(x, y, 'GLOBAL TOP 10', { fontFamily:'monospace', fontSize:'10px', color:'#445566' });
     const status = this.add.text(x, y + 12, 'loading\u2026', { fontFamily:'monospace', fontSize:'10px', color:'#556677' });
     Promise.resolve(this._posted)
-      .then(() => fetch(CFG.SCOREBOARD_URL))
-      .then(r => r.json())
+      .then(reply => {
+        if (reply && reply.ok === false && head.active) head.setText('GLOBAL TOP 10  \u2022  Score not accepted').setColor('#cc8844');
+        return _fetchJson();
+      })
       .then(rows => {
         if (!head.active) return; // scene left while loading
         if (!Array.isArray(rows)) throw new Error('bad reply');
