@@ -4,6 +4,7 @@
 //      Game scene, so the canvas renderer stands in), starts a solo game, waits for the world,
 //      plays PLAY_MS and fails on any console or page error. WebGL-only bugs stay invisible.
 //      Also fails when textures and object canvases hold more than PIXEL_BUDGET_MB of pixels.
+//      Then lines up three 1-HP enemies in front of the knight and fails unless one swing kills all three.
 //      Then ends the run and types a two-word name on the game over screen (#328).
 //   3. Hardcore: the same start with STATE.difficulty = 'hardcore'; fails unless timeAlive
 //      advances over HARDCORE_MS of play. Hardcore's own multipliers once froze the tab (#327).
@@ -113,6 +114,26 @@ async function pass(browser, name, url, run, opts = {}) {
       return bad;
     });
     if (onHud.length) throw new Error(`${onHud.length} obstacles are drawn by the HUD camera too (first: ${onHud[0]})`);
+    // One swing kills every 1-HP enemy in its arc (#341: a kill spliced this.enemies mid-loop,
+    // so the enemy after it in the array was skipped).
+    const swing = await page.evaluate(() => {
+      const s = _phaserGame.scene.getScene('Game'), p = s.p1, en = s.enemies;
+      const ok = e => e && !e.dying && !e.isBoss && !e.isRaider && e.spr?.active;
+      const i = en.findIndex((e, k) => ok(e) && ok(en[k + 1]) && ok(en[k + 2]));
+      if (i < 0) return 'no three live enemies in a row';
+      const three = en.slice(i, i + 3), a = s.getAimAngle(p);
+      three.forEach((e, k) => {
+        const off = (k - 1) * 8; // side by side, 30 px ahead of the knight
+        e.spr.setPosition(p.spr.x + Math.cos(a) * 30 - Math.sin(a) * off,
+                          p.spr.y + Math.sin(a) * 30 + Math.cos(a) * off);
+        e.hp = 1;
+      });
+      s.meleeSwing(p, 55, 0xdddddd, 0.18, 0);
+      const dead = three.filter(e => e.dying).length;
+      return dead === 3 ? '' : `a swing killed ${dead} of 3 lined-up 1-HP enemies`;
+    });
+    if (swing) throw new Error(swing);
+    console.log('in play: one swing killed all three lined-up enemies');
     const mb = Math.round(px * 4 / 1e6);
     console.log(`in play: ${mb} MB of pixel memory (budget ${PIXEL_BUDGET_MB} MB)`);
     if (mb > PIXEL_BUDGET_MB) throw new Error(`pixel memory ${mb} MB is over the ${PIXEL_BUDGET_MB} MB budget`);
