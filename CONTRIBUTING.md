@@ -22,7 +22,9 @@ MANIFEST, an index of every gameplay system: read it first to find where a syste
 The pre-commit hook refuses a commit on `main`, and any commit from the main checkout (every
 session works in its own worktree; see `CLAUDE.md`, "Working directory"), then runs
 `npm run check`: a syntax check of `game.js` and every `src/*.js`, a check that every `src/*.js`
-has a `<script>` tag in `index.html`, the manifest check, and ESLint. A failure aborts the commit.
+has a `<script>` tag in `index.html`, the manifest check, the scoreboard check, the recipe check
+(`scripts/check-recipes.js`: every cost in `src/recipes.js` names a real resource and is what
+`getBuildCost` charges), and ESLint. A failure aborts the commit.
 
 `VERSION` in `src/constants.js` stays `'dev build'` in git. `npm run serve` stamps it with the
 commit time of `HEAD` on every request, and the deploy stamps it with the publish time, so the
