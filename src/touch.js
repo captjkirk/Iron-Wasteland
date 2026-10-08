@@ -22,7 +22,7 @@ Object.assign(GameScene.prototype, {
       // Layout: ATK, ALT, USE, BLD in a diamond (ATK bottom, ALT right, USE left, BLD top);
       // the stick takes the left 45% of the screen, bottom 65%. On a phone (#388) the sizes and
       // positions are shares of the screen height, from PHONE1P.
-      const P = CFG.W <= 640 ? PHONE1P : null;
+      const P = _isMobile ? PHONE1P : null;
       let hx = W * 0.12, hy = H * 0.82, hr = 55;
       let attack = btn(W - 100, H - 100, 52, 0xff6644, '⚔ ATK');
       let alt = btn(W - 185, H - 195, 44, 0x6699ff, '★ ALT');
@@ -242,7 +242,7 @@ Object.assign(GameScene.prototype, {
 
       // Action buttons
       for (const btn of Object.values(btns)) {
-        const alpha = btn.down ? 0.75 : (CFG.W <= 640 && this.solo ? 0.35 : 0.4);
+        const alpha = btn.down ? 0.75 : (_isMobile && this.solo ? 0.35 : 0.4);
         gfx.fillStyle(btn.col, alpha * 0.38);
         gfx.fillCircle(btn.hx, btn.hy, btn.r);
         gfx.lineStyle(2, btn.col, alpha);

@@ -177,7 +177,7 @@
 //     data: dayNum, dayTimer, isNight, timeAlive, hardcore, hc
 //
 // 11. RELICS / RADIO TOWERS / ALTAR / CAMPFIRES
-//     fns:  updateRelicChannels, checkRadioTowerRange, _relicCarrier,
+//     fns:  updateRelicChannels, _useHeld (USE held: key or touch button; relic, revive, harvest), checkRadioTowerRange, _relicCarrier,
 //           _relicPressure, _cancelRelicChannel, _depositRelic,
 //           _pickupRelic, _showRelicHint, _processHintQueue,
 //           _spawnTorch, _addFireGlow, _updateFireGlows
