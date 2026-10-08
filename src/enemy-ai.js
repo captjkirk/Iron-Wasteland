@@ -150,7 +150,7 @@ Object.assign(GameScene.prototype, {
       // Debris puff — 12 chunks in boss-biome palette, outward velocity.
       const biomeCol = {
         boss_golem:  [0x778899, 0x556677, 0xff3300],
-        boss_wolf:   [0x888855, 0xeeeecc, 0x554422],
+        boss_wolf:   [0x55556a, 0xc0c0d0, 0x3a3a46],
         boss_spider: [0x442255, 0x553366, 0x88ff44],
         boss_troll:  [0x8899bb, 0xbbccdd, 0xaaddff],
         boss_hydra:  [0x334422, 0x446633, 0x88bb44],
