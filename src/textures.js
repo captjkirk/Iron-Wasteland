@@ -1358,91 +1358,81 @@ function buildTextures(scene) {
   g.fillStyle(0xff6600, 0.6); g.fillRect(41, 32, 6, 1); g.fillRect(57, 32, 6, 1); g.fillRect(73, 32, 6, 1); // furnace glow
   g.generateTexture('boss_golem', 112, 120);
 
-  // Alpha Wolf (grassland) — massive scarred predator, coiled to pounce
+  // Alpha Wolf (grassland) — the grey wolf's pack leader: bigger, darker, stalking with its
+  // head low, hackles up and lip curled. Same blue-grey family and red eye as 'wolf', so the
+  // pack it howls up reads as its own. Drawn on a 144×104 grid scaled by AW (180×130 px), at the
+  // players' pixel density at BOSS_SCALE. Faces right; the hitbox in spawnBoss follows this layout.
   g.clear();
-  // ── TAIL: low, bushy, swept back ──
-  g.fillStyle(0x554422); g.fillTriangle(0, 44, 24, 52, 4, 72);
-  g.fillStyle(0x665533); g.fillTriangle(4, 48, 22, 54, 8, 66);
-  g.fillStyle(0x887744); g.fillRect(4, 48, 8, 2); g.fillRect(8, 50, 8, 1);          // lit upper edge
-  g.fillStyle(0x443311); g.fillRect(6, 56, 8, 1); g.fillRect(8, 60, 7, 1); g.fillRect(5, 64, 5, 1); // fur strands
-  // ── BODY: muscular, low and coiled ──
-  g.fillStyle(0x665533); g.fillEllipse(52, 68, 84, 48);            // bulk
-  g.fillStyle(0x887744); g.fillEllipse(48, 58, 76, 28);           // back / shoulder mass
-  g.fillStyle(0x4a3a22); g.fillEllipse(52, 84, 68, 20);           // belly shadow
-  // fur texture: strands swept back, pale on the lit back, dark toward the belly
-  g.fillStyle(0xa89860); g.fillRect(28, 46, 34, 1);               // top-light rim along the spine
-  g.fillStyle(0x9a8855);
-  for (let i = 0; i < 9; i++) g.fillRect(26 + i * 7, 50 + (i % 3) * 2, 4, 1);
-  g.fillStyle(0x554422);
-  for (let i = 0; i < 10; i++) g.fillRect(18 + i * 7, 66 + (i % 2) * 5, 4, 1);
-  g.fillStyle(0x3a2e1a);
-  for (let i = 0; i < 8; i++) g.fillRect(24 + i * 8, 78 + (i % 2) * 3, 3, 1);
-  // ── RAISED HACKLES along the back ──
-  g.fillStyle(0x332211);
-  g.fillTriangle(24, 48, 32, 32, 40, 48);
-  g.fillTriangle(38, 46, 48, 28, 58, 46);
-  g.fillTriangle(54, 48, 64, 34, 74, 48);
-  g.fillStyle(0x554433);
-  g.fillTriangle(40, 44, 46, 34, 52, 44);
-  // ── LEGS: wide, muscular, braced stance ──
-  g.fillStyle(0x665533);
-  g.fillRect(16, 76, 16, 32); g.fillRect(40, 80, 16, 28);            // front legs (one braced forward)
-  g.fillRect(66, 76, 16, 32); g.fillRect(88, 80, 16, 28);           // back legs (spread wide)
-  g.fillStyle(0x887744); g.fillRect(18, 78, 6, 24); g.fillRect(90, 82, 6, 22); // leg muscle highlight
-  g.fillStyle(0x2a2012);
-  g.fillRect(14, 102, 20, 8); g.fillRect(38, 102, 20, 8);
-  g.fillRect(64, 102, 20, 8); g.fillRect(86, 102, 20, 8);          // big paws
-  g.fillStyle(0x4a3a22);                                          // shaded right side of each leg
-  g.fillRect(28, 78, 4, 24); g.fillRect(52, 82, 4, 20); g.fillRect(78, 78, 4, 24); g.fillRect(100, 82, 4, 20);
-  g.fillStyle(0x887744); g.fillRect(42, 82, 3, 18); g.fillRect(68, 78, 3, 20); // lit front of the other legs
-  g.fillStyle(0x3a2e1a); g.fillRect(14, 102, 20, 2); g.fillRect(38, 102, 20, 2); g.fillRect(64, 102, 20, 2); g.fillRect(86, 102, 20, 2); // paw tops
-  g.fillStyle(0x1a1208);                                          // toe splits
-  for (const px of [14, 38, 64, 86]) { g.fillRect(px + 6, 104, 1, 6); g.fillRect(px + 13, 104, 1, 6); }
-  g.fillStyle(0xddccaa);                                          // claws
-  g.fillRect(14, 108, 2, 4); g.fillRect(22, 108, 2, 4); g.fillRect(30, 108, 2, 4);
-  g.fillRect(86, 108, 2, 4); g.fillRect(94, 108, 2, 4); g.fillRect(102, 108, 2, 4);
-  g.fillRect(38, 108, 2, 3); g.fillRect(46, 108, 2, 3); g.fillRect(54, 108, 2, 3);  // far paws
-  g.fillRect(64, 108, 2, 3); g.fillRect(72, 108, 2, 3); g.fillRect(80, 108, 2, 3);
-  g.fillStyle(0xffffff); g.fillRect(14, 108, 1, 1); g.fillRect(22, 108, 1, 1); g.fillRect(30, 108, 1, 1); // claw glints
-  g.fillRect(86, 108, 1, 1); g.fillRect(94, 108, 1, 1); g.fillRect(102, 108, 1, 1);
-  // ── HEAD: oversized, lowered, aggressive ──
-  g.fillStyle(0x554422);                                           // shaggy neck ruff behind the head
-  g.fillTriangle(62, 36, 72, 44, 62, 50); g.fillTriangle(60, 48, 70, 54, 62, 62); g.fillTriangle(64, 60, 74, 62, 68, 72);
-  g.fillStyle(0x665533); g.fillEllipse(88, 48, 48, 40);          // big head
-  g.fillStyle(0x887744); g.fillEllipse(84, 36, 30, 12);          // lit crown
-  g.fillStyle(0xa89860); g.fillRect(76, 31, 14, 1);               // crown rim light
-  g.fillStyle(0x554422); g.fillRect(70, 46, 4, 1); g.fillRect(72, 52, 5, 1); g.fillRect(70, 58, 4, 1); // cheek fur
-  g.fillStyle(0x554422); g.fillEllipse(88, 60, 40, 18);           // jaw shadow
-  // ears — large, pinned-forward
-  g.fillStyle(0x554422); g.fillTriangle(72, 12, 66, 32, 86, 28);  // back ear
-  g.fillStyle(0x665533); g.fillTriangle(100, 12, 92, 32, 112, 28);  // front ear
-  g.fillStyle(0x2a2012); g.fillTriangle(100, 18, 96, 30, 108, 28);  // ear inner
-  // snout / muzzle, jutting
-  g.fillStyle(0x776644); g.fillEllipse(104, 56, 24, 18);
-  g.fillStyle(0x887755); g.fillRect(96, 49, 10, 2);               // muzzle bridge highlight
-  g.fillStyle(0x1a1208); g.fillRect(106, 50, 6, 6);               // nose
-  g.fillStyle(0x554433); g.fillRect(106, 50, 2, 2);               // nose glint
-  g.fillStyle(0x4a3a22); g.fillRect(98, 58, 1, 1); g.fillRect(101, 60, 1, 1); g.fillRect(104, 58, 1, 1); // whisker pits
-  // ── SCAR across muzzle ──
-  g.lineStyle(2, 0xbbaa88);
-  g.beginPath(); g.moveTo(80, 38); g.lineTo(100, 54); g.strokePath();
-  g.fillStyle(0x4a3a22); g.fillRect(82, 40, 2, 2); g.fillRect(90, 46, 2, 2);
-  // ── EYES: large, bright amber, glowing ──
-  g.fillStyle(0xffcc33, 0.4); g.fillEllipse(84, 42, 16, 12);       // glow halo
-  g.fillStyle(0xffcc33); g.fillRect(78, 38, 10, 8); g.fillRect(92, 38, 10, 8); // big amber eyes
-  g.fillStyle(0x1a1208); g.fillRect(82, 40, 4, 4); g.fillRect(96, 40, 4, 4); // pupils
-  g.fillStyle(0xffffaa); g.fillRect(78, 38, 2, 2); g.fillRect(92, 38, 2, 2); // glint
-  // ── FANGS: prominent, bared ──
-  g.fillStyle(0x332211); g.fillRect(92, 64, 22, 8);              // dark open maw
-  g.fillStyle(0xffffff);
-  g.fillTriangle(94, 64, 98, 64, 96, 76);   // upper fangs
-  g.fillTriangle(106, 64, 110, 64, 108, 76);
-  g.fillTriangle(96, 72, 100, 72, 98, 64);   // lower fangs
-  g.fillTriangle(104, 72, 108, 72, 106, 64);
-  g.fillStyle(0xccc4b0);                                          // shaded side of each fang
-  g.fillTriangle(96, 64, 98, 64, 96, 76); g.fillTriangle(108, 64, 110, 64, 108, 76);
-  g.fillStyle(0xaa3322); g.fillRect(100, 68, 4, 3);               // tongue
-  g.generateTexture('boss_wolf', 112, 112);
+  {
+    const AW = 1.25, q = v => Math.round(v * AW);
+    const poly = (c, pts) => { g.fillStyle(c); g.fillPoints(pts.map(([x, y]) => ({ x: q(x), y: q(y) })), true); };
+    const rect = (c, x, y, w, h, a) => { g.fillStyle(c, a); g.fillRect(q(x), q(y), Math.max(1, q(w)), Math.max(1, q(h))); };
+    const ell  = (c, x, y, w, h, a) => { g.fillStyle(c, a); g.fillEllipse(q(x), q(y), q(w), q(h)); };
+    const DARK = 0x26262e, SADDLE = 0x3a3a46, BASE = 0x55556a, MID = 0x6a6a7c, PALE = 0x9a9aac, SILVER = 0xc0c0d0;
+    // ── TAIL: bushy, held low and straight back ──
+    poly(BASE,   [[34,42],[22,44],[12,48],[4,54],[0,62],[5,61],[3,67],[9,63],[11,68],[15,62],[19,65],[22,59],[27,61],[30,56],[36,56]]);
+    poly(SADDLE, [[34,42],[22,44],[12,48],[4,54],[1,59],[10,53],[22,48],[36,47]]);
+    poly(DARK,   [[4,54],[0,62],[5,61],[3,67],[8,60]]);                           // dark tip
+    rect(PALE, 14, 55, 9, 1); rect(PALE, 24, 51, 8, 1); rect(DARK, 10, 59, 7, 1); rect(DARK, 20, 57, 8, 1);
+    // ── FAR LEGS (set back, in shadow) ──
+    poly(DARK,   [[50,64],[64,68],[50,88],[43,86]]);                              // far hind shin, angled back
+    poly(DARK,   [[43,86],[50,88],[52,98],[45,98]]); rect(0x1c1c22, 44, 98, 13, 5);   // far hock and paw
+    poly(DARK,   [[79,66],[94,66],[92,94],[82,94]]);                              // far foreleg
+    rect(DARK, 83, 92, 8, 7); rect(0x1c1c22, 82, 98, 14, 5);
+    // ── BODY: deep chest, tucked belly, dark saddle ──
+    poly(BASE,   [[30,44],[50,39],[76,32],[92,30],[106,40],[110,58],[103,76],[88,79],[70,72],[56,69],[42,72],[28,70],[23,57]]);
+    poly(SADDLE, [[30,44],[50,39],[76,32],[92,30],[100,36],[88,40],[66,42],[46,47],[30,52],[25,52]]);
+    poly(MID,    [[56,69],[70,72],[88,79],[103,76],[106,66],[86,68],[66,62],[50,63]]);    // underside
+    poly(PALE,   [[88,79],[103,76],[108,64],[100,70]]);                           // chest
+    poly(0x4a4a5c, [[24,54],[34,48],[46,52],[52,62],[48,72],[30,70]]);           // haunch muscle, shaded
+    poly(0x60607a, [[30,50],[40,48],[46,54],[38,54]]);                            // haunch top light
+    poly(0x4a4a5c, [[82,46],[96,44],[102,58],[96,70],[86,66]]);                   // shoulder blade
+    // fur strands swept toward the tail
+    for (let i = 0; i < 5; i++) { const x = 52 + i * 9, y = 50 + (i % 2) * 4; poly(SADDLE, [[x, y], [x + 7, y - 1], [x + 1, y + 1]]); }
+    for (let i = 0; i < 4; i++) { const x = 56 + i * 9, y = 63 + (i % 2) * 2; poly(DARK, [[x, y], [x + 6, y - 1], [x + 1, y + 1]]); }
+    // ── NEAR LEGS: hind leg bends back at the hock, foreleg straight to the wrist ──
+    poly(BASE,   [[34,60],[53,65],[37,91],[27,86]]);                              // near hind shin, knee forward
+    poly(BASE,   [[27,86],[37,91],[40,98],[30,98]]);                              // hock down to the paw
+    poly(0x6a6a7c, [[44,66],[50,67],[36,86],[33,84]]);                            // lit shin edge
+    rect(DARK, 29, 98, 15, 5); rect(SADDLE, 29, 98, 15, 1);                       // near hind paw
+    poly(BASE,   [[91,64],[109,64],[107,94],[95,94]]);                            // near foreleg
+    rect(PALE, 92, 66, 3, 26); rect(SADDLE, 104, 68, 2, 24);
+    rect(BASE, 96, 92, 9, 7); rect(DARK, 95, 98, 16, 5); rect(SADDLE, 95, 98, 16, 1);
+    g.fillStyle(0xddddcc);                                                         // claws
+    for (const x of [30, 34, 38, 42, 96, 100, 104, 108]) g.fillRect(q(x), q(102), 1, 2);
+    // ── HACKLES: a ragged ruff of fur standing up over the neck and shoulders ──
+    // tufts lean back toward the tail, like fur standing up against the grain
+    poly(MID,    [[50,41],[53,36],[58,38],[59,32],[65,36],[66,28],[72,33],[74,25],[79,31],[81,23],[87,30],[89,24],[94,31],[97,27],[101,34],[104,31],[107,42],[90,40],[70,41]]);
+    poly(PALE,   [[60,37],[61,33],[65,36],[67,30],[72,34],[75,27],[79,32],[82,25],[87,31],[90,26],[94,32],[97,29],[100,35],[80,36]]);
+    for (const [x, y] of [[66,28],[74,25],[81,23],[89,24],[97,27]]) poly(DARK, [[x, y], [x + 3, y + 3], [x + 1, y + 4]]);
+    poly(PALE,   [[104,58],[112,60],[110,66],[114,70],[106,72],[108,66]]);       // chest ruff
+    // ── HEAD: lowered below the shoulders, long tapered muzzle ──
+    poly(BASE,   [[98,40],[110,37],[121,41],[127,48],[126,65],[115,71],[102,64]]);  // neck and skull
+    poly(SADDLE, [[98,40],[110,37],[121,41],[124,45],[112,44],[103,47]]);
+    poly(MID,    [[103,63],[115,71],[121,70],[112,60]]);                          // cheek ruff
+    poly(PALE,   [[106,60],[100,66],[108,64],[104,70],[112,66]]);                 // cheek tufts
+    poly(PALE,   [[103,46],[117,40],[95,31]]);                                    // ear pinned back
+    poly(0x1c1c22, [[106,44],[114,41],[99,34]]);
+    poly(PALE,   [[121,49],[136,53],[143,57],[142,61],[126,62],[121,58]]);       // muzzle
+    poly(SILVER, [[122,49],[136,53],[140,55],[126,52]]);                          // bridge light
+    rect(DARK, 125, 54, 3, 1); rect(DARK, 129, 55, 3, 1); rect(DARK, 127, 57, 3, 1);   // snarl wrinkles
+    poly(0x111116, [[139,54],[144,56],[144,60],[140,59]]);                        // nose
+    // open snarl: dark gums, a row of teeth, the lower jaw dropped a little
+    poly(0x4a1418, [[123,61],[142,61],[139,65],[124,67]]);
+    poly(MID,    [[121,66],[138,65],[134,70],[121,71]]);                          // lower jaw
+    g.fillStyle(0xeeeedd);
+    for (const x of [126, 129, 132]) g.fillTriangle(q(x), q(61), q(x + 2), q(61), q(x + 1), q(63.5));
+    g.fillTriangle(q(134.5), q(61), q(138), q(61), q(136), q(67));                // upper fang
+    g.fillTriangle(q(127), q(67), q(129.5), q(67), q(128), q(63.5));              // lower fang
+    // eye: one narrow slit, red with a hot glint, under a heavy brow slanting to the snout
+    poly(0x1c1c22, [[111,51],[122,48],[121,54],[112,55]]);                        // eye socket
+    poly(0xff3311, [[112,52],[121,49],[120,53],[113,54]]);
+    rect(0xffdd88, 118, 50, 2, 1);
+    poly(DARK,   [[109,47],[123,45],[123,48],[110,50]]);                          // heavy brow
+    // old scar across the muzzle
+    g.lineStyle(1, 0xd8c8c0); g.lineBetween(q(126), q(50), q(132), q(60));
+    g.generateTexture('boss_wolf', q(144), q(104));
+  }
 
   // Spider Queen (ruins) — venomous matriarch, legs spanning the full width
   g.clear();

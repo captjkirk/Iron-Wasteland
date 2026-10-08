@@ -101,7 +101,8 @@
 //
 // 4. WAVES & BOSSES  (src/waves-bosses.js)
 //    fns:  updateWaves, updateBoss, spawnBoss, _bossExecuteSpecial,
-//          _bossSmash, _bossTelegraph
+//          _bossSmash, _bossTelegraph, _bossDist (reach to a drawn-to-fit hitbox),
+//          _debugBossFromUrl (?boss=wolf spawns a boss for testing)
 //    data: waveNum, waveTimer, boss, _bossChance, huntNextDay
 //    log:  [WORLD ], [COMBAT]
 //
