@@ -89,8 +89,10 @@
 //          killEnemy, _startDormantIfFar,
 //          applyTerrainEffects (also runs for raiders and animals)
 //    spawn: spawnEnemies, _spawnGroup, _spawnBiomeEnemy,
-//           _spawnWaterLurker
-//    cfg:  MAX_ENEMIES, MAX_ACTIVE_ENEMIES, DORMANT_RADIUS, WAKE_RADIUS
+//           _spawnWaterLurker,
+//           _waveRing, _waveSpawnPoint, _waveLineClear, _unstickMarcher (wave marchers, #330)
+//    cfg:  MAX_ENEMIES, MAX_ACTIVE_ENEMIES, DORMANT_RADIUS, WAKE_RADIUS,
+//          WAVE_RING_MIN, WAVE_RING_MAX, WAVE_MARCH_MS
 //    data: enemies[], ENEMY_STATS, RAIDER_STATS, ENEMY_LOOT
 //    log:  [COMBAT], [WORLD ]
 //
@@ -238,7 +240,8 @@
 // • Draw order: trees, rocks, mountains, players and enemies are Y-sorted in depth band 9..9.9 via _sortDepth(feetY); keep ground items/structures <= 8 and bullets/bars >= 10.
 // • Water detection uses the _waterMap Uint8Array (index tx + ty*MAP_W), NOT physics overlap.
 // • Enemy dormancy: enemies > DORMANT_RADIUS are physics-disabled and hidden;
-//   they re-enable inside WAKE_RADIUS (hysteresis).
+//   they re-enable inside WAKE_RADIUS (hysteresis). Raiders, boss escorts and wave
+//   marchers (_waveMarch, until first contact) never sleep; nothing else wakes a den.
 // ============================================================
 
 // ── PHASER GAME INIT ─────────────────────────────────────

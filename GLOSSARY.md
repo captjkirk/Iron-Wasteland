@@ -11,3 +11,7 @@ Avoid: footprints, footsteps, trail (for the prints themselves).
 **Raider** — a human enemy (`isRaider`): a camp raider (brawler, shooter, heavy) or a member of a
 hunt party. Wildlife (wolves, bears, spiders and the rest) is not.
 Avoid: bandit, human enemy, NPC.
+
+**Wave marcher** — wildlife a wave spawns (`_waveMarch`, #330): it appears off-screen 900–1,300 px
+from a player and walks in, awake, until it first reaches someone; then it is ordinary wildlife.
+Avoid: wave spawn, edge spawn, attacker.
