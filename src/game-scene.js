@@ -1559,9 +1559,7 @@ class GameScene extends Phaser.Scene {
         }
 
         // Check if rescue key is held
-        const keyHeld = rescuer === this.p1
-          ? this.hotkeys.p1use.isDown
-          : this.hotkeys.p2use.isDown;
+        const keyHeld = this._useHeld(rescuer);
 
         if (keyHeld) {
           anyReviving = true;
@@ -1876,6 +1874,14 @@ class GameScene extends Phaser.Scene {
   // Per-frame relic pickup channel. Mirrors checkRadioTowerRange — requires
   // Interact key held for 3s, cancels on out-of-range / release / downed /
   // damage taken mid-channel. Completes into _pickupRelic.
+  // Is this player holding USE? The keyboard key, or for player 1 the touch USE button (the
+  // keyboard key is never pressed on a phone). One answer for harvest, the relic hold and revive (#397).
+  _useHeld(p) {
+    const key = this.hotkeys && this.hotkeys[p === this.p1 ? 'p1use' : 'p2use'];
+    if (key && key.isDown) return true;
+    return p === this.p1 && !!(this._touchActive && this._tcBtns && this._tcBtns.interact && this._tcBtns.interact.down);
+  }
+
   updateRelicChannels(delta) {
     const RANGE = 70, RANGE2 = RANGE * RANGE;
     const HOLD_DUR = 3000;
@@ -1886,8 +1892,7 @@ class GameScene extends Phaser.Scene {
     ];
     for (const { p, keyName } of list) {
       if (!p || !p.spr || !p.spr.active) { this._cancelRelicChannel(p); continue; }
-      const key = this.hotkeys && this.hotkeys[keyName];
-      const keyDown = !!(key && key.isDown);
+      const keyDown = this._useHeld(p);
       const blocked = p.isDowned || p.isSleeping || this.barrackOpen || this.craftMenuOpen || this.isOver;
       if (blocked || !keyDown) { this._cancelRelicChannel(p); continue; }
 
@@ -4388,11 +4393,7 @@ class GameScene extends Phaser.Scene {
     const players = [this.p1, this.p2].filter(p => p && !p.isDowned && !p.isSleeping && p.hp > 0);
 
     for (const player of players) {
-      // On mobile the keyboard key is never held; use the touch USE button's tracked down state instead
-      const touchHeld = this._touchActive && this._tcBtns && this._tcBtns.interact.down;
-      const keyHeld = player === this.p1
-        ? (this.hotkeys.p1use.isDown || touchHeld)
-        : (this.hotkeys.p2use ? this.hotkeys.p2use.isDown : false);
+      const keyHeld = this._useHeld(player);
 
       // Find nearest tree within range. Throttled: full scan at most every
       // 200ms per player, otherwise re-validate the cached tree. This avoids
