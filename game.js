@@ -54,6 +54,8 @@
 //   src/game-scene.js    — GameScene: gameplay systems 3, 5-7, 9-16 and 19-23 (see list below)
 //                          Also: GameScene.RECIPES static property (system 8's recipe list)
 //
+//   src/touch.js         — System 19's touch pads (one per player), added to GameScene.prototype
+//
 //   src/world-gen.js     — System 1, added to GameScene.prototype; loads after game-scene.js
 //
 //   src/waves-bosses.js  — System 4, added to GameScene.prototype; loads after world-gen.js
@@ -112,11 +114,10 @@
 //
 // 5. PLAYER MOVEMENT & INPUT  (src/game-scene.js; getControls in src/textures.js)
 //    fns:  movePlayer, aimAtMouse (faces the cursor while _mouseAt is recent), _faceAngle,
-//          applyTouchInput, applyTerrainEffects, _makeResPanel,
-//          getControls, initTouchControls, _onTouchDown/Move/Up,
+//          applyTerrainEffects, _makeResPanel, getControls,
 //          openPauseSettings, _walkStep,
 //          tryInteract (the Interact key: build teardown, barracks, radio tower, raid cache, bed, relics, altar)
-//    data: p1, p2 (spr, hp, maxHp, charData, inv), _joy, _tcBtns, wasd, p2keys
+//    data: p1, p2 (spr, hp, maxHp, charData, inv), wasd, p2keys (touch: system 19)
 //    cfg:  CAM_PAD, CAM_ZOOM_MIN, CAM_ZOOM_MAX
 //
 // 6. PLAYER COMBAT (per-character abilities)
@@ -208,10 +209,12 @@
 //     character draws: paintGrid, pixelActorFrames, buildPixelActors
 //                      art in SPRITE_ART[id][front|back|side|fside|bside]; step2 = step legs mirrored
 //
-// 19. INPUT MODES (kbd / gamepad / touch)  (src/scenes.js; getControls in src/textures.js; _onBtnPress in src/game-scene.js)
+// 19. INPUT MODES (kbd / gamepad / touch)  (src/scenes.js; getControls in src/textures.js; touch pads in src/touch.js)
 //     fns:  getControls, activeInputMode, isTouchDevice,
-//           _onBtnPress, keyDisplayName
-//     data: wasd, p2keys, _joy, _tcBtns
+//           initTouchControls, applyTouchInput, _onTouchDown/Move/Up, _onBtnPress, _drawTouchHUD,
+//           keyDisplayName
+//     data: wasd, p2keys, _pads (one touch pad per player: stick, buttons, the screen area its fingers
+//           land in; 2P touch splits the screen in halves), _joy and _tcBtns (P1's pad)
 //
 // 20. DEBUG LOG & PERF  (src/game-scene.js; _qlog in src/constants.js)
 //     fns:  _log, _qlog, _dbgRefresh, _downloadLog, hint

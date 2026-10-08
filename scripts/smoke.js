@@ -80,6 +80,32 @@ async function pass(browser, name, url, run, opts = {}) {
     if (mb > PIXEL_BUDGET_MB) throw new Error(`pixel memory ${mb} MB is over the ${PIXEL_BUDGET_MB} MB budget`);
   });
 
+  // 2-player on touch: split touch, one pad per half. Fingers on each half's stick move only that
+  // half's player; fails on any page error or when a player does not move.
+  failures += await pass(browser, '2-player touch', base + '?seed=1&renderer=canvas', async page => {
+    await page.evaluate(() => {
+      saveSettings({ inputMode: 'touch', tutorial: false });
+      STATE.mode = 2; STATE.p1CharId = 'knight'; STATE.p2CharId = 'gunslinger'; _phaserGame.scene.start('Game');
+    });
+    await page.waitForFunction(() => _phaserGame.scene.getScene('Game')._worldReady === true, null, { timeout: 60000 });
+    await page.waitForTimeout(1500);
+    const moved = await page.evaluate(async () => {
+      const g = _phaserGame.scene.getScene('Game'), { W, H } = CFG;
+      if (!g._pads || g._pads.length !== 2) throw new Error('no split touch pads');
+      const at = () => [g.p1.spr.x, g.p1.spr.y, g.p2.spr.x, g.p2.spr.y];
+      const before = at();
+      // P1's finger drags right on the left half, P2's drags left on the right half, at once.
+      g._onTouchDown({ id: 1, x: W * 0.15, y: H * 0.8 }); g._onTouchDown({ id: 2, x: W * 0.65, y: H * 0.8 });
+      g._onTouchMove({ id: 1, x: W * 0.15 + 60, y: H * 0.8 }); g._onTouchMove({ id: 2, x: W * 0.65 - 60, y: H * 0.8 });
+      await new Promise(r => setTimeout(r, 700));
+      g._onTouchUp({ id: 1 }); g._onTouchUp({ id: 2 });
+      const after = at();
+      return { p1: after[0] - before[0], p2: after[2] - before[2] };
+    });
+    console.log(`2-player touch: P1 moved ${Math.round(moved.p1)} px, P2 moved ${Math.round(moved.p2)} px`);
+    if (!(moved.p1 > 5 && moved.p2 < -5)) throw new Error('a player did not move the way their half was dragged');
+  });
+
   await browser.close();
   process.exit(failures ? 1 : 0);
 })();
