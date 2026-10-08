@@ -45,7 +45,11 @@
 //   src/scenes.js        — All non-gameplay scenes + input helpers
 //                          DEFAULT_BINDINGS, keyDisplayName,
 //                          ControlsScene, BootScene, ModeSelectScene,
-//                          SettingsScene, CharSelectScene
+//                          SettingsScene
+//
+//   src/char-select.js   — CharSelectScene: the character carousel (selected character large in
+//                          the centre, the others dimmed on an arc; keys, drag, scroll or tap turn it)
+//                          _buildWheel, _layoutWheel, _spinTo, _settle, nav, confirm, refresh, _turn
 //
 //   src/game-scene.js    — GameScene: gameplay systems 3, 5-7, 9-16 and 19-23 (see list below)
 //                          Also: GameScene.RECIPES static property (system 8's recipe list)
@@ -68,6 +72,7 @@
 //
 // 1. WORLD / TERRAIN GENERATION  (src/world-gen.js; biome fns in src/constants.js; the ambient anim stays in update())
 //    ground: one Tilemap layer (32 px steps between biomes) from the 'ground_tileset' texture, tile index = row * GROUND_KEYS.length + biome (row 0 base, rows 1-3 variants picked by _biomeHash, rows from 4 shoreline banks from drawEdgeVariants by side and lone-corner bits (EDGE_MASKS); src/textures.js).
+//            biome_edges: an overlay layer over it from 'biome_edge_tileset' (index = EDGE_MASKS index * GROUND_KEYS.length + the neighbour biome), drawEdgeVariants' fade filled with the neighbour's ground.
 //            No full-world grass TileSprite exists any more (removed in #238).
 //    fns:  buildWorld, _buildPonds, _buildLakes, _buildRivers, _fillWaterIslands,
 //          buildPOIs, buildRuinsCity, buildBiomeStructures, _buildAuthoredStructure,
