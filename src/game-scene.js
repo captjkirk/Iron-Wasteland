@@ -497,6 +497,7 @@ class GameScene extends Phaser.Scene {
                 this.time.delayedCall(9200, () => this.startTutorial());
 
                 this._worldReady = true;
+                this._debugBossFromUrl();
                 this._log('World init: READY  display objects=' + this.children.length, 'world');
                 this.showStartupControls();
               });
@@ -3868,7 +3869,8 @@ class GameScene extends Phaser.Scene {
     if (this.enemies) {
       this.enemies.forEach(e => {
         if (e.dying) return;
-        const d = Phaser.Math.Distance.Between(player.spr.x, player.spr.y, e.spr.x, e.spr.y);
+        const d = e.isBoss ? this._bossDist(e, player.spr.x, player.spr.y)
+                           : Phaser.Math.Distance.Between(player.spr.x, player.spr.y, e.spr.x, e.spr.y);
         if (d < range + 20) {
           // Check enemy is roughly in facing direction
           const angToE = Phaser.Math.Angle.Between(player.spr.x, player.spr.y, e.spr.x, e.spr.y);

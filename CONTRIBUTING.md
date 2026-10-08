@@ -61,6 +61,14 @@ ticket it can verify and labels the rest `needs-owner-look` for the owner (rules
 worktree, and opens a PR; `/loop 30m /next-ticket` keeps going until the frontier is empty. After a few tickets the
 session is no longer fresh: start a new one and run the loop again.
 
+## Seeing a sprite or a boss without playing to it
+
+- `node tools/render-texture.js boss_wolf wolf` writes each named texture to
+  `texture-renders/<key>.png` at 4× (needs Playwright: `npm install --no-save playwright`).
+  Put before/after images of any sprite change in its PR.
+- Add `?boss=wolf` to the game URL (or `golem`, `spider`, `troll`, `hydra`) to have that boss
+  spawn 3 s after the world is built. Works on iPad too.
+
 ## Debug log
 
 Every run's session log is saved with its score: it lands in the `log` column of the
