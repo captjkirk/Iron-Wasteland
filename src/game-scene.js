@@ -475,8 +475,8 @@ class GameScene extends Phaser.Scene {
                 this.placeRaiderCamp(worldW, worldH);
                 this._log(`World init: enemies spawned  total=${(this.enemies||[]).length}  dens=${(this.enemyDens||[]).length}+${(this.waterDens||[]).length}w`, 'world');
 
-                // Touch controls (1P only — 2P touch is out of scope)
-                if (this.solo && activeInputMode() === 'touch') {
+                // Touch controls (src/touch.js): one pad in 1P, one per half of the screen in 2P
+                if (activeInputMode() === 'touch') {
                   this.initTouchControls();
                 }
 
@@ -1241,6 +1241,7 @@ class GameScene extends Phaser.Scene {
     if (p._toxicUntil > now) s.push('toxic');
     if (p._rallyUntil > now) s.push('rally');
     if (p['_' + p.charData.id + 'Upgraded']) s.push('upgrade');
+    if (p._sheltered) s.push('shelter');
     return s;
   }
 
@@ -1262,6 +1263,9 @@ class GameScene extends Phaser.Scene {
         gfx.fillStyle(0x44ff22, 1).fillCircle(cx, cy + 2, r - 2).fillTriangle(cx, y, cx - r + 2, cy + 1, cx + r - 2, cy + 1);
       } else if (name === 'rally') {   // yellow up arrow
         gfx.fillStyle(0xffdd44, 1).fillTriangle(cx, y, x, cy + 1, x + SZ, cy + 1).fillRect(cx - 2, cy, 4, r);
+      } else if (name === 'shelter') { // warm house: roof over a wall with a lit door
+        gfx.fillStyle(0xe8b060, 1).fillTriangle(cx, y, x, cy, x + SZ, cy).fillRect(x + 2, cy, SZ - 4, r);
+        gfx.fillStyle(0xff7722, 1).fillRect(cx - 1.5, cy + 2, 3, r - 2);
       } else {                         // upgrade: orange square star
         gfx.fillStyle(0xffaa22, 1).fillRect(x + 2, y + 2, SZ - 4, SZ - 4).fillTriangle(cx, y - 1, x + 1, cy, x + SZ - 1, cy).fillTriangle(cx, y + SZ + 1, x + 1, cy, x + SZ - 1, cy);
       }
@@ -1579,7 +1583,7 @@ class GameScene extends Phaser.Scene {
     if (this.isOver) return;
     this.isOver = true;
     this._log(`GAME OVER — ${reason}  day=${this.dayNum}  kills=${this.kills||0}  T=${Math.floor(this.timeAlive||0)}s`, 'world');
-    // Auto-download log so players can share/report without remembering to copy
+    // Home play keeps a copy in code/logs/; the global scoreboard gets the log with the score.
     this.time.delayedCall(800, () => this._downloadLog(true));
     // Close controls overlay if it was open when game ended
     if (this.controlsVis && this.ctrlObjs) {
@@ -2423,7 +2427,11 @@ class GameScene extends Phaser.Scene {
 
     if (this.p2 && this.p2.spr) {
       const p2CraftHalt = this.craftMenuOpen && this.craftMenuOwner === this.p2;
-      if (!this.p2.isDowned && !this.p2.isSleeping && !p2CraftHalt && this.p2keys) this.movePlayer(this.p2, this.p2keys.left, this.p2keys.right, this.p2keys.up, this.p2keys.down);
+      const p2pad = this._touchActive && this._pads[1];
+      if (!this.p2.isDowned && !this.p2.isSleeping && !p2CraftHalt) {
+        if (p2pad) this.applyTouchInput(this.p2, p2pad.joy);
+        else if (this.p2keys) this.movePlayer(this.p2, this.p2keys.left, this.p2keys.right, this.p2keys.up, this.p2keys.down);
+      }
       else if (this.p2.spr.body) this.p2.spr.setVelocity(0,0);
     }
 
@@ -2545,227 +2553,8 @@ class GameScene extends Phaser.Scene {
     { const _t0 = performance.now(); if (this._hudDirty) { _safe('redrawHUD', () => { this.redrawHUD(); this._hudDirty = false; }); } this._perfBudget.hud += performance.now() - _t0; }
     { const _t0 = performance.now(); _safe('threatIndicators', () => this._drawThreatIndicators());   this._perfBudget.threats += performance.now() - _t0; }
     _safe('_updateScoutPanel', () => this._updateScoutPanel());
+    _safe('_updateShelter', () => this._updateShelter());
     if (this._touchActive) _safe('_drawTouchHUD', () => this._drawTouchHUD());
-  }
-
-  // ── TOUCH CONTROLS ────────────────────────────────────────────
-  initTouchControls() {
-    const { W, H } = CFG;
-    this._touchActive = true;
-
-    // Support up to 4 simultaneous touches
-    this.input.addPointer(4);
-
-    // Joystick state — dynamic base: appears where finger lands
-    this._joy = {
-      active: false, pointerId: -1,
-      baseX: 0, baseY: 0,
-      knobX: 0, knobY: 0,
-      radius: 72,
-      vec: { x: 0, y: 0 },
-    };
-
-    // Buttons (HUD-space coordinates, radius for hit detection)
-    // Layout: ATK bottom-right, ALT above ATK, USE left of ATK, BLD left of ALT, MENU top-right
-    this._tcBtns = {
-      attack:   { hx: W - 100, hy: H - 100, r: 52, down: false, pid: -1, col: 0xff6644, label: '\u2694 ATK' },
-      alt:      { hx: W - 185, hy: H - 195, r: 44, down: false, pid: -1, col: 0x6699ff, label: '\u2605 ALT' },
-      interact: { hx: W - 195, hy: H - 95,  r: 40, down: false, pid: -1, col: 0x44cc66, label: 'E USE' },
-      build:    { hx: W - 282, hy: H - 195, r: 40, down: false, pid: -1, col: 0xccaa33, label: '\u25a0 BLD' },
-      menu:     { hx: W - 32,  hy: 32,      r: 28, down: false, pid: -1, col: 0x888888, label: '\u2630' },
-    };
-
-    // Graphics layer on HUD (single object, redrawn each frame)
-    this._tcGfx = this.add.graphics().setDepth(150);
-    this._h(this._tcGfx);
-
-    // Text labels for buttons (created once, positioned at button centers)
-    this._tcLabels = {};
-    for (const [name, btn] of Object.entries(this._tcBtns)) {
-      const t = this.add.text(btn.hx, btn.hy, btn.label, {
-        fontFamily: 'monospace', fontSize: name === 'attack' ? '11px' : '9px',
-        color: '#ffffff', stroke: '#000', strokeThickness: 2,
-      }).setOrigin(0.5).setDepth(151);
-      this._h(t);
-      this._tcLabels[name] = t;
-    }
-
-    // Remove before re-adding to prevent listener accumulation on scene restart
-    this.input.off('pointerdown',       this._onTouchDown, this);
-    this.input.off('pointermove',       this._onTouchMove, this);
-    this.input.off('pointerup',         this._onTouchUp,   this);
-    this.input.off('pointerupoutside',  this._onTouchUp,   this);
-    this.input.on('pointerdown',        this._onTouchDown, this);
-    this.input.on('pointermove',        this._onTouchMove, this);
-    this.input.on('pointerup',          this._onTouchUp,   this);
-    this.input.on('pointerupoutside',   this._onTouchUp,   this);
-  }
-
-  _onTouchDown(pointer) {
-    if (!this._touchActive) return;
-    const { W, H } = CFG;
-    const px = pointer.x, py = pointer.y;
-
-    // Skip joystick/button activation when tapping inside the craft menu panel
-    if (this.craftMenuOpen) {
-      const PW = 440, PH = 330, PX = (W - PW) / 2, PY = H - PH - 20;
-      if (px >= PX && px <= PX + PW && py >= PY && py <= PY + PH) return;
-    }
-
-    // Left 45% of screen and bottom 55% → joystick
-    if (px < W * 0.45 && py > H * 0.35 && !this._joy.active) {
-      this._joy.active = true;
-      this._joy.pointerId = pointer.id;
-      this._joy.baseX = px;
-      this._joy.baseY = py;
-      this._joy.knobX = px;
-      this._joy.knobY = py;
-      this._joy.vec = { x: 0, y: 0 };
-      return;
-    }
-
-    // Check action buttons
-    for (const [name, btn] of Object.entries(this._tcBtns)) {
-      if (btn.down) continue;
-      const dx = px - btn.hx, dy = py - btn.hy;
-      if (dx*dx + dy*dy <= btn.r * btn.r) {
-        btn.down = true;
-        btn.pid = pointer.id;
-        this._onBtnPress(name);
-        return;
-      }
-    }
-  }
-
-  _onTouchMove(pointer) {
-    if (!this._touchActive || !this._joy.active) return;
-    if (pointer.id !== this._joy.pointerId) return;
-    const dx = pointer.x - this._joy.baseX;
-    const dy = pointer.y - this._joy.baseY;
-    const dist = Math.sqrt(dx*dx + dy*dy);
-    const r = this._joy.radius;
-    if (dist > r) {
-      this._joy.knobX = this._joy.baseX + (dx/dist)*r;
-      this._joy.knobY = this._joy.baseY + (dy/dist)*r;
-    } else {
-      this._joy.knobX = pointer.x;
-      this._joy.knobY = pointer.y;
-    }
-    const clamped = Math.min(dist, r);
-    this._joy.vec.x = (dx/Math.max(dist,1)) * (clamped/r);
-    this._joy.vec.y = (dy/Math.max(dist,1)) * (clamped/r);
-  }
-
-  _onTouchUp(pointer) {
-    if (!this._touchActive) return;
-    if (this._joy.active && pointer.id === this._joy.pointerId) {
-      this._joy.active = false;
-      this._joy.pointerId = -1;
-      this._joy.vec = { x: 0, y: 0 };
-      if (this.p1) this.p1.spr.setVelocity(0, 0);
-    }
-    for (const btn of Object.values(this._tcBtns)) {
-      if (btn.pid === pointer.id) { btn.down = false; btn.pid = -1; }
-    }
-  }
-
-  _onBtnPress(name) {
-    if (this.isOver || !this.p1) return;
-    if (name === 'attack') {
-      if (this.barrackOpen || this.p1.isDowned || this.p1.isSleeping) return;
-      if (this.craftMenuOpen && this.craftMenuOwner === this.p1) { this.craftSelected(); return; }
-      if (this.buildMode && this.buildOwner === this.p1) this.placeBuild();
-      else this.doAttack(this.p1);
-    } else if (name === 'alt') {
-      if (!this.p1.isDowned && !this.p1.isSleeping) this.doAlt(this.p1);
-    } else if (name === 'interact') {
-      if (!this.barrackOpen) this.tryInteract(this.p1);
-    } else if (name === 'build') {
-      if (!this.p1.isDowned && !this.p1.isSleeping) this.openCraftMenu(this.p1);
-    } else if (name === 'menu') {
-      this.toggleControls();
-    }
-  }
-
-  applyTouchInput() {
-    const p = this.p1;
-    if (!p || p.isDowned || p.isSleeping) return;
-    const jv = this._joy.vec;
-    const spd = p.charData.speed * (p._speedMult !== undefined ? p._speedMult : 1);
-    const vx = jv.x * spd, vy = jv.y * spd;
-    p.spr.setVelocity(vx, vy);
-
-    const moving = Math.abs(vx) > 8 || Math.abs(vy) > 8;
-    const isDiag = Math.abs(vx) > 8 && Math.abs(vy) > 8;
-    const id = p.charData.id;
-    if (moving) {
-      // 8-directional facing from joystick vector
-      if (isDiag) {
-        p.dir = vy > 0 ? 'fside' : 'bside';
-      } else if (Math.abs(vy) > Math.abs(vx)) {
-        p.dir = vy > 0 ? 'front' : 'back';
-      } else {
-        p.dir = 'side';
-      }
-      p.walkTimer = (p.walkTimer + 1) % 40;
-      const step = _walkStep(p.walkTimer);
-      const dirSuffix = p.dir === 'side' ? '' : ('_' + p.dir);
-      p.spr.setTexture('player_atlas', id + dirSuffix + step);
-      if (p.dir === 'side' || p.dir === 'fside' || p.dir === 'bside') {
-        p.spr.setFlipX(vx < 0);
-      } else {
-        p.spr.setFlipX(false);
-      }
-      p.aimAngle = Math.atan2(vy, vx);
-    } else {
-      p.walkTimer = 0;
-      const dirSuffix = p.dir === 'side' ? '' : ('_' + p.dir);
-      p.spr.setTexture('player_atlas', id + dirSuffix);
-    }
-  }
-
-  _drawTouchHUD() {
-    const gfx = this._tcGfx;
-    if (!gfx || !gfx.active) return;
-    // Build a fast state hash — if nothing visibly changed since last frame, skip
-    // clear/fill entirely. Knob position is rounded so sub-pixel moves don't spam.
-    const joy = this._joy;
-    let hash = joy.active ? ('J' + (joy.knobX|0) + ',' + (joy.knobY|0)) : 'J-';
-    for (const [name, btn] of Object.entries(this._tcBtns)) {
-      hash += '|' + name + (btn.down ? '1' : '0');
-    }
-    if (this._tcHudHash === hash) return;
-    this._tcHudHash = hash;
-    gfx.clear();
-
-    if (joy.active) {
-      // Base ring
-      gfx.lineStyle(2, 0xffffff, 0.35);
-      gfx.strokeCircle(joy.baseX, joy.baseY, joy.radius);
-      gfx.fillStyle(0xffffff, 0.07);
-      gfx.fillCircle(joy.baseX, joy.baseY, joy.radius);
-      // Knob
-      gfx.fillStyle(0xffffff, 0.55);
-      gfx.fillCircle(joy.knobX, joy.knobY, 30);
-      gfx.lineStyle(2, 0xffffff, 0.7);
-      gfx.strokeCircle(joy.knobX, joy.knobY, 30);
-    } else {
-      // Hint ring — very faint, shows where joystick zone is
-      const { W, H } = CFG;
-      gfx.lineStyle(1, 0xffffff, 0.1);
-      gfx.strokeCircle(W * 0.12, H * 0.82, 55);
-      gfx.fillStyle(0xffffff, 0.03);
-      gfx.fillCircle(W * 0.12, H * 0.82, 55);
-    }
-
-    // Action buttons
-    for (const [name, btn] of Object.entries(this._tcBtns)) {
-      const alpha = btn.down ? 0.75 : 0.4;
-      gfx.fillStyle(btn.col, alpha * 0.38);
-      gfx.fillCircle(btn.hx, btn.hy, btn.r);
-      gfx.lineStyle(2, btn.col, alpha);
-      gfx.strokeCircle(btn.hx, btn.hy, btn.r);
-    }
   }
 
   // Terrain effects for any actor. kind: 'player' (all four effects), 'raider' (all four) or
@@ -4227,22 +4016,13 @@ class GameScene extends Phaser.Scene {
     this._dbgTxt.setText([...header, ...entries].join('\n'));
   }
 
-  // Trigger a .txt download of the full session log.
-  // auto=true means the caller is an auto-trigger (game over, crash); those
-  // respect the settings opt-out so fullscreen/kiosk sessions aren't spammed
-  // with a download prompt. Manual calls (G in overlay) always download.
+  // Save the full session log. On a home-network host every call posts it to the dev server's
+  // /save-log (code/logs/, works offline). A manual call (G in the overlay) also downloads it as
+  // a .txt file; auto calls (game over, victory, boss forensics) do not, since the log now rides
+  // with the score to the global scoreboard (GameOverScene._postScore).
   _downloadLog(auto) {
     if (!this._dbgEntries) return;
     const isLAN = /^(localhost|127\.|192\.168\.|10\.|172\.(1[6-9]|2\d|3[01])\.)/.test(location.hostname);
-    if (!isLAN) return;
-    if (auto) {
-      try {
-        if (loadSettings().autoDownloadLog === false) {
-          this._log('auto log download suppressed by setting', 'world');
-          return;
-        }
-      } catch(e) {}
-    }
     const t    = Math.floor(this.timeAlive || 0);
     const mode = `${this.solo ? 'Solo' : '2P'} ${this.hardcore ? 'Hardcore' : 'Survival'}`;
     const p1s  = this.p1 ? `P1 (${this.p1.charData?.id||'?'}): HP ${this.p1.hp}/${this.p1.maxHp}` : '';
@@ -4263,19 +4043,14 @@ class GameScene extends Phaser.Scene {
       `─────────────────────────────────────────`,
       ...this._dbgEntries,
     ].filter(Boolean).join('\n');
-    const blob = new Blob([lines], { type: 'text/plain' });
-    const url  = URL.createObjectURL(blob);
     const ts   = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
     const fname = `iron-wasteland-${ts}.txt`;
-    const a    = Object.assign(document.createElement('a'), {
-      href: url,
-      download: fname,
-    });
-    a.click();
-    URL.revokeObjectURL(url);
-    // Also save to ./logs/ via dev server — same-origin so it works whether served
-    // as localhost, 127.0.0.1, or LAN IP. No-op if running from file:// (no server).
-    if (location.protocol !== 'file:') {
+    if (!auto) {
+      const url = URL.createObjectURL(new Blob([lines], { type: 'text/plain' }));
+      Object.assign(document.createElement('a'), { href: url, download: fname }).click();
+      URL.revokeObjectURL(url);
+    }
+    if (isLAN) {
       const body = JSON.stringify({ filename: fname, content: lines });
       const tryPost = (attempt) => fetch('/save-log', {
         method: 'POST',
@@ -4292,8 +4067,6 @@ class GameScene extends Phaser.Scene {
         console.warn('[save-log] failed after', attempt + 1, 'tries:', e);
       });
       tryPost(0);
-    } else {
-      console.warn('[save-log] skipped — running from file://; run `node server.js` to save logs to disk');
     }
   }
 
@@ -4787,6 +4560,7 @@ class GameScene extends Phaser.Scene {
       const wx = wall.x, wy = wall.y;
       this._removeWallFromBuckets(wall);
       this.builtWalls = this.builtWalls.filter(w => w !== wall);
+      this._shelterDirty = true;
       this._refreshWallClustersNear(wx, wy);
       this._unpaintMinimapTile(wx, wy);
       if (wall._hpBg && wall._hpBg.active) wall._hpBg.destroy();
