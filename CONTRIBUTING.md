@@ -48,8 +48,10 @@ the MANIFEST lists, update the MANIFEST in the same commit.
   (headless WebKit loses the WebGL context in play, so the canvas renderer stands in), starts
   a solo game, waits for the world, plays ten seconds and fails on any console or page error.
   It then jumps to days 5 and 10 and fails unless each brings a boss, of two different types.
-  Shader and WebGL-only bugs stay invisible to it. Run it locally before moving code between
-  `src/` files or touching a system that runs every frame.
+  Then it ends the run, types a two-word name on the game over screen and presses Enter; the
+  global scoreboard is stubbed, so no smoke run posts a real score. Shader and WebGL-only bugs
+  stay invisible to it. Run it locally before moving code between `src/` files or touching a
+  system that runs every frame.
 
 On deploy, `.github/workflows/pages.yml` stamps `VERSION` with the publish time.
 
