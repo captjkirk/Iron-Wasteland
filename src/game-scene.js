@@ -782,7 +782,7 @@ class GameScene extends Phaser.Scene {
   buildHUD() {
     const { W, H } = CFG;
     this._hudDirty = true;
-    const P = this.solo && CFG.W <= 640 ? PHONE1P : null; // phone, 1 player (#388)
+    const P = this.solo && _isMobile ? PHONE1P : null; // phone, 1 player (#388)
     // Shrink a HUD object about (ax, ay) and make it see-through, as the phone layout asks.
     const hudSize = (o, ax, ay) => {
       if (!P) return o;
@@ -1301,7 +1301,7 @@ class GameScene extends Phaser.Scene {
   // non-Gunslinger holds some. A zero count is dimmed, not hidden, so the panel never jumps.
   _makeResPanel(x, y, right) {
     const SLOTS = [['wood', 'item_wood'], ['metal', 'item_metal'], ['fiber', 'item_fiber'], ['food', 'item_food'], ['carriedAmmo', 'item_ammo']];
-    const P = this.solo && CFG.W <= 640 ? PHONE1P : null; // phone, 1 player: 90% size, 45% solid (#388)
+    const P = this.solo && _isMobile ? PHONE1P : null; // phone, 1 player: 90% size, 45% solid (#388)
     const k = P ? P.hudScale : 1, sol = P ? P.hudSolid : 1;
     const SLOT_W = 52 * k, PAD = 8 * k, H = 28 * k;
     const bg = this._h(this.add.graphics().setDepth(100).setAlpha(sol));
@@ -2224,7 +2224,7 @@ class GameScene extends Phaser.Scene {
     if (!this._hintQueue || this._hintQueue.length === 0) return;
     const { text, duration, title } = this._hintQueue.shift();
     const { W } = CFG;
-    const P = this.solo && CFG.W <= 640 ? PHONE1P : null; // phone, 1 player: 80% size, 75% solid (#388)
+    const P = this.solo && _isMobile ? PHONE1P : null; // phone, 1 player: 80% size, 75% solid (#388)
     const k = P ? P.tipScale : 1, sol = P ? P.tipSolid : 1;
     const PW = 560 * k, PH = (title ? 88 : 46) * k, PX = (W - PW) / 2, PY = 108;
 
