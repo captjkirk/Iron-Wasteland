@@ -22,7 +22,7 @@ Object.assign(GameScene.prototype, {
       // Layout: ATK, ALT, USE, BLD in a diamond (ATK bottom, ALT right, USE left, BLD top);
       // the stick takes the left 45% of the screen, bottom 65%. On a phone (#388) the sizes and
       // positions are shares of the screen height, from PHONE1P.
-      const P = CFG.W <= 640 ? PHONE1P : null;
+      const P = this._layout1p();
       let hx = W * 0.12, hy = H * 0.82, hr = 55;
       let attack = btn(W - 100, H - 100, 52, 0xff6644, '⚔ ATK');
       let alt = btn(W - 185, H - 195, 44, 0x6699ff, '★ ALT');
@@ -43,6 +43,7 @@ Object.assign(GameScene.prototype, {
         stickZone: (px, py) => px < W * 0.45 && py > H * 0.35,
         btns: { attack, alt, interact, build, menu },
       }];
+      if (P) this._pads[0].joy.radius = P.stick.d * H / 2; // scales with the screen height (#406)
     } else {
       // Each half: the stick in its left 60%, bottom 55%; ATK at its bottom-right corner.
       this._pads = [0, 1].map(i => {
@@ -240,7 +241,7 @@ Object.assign(GameScene.prototype, {
 
       // Action buttons
       for (const btn of Object.values(btns)) {
-        const alpha = btn.down ? 0.75 : (CFG.W <= 640 && this.solo ? 0.35 : 0.4);
+        const alpha = btn.down ? 0.75 : (this._layout1p() ? 0.35 : 0.4);
         gfx.fillStyle(btn.col, alpha * 0.38);
         gfx.fillCircle(btn.hx, btn.hy, btn.r);
         gfx.lineStyle(2, btn.col, alpha);

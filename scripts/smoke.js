@@ -310,7 +310,7 @@ async function bossReach(page) {
   // controls and panels and fails when the radar, the four buttons or the stick differ from the
   // agreed sizes by more than 2% of the screen height, or when any circle or box overlaps another
   // or runs off the screen. The stick ring is left out: it only appears where the thumb lands.
-  for (const [name, vp] of [['phone layout 640x360', { width: 740, height: 390 }], ['phone layout 874x402', { width: 874, height: 402 }]]) {
+  for (const [name, vp] of [['phone layout 640x360', { width: 740, height: 390 }], ['phone layout 874x402', { width: 874, height: 402 }], ['iPad layout 1180x820', { width: 1180, height: 820 }]]) {
     failures += await pass(browser, name, base + '?seed=1&renderer=canvas', async page => {
       await page.evaluate(() => {
         saveSettings({ inputMode: 'touch', tutorial: false });
@@ -320,8 +320,7 @@ async function bossReach(page) {
       await page.waitForTimeout(1500);
       const err = await page.evaluate(() => {
         const g = _phaserGame.scene.getScene('Game'), { W, H } = CFG, tol = 0.02 * H;
-        if (W !== 640) return `canvas is ${W} wide`;
-        const b = g._pads[0].btns, items = [], bad = [];
+                const b = g._pads[0].btns, items = [], bad = [];
         const diam = (what, got, share) => { if (Math.abs(got - share * H) > tol) bad.push(`${what} is ${Math.round(got)} px across, wanted ${Math.round(share * H)}`); };
         const circle = (n, c) => items.push({ n, circle: true, ...c });
         const rd = g.radarCenter; diam('radar', rd.r * 2, PHONE1P.radar.d); circle('radar', { x: rd.x, y: rd.y, r: rd.r });
