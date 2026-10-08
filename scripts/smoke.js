@@ -4,6 +4,7 @@
 //      Game scene, so the canvas renderer stands in), starts a solo game, waits for the world,
 //      plays PLAY_MS and fails on any console or page error. WebGL-only bugs stay invisible.
 //      Also fails when textures and object canvases hold more than PIXEL_BUDGET_MB of pixels.
+//      Then ends the run and types a two-word name on the game over screen (#328).
 //   3. Hardcore: the same start with STATE.difficulty = 'hardcore'; fails unless timeAlive
 //      advances over HARDCORE_MS of play. Hardcore's own multipliers once froze the tab (#327).
 // Every in-game page call goes through `ask`, so a hung main thread fails the run, not stalls it.
@@ -38,6 +39,11 @@ async function play(page, difficulty, ms) {
 async function pass(browser, name, url, run, opts = {}) {
   const page = await browser.newPage(opts);
   const errors = [];
+  const posts = []; // the global scoreboard is stubbed: no smoke run posts a real score
+  await page.route('https://script.google.com/**', route => {
+    if (route.request().method() === 'POST') posts.push(JSON.parse(route.request().postData()));
+    route.fulfill({ contentType: 'application/json', body: route.request().method() === 'POST' ? '{"ok":true}' : '[]' });
+  });
   page.on('console', m => { if (m.type() === 'error') errors.push('console error: ' + m.text()); });
   page.on('pageerror', e => errors.push('page error: ' + e.message));
   try {
@@ -46,7 +52,7 @@ async function pass(browser, name, url, run, opts = {}) {
       () => typeof _phaserGame !== 'undefined' && _phaserGame.scene.isActive('ModeSelect'),
       null, { timeout: 30000 });
     await page.waitForTimeout(1000); // let ModeSelect run a few frames
-    await run(page);
+    await run(page, posts);
   } catch (e) {
     errors.push(`${name}: ${e.message.split('\n')[0]}`);
   }
@@ -77,7 +83,7 @@ async function pass(browser, name, url, run, opts = {}) {
     }, opts);
   }
 
-  failures += await pass(browser, 'in play', base + '?seed=1&renderer=canvas', async page => {
+  failures += await pass(browser, 'in play', base + '?seed=1&renderer=canvas', async (page, posts) => {
     await play(page, 'survival', PLAY_MS);
     const fps = await ask(page, () => Math.round(_phaserGame.loop.actualFps));
     console.log(`in play: world built, ${PLAY_MS / 1000} s played at ${fps} fps`);
@@ -100,6 +106,19 @@ async function pass(browser, name, url, run, opts = {}) {
     const mb = Math.round(px * 4 / 1e6);
     console.log(`in play: ${mb} MB of pixel memory (budget ${PIXEL_BUDGET_MB} MB)`);
     if (mb > PIXEL_BUDGET_MB) throw new Error(`pixel memory ${mb} MB is over the ${PIXEL_BUDGET_MB} MB budget`);
+    // Game over name field: Phaser preventDefaults every key any scene ever captured (WASD,
+    // Space, F…) unless the field keeps its keys; a name once came out as "nKi" (#328).
+    await page.evaluate(() => _phaserGame.scene.getScene('Game').triggerGameOver('Smoke run over.'));
+    await page.waitForFunction(() => _phaserGame.scene.isActive('GameOver') &&
+      document.activeElement && document.activeElement.tagName === 'INPUT', null, { timeout: 10000 });
+    await page.keyboard.type('Dad and Kids');
+    const typed = await page.evaluate(() => document.activeElement.value);
+    if (typed !== 'Dad and Kids' || await page.evaluate(() => _phaserGame.scene.isActive('CharSelect')))
+      throw new Error(`name field holds "${typed}" after typing "Dad and Kids", or the game restarted`);
+    await page.keyboard.press('Enter');
+    await page.waitForFunction(() => (localStorage.getItem('iw_scores') || '').includes('"Dad and Kids"'), null, { timeout: 5000 });
+    if (!posts.some(p => p.name === 'Dad and Kids')) throw new Error('the score was not posted to the (stubbed) scoreboard');
+    console.log('game over: typed name kept and saved');
   });
 
   failures += await pass(browser, 'hardcore', base + '?seed=1&renderer=canvas', async page => {
