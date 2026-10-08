@@ -62,6 +62,16 @@ async function pass(browser, name, url, run) {
       .filter(o => o.body.height > o.displayHeight * 0.75)
       .map(o => o.texture.key));
     if (fat.length) throw new Error(`${fat.length} scenery hitboxes are nearly the whole sprite (first: ${fat[0]})`);
+    // Every obstacle, including one placed after world build the way a regrown tree is, is hidden
+    // from the HUD camera; otherwise it is drawn twice, once fixed on the HUD (#346).
+    const onHud = await page.evaluate(() => {
+      const s = _phaserGame.scene.getScene('Game');
+      const p = s.p1.spr, t = s._placeScenery(Math.floor(p.x / CFG.TILE) + 3, Math.floor(p.y / CFG.TILE), 'tree', 0);
+      const bad = s.obstacles.getChildren().filter(o => !(o.cameraFilter & s.hudCam.id)).map(o => o.texture.key);
+      t.destroy();
+      return bad;
+    });
+    if (onHud.length) throw new Error(`${onHud.length} obstacles are drawn by the HUD camera too (first: ${onHud[0]})`);
     const mb = Math.round(px * 4 / 1e6);
     console.log(`in play: ${mb} MB of pixel memory (budget ${PIXEL_BUDGET_MB} MB)`);
     if (mb > PIXEL_BUDGET_MB) throw new Error(`pixel memory ${mb} MB is over the ${PIXEL_BUDGET_MB} MB budget`);

@@ -1447,6 +1447,9 @@ Object.assign(GameScene.prototype, {
     const bw = o.displayWidth * 0.75, bh = o.displayHeight * 0.5;
     o.body.setSize(bw, bh, false);
     o.body.setOffset((o.displayWidth - bw) / 2, o.displayHeight - bh);
+    // World gen runs before the HUD camera exists (it ignores everything at once then); a tree
+    // regrown later must be ignored here or it is drawn a second time on the HUD (#346).
+    if (this.hudCam) this.hudCam.ignore(o);
     return o;
   },
 
