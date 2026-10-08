@@ -45,11 +45,19 @@
 //   src/scenes.js        — All non-gameplay scenes + input helpers
 //                          DEFAULT_BINDINGS, keyDisplayName,
 //                          ControlsScene, BootScene, ModeSelectScene,
-//                          SettingsScene, CharSelectScene
+//                          SettingsScene
+//
+//   src/char-select.js   — CharSelectScene: the character carousel (selected character large in
+//                          the centre, the others dimmed on an arc; keys, drag, scroll or tap turn it)
+//                          _buildWheel, _layoutWheel, _spinTo, _settle, nav, confirm, refresh, _turn
 //
 //   src/game-scene.js    — GameScene: gameplay systems 3, 5-7, 9-16 and 19-23 (see list below)
 //
 //   src/recipes.js       — The craft menu's recipes (data only): RECIPES, the one table of costs
+//
+//   src/touch.js         — System 19's touch pads (one per player), added to GameScene.prototype
+//
+//   src/shelter.js       — System 8's Sheltered test, added to GameScene.prototype
 //
 //   src/world-gen.js     — System 1, added to GameScene.prototype; loads after game-scene.js
 //
@@ -67,6 +75,7 @@
 //
 // 1. WORLD / TERRAIN GENERATION  (src/world-gen.js; biome fns in src/constants.js; the ambient anim stays in update())
 //    ground: one Tilemap layer (32 px steps between biomes) from the 'ground_tileset' texture, tile index = row * GROUND_KEYS.length + biome (row 0 base, rows 1-3 variants picked by _biomeHash, rows from 4 shoreline banks from drawEdgeVariants by side and lone-corner bits (EDGE_MASKS); src/textures.js).
+//            biome_edges: an overlay layer over it from 'biome_edge_tileset' (index = EDGE_MASKS index * GROUND_KEYS.length + the neighbour biome), drawEdgeVariants' fade filled with the neighbour's ground.
 //            No full-world grass TileSprite exists any more (removed in #238).
 //    fns:  buildWorld, _buildPonds, _buildLakes, _buildRivers, _fillWaterIslands,
 //          buildPOIs, buildRuinsCity, buildBiomeStructures, _buildAuthoredStructure,
@@ -108,11 +117,10 @@
 //
 // 5. PLAYER MOVEMENT & INPUT  (src/game-scene.js; getControls in src/textures.js)
 //    fns:  movePlayer, aimAtMouse (faces the cursor while _mouseAt is recent), _faceAngle,
-//          applyTouchInput, applyTerrainEffects, _makeResPanel,
-//          getControls, initTouchControls, _onTouchDown/Move/Up,
+//          applyTerrainEffects, _makeResPanel, getControls,
 //          openPauseSettings, _walkStep,
 //          tryInteract (the Interact key: build teardown, barracks, radio tower, raid cache, bed, relics, altar)
-//    data: p1, p2 (spr, hp, maxHp, charData, inv), _joy, _tcBtns, wasd, p2keys
+//    data: p1, p2 (spr, hp, maxHp, charData, inv), wasd, p2keys (touch: system 19)
 //    cfg:  CAM_PAD, CAM_ZOOM_MIN, CAM_ZOOM_MAX
 //
 // 6. PLAYER COMBAT (per-character abilities)
@@ -133,13 +141,17 @@
 //    data: player.isDowned, player.downedTimer, reviving, reviveProgress
 //    log:  [PLAYER]
 //
-// 8. BUILDING & CRAFTING  (src/building-crafting.js; RECIPES in src/recipes.js)
+// 8. BUILDING & CRAFTING  (src/building-crafting.js; RECIPES in src/recipes.js; shelter in src/shelter.js)
 //    build: updateBuildMode, placeBuild, _buildSpotError, exitBuildMode, _placeWallSprite,
 //           _tryTeardownBuild, openGate, getBuildCost, getTeamInv
 //    craft: openCraftMenu, closeCraftMenu, updateCraftMenu, craftSelected,
 //           renderCraftMenu, _craftScrollToSel
 //    barracks: openBarrack, closeBarrack, barrackNav, barrackConfirm,
 //              refreshBarrackCards, buildBarrackOverlay, checkBarrackRange
+//    shelter: isShelteredAt (a closed ring of built walls, gates count, holding a campfire, craftbench
+//             or bed; 8-way flood fill, so a corner-only join is a gap), _updateShelter (rechecks
+//             on a new tile or when _shelterDirty after a build or a destroyed wall; sets p._sheltered,
+//             shown as the 'shelter' status icon)
 //    data: buildType, buildRotation, buildOwner, RECIPES, RECIPE_COSTS (getBuildCost's lookup),
 //          structures, player.carriedAmmo
 //    log:  [BUILD ], [PLAYER]
@@ -204,16 +216,19 @@
 //     character draws: paintGrid, pixelActorFrames, buildPixelActors
 //                      art in SPRITE_ART[id][front|back|side|fside|bside]; step2 = step legs mirrored
 //
-// 19. INPUT MODES (kbd / gamepad / touch)  (src/scenes.js; getControls in src/textures.js; _onBtnPress in src/game-scene.js)
+// 19. INPUT MODES (kbd / gamepad / touch)  (src/scenes.js; getControls in src/textures.js; touch pads in src/touch.js)
 //     fns:  getControls, activeInputMode, isTouchDevice,
-//           _onBtnPress, keyDisplayName
-//     data: wasd, p2keys, _joy, _tcBtns
+//           initTouchControls, applyTouchInput, _onTouchDown/Move/Up, _onBtnPress, _drawTouchHUD,
+//           keyDisplayName
+//     data: wasd, p2keys, _pads (one touch pad per player: stick, buttons, the screen area its fingers
+//           land in; 2P touch splits the screen in halves), _joy and _tcBtns (P1's pad)
 //
 // 20. DEBUG LOG & PERF  (src/game-scene.js; _qlog in src/constants.js)
 //     fns:  _log, _qlog, _dbgRefresh, _downloadLog, hint
 //     log tags: [WORLD ], [PLAYER], [COMBAT], [BUILD ], [perf], [error]
 //     data: _dbgEntries (persists across runs), _perfBudget
-//     in-game: backtick ` toggles overlay; C copies, G downloads.
+//     in-game: backtick ` toggles overlay; C copies, G downloads. Game over and victory download nothing:
+//             the log goes with the score (_logForSheet) and, on home play, to code/logs/ via /save-log.
 //     CLAUDE.md: ALWAYS ASK FOR THE LOG when investigating bugs.
 //
 // 21. TUTORIAL
@@ -226,7 +241,8 @@
 //     fns:  triggerGameOver, _triggerVictory, checkBothDead, handleDeath
 //     scene: GameOverScene
 //     scores: _saveScore is the one save path (localStorage 'iw_scores', plus _postScore to the
-//             global scoreboard, tools/scoreboard/Code.gs); _showGlobalTop reads its top 10.
+//             global scoreboard, tools/scoreboard/Code.gs, with runId and the session log trimmed
+//             to one cell by _logForSheet; _logLines is the log header); _showGlobalTop reads its top 10.
 //     cfg:  SCOREBOARD_URL (empty: no network call)
 //     win condition: relicsDeposited === 5 (deposited at altar)
 //
