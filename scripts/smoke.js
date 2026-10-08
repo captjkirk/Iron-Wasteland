@@ -69,7 +69,9 @@ async function bossReach(page) {
       await page.waitForTimeout(300);
       const r = await page.evaluate(({ key, side }) => {
         const g = _phaserGame.scene.getScene('Game'), b = g.boss, body = b.spr.body, p = g.p1;
-        const out = [], offset = (body.center.x - b.spr.x) / b.spr.scaleX;
+        // The box's centre from its offset, in texture px off the frame centre. body.center - spr.x
+        // drifts while the big body is pushed off scenery or a hit tween rescales it (#317).
+        const out = [], offset = body.offset.x + b.hitbox.w / 2 - b.spr.width / 2;
         for (const gap of [100, 20]) {
           p.spr.setPosition(side < 0 ? body.left - gap : body.right + gap, body.center.y);
           p.aimAngle = side < 0 ? 0 : Math.PI;
