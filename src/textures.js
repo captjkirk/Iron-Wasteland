@@ -49,10 +49,11 @@ function drawRiverFrame(ctx, off) {
 // diagonally (16=NE, 32=SE, 64=SW, 128=NW; a corner counts only when both its sides are clear,
 // which leaves 47 masks). The neighbour `fill` reaches R px in along each such side and in a
 // radius-R quarter circle round each lone corner, so tiles join and convex corners come out round;
-// a light line of `fill` and a band of `rim` follow it. Shorelines use it (water, mud); biome edges next.
+// a line of `fill` (lightened by `line`, 0 for none) and a band of `rim` follow it. Shorelines use it
+// (water, mud), and biome edges use only its alpha, recoloured with the neighbour's ground.
 const EDGE_MASKS = [...Array(256).keys()].filter(m =>
   [[16, 1, 2], [32, 4, 2], [64, 4, 8], [128, 1, 8]].every(([c, a, b]) => !(m & c) || !(m & (a | b))));
-function drawEdgeVariants(fill, rim) {
+function drawEdgeVariants(fill, rim, line = 0.45) {
   const R = 6, N = EDGE_MASKS.length, cv = document.createElement('canvas');
   cv.width = N * 32; cv.height = 32;
   const c2 = cv.getContext('2d'), img = c2.createImageData(N * 32, 32), px = img.data;
@@ -71,7 +72,7 @@ function drawEdgeVariants(fill, rim) {
     for (const [bit, ax, ay] of corners) if (m & bit) d = Math.min(d, Math.hypot(cx - ax, cy - ay));
     const i = (y * N * 32 + v * 32 + x) * 4;
     if (d < R) put(i, fill, 0.92);
-    else if (d < R + 1.5) put(i, fill, 0.7, 0.45); // light line at the edge
+    else if (d < R + 1.5) put(i, fill, 0.7, line); // light line at the edge
     else if (d < R + 5) put(i, rim, 0.45);
   } });
   c2.putImageData(img, 0, 0);
@@ -859,6 +860,19 @@ function buildTextures(scene) {
     });
   });
   tileset.refresh();
+  // Biome edges: an overlay tileset of its own (rows on the ground tileset would make it 15k px tall,
+  // past what an iPhone's WebGL takes). Column = the neighbouring biome, row = the mask's index in
+  // EDGE_MASKS: that biome's own ground fading in from the sides that touch it. Row 0 stays unused.
+  const edgeSet = scene.textures.createCanvas('biome_edge_tileset', N * 32, EDGE_MASKS.length * 32);
+  GROUND_KEYS.forEach((key, b) => {
+    const edges = drawEdgeVariants(0, 0, 0), e2 = edges.getContext('2d');
+    // Keep the fade, take the colours from the ground. One fill: source-in clears whatever a draw misses.
+    e2.globalCompositeOperation = 'source-in';
+    e2.fillStyle = e2.createPattern(scene.textures.get(key).getSourceImage(), 'repeat');
+    e2.fillRect(0, 0, edges.width, 32);
+    for (let v = 1; v < EDGE_MASKS.length; v++) edgeSet.context.drawImage(edges, v * 32, 0, 32, 32, b * 32, v * 32, 32, 32);
+  });
+  edgeSet.refresh();
 
   // Broken stone pillar — for ruins biome
   g.clear();

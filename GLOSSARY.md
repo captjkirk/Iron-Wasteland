@@ -12,3 +12,7 @@ Avoid: footprints, footsteps, trail (for the prints themselves).
 **Raider** — a human enemy (`isRaider`): a camp raider (brawler, shooter, heavy) or a member of a
 hunt party. Wildlife (wolves, bears, spiders and the rest) is not.
 Avoid: bandit, human enemy, NPC.
+
+**Carousel** — the character screen (`src/char-select.js`): the selected character large in the
+centre with its stats and ability, the others smaller and dimmed on an arc. Keys, a swipe or a tap turn it.
+Avoid: card row, character picker.
