@@ -605,12 +605,14 @@ class GameScene extends Phaser.Scene {
 
   // Returns true if a wall tile lies on the strictly-intermediate steps of the
   // Bresenham line from (x0,y0) to (x1,y1) — i.e. the target itself is NOT checked.
+  // Takes whole tile coordinates. The line reaches its target in at most dx + dy steps; the
+  // step cap turns any other input (a fractional tile froze Hardcore, #327) into "not blocked".
   _losBlocked(x0, y0, x1, y1) {
     let dx = Math.abs(x1 - x0), dy = Math.abs(y1 - y0);
     let x = x0, y = y0;
     const sx = x0 < x1 ? 1 : -1, sy = y0 < y1 ? 1 : -1;
     let err = dx - dy;
-    while (true) {
+    for (let steps = dx + dy + 2; steps > 0; steps--) {
       if (x === x1 && y === y1) return false; // reached target without hitting a wall
       const e2 = 2 * err;
       if (e2 > -dy) { err -= dy; x += sx; }
@@ -618,10 +620,17 @@ class GameScene extends Phaser.Scene {
       if (x === x1 && y === y1) return false; // about to step onto target — still clear
       if (this._wallTileSet && this._wallTileSet.has(x + ',' + y)) return true;
     }
+    if (!this._losCapLogged) {
+      this._losCapLogged = true;
+      this._log(`fog: line of sight gave up on non-tile input (${x0},${y0})->(${x1},${y1})`, 'error');
+    }
+    return false;
   }
 
   revealFog(centerTX, centerTY, radius) {
-    const r = radius || (CFG.FOG_REVEAL_R * (this.fogRevealMult || 1) * this.hc.fogRevealMult);
+    // Whole tiles only: Hardcore's 0.8 multiplier makes 6.4, and fractional offsets never meet
+    // _losBlocked's integer steps (#327).
+    const r = Math.round(radius || (CFG.FOG_REVEAL_R * (this.fogRevealMult || 1) * this.hc.fogRevealMult));
     const cx = Math.floor(centerTX), cy = Math.floor(centerTY);
     // Clear and rebuild current-frame visible set for this reveal call
     // (updateFog calls this once per player per tick, so we reset before p1 and union p2).

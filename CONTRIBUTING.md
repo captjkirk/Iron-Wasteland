@@ -42,7 +42,7 @@ the MANIFEST lists, update the MANIFEST in the same commit.
 
 - **`check`** runs `npm run check`, the same as the hook.
 - **`smoke`** runs `npm run smoke`: it fetches Playwright's WebKit (pinned in `package.json`,
-  never installed into the repo) and makes two passes. The first loads the game and fails
+  never installed into the repo) and makes three passes. The first loads the game and fails
   unless `ModeSelect` comes up with no console error; it catches a file using a name from a
   file that loads after it, which ESLint passes. The second loads `?seed=1&renderer=canvas`
   (headless WebKit loses the WebGL context in play, so the canvas renderer stands in), starts
@@ -50,9 +50,10 @@ the MANIFEST lists, update the MANIFEST in the same commit.
   It walks east for the first three seconds and fails unless that leaves boot prints (tracks),
   none on water.
   Then it ends the run, types a two-word name on the game over screen and presses Enter; the
-  global scoreboard is stubbed, so no smoke run posts a real score. Shader and WebGL-only bugs
-  stay invisible to it. Run it locally before moving code between `src/` files or touching a
-  system that runs every frame.
+  global scoreboard is stubbed, so no smoke run posts a real score. The third starts the same
+  game in Hardcore and fails unless the clock runs for five seconds; a page that stops answering
+  fails the run instead of stalling it. Shader and WebGL-only bugs stay invisible to it. Run it
+  locally before moving code between `src/` files or touching a system that runs every frame.
 
 On deploy, `.github/workflows/pages.yml` stamps `VERSION` with the publish time.
 
