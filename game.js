@@ -25,7 +25,7 @@
 //                          VERSION, CFG, ENEMY_STATS, RAIDER_STATS, ENEMY_LOOT,
 //                          _makeMulberry32, _worldRng, _pendingLogMsgs, _qlog,
 //                          biome fns (getBiome, _buildBiomeMap, _biomeSeeds …),
-//                          CHARS, STATE
+//                          PLAYER_BODY, CHARS, STATE
 //
 //   src/audio.js         — Web Audio chiptune engine
 //                          Music  (Music.play, Music.stop, Music.switchToBoss …)
@@ -73,6 +73,7 @@
 //    biome: getBiome, _biomeHash, _biomeNoise, _computeBiomeRaw,
 //           _initBiomeSeeds, _buildBiomeMap, _buildBiomeMapChunked
 //    placement: _isBlockedForPlacement, _footprintOnWaterOrIce
+//    relic placement: _keepRelicsInReach (end of buildWorld), _walkableFrom, _nearestStandPoint
 //    cfg:  MAP_W, MAP_H, TILE, SAFE_R, POND_SPECS, LAKE_SPECS,
 //          RIVER_COUNT, RIVER_WANDER, RIVER_WIDTH_MIN, RIVER_WIDTH_MAX,
 //          PLACEMENT, ROCKS
@@ -159,7 +160,7 @@
 //           _relicPressure, _cancelRelicChannel, _depositRelic,
 //           _pickupRelic, _showRelicHint, _processHintQueue,
 //           _spawnTorch, _addFireGlow, _updateFireGlows
-//     cfg:  FOG_REVEAL_R, FOG_UPDATE_INTERVAL
+//     cfg:  FOG_REVEAL_R, FOG_UPDATE_INTERVAL, RELIC_RANGE, RELIC_ALTAR_MIN
 //     data: _relicPOIs, relicsHeld, altarPos, altarDiscovered, _fireGlows
 //
 // 12. RAIDERS (camps + raid events)  (src/game-scene.js)
@@ -238,6 +239,8 @@
 // • Water detection uses the _waterMap Uint8Array (index tx + ty*MAP_W), NOT physics overlap.
 // • Enemy dormancy: enemies > DORMANT_RADIUS are physics-disabled and hidden;
 //   they re-enable inside WAKE_RADIUS (hysteresis).
+// • Relic reach: _keepRelicsInReach runs once, at the end of buildWorld. A static body added after it
+//   (world gen or a new system) can box a relic in again; add bodies before that call.
 // ============================================================
 
 // ── PHASER GAME INIT ─────────────────────────────────────
