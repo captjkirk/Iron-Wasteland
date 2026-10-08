@@ -73,9 +73,14 @@ session is no longer fresh: start a new one and run the loop again.
 
 ## Debug log
 
-Press `` ` `` in-game to open the debug overlay. **`C`** copies the session log to the
-clipboard; **`G`** downloads it as a `.txt` file. It also downloads on its own when the game
-ends.
+Every run's session log is saved with its score: it lands in the `log` column of the
+scoreboard sheet's `Scores` tab, one row per run (`runId` column), on any host. A log longer
+than one sheet cell keeps its header and newest entries. On home play (`node server.js`) a copy
+also lands in `logs/` when the game ends.
+
+To get one by hand: press `` ` `` in-game to open the debug overlay. **`C`** copies the session
+log to the clipboard; **`G`** downloads it as a `.txt` file. The game-over screen has a
+"download log" button too.
 
 ## Reporting bugs
 

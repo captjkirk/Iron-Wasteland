@@ -137,6 +137,7 @@ Object.assign(GameScene.prototype, {
       }
     }
     this._hudDirty = true;
+    this._shelterDirty = true; // a wall or a hearth can close a shelter (src/shelter.js)
 
     // Place the structure
     this._log(`Build placed: ${this.buildType}  pos=(${Math.floor(x/CFG.TILE)},${Math.floor(y/CFG.TILE)})  by=${this.buildOwner?.charData?.player||'?'}`, 'build');
