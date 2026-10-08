@@ -128,6 +128,7 @@ Object.assign(GameScene.prototype, {
       if (e._telegraphGfx && e._telegraphGfx.active) e._telegraphGfx.destroy();
       if (e._indicator && e._indicator.active) e._indicator.destroy();
       this.boss = null;
+      this.bossSpawned = false; // the next boss day may spawn again (#329)
       this.bossDefeated = true;
       this._log(`Boss defeated: ${e.name||e.type}  day=${this.dayNum}  kills=${this.kills}`, 'world');
       this.hint('BOSS DEFEATED! A rare material was left behind…', 5000);
