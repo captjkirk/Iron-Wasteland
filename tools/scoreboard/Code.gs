@@ -48,7 +48,7 @@ function blockedName_(name) {
 function validate_(d) {
   if (!d || typeof d !== 'object') return 'not an object';
   var name = typeof d.name === 'string' ? d.name.replace(/[\u0000-\u001f\u007f]/g, '').replace(/\s+/g, ' ').trim() : '';
-  if (!name || name.length > 16 || !/[A-Za-z0-9À-￿]/.test(name) || blockedName_(name)) return 'name';
+  if (!name || name.length > 16 || !/[A-Za-z0-9\u00c0-\uffff]/.test(name) || blockedName_(name)) return 'name';
   if (/^[=+\-@]/.test(name)) name = "'" + name; // never let a name run as a sheet formula
   var chars = typeof d.chars === 'string' ? d.chars.split('+') : [];
   if (chars.length < 1 || chars.length > 2 || chars.some(function (c) { return CHARS.indexOf(c) < 0; })) return 'chars';
