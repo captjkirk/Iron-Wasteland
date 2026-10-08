@@ -691,8 +691,8 @@ class GameScene extends Phaser.Scene {
     // Paint the viewport's tiles into the fog texture: unexplored = dark,
     // explored-but-not-in-LOS = dim, in-LOS = clear.
     for (const wc of this._worldCams()) {
-    const vx = wc.worldView.x, vy = wc.worldView.y;
-    const vw = wc.worldView.width, vh = wc.worldView.height;
+    const wr = this._worldRect(wc);
+    const vx = wr.x, vy = wr.y, vw = wr.width, vh = wr.height;
     const startTX = Math.max(0, Math.floor(vx / TILE) - 3);
     const startTY = Math.max(0, Math.floor(vy / TILE) - 3);
     const endTX = Math.min(CFG.MAP_W - 1, Math.ceil((vx + vw) / TILE) + 3);
@@ -3254,14 +3254,22 @@ class GameScene extends Phaser.Scene {
   _ignoreInWorldCams(o) { for (const c of this._worldCams()) c.ignore(o); }
   _camFx(fn, args) { for (const c of this._worldCams()) c[fn](...args); }
 
-  // Face-to-face split: P1 in the bottom half, P2 in the top half turned 180 degrees, a strip
-  // between them for the shared items (slice 2). Each camera follows its own player.
+  // Face-to-face split: the iPad lies flat with a player at each short end. P1 is the left half,
+  // P2 the right half, a strip between for the shared items (slice 2). Each half is turned a quarter
+  // turn so its world reads upright from its player's end: P1's view clockwise, P2's anticlockwise.
   _initSplitCams() {
-    const { W, H } = CFG, halfH = (H - CFG.SPLIT_STRIP) / 2;
-    const p1 = this.cameras.main.setViewport(0, H - halfH, W, halfH).setZoom(CFG.SPLIT_ZOOM);
+    const { W, H } = CFG, halfW = (W - CFG.SPLIT_STRIP) / 2;
+    const p1 = this.cameras.main.setViewport(0, 0, halfW, H).setZoom(CFG.SPLIT_ZOOM).setRotation(Math.PI / 2);
     p1.startFollow(this.p1.spr, true, 0.1, 0.1);
-    this.cam2 = this.cameras.add(0, 0, W, halfH).setName('p2').setZoom(CFG.SPLIT_ZOOM).setRotation(Math.PI);
+    this.cam2 = this.cameras.add(W - halfW, 0, halfW, H).setName('p2').setZoom(CFG.SPLIT_ZOOM).setRotation(-Math.PI / 2);
     this.cam2.startFollow(this.p2.spr, true, 0.1, 0.1);
+  }
+
+  // The world rectangle a camera shows. Phaser's worldView ignores rotation, so in the split
+  // (quarter-turned cameras) its width and height are swapped.
+  _worldRect(c) {
+    const v = c.worldView;
+    return this._split ? { x: v.centerX - v.height / 2, y: v.centerY - v.width / 2, width: v.height, height: v.width } : v;
   }
 
   updateCamera() {

@@ -560,7 +560,7 @@ Object.assign(GameScene.prototype, {
     const _pPos = _scratchPPos;
     // Hoist camera view once per frame for dormancy + culling checks
     const _cam = this.cameras.main;
-    const _view = _cam.worldView, _view2 = this.cam2 ? this.cam2.worldView : null;
+    const _view = this._worldRect(_cam), _view2 = this.cam2 ? this._worldRect(this.cam2) : null;
     const _VIEW_BUF = 400; // px buffer outside viewport before hiding sprite
     const _near = (v, x, y) => x > v.x - _VIEW_BUF && x < v.x + v.width + _VIEW_BUF && y > v.y - _VIEW_BUF && y < v.y + v.height + _VIEW_BUF;
     const _inView = (x, y) => _near(_view, x, y) || (_view2 !== null && _near(_view2, x, y));

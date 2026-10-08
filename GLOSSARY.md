@@ -20,7 +20,8 @@ Avoid: card row, character picker.
 (`hudCam`) draws the screen furniture at a fixed zoom. Each object is drawn by one of them.
 Avoid: overlay camera, UI camera.
 
-**Split screen (face-to-face)** — an iPad (short side 600 points or more) in a 2-player touch game: the
-screen is cut into a bottom half for P1 and a top half for P2 turned 180 degrees, with a thin centre strip
-for shared items. Each half has its own world camera, stick zone and attack button.
-Avoid: split view, side by side. Phones keep the left/right layout, called the phone layout.
+**Split screen (face-to-face)** — an iPad (short side 600 points or more) lying flat in a 2-player touch game,
+one player at each short end. The screen is cut top to bottom: P1 gets the left half, P2 the right half, each
+turned a quarter turn so it reads upright from its player's end, with a thin centre strip for shared items.
+Each half has its own world camera, stick zone and attack button.
+Avoid: split view, side by side. Phones keep the left/right layout with nothing turned, called the phone layout.

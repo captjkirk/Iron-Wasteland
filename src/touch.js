@@ -5,8 +5,9 @@
 // belongs to the pad whose area it landed in. 1 player: one pad over the whole screen (stick on
 // the left, five buttons on the right). 2 players on a touch device: each half of the screen is
 // one player's pad, P1 left and P2 right, each with a stick and a big attack button.
-// Face-to-face (this._split, #387): P1's pad is the bottom half, P2's the top half turned 180 degrees,
-// so P2's stick zone and button sit at the top-right and top-left, and P2's stick vector is flipped.
+// Face-to-face (this._split, #387): the iPad lies flat with a player at each short end. P1's pad is the
+// left half, P2's the right half, each turned a quarter turn (pad.rot) toward its player: the stick
+// zone and attack button sit at the player's near edge, and the stick vector is turned back into world axes.
 // this._joy and this._tcBtns stay P1's stick and buttons (the craft menu and harvesting read them).
 
 Object.assign(GameScene.prototype, {
@@ -35,16 +36,17 @@ Object.assign(GameScene.prototype, {
         },
       }];
     } else if (this._split) {
-      const halfH = (H - CFG.SPLIT_STRIP) / 2;
+      const halfW = (W - CFG.SPLIT_STRIP) / 2;
       this._pads = [0, 1].map(i => {
-        // P1: bottom half, stick in its left 30%, lower 65%, ATK bottom-right. P2: the same turned 180.
-        const y0 = i ? 0 : H - halfH, y1 = y0 + halfH;
+        // P1 (left end, view turned +90): near edge is screen-left; their left is screen-top.
+        // P2 (right end, view turned -90): near edge is screen-right; their left is screen-bottom.
+        const x0 = i ? W - halfW : 0, x1 = x0 + halfW;
         return {
-          who: i ? 'p2' : 'p1', x0: 0, x1: W, y0, y1, joy: stick(), flip: !!i,
-          hintX: i ? W * 0.88 : W * 0.12, hintY: i ? y0 + 70 : y1 - 70,
-          stickZone: i ? (px, py) => px > W * 0.7 && py < y0 + halfH * 0.65
-                       : (px, py) => px < W * 0.3 && py > y0 + halfH * 0.35,
-          btns: { attack: btn(i ? 100 : W - 100, i ? y0 + 80 : y1 - 80, 56, i ? 0xff8844 : 0x4488ff, '⚔ ATK') },
+          who: i ? 'p2' : 'p1', x0, x1, y0: 0, y1: H, joy: stick(), rot: i ? -Math.PI / 2 : Math.PI / 2,
+          hintX: i ? x1 - 80 : x0 + 80, hintY: i ? H * 0.78 : H * 0.22,
+          stickZone: i ? (px, py) => px > x1 - halfW * 0.65 && py > H * 0.55
+                       : (px, py) => px < x0 + halfW * 0.65 && py < H * 0.45,
+          btns: { attack: btn(i ? x1 - 80 : x0 + 80, i ? 100 : H - 100, 56, i ? 0xff8844 : 0x4488ff, '⚔ ATK') },
         };
       });
     } else {
@@ -70,7 +72,7 @@ Object.assign(GameScene.prototype, {
       this._h(this.add.text(b.hx, b.hy, b.label, {
         fontFamily: 'monospace', fontSize: name === 'attack' ? '11px' : '9px',
         color: '#ffffff', stroke: '#000', strokeThickness: 2,
-      }).setOrigin(0.5).setDepth(151).setAngle(pad.flip ? 180 : 0));
+      }).setOrigin(0.5).setDepth(151).setAngle((pad.rot || 0) * 180 / Math.PI));
     }
 
     // Remove before re-adding to prevent listener accumulation on scene restart
@@ -132,9 +134,10 @@ Object.assign(GameScene.prototype, {
       joy.knobX = pointer.x;
       joy.knobY = pointer.y;
     }
-    const clamped = Math.min(dist, r), sg = pad.flip ? -1 : 1; // P2's view is turned 180 degrees
-    joy.vec.x = sg * (dx/Math.max(dist,1)) * (clamped/r);
-    joy.vec.y = sg * (dy/Math.max(dist,1)) * (clamped/r);
+    const clamped = Math.min(dist, r), rot = pad.rot || 0; // a turned view: drag turned back into world axes
+    const sx = (dx/Math.max(dist,1)) * (clamped/r), sy = (dy/Math.max(dist,1)) * (clamped/r);
+    joy.vec.x = Math.cos(rot) * sx + Math.sin(rot) * sy;
+    joy.vec.y = -Math.sin(rot) * sx + Math.cos(rot) * sy;
   },
 
   _onTouchUp(pointer) {

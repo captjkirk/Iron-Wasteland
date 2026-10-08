@@ -215,8 +215,9 @@
 //           keyDisplayName
 //     data: wasd, p2keys, _pads (one touch pad per player: stick, buttons, the screen area its fingers
 //           land in; 2P touch on a phone splits the screen left/right), _joy and _tcBtns (P1's pad),
-//           _split (face-to-face iPad: 2P touch, short side >= 600), cam2 (P2's camera, top half, turned 180)
-//     fns:  _worldCams, _ignoreInWorldCams, _camFx (shake/flash/fade on every world camera), _initSplitCams
+//           _split (face-to-face iPad: 2P touch, short side >= 600), cam2 (P2's camera, right half, quarter-turned; P1's is the left half)
+//     fns:  _worldCams, _ignoreInWorldCams, _camFx (shake/flash/fade on every world camera), _initSplitCams, _worldRect (true visible
+//           rectangle of a camera: use it, not worldView, when the cameras are turned)
 //     cfg:  SPLIT_STRIP, SPLIT_ZOOM
 //
 // 20. DEBUG LOG & PERF  (src/game-scene.js; _qlog in src/constants.js)

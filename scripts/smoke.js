@@ -83,7 +83,8 @@ async function pass(browser, name, url, run, opts = {}) {
   // 2-player on touch. Fingers on each player's stick move only that player; fails on any page error
   // or when a player does not move the way their stick was dragged.
   //  - phone (740x390, touch): left/right halves, P1 left and P2 right (#288).
-  //  - tablet (1280x720): face-to-face split, P1 bottom half, P2 top half turned 180 degrees (#387).
+  //  - tablet (1280x720): face-to-face split, a player at each short end: P1 left half turned a quarter
+  //    turn clockwise, P2 right half turned anticlockwise (#387).
   const twoPlayer = async (page, split) => {
     await page.evaluate(() => {
       saveSettings({ inputMode: 'touch', tutorial: false });
@@ -97,17 +98,20 @@ async function pass(browser, name, url, run, opts = {}) {
       if (g._split !== split) throw new Error(`_split is ${g._split}, expected ${split}`);
       const at = () => [g.p1.spr.x, g.p1.spr.y, g.p2.spr.x, g.p2.spr.y];
       const before = at();
-      // Both fingers drag screen-right at once. P2's stick zone is top-right in a split.
-      const p2x = split ? W * 0.85 : W * 0.65, p2y = split ? 100 : H * 0.8;
-      g._onTouchDown({ id: 1, x: W * 0.15, y: H * 0.8 }); g._onTouchDown({ id: 2, x: p2x, y: p2y });
-      g._onTouchMove({ id: 1, x: W * 0.15 + 60, y: H * 0.8 });
-      g._onTouchMove({ id: 2, x: p2x + (split ? 60 : -60), y: p2y });
+      // Phone: P1 drags right on the left half, P2 drags left on the right half. Split: both drag screen-down
+      // in their own stick zone (P1 near the left edge, top; P2 near the right edge, bottom); with the
+      // views turned, that is world-right for P1 and world-left for P2.
+      const p1s = split ? [100, 100] : [W * 0.15, H * 0.8], p2s = split ? [W - 100, H - 100 - 60] : [W * 0.65, H * 0.8];
+      const d1 = split ? [0, 60] : [60, 0], d2 = split ? [0, 60] : [-60, 0];
+      g._onTouchDown({ id: 1, x: p1s[0], y: p1s[1] }); g._onTouchDown({ id: 2, x: p2s[0], y: p2s[1] });
+      g._onTouchMove({ id: 1, x: p1s[0] + d1[0], y: p1s[1] + d1[1] });
+      g._onTouchMove({ id: 2, x: p2s[0] + d2[0], y: p2s[1] + d2[1] });
       await new Promise(r => setTimeout(r, 700));
       g._onTouchUp({ id: 1 }); g._onTouchUp({ id: 2 });
       const after = at();
       const cams = split && {
-        count: g._worldCams().length, H, rot: g.cam2.rotation,
-        h1: g.cameras.main.height, y1: g.cameras.main.y, h2: g.cam2.height, y2: g.cam2.y,
+        count: g._worldCams().length, W, rot1: g.cameras.main.rotation, rot2: g.cam2.rotation,
+        w1: g.cameras.main.width, x1: g.cameras.main.x, w2: g.cam2.width, x2: g.cam2.x,
         d1: Math.hypot(g.cameras.main.midPoint.x - g.p1.spr.x, g.cameras.main.midPoint.y - g.p1.spr.y),
         d2: Math.hypot(g.cam2.midPoint.x - g.p2.spr.x, g.cam2.midPoint.y - g.p2.spr.y),
       };
@@ -119,8 +123,8 @@ async function pass(browser, name, url, run, opts = {}) {
     if (!(r.p1 > 5 && r.p2 < -5)) throw new Error('a player did not move the way their half was dragged');
     if (split) {
       const c = r.cams;
-      if (c.count !== 2 || Math.abs(c.rot - Math.PI) > 1e-6) throw new Error('P2 has no camera turned 180 degrees');
-      if (!(c.y1 > c.y2 && c.h1 === c.h2 && c.h1 < c.H / 2)) throw new Error('the halves are not top and bottom with a strip between');
+      if (c.count !== 2 || Math.abs(c.rot1 - Math.PI / 2) > 1e-6 || Math.abs(c.rot2 + Math.PI / 2) > 1e-6) throw new Error('the two cameras are not turned a quarter turn each way');
+      if (!(c.x2 > c.x1 && c.w1 === c.w2 && c.w1 < c.W / 2)) throw new Error('the halves are not left and right with a strip between');
       if (c.d1 > 60 || c.d2 > 60) throw new Error(`a half is not centred on its player (off by ${Math.round(c.d1)}, ${Math.round(c.d2)} px)`);
     }
   };
