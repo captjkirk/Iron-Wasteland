@@ -6,11 +6,36 @@
 //      Fires wave 1 at the start and fails unless it is awake and closing on the player.
 //      Also fails when textures and object canvases hold more than PIXEL_BUDGET_MB of pixels.
 //      Then ends the run and types a two-word name on the game over screen (#328).
+//   3. Hardcore: the same start with STATE.difficulty = 'hardcore'; fails unless timeAlive
+//      advances over HARDCORE_MS of play. Hardcore's own multipliers once froze the tab (#327).
+// Every in-game page call goes through `ask`, so a hung main thread fails the run, not stalls it.
 const { webkit } = require('playwright');
 process.env.PORT = '0'; // any free port, so a running `npm run serve` is no obstacle
 const server = require('../server.js');
 const PLAY_MS = 10000;
 const PIXEL_BUDGET_MB = 64; // RGBA bytes; an iPhone tab dies well short of 1 GB in total
+const HARDCORE_MS = 5000;
+const ASK_MS = 10000; // a page call that takes longer means the game's main thread is stuck
+
+// page.evaluate with a deadline: Playwright waits forever on a page whose script never yields.
+function ask(page, fn, arg) {
+  let timer;
+  return Promise.race([
+    page.evaluate(fn, arg),
+    new Promise((_, reject) => { timer = setTimeout(() => reject(new Error(`page did not answer in ${ASK_MS / 1000} s (main thread stuck?)`)), ASK_MS); }),
+  ]).finally(() => clearTimeout(timer));
+}
+
+// Starts a solo knight game at the given difficulty, waits for the world and plays ms of it.
+// Returns how many seconds of timeAlive passed during that play.
+async function play(page, difficulty, ms) {
+  await ask(page, d => { STATE.mode = 1; STATE.p1CharId = 'knight'; STATE.difficulty = d; _phaserGame.scene.start('Game'); }, difficulty);
+  await page.waitForFunction(() => _phaserGame.scene.getScene('Game')._worldReady === true,
+    null, { timeout: 60000 });
+  const t0 = await ask(page, () => _phaserGame.scene.getScene('Game').timeAlive);
+  await page.waitForTimeout(ms);
+  return (await ask(page, () => _phaserGame.scene.getScene('Game').timeAlive)) - t0;
+}
 
 async function pass(browser, name, url, run, opts = {}) {
   const page = await browser.newPage(opts);
@@ -32,7 +57,7 @@ async function pass(browser, name, url, run, opts = {}) {
   } catch (e) {
     errors.push(`${name}: ${e.message.split('\n')[0]}`);
   }
-  await page.close();
+  await Promise.race([page.close(), new Promise(r => setTimeout(r, ASK_MS))]);
   for (const e of errors) console.error(`::error::${name}: ${e}`);
   if (!errors.length) console.log(`Smoke ${name} OK.`);
   return errors.length;
@@ -60,9 +85,7 @@ async function pass(browser, name, url, run, opts = {}) {
   }
 
   failures += await pass(browser, 'in play', base + '?seed=1&renderer=canvas', async (page, posts) => {
-    await page.evaluate(() => { STATE.mode = 1; STATE.p1CharId = 'knight'; _phaserGame.scene.start('Game'); });
-    await page.waitForFunction(() => _phaserGame.scene.getScene('Game')._worldReady === true,
-      null, { timeout: 60000 });
+    await play(page, 'survival', 0);
     // Fire wave 1 now, and play through its march. Waves used to spawn at the map edge
     // and go dormant on their first frame, so nothing ever arrived (#330).
     const march0 = await page.evaluate(() => {
@@ -83,12 +106,19 @@ async function pass(browser, name, url, run, opts = {}) {
     console.log(`in play: wave 1 spawned ${march0.spawned}, ${march0.marching} awake and marching, ` +
       `${closed} closed in by 100+ px in ${PLAY_MS / 1000} s`);
     if (!march0.marching || !closed) throw new Error('wave 1 did not march on the players (#330)');
-    const fps = await page.evaluate(() => Math.round(_phaserGame.loop.actualFps));
+    // The wave would kill a knight who stands still in about 20 s; clear it so the checks
+    // below run on a living player.
+    await ask(page, () => {
+      const s = _phaserGame.scene.getScene('Game');
+      window._smokeWave.forEach(w => { if (!w.e.dying && w.e.spr?.active) s._hurtEnemy(w.e, 1e6); });
+      s.p1.hp = s.p1.maxHp;
+    });
+    const fps = await ask(page, () => Math.round(_phaserGame.loop.actualFps));
     console.log(`in play: world built, ${PLAY_MS / 1000} s played at ${fps} fps`);
     // Pixel memory: every texture plus every canvas a game object owns (TileSprite, Text).
     // A world-sized TileSprite and 10k patch TileSprites once came to ~735 MB here and got
     // the tab killed on iPhone (#238).
-    const px = await page.evaluate(() => {
+    const px = await ask(page, () => {
       let n = 0;
       for (const t of Object.values(_phaserGame.textures.list)) for (const s of t.source) n += s.width * s.height;
       for (const o of _phaserGame.scene.getScene('Game').children.list) if (o.canvas) n += o.canvas.width * o.canvas.height;
@@ -96,7 +126,7 @@ async function pass(browser, name, url, run, opts = {}) {
     });
     // Scenery hitboxes cover the base, not the whole sprite (#268: refreshBody() after setSize
     // silently reset them to the full picture, blocking open ground beside every mountain).
-    const fat = await page.evaluate(() => _phaserGame.scene.getScene('Game').obstacles.getChildren()
+    const fat = await ask(page, () => _phaserGame.scene.getScene('Game').obstacles.getChildren()
       .filter(o => /^(mountain|ice_spire|rock_spire|mangrove_roots|pillar)/.test(o.texture.key))
       .filter(o => o.body.height > o.displayHeight * 0.75)
       .map(o => o.texture.key));
@@ -117,6 +147,12 @@ async function pass(browser, name, url, run, opts = {}) {
     await page.waitForFunction(() => (localStorage.getItem('iw_scores') || '').includes('"Dad and Kids"'), null, { timeout: 5000 });
     if (!posts.some(p => p.name === 'Dad and Kids')) throw new Error('the score was not posted to the (stubbed) scoreboard');
     console.log('game over: typed name kept and saved');
+  });
+
+  failures += await pass(browser, 'hardcore', base + '?seed=1&renderer=canvas', async page => {
+    const ran = await play(page, 'hardcore', HARDCORE_MS);
+    console.log(`hardcore: world built, timeAlive advanced ${ran.toFixed(1)} s in ${HARDCORE_MS / 1000} s of play`);
+    if (!(ran >= 1)) throw new Error(`timeAlive advanced only ${ran} s in ${HARDCORE_MS / 1000} s of Hardcore play`);
   });
 
   // 2-player on touch: split touch, one pad per half. Fingers on each half's stick move only that
