@@ -12,6 +12,7 @@
 //      Then jumps to boss days 5 and 10 and fails unless each brings a boss, of two types.
 //      Then lines up three 1-HP enemies in front of the knight and fails unless one swing kills all three.
 //      Then ends the run and types a two-word name on the game over screen (#328).
+//      Also, on an iPad-sized touch screen (1180x820), fails unless every inventory icon and number has a real position above the fog (#414).
 //   3. Hardcore: the same start with STATE.difficulty = 'hardcore'; fails unless timeAlive
 //      advances over HARDCORE_MS of play. Hardcore's own multipliers once froze the tab (#327).
 // Every in-game page call goes through `ask`, so a hung main thread fails the run, not stalls it.
@@ -344,6 +345,32 @@ async function bossReach(page) {
       if (err) throw new Error(err);
     }, { viewport: vp, hasTouch: true });
   }
+
+  // iPad inventory (#414): the bottom-left resource panel must sit above the fog and night layers, and
+  // every icon and number must have a real position on the screen. A scale named like the panel's
+  // change-detection string once put them all at NaN, so the strip drew empty.
+  failures += await pass(browser, 'iPad inventory panel', base + '?seed=1&renderer=canvas', async page => {
+    await page.evaluate(() => {
+      saveSettings({ inputMode: 'touch', tutorial: false });
+      STATE.mode = 1; STATE.p1CharId = 'knight'; _phaserGame.scene.start('Game');
+    });
+    await page.waitForFunction(() => _phaserGame.scene.getScene('Game')._worldReady === true, null, { timeout: 60000 });
+    await page.waitForTimeout(1500);
+    const err = await page.evaluate(() => {
+      const g = _phaserGame.scene.getScene('Game'), { W, H } = CFG;
+      if (W !== 1280) return `canvas is ${W} wide, wanted the iPad's 1280`;
+      const parts = g._ho.filter(o => o.depth >= 100 && o.visible && ((o.type === 'Image' && /^item_/.test(o.texture.key)) || (o.type === 'Text' && /^\d+$/.test(o.text))));
+      if (parts.length < 8) return `found ${parts.length} inventory icons and numbers, wanted 8`;
+      const bad = [];
+      for (const o of parts) {
+        if (!(o.x >= 0 && o.x <= W && o.y >= 0 && o.y <= H)) bad.push(`${o.type} at ${o.x},${o.y}`);
+        if (o.depth <= g.fogGfx.depth || o.depth <= g.nightOverlay.depth) bad.push(`${o.type} is not above the fog`);
+        if (o.alpha < 0.3) bad.push(`${o.type} alpha ${o.alpha}`);
+      }
+      return bad.join('; ');
+    });
+    if (err) throw new Error(err);
+  }, { viewport: { width: 1180, height: 820 }, hasTouch: true });
 
   // Touch USE button (#397): on a phone the keyboard key is never pressed, so the relic hold must
   // read the USE button. Player 1 stands next to a relic and holds it; fails unless the hold starts
