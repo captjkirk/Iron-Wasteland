@@ -22,7 +22,10 @@ MANIFEST, an index of every gameplay system: read it first to find where a syste
 The pre-commit hook refuses a commit on `main`, and any commit from the main checkout (every
 session works in its own worktree; see `CLAUDE.md`, "Working directory"), then runs
 `npm run check`: a syntax check of `game.js` and every `src/*.js`, a check that every `src/*.js`
-has a `<script>` tag in `index.html`, the manifest check, and ESLint. A failure aborts the commit.
+has a `<script>` tag in `index.html`, the manifest check, the scoreboard check, a check that every
+doorway in `STRUCTURE_LAYOUTS` is at least 2 tiles wide, the recipe check
+(`scripts/check-recipes.js`: every cost in `src/recipes.js` names a real resource and is what
+`getBuildCost` charges), and ESLint. A failure aborts the commit.
 
 `VERSION` in `src/constants.js` stays `'dev build'` in git. `npm run serve` stamps it with the
 commit time of `HEAD` on every request, and the deploy stamps it with the publish time, so the
@@ -42,13 +45,21 @@ the MANIFEST lists, update the MANIFEST in the same commit.
 
 - **`check`** runs `npm run check`, the same as the hook.
 - **`smoke`** runs `npm run smoke`: it fetches Playwright's WebKit (pinned in `package.json`,
-  never installed into the repo) and makes two passes. The first loads the game and fails
+  never installed into the repo) and makes three passes. The first loads the game and fails
   unless `ModeSelect` comes up with no console error; it catches a file using a name from a
   file that loads after it, which ESLint passes. The second loads `?seed=1&renderer=canvas`
   (headless WebKit loses the WebGL context in play, so the canvas renderer stands in), starts
   a solo game, waits for the world, plays ten seconds and fails on any console or page error.
-  Shader and WebGL-only bugs stay invisible to it. Run it locally before moving code between
-  `src/` files or touching a system that runs every frame.
+  It walks east for the first three seconds and fails unless that leaves boot prints (tracks),
+  none on water.
+  Then it spawns each boss beside the knight and fails unless a sword swing reaches the boss's
+  hitbox from 20 px outside it, on both sides, and not from 100 px out.
+  It then jumps to days 5 and 10 and fails unless each brings a boss, of two different types.
+  Then it ends the run, types a two-word name on the game over screen and presses Enter; the
+  global scoreboard is stubbed, so no smoke run posts a real score. The third starts the same
+  game in Hardcore and fails unless the clock runs for five seconds; a page that stops answering
+  fails the run instead of stalling it. Shader and WebGL-only bugs stay invisible to it. Run it
+  locally before moving code between `src/` files or touching a system that runs every frame.
 
 On deploy, `.github/workflows/pages.yml` stamps `VERSION` with the publish time.
 

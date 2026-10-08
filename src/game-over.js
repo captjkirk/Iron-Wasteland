@@ -221,9 +221,8 @@ class GameOverScene extends Phaser.Scene {
 
     const K = Phaser.Input.Keyboard.KeyCodes;
     this._keys = this.input.keyboard.addKeys({ enter:K.ENTER, space:K.SPACE, esc:K.ESC, g:K.G });
+    // While the name field has focus its own listeners keep every key from Phaser (_createNameInput).
     this._keys.enter.on('down', () => {
-      // Ignore if the HTML input currently has focus (its own keydown handler handles it)
-      if (this._htmlInp && document.activeElement === this._htmlInp) return;
       if (!this._nameSaved) this._onNameSubmit();
       else this.restart();
     });
@@ -306,11 +305,16 @@ class GameOverScene extends Phaser.Scene {
       'border-radius:4px',
     ].join(';');
 
-    // Enter in the HTML input saves the score; stopPropagation prevents Phaser
-    // from also seeing the keydown and immediately triggering restart().
+    // Phaser's keyboard listens on window and calls preventDefault for every key any scene has
+    // captured (the captures outlive their scenes: WASD, Space, F, E…), which would swallow those
+    // letters as the player types. Keep every key in the field, like the feedback textarea does.
+    // Enter saves the score; Esc only leaves the field, so a second Esc reaches MAIN MENU.
     inp.addEventListener('keydown', (e) => {
-      if (e.key === 'Enter') { e.preventDefault(); e.stopPropagation(); this._onNameSubmit(); }
+      e.stopPropagation();
+      if (e.key === 'Enter') { e.preventDefault(); this._onNameSubmit(); }
+      else if (e.key === 'Escape') { e.preventDefault(); inp.blur(); }
     });
+    inp.addEventListener('keyup', (e) => e.stopPropagation());
 
     document.body.appendChild(inp);
     // Brief delay so Phaser's own focus-management doesn't steal it

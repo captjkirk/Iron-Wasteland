@@ -1,8 +1,8 @@
 'use strict';
 // ── src/game-scene.js — GameScene: gameplay systems 3, 5-7 and 9-22 ──────────
-// Globals exported: GameScene, GameScene.RECIPES
+// Globals exported: GameScene
 // Systems: dens, player movement, player combat,
-//          death/revive, craft recipes, walls/spikes, day/night, relics,
+//          death/revive, walls/spikes, day/night, relics,
 //          raiders, harvesting, cameras, HUD/minimap, fog-of-war, audio hooks,
 //          input, debug log, tutorial, game-over/victory, settings/save
 // grep: "// ── SYSTEM:"  "updateDayNight"  "_log("
@@ -31,6 +31,7 @@ class GameScene extends Phaser.Scene {
     this.fogVisible = null;
     this._fogVisibleBuilding = false;
     this._activePlayers = null;
+    this.tracks = null;
     this._sleepIndicator = null;
     this._fireGlows = [];
     this._glowFlicker = { t: 0 };
@@ -154,6 +155,7 @@ class GameScene extends Phaser.Scene {
     this.kills = 0;
     this.resourcesGathered = 0;
     this.bossSpawned = false;
+    this._bossesSeen = []; // boss keys in spawn order; spawnBoss picks an unseen one (#329)
     this.bossDefeated = false;
     this.boss = null;
 
@@ -496,6 +498,7 @@ class GameScene extends Phaser.Scene {
                 // Tutorial sequence — starts after startup controls dismiss (~9 s)
                 this.time.delayedCall(9200, () => this.startTutorial());
 
+                this.tracks = new Tracks(this); // boot prints (src/tracks.js)
                 this._worldReady = true;
                 this._debugBossFromUrl();
                 this._log('World init: READY  display objects=' + this.children.length, 'world');
@@ -603,12 +606,14 @@ class GameScene extends Phaser.Scene {
 
   // Returns true if a wall tile lies on the strictly-intermediate steps of the
   // Bresenham line from (x0,y0) to (x1,y1) — i.e. the target itself is NOT checked.
+  // Takes whole tile coordinates. The line reaches its target in at most dx + dy steps; the
+  // step cap turns any other input (a fractional tile froze Hardcore, #327) into "not blocked".
   _losBlocked(x0, y0, x1, y1) {
     let dx = Math.abs(x1 - x0), dy = Math.abs(y1 - y0);
     let x = x0, y = y0;
     const sx = x0 < x1 ? 1 : -1, sy = y0 < y1 ? 1 : -1;
     let err = dx - dy;
-    while (true) {
+    for (let steps = dx + dy + 2; steps > 0; steps--) {
       if (x === x1 && y === y1) return false; // reached target without hitting a wall
       const e2 = 2 * err;
       if (e2 > -dy) { err -= dy; x += sx; }
@@ -616,10 +621,17 @@ class GameScene extends Phaser.Scene {
       if (x === x1 && y === y1) return false; // about to step onto target — still clear
       if (this._wallTileSet && this._wallTileSet.has(x + ',' + y)) return true;
     }
+    if (!this._losCapLogged) {
+      this._losCapLogged = true;
+      this._log(`fog: line of sight gave up on non-tile input (${x0},${y0})->(${x1},${y1})`, 'error');
+    }
+    return false;
   }
 
   revealFog(centerTX, centerTY, radius) {
-    const r = radius || (CFG.FOG_REVEAL_R * (this.fogRevealMult || 1) * this.hc.fogRevealMult);
+    // Whole tiles only: Hardcore's 0.8 multiplier makes 6.4, and fractional offsets never meet
+    // _losBlocked's integer steps (#327).
+    const r = Math.round(radius || (CFG.FOG_REVEAL_R * (this.fogRevealMult || 1) * this.hc.fogRevealMult));
     const cx = Math.floor(centerTX), cy = Math.floor(centerTY);
     // Clear and rebuild current-frame visible set for this reveal call
     // (updateFog calls this once per player per tick, so we reset before p1 and union p2).
@@ -2445,6 +2457,7 @@ class GameScene extends Phaser.Scene {
 
     // Tundra slowdown effect
     { const _t = performance.now(); this.applyTerrainEffects(this.p1, delta); if (this.p2) this.applyTerrainEffects(this.p2, delta); this._perfBudget.terrain += performance.now() - _t; }
+    this.tracks?.update(this.time.now);
 
     // Ambient grass sway — pivot from origin (0.5,1) so blades rotate at their base.
     // 3 phase groups cycle out-of-sync for a natural, non-mechanical look.
@@ -2827,7 +2840,7 @@ class GameScene extends Phaser.Scene {
       const stats = RAIDER_STATS[rtype];
 
       const raider = {
-        spr, type: rtype, isRaider: true,
+        spr, type: rtype, isRaider: true, isCampRaider: true, // only these hold the camp's lock
         hp: Math.floor(stats.hp * diffScale), maxHp: Math.floor(stats.hp * diffScale),
         speed: stats.speed * Math.min(1.6, diffScale),
         dmg: Math.floor(stats.dmg * diffScale),
@@ -2839,6 +2852,7 @@ class GameScene extends Phaser.Scene {
       this.raiders.push(raider);
       this.enemies.push(raider); // raiders participate in the normal enemy array so updateEnemies handles them
     }
+    this._refreshCampLock();
   }
 
   // Periodic hunting party — spawns at a random map edge and actively seeks the
@@ -3320,7 +3334,7 @@ class GameScene extends Phaser.Scene {
       pfx.strokeCircle(0, 0, 34);
       this.tweens.add({ targets: pfx, alpha: 0, scaleX: 1.4, scaleY: 1.4, duration: 400, onComplete: () => pfx.destroy() });
       const px = player.spr.x, py = player.spr.y;
-      this.enemies.forEach(e => {
+      this._forEachEnemy(e => {
         if (e.dying) return;
         const d = Phaser.Math.Distance.Between(px, py, e.spr.x, e.spr.y);
         if (d < PIRO_R) {
@@ -3373,7 +3387,7 @@ class GameScene extends Phaser.Scene {
           if (player._rangerUpgraded) {
             // Explosive arrow: splash damage to nearby enemies
             const ax = arrow.x, ay = arrow.y;
-            this.enemies.forEach(ne => {
+            this._forEachEnemy(ne => {
               if (ne === e || ne.dying) return;
               if (Phaser.Math.Distance.Between(ax, ay, ne.spr.x, ne.spr.y) < 60) {
                 this._hurtEnemy(ne, 20, ax, ay, 0xff8833, player);
@@ -3656,7 +3670,7 @@ class GameScene extends Phaser.Scene {
     fx.arc(cx, cy, range+6, startA+0.2, endA-0.2);
     fx.strokePath();
     if (this.enemies) {
-      this.enemies.forEach(e => {
+      this._forEachEnemy(e => {
         if (e.dying) return;
         const d = e.isBoss ? this._bossDist(e, player.spr.x, player.spr.y)
                            : Phaser.Math.Distance.Between(player.spr.x, player.spr.y, e.spr.x, e.spr.y);
@@ -4807,28 +4821,6 @@ class GameScene extends Phaser.Scene {
       this.physics.add.overlap(this.p1.spr, crate, () => { if(crate.active) pickupCrate(this.p1); });
       if (this.p2) this.physics.add.overlap(this.p2.spr, crate, () => { if(crate.active) pickupCrate(this.p2); });
     });
-  }
-
-  // ── CRAFT MENU ─────────────────────────────────────────────────
-  static get RECIPES() {
-    return [
-      { label: 'Wall',               key: 'wall',              cost: {wood:3},                  needsBench: false, type: 'build',   tooltip: 'Blocks enemies and absorbs damage before collapsing.' },
-      { label: 'Gate',               key: 'gate',              cost: {wood:4, metal:2},         needsBench: false, type: 'build',   tooltip: 'Players pass through freely; blocks all enemies. Toggle with interact.' },
-      { label: 'Campfire',           key: 'campfire',          cost: {wood:5},                  needsBench: false, type: 'build',   tooltip: 'Slowly restores HP for nearby players. Provides light at night.' },
-      { label: 'Torch',              key: 'torch',             cost: {wood:2, fiber:1},         needsBench: false, type: 'build',   tooltip: 'Lights a small area at night. Cheap — place liberally around your base.' },
-      { label: 'Spike Trap',         key: 'spike_trap',        cost: {wood:2, metal:1},         needsBench: false, type: 'build',   tooltip: 'Damages any enemy that steps on it. Stays active indefinitely.' },
-      { label: 'Craftbench',         key: 'craftbench',        cost: {wood:5, metal:3},         needsBench: false, type: 'build',   tooltip: 'Required to unlock advanced recipes, upgrades, and the Bed.' },
-      { label: 'Bed',                key: 'bed',               cost: {wood:8, fiber:6, metal:2},needsBench: true,  type: 'build',   tooltip: 'Sleep in it to heal over time. When everyone sleeps, the night skips ahead.' },
-      { label: 'Reinforced Wall',    key: 'reinforced_wall',   cost: {wood:4, metal:3},         needsBench: true,  type: 'build',   tooltip: 'Twice as durable as a standard wall. Holds the line against heavy raids.' },
-      { label: 'Med Kit (+40 HP)',   key: 'med_kit',           cost: {fiber:3, food:2},         needsBench: true,  type: 'instant', tooltip: 'Instantly restores 40 HP to the crafter. Use when critically wounded.' },
-      { label: 'Ammo Pack (+8)',     key: 'ammo_pack',         cost: {metal:2},                 needsBench: false, type: 'instant', charId: 'gunslinger', tooltip: 'Gunslinger only: adds 8 rounds to the Gunslinger\'s reserve immediately.' },
-      { label: 'Knight Upgrade',     key: 'knight_upgrade',    cost: {metal:3, fiber:2},        needsBench: true,  type: 'upgrade', charId: 'knight',     tooltip: 'Knight: unlocks Shield Throw ability + passive 70% damage block.' },
-      { label: 'Architect Upgrade',  key: 'architect_upgrade', cost: {metal:3, wood:2},         needsBench: true,  type: 'upgrade', charId: 'architect',  tooltip: 'Architect: unlocks Nail Gun secondary attack.' },
-      { label: 'Gunslinger Upgrade', key: 'gunslinger_upgrade',cost: {metal:2, fiber:1},        needsBench: true,  type: 'upgrade', charId: 'gunslinger', tooltip: 'Gunslinger: increases clip size by 4 rounds (8 → 12).' },
-      { label: 'Flower Bouquet (+8)',key: 'flower_bouquet',    cost: {wood:1, fiber:1},         needsBench: false, type: 'instant', charId: 'charmer',    tooltip: 'Lauren only: gives her 8 flower tosses immediately.' },
-      { label: 'Lauren Upgrade',     key: 'charmer_upgrade',   cost: {metal:2, fiber:2},        needsBench: true,  type: 'upgrade', charId: 'charmer',    tooltip: 'Lauren: daytime charm aura 200→280px; night aura 0→140px.' },
-      { label: 'Abigail Upgrade',    key: 'ranger_upgrade',    cost: {metal:3, wood:2},         needsBench: true,  type: 'upgrade', charId: 'ranger',     tooltip: 'Abigail: unlocks Ranger passive buff and special ability.' },
-    ];
   }
 }
 

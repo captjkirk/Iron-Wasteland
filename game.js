@@ -40,7 +40,8 @@
 //                          drawSpiderRuins, drawBogLurker, drawDustHound, drawWaterLurker
 //                          buildTextures, buildAtlases, drawEdgeVariants,
 //                          drawMountains, polishActors, polishActor,
-//                          makeScaleProxy, getControls (the controls help text)
+//                          makeScaleProxy, getControls (the controls help text),
+//                          buildBootPrints (print_player, print_raider for tracks)
 //
 //   src/scenes.js        — All non-gameplay scenes + input helpers
 //                          DEFAULT_BINDINGS, keyDisplayName,
@@ -52,7 +53,8 @@
 //                          _buildWheel, _layoutWheel, _spinTo, _settle, nav, confirm, refresh, _turn
 //
 //   src/game-scene.js    — GameScene: gameplay systems 3, 5-7, 9-16 and 19-23 (see list below)
-//                          Also: GameScene.RECIPES static property (system 8's recipe list)
+//
+//   src/recipes.js       — The craft menu's recipes (data only): RECIPES, the one table of costs
 //
 //   src/touch.js         — System 19's touch pads (one per player), added to GameScene.prototype
 //
@@ -65,6 +67,8 @@
 //   src/building-crafting.js — System 8, added to GameScene.prototype; loads after waves-bosses.js
 //
 //   src/enemy-ai.js      — System 2, added to GameScene.prototype; loads after building-crafting.js
+//
+//   src/tracks.js        — System 24, class Tracks (boot prints); scene.tracks, made at world ready
 //
 //   src/game-over.js     — GameOverScene (death + stats screen)
 //
@@ -96,10 +100,13 @@
 //    fns:  updateEnemies, _steerToward, _hasLOS,
 //          _findWallOnPath, _hurtEnemy,
 //          killEnemy, _startDormantIfFar,
+//          _forEachEnemy (any loop over enemies that can kill; splices wait for the loop end)
 //          applyTerrainEffects (also runs for raiders and animals)
 //    spawn: spawnEnemies, _spawnGroup, _spawnBiomeEnemy,
-//           _spawnWaterLurker
-//    cfg:  MAX_ENEMIES, MAX_ACTIVE_ENEMIES, DORMANT_RADIUS, WAKE_RADIUS
+//           _spawnWaterLurker,
+//           _waveRing, _waveSpawnPoint, _waveLineClear, _unstickMarcher (wave marchers, #330)
+//    cfg:  MAX_ENEMIES, MAX_ACTIVE_ENEMIES, DORMANT_RADIUS, WAKE_RADIUS,
+//          WAVE_RING_MIN, WAVE_RING_MAX, WAVE_MARCH_MS
 //    data: enemies[], ENEMY_STATS, RAIDER_STATS, ENEMY_LOOT
 //    log:  [COMBAT], [WORLD ]
 //
@@ -110,8 +117,10 @@
 // 4. WAVES & BOSSES  (src/waves-bosses.js)
 //    fns:  updateWaves, updateBoss, spawnBoss, _bossExecuteSpecial,
 //          _bossSmash, _bossTelegraph, _bossDist (reach to a drawn-to-fit hitbox),
-//          _debugBossFromUrl (?boss=wolf spawns a boss for testing)
-//    data: waveNum, waveTimer, boss, _bossChance, huntNextDay
+//          _debugBossFromUrl (?boss=wolf spawns a boss for testing),
+//          _pickBossType (every boss once per round, biome match first)
+//    data: waveNum, waveTimer, boss, bossSpawned (false again once the boss dies),
+//          _bossesSeen, _bossChance, huntNextDay
 //    log:  [WORLD ], [COMBAT]
 //
 // 5. PLAYER MOVEMENT & INPUT  (src/game-scene.js; getControls in src/textures.js)
@@ -140,7 +149,7 @@
 //    data: player.isDowned, player.downedTimer, reviving, reviveProgress
 //    log:  [PLAYER]
 //
-// 8. BUILDING & CRAFTING  (src/building-crafting.js; GameScene.RECIPES stays in src/game-scene.js; shelter in src/shelter.js)
+// 8. BUILDING & CRAFTING  (src/building-crafting.js; RECIPES in src/recipes.js; shelter in src/shelter.js)
 //    build: updateBuildMode, placeBuild, _buildSpotError, exitBuildMode, _placeWallSprite,
 //           _tryTeardownBuild, openGate, getBuildCost, getTeamInv
 //    craft: openCraftMenu, closeCraftMenu, updateCraftMenu, craftSelected,
@@ -151,7 +160,7 @@
 //             or bed; 8-way flood fill, so a corner-only join is a gap), _updateShelter (rechecks
 //             on a new tile or when _shelterDirty after a build or a destroyed wall; sets p._sheltered,
 //             shown as the 'shelter' status icon)
-//    data: buildType, buildRotation, buildOwner, RECIPES,
+//    data: buildType, buildRotation, buildOwner, RECIPES, RECIPE_COSTS (getBuildCost's lookup),
 //          structures, player.carriedAmmo
 //    log:  [BUILD ], [PLAYER]
 //
@@ -175,9 +184,11 @@
 //     cfg:  FOG_REVEAL_R, FOG_UPDATE_INTERVAL
 //     data: _relicPOIs, relicsHeld, altarPos, altarDiscovered, _fireGlows
 //
-// 12. RAIDERS (camps + raid events)  (src/game-scene.js)
+// 12. RAIDERS (camps + raid events)  (src/game-scene.js; the camp lock in src/enemy-ai.js)
 //     fns:  updateRaiders, placeRaiderCamp, spawnRaiders, spawnHuntingParty,
 //           checkRaidCacheRange, openRaidCache, _fireRaiderShot,
+//           _campRaidersLeft, _refreshCampLock (only isCampRaider raiders lock the cache;
+//           hunt-party raiders share raiders[] but not the lock),
 //           applyTerrainEffects (raiders slide on ice, slow on tundra)
 //     data: raidCamp, raidRespawnDay, raiders
 //
@@ -209,7 +220,8 @@
 //     SFX wired into combat/pickup/build callsites.
 //
 // 18. PROCEDURAL TEXTURES (no image files)  (src/textures.js; character draws in src/sprites.js)
-//     fns:  buildTextures, makeScaleProxy, drawMountains, polishActors, polishActor
+//     fns:  buildTextures, makeScaleProxy, drawMountains, polishActors, polishActor,
+//           buildBootPrints
 //     enemy draws: drawWolf, drawRat, drawBear, drawIceCrawler,
 //                  drawSpiderRuins, drawBogLurker, drawDustHound, drawWaterLurker
 //     character draws: paintGrid, pixelActorFrames, buildPixelActors
@@ -254,12 +266,24 @@
 //     fns:  loadSettings, saveSettings, toggleSleep
 //     data: STATE (mode/difficulty), persisted via localStorage
 //
+// 24. TRACKS (boot prints)  (src/tracks.js; table in CFG.TRACKS in src/constants.js)
+//     Players and raiders leave alternating left/right boot prints; animals do not. The ground
+//     under a print sets its life and strength; no print on water (_waterMap, plus deep water).
+//     Pooled sprites at depth 1: the cap, not the number of walkers, bounds the cost.
+//     class: Tracks
+//     fns:  newestNear (per-tile index of live prints, for raiders following tracks, #310),
+//           _step, _place, _take, _release
+//     cfg:  TRACKS
+//     data: tracks, byTile, live
+//     log:  [WORLD ] at ready, [PERF  ] every 30 s while walking
+//
 // ── COMMON GOTCHAS ───────────────────────────────────────────
 // • Two cameras: new world objects must call hudCam.ignore(obj).
 // • Draw order: trees, rocks, mountains, players and enemies are Y-sorted in depth band 9..9.9 via _sortDepth(feetY); keep ground items/structures <= 8 and bullets/bars >= 10.
 // • Water detection uses the _waterMap Uint8Array (index tx + ty*MAP_W), NOT physics overlap.
 // • Enemy dormancy: enemies > DORMANT_RADIUS are physics-disabled and hidden;
-//   they re-enable inside WAKE_RADIUS (hysteresis).
+//   they re-enable inside WAKE_RADIUS (hysteresis). Raiders, boss escorts and wave
+//   marchers (_waveMarch, until first contact) never sleep; nothing else wakes a den.
 // ============================================================
 
 // ── PHASER GAME INIT ─────────────────────────────────────

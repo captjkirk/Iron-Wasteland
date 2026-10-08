@@ -45,6 +45,9 @@ const CFG = {
   FOG_UPDATE_INTERVAL: 4, // update fog every N frames
   DORMANT_RADIUS: 800,  // px — wildlife enemy goes dormant beyond this from all players
   WAKE_RADIUS:    700,  // px — hysteresis: dormant enemy wakes when closer than this
+  WAVE_RING_MIN: 900,   // px — a wave's wildlife spawns this far from a player (off-screen) ...
+  WAVE_RING_MAX: 1300,  // px — ... out to this, and marches in, never dormant until it reaches someone
+  WAVE_MARCH_MS: 60000, // a wave marcher that has reached nobody by then becomes ordinary wildlife
   MAX_ACTIVE_ENEMIES: 180, // hard cap on simultaneously active (non-dormant) enemies
   MAX_ENEMIES: 280, // hard cap on this.enemies.length across all spawners (den/wave)
   ITEM_DESPAWN_MS: 20000, // harvested / dropped item pickups auto-expire after this long
@@ -53,6 +56,24 @@ const CFG = {
   SPIKE_TRAP_DMG: 35,      // one hit, then the trap is spent
   CAMPFIRE_HEAL_MS: 2000,  // a campfire heals nearby players this often; the amount is hc.campfireHeal
   CAMPFIRE_HEAL_R: 80,     // px from the campfire
+  // Tracks (#308, src/tracks.js): how long a boot print lasts (ms) and how dark it starts
+  // (alpha), by the ground under it. Water takes no print. Starting values, tuned by eye.
+  TRACKS: {
+    GROUND: {
+      tundra: { life: 60000, alpha: 0.55 }, // snow
+      swamp:  { life: 45000, alpha: 0.5  }, // mud
+      desert: { life: 30000, alpha: 0.45 }, // sand
+      fungal: { life: 30000, alpha: 0.4  },
+      waste:  { life: 25000, alpha: 0.35 }, // dust, cracked earth
+      grass:  { life: 20000, alpha: 0.3  },
+      ruins:  { life: 15000, alpha: 0.15 }, // stone, rubble
+      ice:    { life: 15000, alpha: 0.15 },
+    },
+    FADE: 0.25,   // a print fades out over this last fraction of its life
+    STRIDE: 30,   // px between one print and the next (they alternate feet)
+    GAIT: 4,      // px each print sits left or right of the walking line
+    CAP: 320,     // live prints; when full, the oldest is recycled early
+  },
   // Global scoreboard web app URL (tools/scoreboard/SETUP.md). Empty: no network call at all.
   SCOREBOARD_URL: 'https://script.google.com/macros/s/AKfycbw-F_cH3aDvkIVX2Wycd64OreVQAykeu656VZ4wqZBnF6rUozi2NB7Th9MAptIKS9Hh/exec',
 };
