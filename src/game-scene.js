@@ -31,6 +31,7 @@ class GameScene extends Phaser.Scene {
     this.fogVisible = null;
     this._fogVisibleBuilding = false;
     this._activePlayers = null;
+    this.tracks = null;
     this._sleepIndicator = null;
     this._fireGlows = [];
     this._glowFlicker = { t: 0 };
@@ -496,6 +497,7 @@ class GameScene extends Phaser.Scene {
                 // Tutorial sequence — starts after startup controls dismiss (~9 s)
                 this.time.delayedCall(9200, () => this.startTutorial());
 
+                this.tracks = new Tracks(this); // boot prints (src/tracks.js)
                 this._worldReady = true;
                 this._debugBossFromUrl();
                 this._log('World init: READY  display objects=' + this.children.length, 'world');
@@ -2437,6 +2439,7 @@ class GameScene extends Phaser.Scene {
 
     // Tundra slowdown effect
     { const _t = performance.now(); this.applyTerrainEffects(this.p1, delta); if (this.p2) this.applyTerrainEffects(this.p2, delta); this._perfBudget.terrain += performance.now() - _t; }
+    this.tracks?.update(this.time.now);
 
     // Ambient grass sway — pivot from origin (0.5,1) so blades rotate at their base.
     // 3 phase groups cycle out-of-sync for a natural, non-mechanical look.

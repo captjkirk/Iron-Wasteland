@@ -3,11 +3,13 @@
 //   2. In play: loads ?seed=1&renderer=canvas (headless WebKit loses the WebGL context in the
 //      Game scene, so the canvas renderer stands in), starts a solo game, waits for the world,
 //      plays PLAY_MS and fails on any console or page error. WebGL-only bugs stay invisible.
+//      Walks east for the first WALK_MS and fails unless that leaves boot prints, none on water.
 //      Also fails when textures and object canvases hold more than PIXEL_BUDGET_MB of pixels.
 const { webkit } = require('playwright');
 process.env.PORT = '0'; // any free port, so a running `npm run serve` is no obstacle
 const server = require('../server.js');
 const PLAY_MS = 10000;
+const WALK_MS = 3000; // of PLAY_MS, spent walking east
 const PIXEL_BUDGET_MB = 64; // RGBA bytes; an iPhone tab dies well short of 1 GB in total
 
 async function pass(browser, name, url, run) {
@@ -43,7 +45,18 @@ async function pass(browser, name, url, run) {
     await page.evaluate(() => { STATE.mode = 1; STATE.p1CharId = 'knight'; _phaserGame.scene.start('Game'); });
     await page.waitForFunction(() => _phaserGame.scene.getScene('Game')._worldReady === true,
       null, { timeout: 60000 });
-    await page.waitForTimeout(PLAY_MS);
+    // Walk east for WALK_MS: the player must leave tracks, and none on water (#308).
+    await page.keyboard.down('d');
+    await page.waitForTimeout(WALK_MS);
+    await page.keyboard.up('d');
+    const tracks = await page.evaluate(() => {
+      const s = _phaserGame.scene.getScene('Game');
+      return { n: s.tracks.live.length, wet: s.tracks.live.filter(r => s._waterMap[r.tile]).length };
+    });
+    console.log(`in play: walked ${WALK_MS / 1000} s and left ${tracks.n} boot prints, ${tracks.wet} on water`);
+    if (!tracks.n) throw new Error('walking left no boot prints');
+    if (tracks.wet) throw new Error(`${tracks.wet} boot prints sit on water`);
+    await page.waitForTimeout(PLAY_MS - WALK_MS);
     const fps = await page.evaluate(() => Math.round(_phaserGame.loop.actualFps));
     console.log(`in play: world built, ${PLAY_MS / 1000} s played at ${fps} fps`);
     // Pixel memory: every texture plus every canvas a game object owns (TileSprite, Text).
