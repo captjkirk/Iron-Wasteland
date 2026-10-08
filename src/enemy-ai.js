@@ -43,6 +43,29 @@ Object.assign(GameScene.prototype, {
     if (e.hp <= 0) this.killEnemy(e, owner);
   },
 
+  // Calls fn(e) for every enemy. Use it for any loop over this.enemies that can kill: a kill
+  // inside it is spliced out only after the loop, so the next enemy is not skipped (#341).
+  // Nests safely: only the outermost loop drains the removals.
+  _forEachEnemy(fn) {
+    const outer = !this._enemyIterActive;
+    this._enemyIterActive = true;
+    try {
+      this.enemies.forEach(fn);
+    } finally {
+      if (outer) {
+        this._enemyIterActive = false;
+        const dead = this._pendingEnemyRemovals;
+        if (dead && dead.length) {
+          for (const d of dead) {
+            const _ei = this.enemies.indexOf(d);
+            if (_ei !== -1) this.enemies.splice(_ei, 1);
+          }
+          dead.length = 0;
+        }
+      }
+    }
+  },
+
   killEnemy(e, owner = null) {
     if (e.dying) return; // already being killed — prevent double-kill & double-count
     e.dying = true;
@@ -51,8 +74,7 @@ Object.assign(GameScene.prototype, {
     this.kills++;
     if (owner) owner.kills++;
     this._log('Enemy killed  type=' + e.type + '  kills=' + this.kills, 'combat');
-    // Remove from update loop — defer splice if iteration is active to avoid
-    // Array.forEach skipping the element after the removed index.
+    // Remove from this.enemies; inside _forEachEnemy the splice waits for the loop to end.
     if (this._enemyIterActive) {
       (this._pendingEnemyRemovals ||= []).push(e);
     } else {
@@ -578,10 +600,8 @@ Object.assign(GameScene.prototype, {
       p => p && p.charData && p.charData.id === 'charmer' && !p.isDowned && p.spr && p.spr.active
     );
 
-    // Enable deferred-removal guard: killEnemy() splices would otherwise skip
-    // the next element during this forEach.
-    this._enemyIterActive = true;
-    this.enemies.forEach(e => {
+    // _forEachEnemy defers kills to the end of the loop so none skips the next enemy.
+    this._forEachEnemy(e => {
       if (e.dying || !e.spr.active) return;
       if (e.isBoss) return; // boss movement/attack handled by updateBoss
 
@@ -1038,15 +1058,6 @@ Object.assign(GameScene.prototype, {
         }
       }
     });
-    this._enemyIterActive = false;
-    // Drain deferred removals now that iteration is over.
-    if (this._pendingEnemyRemovals && this._pendingEnemyRemovals.length) {
-      for (const dead of this._pendingEnemyRemovals) {
-        const _ei = this.enemies.indexOf(dead);
-        if (_ei !== -1) this.enemies.splice(_ei, 1);
-      }
-      this._pendingEnemyRemovals.length = 0;
-    }
   },
 
   // Living camp raiders: those spawnRaiders put at the camp (isCampRaider), not hunt-party
