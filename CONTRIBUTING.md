@@ -49,6 +49,7 @@ the MANIFEST lists, update the MANIFEST in the same commit.
   a solo game, waits for the world, plays ten seconds and fails on any console or page error.
   Then it spawns each boss beside the knight and fails unless a sword swing reaches the boss's
   hitbox from 20 px outside it, on both sides, and not from 100 px out.
+  It then jumps to days 5 and 10 and fails unless each brings a boss, of two different types.
   Then it ends the run, types a two-word name on the game over screen and presses Enter; the
   global scoreboard is stubbed, so no smoke run posts a real score. The third starts the same
   game in Hardcore and fails unless the clock runs for five seconds; a page that stops answering

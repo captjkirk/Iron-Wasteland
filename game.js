@@ -96,10 +96,13 @@
 //    fns:  updateEnemies, _steerToward, _hasLOS,
 //          _findWallOnPath, _hurtEnemy,
 //          killEnemy, _startDormantIfFar,
+//          _forEachEnemy (any loop over enemies that can kill; splices wait for the loop end)
 //          applyTerrainEffects (also runs for raiders and animals)
 //    spawn: spawnEnemies, _spawnGroup, _spawnBiomeEnemy,
-//           _spawnWaterLurker
-//    cfg:  MAX_ENEMIES, MAX_ACTIVE_ENEMIES, DORMANT_RADIUS, WAKE_RADIUS
+//           _spawnWaterLurker,
+//           _waveRing, _waveSpawnPoint, _waveLineClear, _unstickMarcher (wave marchers, #330)
+//    cfg:  MAX_ENEMIES, MAX_ACTIVE_ENEMIES, DORMANT_RADIUS, WAKE_RADIUS,
+//          WAVE_RING_MIN, WAVE_RING_MAX, WAVE_MARCH_MS
 //    data: enemies[], ENEMY_STATS, RAIDER_STATS, ENEMY_LOOT
 //    log:  [COMBAT], [WORLD ]
 //
@@ -110,8 +113,10 @@
 // 4. WAVES & BOSSES  (src/waves-bosses.js)
 //    fns:  updateWaves, updateBoss, spawnBoss, _bossExecuteSpecial,
 //          _bossSmash, _bossTelegraph, _bossDist (reach to a drawn-to-fit hitbox),
-//          _debugBossFromUrl (?boss=wolf spawns a boss for testing)
-//    data: waveNum, waveTimer, boss, _bossChance, huntNextDay
+//          _debugBossFromUrl (?boss=wolf spawns a boss for testing),
+//          _pickBossType (every boss once per round, biome match first)
+//    data: waveNum, waveTimer, boss, bossSpawned (false again once the boss dies),
+//          _bossesSeen, _bossChance, huntNextDay
 //    log:  [WORLD ], [COMBAT]
 //
 // 5. PLAYER MOVEMENT & INPUT  (src/game-scene.js; getControls in src/textures.js)
@@ -175,9 +180,11 @@
 //     cfg:  FOG_REVEAL_R, FOG_UPDATE_INTERVAL
 //     data: _relicPOIs, relicsHeld, altarPos, altarDiscovered, _fireGlows
 //
-// 12. RAIDERS (camps + raid events)  (src/game-scene.js)
+// 12. RAIDERS (camps + raid events)  (src/game-scene.js; the camp lock in src/enemy-ai.js)
 //     fns:  updateRaiders, placeRaiderCamp, spawnRaiders, spawnHuntingParty,
 //           checkRaidCacheRange, openRaidCache, _fireRaiderShot,
+//           _campRaidersLeft, _refreshCampLock (only isCampRaider raiders lock the cache;
+//           hunt-party raiders share raiders[] but not the lock),
 //           applyTerrainEffects (raiders slide on ice, slow on tundra)
 //     data: raidCamp, raidRespawnDay, raiders
 //
@@ -254,7 +261,8 @@
 // • Draw order: trees, rocks, mountains, players and enemies are Y-sorted in depth band 9..9.9 via _sortDepth(feetY); keep ground items/structures <= 8 and bullets/bars >= 10.
 // • Water detection uses the _waterMap Uint8Array (index tx + ty*MAP_W), NOT physics overlap.
 // • Enemy dormancy: enemies > DORMANT_RADIUS are physics-disabled and hidden;
-//   they re-enable inside WAKE_RADIUS (hysteresis).
+//   they re-enable inside WAKE_RADIUS (hysteresis). Raiders, boss escorts and wave
+//   marchers (_waveMarch, until first contact) never sleep; nothing else wakes a den.
 // ============================================================
 
 // ── PHASER GAME INIT ─────────────────────────────────────

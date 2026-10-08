@@ -34,19 +34,10 @@ Object.assign(GameScene.prototype, {
         hitbox: { x: 5, y: 2, w: 104, h: 118 }, shadowY: 83, shadowW: 150 },
     ];
     // Biome-anchored pick — prefer a boss whose biome matches where the
-    // players currently are, so the boss reads as something emerging from
-    // the surrounding world instead of a random spawn. Falls back to random
-    // if the current biome has no matching boss type.
-    let bt = forceKey && bossTypes.find(b => b.key === forceKey);
-    if (!bt) try {
-      const anchor = (this.p1 && this.p1.spr) ? this.p1 : (this.p2 && this.p2.spr ? this.p2 : null);
-      const pbiome = anchor ? getBiome(Math.floor(anchor.spr.x / TILE), Math.floor(anchor.spr.y / TILE)) : null;
-      const matches = pbiome ? bossTypes.filter(b => b.biome === pbiome) : [];
-      bt = matches.length ? matches[Phaser.Math.Between(0, matches.length - 1)]
-                          : bossTypes[Phaser.Math.Between(0, bossTypes.length - 1)];
-    } catch(e) {
-      bt = bossTypes[Phaser.Math.Between(0, bossTypes.length - 1)];
-    }
+    // players currently are, among the bosses this run has not met yet (#329).
+    const bt = (forceKey && bossTypes.find(b => b.key === forceKey)) || this._pickBossType(bossTypes);
+    this._bossesSeen.push(bt.key);
+    this._log(`boss #${this._bossesSeen.length} spawned key=${bt.key}${forceKey ? ' (forced)' : ''}  day=${this.dayNum}`, 'world');
 
     // Spawn at a random map edge
     let bx, by;
@@ -200,6 +191,25 @@ Object.assign(GameScene.prototype, {
     }
   },
 
+  // Next boss type: every boss once before any repeats (_bossesSeen, oldest first), and within
+  // that the one whose biome the players stand in, else a random one. A new round never opens
+  // with the boss that just left.
+  _pickBossType(bossTypes) {
+    const seen = this._bossesSeen;
+    const roundSeen = seen.slice(seen.length - (seen.length % bossTypes.length));
+    let pool = bossTypes.filter(b => !roundSeen.includes(b.key));
+    const last = seen[seen.length - 1];
+    if (pool.length > 1) pool = pool.filter(b => b.key !== last);
+    let matches = [];
+    try {
+      const anchor = (this.p1 && this.p1.spr) ? this.p1 : (this.p2 && this.p2.spr ? this.p2 : null);
+      const pbiome = anchor ? getBiome(Math.floor(anchor.spr.x / CFG.TILE), Math.floor(anchor.spr.y / CFG.TILE)) : null;
+      matches = pool.filter(b => b.biome === pbiome);
+    } catch (e) { /* no biome: random from the pool */ }
+    const from = matches.length ? matches : pool;
+    return from[Phaser.Math.Between(0, from.length - 1)];
+  },
+
   // Boss barrels through obstacles instead of getting stuck. Removes the tile from
   // the solid set, repaints the minimap, plays a flash + debris + shake, destroys it.
   _bossSmash(obstacle) {
@@ -276,6 +286,7 @@ Object.assign(GameScene.prototype, {
       if (b.hpBar && b.hpBar.active) b.hpBar.destroy();
       if (b.shadow && b.shadow.active) b.shadow.destroy();
       this.boss = null;
+      this.bossSpawned = false; // the next boss day may spawn again (#329)
       return;
     }
 
