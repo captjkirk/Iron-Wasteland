@@ -1,8 +1,8 @@
 'use strict';
 // ── src/char-select.js — CharSelectScene: the character carousel ─────────────
 // The selected character stands large in the centre with its stats and ability; the others sit
-// smaller and dimmed on an arc behind it. Left/right (keys, a swipe, or a tap on a side
-// character) turns the wheel; F, Enter or a tap on the centre confirms. In 2-player games P2
+// smaller and dimmed on an arc behind it. Left/right (keys, a swipe or mouse drag, the trackpad
+// or mouse wheel, or a tap on a side character) turns the wheel; F, Enter or a tap on the centre confirms. In 2-player games P2
 // turns the same wheel after P1 confirms, and P1's pick is skipped.
 // Sized from S = min(W/1280, H/720): 1280x720 gives S=1, the 640x360 phone layout S=0.5.
 
@@ -88,14 +88,41 @@ class CharSelectScene extends Phaser.Scene {
     // a tap on the centre confirms. Only inside the wheel's band, so the back button and the
     // tutorial checkbox keep their own taps.
     const top = Math.round(90 * S), bottom = H - 80;
-    this.input.on('pointerdown', p => { this._press = (p.y > top && p.y < bottom) ? { x: p.x } : null; });
+    // A drag moves the wheel with the pointer (300 px of travel per character); on release it
+    // settles on the nearest character.
+    const dragMin = Math.max(20, 40 * S), stepPx = 300 * S;
+    this.input.on('pointerdown', p => {
+      this._press = (p.y > top && p.y < bottom) ? { x: p.x, pos: this._pos, drag: false } : null;
+    });
+    this.input.on('pointermove', p => {
+      const pr = this._press;
+      if (!pr || !p.isDown) return;
+      if (!pr.drag && Math.abs(p.x - pr.x) < dragMin) return;
+      if (!pr.drag) { pr.drag = true; if (this._spin) this._spin.stop(); }
+      this._pos = pr.pos - (p.x - pr.x) / stepPx;
+      this._layoutWheel();
+    });
     this.input.on('pointerup', p => {
       if (!this._press) return;
-      const swipe = p.x - this._press.x, dx = p.x - W/2;
+      const { drag, pos } = this._press, dx = p.x - W/2;
       this._press = null;
-      if (Math.abs(swipe) > Math.max(20, 40 * S)) this.nav(this._turn(), swipe < 0 ? 1 : -1);
+      if (drag) this._settle(pos);
       else if (Math.abs(dx) < 170 * S) this.confirm(this._turn());
       else this.nav(this._turn(), Math.sign(dx) * (Math.abs(dx) > 430 * S ? 2 : 1));
+    });
+
+    // Trackpad two-finger slide or mouse wheel: the wheel scrolls smoothly with it (a third of the drag
+    // distance per character), and 120 ms after the last scroll event it settles on the nearest one.
+    this.input.on('wheel', (p, objs, dx, dy) => {
+      if (p.y <= top || p.y >= bottom) return;
+      if (!this._wheelBase && this._wheelBase !== 0) { this._wheelBase = this._pos; if (this._spin) this._spin.stop(); }
+      this._pos += (Math.abs(dx) > Math.abs(dy) ? dx : dy) / (0.5 * stepPx);
+      this._layoutWheel();
+      if (this._wheelEnd) this._wheelEnd.remove();
+      this._wheelEnd = this.time.delayedCall(120, () => {
+        const base = this._wheelBase; this._wheelBase = null;
+        this._settle(base);
+      });
     });
 
     // Back to main menu — top-left corner
@@ -191,6 +218,14 @@ class CharSelectScene extends Phaser.Scene {
       from, to, duration: 250, ease: 'Sine.easeInOut',
       onUpdate: t => { this._pos = t.getValue(); this._layoutWheel(); },
     });
+  }
+
+  // After a drag or scroll that started at wheel position `from`: land on the nearest character
+  // (a short flick still moves one).
+  _settle(from) {
+    const moved = this._pos - from, steps = Math.round(moved) || Math.sign(moved);
+    if (!steps) return this.refresh();
+    for (let i = 0; i < Math.abs(steps); i++) this.nav(this._turn(), Math.sign(steps));
   }
 
   nav(player, dir) {
