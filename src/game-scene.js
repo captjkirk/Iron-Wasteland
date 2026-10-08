@@ -1316,9 +1316,9 @@ class GameScene extends Phaser.Scene {
       update(p) {
         if (!shown || !p) return;
         const vals = SLOTS.map(([key]) => (key === 'carriedAmmo' ? p.carriedAmmo : p.inv[key]) || 0);
-        const k = vals.join(',');
-        if (k === lastKey) return;
-        lastKey = k;
+        const sig = vals.join(',');
+        if (sig === lastKey) return;
+        lastKey = sig;
         const n = vals[4] > 0 ? 5 : 4;
         const w = n * SLOT_W + PAD, x0 = right ? x - w : x;
         bg.clear().fillStyle(0x000000, P ? 1 : 0.5).fillRoundedRect(x0, y, w, H, 6);
