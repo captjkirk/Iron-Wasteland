@@ -78,6 +78,16 @@ const CFG = {
   SCOREBOARD_URL: 'https://script.google.com/macros/s/AKfycbw-F_cH3aDvkIVX2Wycd64OreVQAykeu656VZ4wqZBnF6rUozi2NB7Th9MAptIKS9Hh/exec',
 };
 
+// Phone, 1 player layout (#388): sizes are a share of screen height (d = diameter), positions a
+// share of width (cx) and height (cy), so they hold on every phone. solid = see-through level.
+const PHONE1P = {
+  radar: { d: 0.39, cx: 0.88, cy: 0.21, solid: 0.60 },
+  stick: { d: 0.40, cx: 0.14, cy: 0.78 },
+  btn: { d: 0.18, cx: 0.87, cy: 0.77, gap: 1.5 }, // gap: centre distance from the diamond middle, in radii
+  menuBtn: { cx: 0.04, cy: 0.18 }, menuText: { cx: 0.07, cy: 0.09 },
+  hudScale: 0.9, hudSolid: 0.45, tipScale: 0.8, tipSolid: 0.75,
+};
+
 // ── ENEMY LOOT TABLES ─────────────────────────────────────────
 // Format: [item_key, base_chance, flags]  flags: 0=plain, 1=multiply by foodMult, 2=rare (skip if hc.rareDropsBossOnly)
 // Chance > 1 = always drops (e.g. bears always drop metal, boss_wolf always drops food).

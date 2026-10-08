@@ -306,6 +306,45 @@ async function bossReach(page) {
     if (!(moved.p1 > 5 && moved.p2 < -5)) throw new Error('a player did not move the way their half was dragged');
   });
 
+  // Phone layout, 1 player (#388): at 640x360 and at 874x402 (the canvas stays 640x360) reads the real
+  // controls and panels and fails when the radar, the four buttons or the stick differ from the
+  // agreed sizes by more than 2% of the screen height, or when any circle or box overlaps another
+  // or runs off the screen. The stick ring is left out: it only appears where the thumb lands.
+  for (const [name, vp] of [['phone layout 640x360', { width: 740, height: 390 }], ['phone layout 874x402', { width: 874, height: 402 }]]) {
+    failures += await pass(browser, name, base + '?seed=1&renderer=canvas', async page => {
+      await page.evaluate(() => {
+        saveSettings({ inputMode: 'touch', tutorial: false });
+        STATE.mode = 1; STATE.p1CharId = 'knight'; _phaserGame.scene.start('Game');
+      });
+      await page.waitForFunction(() => _phaserGame.scene.getScene('Game')._worldReady === true, null, { timeout: 60000 });
+      await page.waitForTimeout(1500);
+      const err = await page.evaluate(() => {
+        const g = _phaserGame.scene.getScene('Game'), { W, H } = CFG, tol = 0.02 * H;
+        if (W !== 640) return `canvas is ${W} wide`;
+        const b = g._pads[0].btns, items = [], bad = [];
+        const diam = (what, got, share) => { if (Math.abs(got - share * H) > tol) bad.push(`${what} is ${Math.round(got)} px across, wanted ${Math.round(share * H)}`); };
+        const circle = (n, c) => items.push({ n, circle: true, ...c });
+        const rd = g.radarCenter; diam('radar', rd.r * 2, PHONE1P.radar.d); circle('radar', { x: rd.x, y: rd.y, r: rd.r });
+        for (const k of ['attack', 'alt', 'interact', 'build']) { diam(k + ' button', b[k].r * 2, PHONE1P.btn.d); circle(k, { x: b[k].hx, y: b[k].hy, r: b[k].r }); }
+        circle('menu button', { x: b.menu.hx, y: b.menu.hy, r: b.menu.r });
+        diam('stick', g._pads[0].joy.radius * 2, PHONE1P.stick.d);
+        for (const [n, r] of Object.entries(g._hudRects)) items.push({ n: n + ' panel', ...r });
+        const box = i => i.circle ? { x: i.x - i.r, y: i.y - i.r, w: i.r * 2, h: i.r * 2 } : i;
+        const hit = (a, c) => {
+          if (a.circle && c.circle) return Math.hypot(a.x - c.x, a.y - c.y) < a.r + c.r;
+          if (!a.circle && !c.circle) return a.x < c.x + c.w && c.x < a.x + a.w && a.y < c.y + c.h && c.y < a.y + a.h;
+          const [ci, re] = a.circle ? [a, c] : [c, a];
+          const nx = Math.max(re.x, Math.min(ci.x, re.x + re.w)), ny = Math.max(re.y, Math.min(ci.y, re.y + re.h));
+          return Math.hypot(ci.x - nx, ci.y - ny) < ci.r;
+        };
+        for (const i of items) { const q = box(i); if (q.x < 0 || q.y < 0 || q.x + q.w > W || q.y + q.h > H) bad.push(`${i.n} runs off the screen`); }
+        for (let i = 0; i < items.length; i++) for (let j = i + 1; j < items.length; j++) if (hit(items[i], items[j])) bad.push(`${items[i].n} overlaps ${items[j].n}`);
+        return bad.join('; ');
+      });
+      if (err) throw new Error(err);
+    }, { viewport: vp, hasTouch: true });
+  }
+
   await browser.close();
   process.exit(failures ? 1 : 0);
 })();
