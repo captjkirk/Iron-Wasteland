@@ -47,6 +47,8 @@ the MANIFEST lists, update the MANIFEST in the same commit.
   file that loads after it, which ESLint passes. The second loads `?seed=1&renderer=canvas`
   (headless WebKit loses the WebGL context in play, so the canvas renderer stands in), starts
   a solo game, waits for the world, plays ten seconds and fails on any console or page error.
+  Then it spawns each boss beside the knight and fails unless a sword swing reaches the boss's
+  hitbox from 20 px outside it, on both sides, and not from 100 px out.
   Shader and WebGL-only bugs stay invisible to it. Run it locally before moving code between
   `src/` files or touching a system that runs every frame.
 
