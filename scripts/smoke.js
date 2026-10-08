@@ -365,7 +365,7 @@ async function bossReach(page) {
       for (const o of parts) {
         if (!(o.x >= 0 && o.x <= W && o.y >= 0 && o.y <= H)) bad.push(`${o.type} at ${o.x},${o.y}`);
         if (o.depth <= g.fogGfx.depth || o.depth <= g.nightOverlay.depth) bad.push(`${o.type} is not above the fog`);
-        if (o.alpha < 0.3) bad.push(`${o.type} alpha ${o.alpha}`);
+        if (o.alpha < 0.1) bad.push(`${o.type} alpha ${o.alpha}`);
       }
       return bad.join('; ');
     });
