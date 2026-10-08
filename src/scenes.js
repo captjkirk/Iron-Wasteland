@@ -307,6 +307,9 @@ class ModeSelectScene extends Phaser.Scene {
 
   create() {
     const { W, H } = CFG;
+    // The layout is drawn for 1280x720; on a phone everything shrinks by K so the boxes fit (#406).
+    const KS = this._K = _isMobile ? 0.7 : 1;
+    const sc = n => Math.round(n * KS), fs = n => Math.max(10, Math.round(n * KS)) + "px";
     this.cameras.main.fadeIn(400, 0, 0, 0);
     this.selMode = 2;
     this.selDiff = 'survival';
@@ -323,7 +326,7 @@ class ModeSelectScene extends Phaser.Scene {
     gnd.fillStyle(0x0d2a0d); gnd.fillRect(0, H * 0.7, W, H * 0.3);
 
     this.add.text(W/2, H*0.12, 'IRON WASTELAND', {
-      fontFamily:'monospace', fontSize:'54px', color:'#cc8833',
+      fontFamily:'monospace', fontSize:fs(54), color:'#cc8833',
       stroke:'#7a4a1a', strokeThickness:6,
       shadow:{offsetX:4, offsetY:4, color:'#000', blur:8, fill:true},
     }).setOrigin(0.5);
@@ -331,25 +334,25 @@ class ModeSelectScene extends Phaser.Scene {
     // Build/version stamp — placed under the title so the date the player
     // is currently running is always visible at a glance.
     this.add.text(W/2, H*0.20, 'Last updated ' + _fmtVersion(VERSION), {
-      fontFamily:'monospace', fontSize:'14px', color:'#d4a06a',
+      fontFamily:'monospace', fontSize:fs(14), color:'#d4a06a',
       stroke:'#000', strokeThickness:2,
     }).setOrigin(0.5);
 
     // ── PLAYERS row ──
     this.add.text(W/2, H*0.28, 'PLAYERS', {
-      fontFamily:'monospace', fontSize:'15px', color:'#556655',
+      fontFamily:'monospace', fontSize:fs(15), color:'#556655',
     }).setOrigin(0.5);
 
     const playerOpts = [
-      { label:'1 PLAYER',  sub:'WASD + Mouse', mode:1, x: W/2 - 185 },
-      { label:'2 PLAYERS', sub:'WASD + Arrows',  mode:2, x: W/2 + 185 },
+      { label:'1 PLAYER',  sub:'WASD + Mouse', mode:1, x: W/2 - sc(185) },
+      { label:'2 PLAYERS', sub:'WASD + Arrows',  mode:2, x: W/2 + sc(185) },
     ];
     this.pBoxes = playerOpts.map(o => {
       const box = this.add.graphics();
-      const lbl = this.add.text(o.x, H*0.38, o.label, { fontFamily:'monospace', fontSize:'20px', color:'#ffffff', stroke:'#000', strokeThickness:2 }).setOrigin(0.5);
-      this.add.text(o.x, H*0.38+28, o.sub, { fontFamily:'monospace', fontSize:'12px', color:'#778866' }).setOrigin(0.5);
+      const lbl = this.add.text(o.x, H*0.38, o.label, { fontFamily:'monospace', fontSize:fs(20), color:'#ffffff', stroke:'#000', strokeThickness:2 }).setOrigin(0.5);
+      this.add.text(o.x, H*0.38+sc(28), o.sub, { fontFamily:'monospace', fontSize:fs(12), color:'#778866' }).setOrigin(0.5);
       // Clickable hit zone over the box
-      const zone = this.add.zone(o.x, H*0.38+23, 230, 92).setInteractive({ useHandCursor: true });
+      const zone = this.add.zone(o.x, H*0.38+sc(23), sc(230), sc(92)).setInteractive({ useHandCursor: true });
       zone.on('pointerover', () => this.setMode(o.mode));
       zone.on('pointerdown', () => this.setMode(o.mode));
       return { box, lbl, x:o.x, y:H*0.38, mode:o.mode };
@@ -357,7 +360,7 @@ class ModeSelectScene extends Phaser.Scene {
 
     // ── DIFFICULTY row ──
     this.add.text(W/2, H*0.52, 'DIFFICULTY', {
-      fontFamily:'monospace', fontSize:'15px', color:'#556655',
+      fontFamily:'monospace', fontSize:fs(15), color:'#556655',
     }).setOrigin(0.5);
 
     const diffOpts = [
@@ -366,30 +369,30 @@ class ModeSelectScene extends Phaser.Scene {
         sub1: '2P: Teammate can revive you',
         sub2: '1P: One life — don\'t die!',
         diff: 'survival',
-        x: W/2 - 220,
+        x: W/2 - sc(220),
       },
       {
         label:'HARDCORE',
         sub1: 'Death = permanent game over',
         sub2: 'No second chances. Ever.',
         diff: 'hardcore',
-        x: W/2 + 220,
+        x: W/2 + sc(220),
       },
     ];
     this.dBoxes = diffOpts.map(o => {
       const box = this.add.graphics();
-      const lbl = this.add.text(o.x, H*0.63, o.label, { fontFamily:'monospace', fontSize:'20px', color:'#ffffff', stroke:'#000', strokeThickness:2 }).setOrigin(0.5);
-      this.add.text(o.x, H*0.63+26, o.sub1, { fontFamily:'monospace', fontSize:'11px', color:'#889977' }).setOrigin(0.5);
-      this.add.text(o.x, H*0.63+42, o.sub2, { fontFamily:'monospace', fontSize:'11px', color:'#667755' }).setOrigin(0.5);
+      const lbl = this.add.text(o.x, H*0.63, o.label, { fontFamily:'monospace', fontSize:fs(20), color:'#ffffff', stroke:'#000', strokeThickness:2 }).setOrigin(0.5);
+      this.add.text(o.x, H*0.63+sc(26), o.sub1, { fontFamily:'monospace', fontSize:fs(11), color:'#889977' }).setOrigin(0.5);
+      this.add.text(o.x, H*0.63+sc(42), o.sub2, { fontFamily:'monospace', fontSize:fs(11), color:'#667755' }).setOrigin(0.5);
       // Clickable hit zone over the box
-      const zone = this.add.zone(o.x, H*0.63+32, 230, 110).setInteractive({ useHandCursor: true });
+      const zone = this.add.zone(o.x, H*0.63+sc(32), sc(290), sc(110)).setInteractive({ useHandCursor: true });
       zone.on('pointerover', () => this.setDiff(o.diff));
       zone.on('pointerdown', () => this.setDiff(o.diff));
       return { box, lbl, x:o.x, y:H*0.63, diff:o.diff };
     });
 
     this.promptText = this.add.text(W/2, H*0.82, '', {
-      fontFamily:'monospace', fontSize:'16px', color:'#ffffff',
+      fontFamily:'monospace', fontSize:fs(16), color:'#ffffff',
       backgroundColor:'#00000000', padding:{x:16, y:8},
     }).setOrigin(0.5).setInteractive({ useHandCursor: true });
     this.promptText.on('pointerover', () => this.promptText.setAlpha(1));
@@ -398,12 +401,12 @@ class ModeSelectScene extends Phaser.Scene {
     this.tweens.add({ targets:this.promptText, alpha:0.3, duration:600, yoyo:true, repeat:-1 });
 
     this.add.text(W/2, H*0.93, 'Built for Hudson, Zachary & Jared', {
-      fontFamily:'monospace', fontSize:'12px', color:'#334433',
+      fontFamily:'monospace', fontSize:fs(12), color:'#334433',
     }).setOrigin(0.5);
 
     // Settings button — bottom left
     const settingsTxt = this.add.text(16, H - 16, '\u2699 Settings', {
-      fontFamily:'monospace', fontSize:'13px', color:'#445544',
+      fontFamily:'monospace', fontSize:fs(13), color:'#445544',
     }).setOrigin(0, 1).setInteractive({ useHandCursor: true });
     settingsTxt.on('pointerover', () => settingsTxt.setColor('#88cc88'));
     settingsTxt.on('pointerout',  () => settingsTxt.setColor('#445544'));
@@ -413,7 +416,7 @@ class ModeSelectScene extends Phaser.Scene {
     });
 
     const exitTxt = this.add.text(W - 16, H - 16, '[ EXIT GAME ]', {
-      fontFamily:'monospace', fontSize:'12px', color:'#554444',
+      fontFamily:'monospace', fontSize:fs(12), color:'#554444',
     }).setOrigin(1, 1).setInteractive({ useHandCursor: true });
     exitTxt.on('pointerover', () => exitTxt.setColor('#ff6644'));
     exitTxt.on('pointerout',  () => exitTxt.setColor('#554444'));
@@ -445,10 +448,11 @@ class ModeSelectScene extends Phaser.Scene {
   drawBox(g, x, y, selected, color, tall) {
     g.clear();
     g.fillStyle(selected ? 0x1a261a : 0x0e0e16, 0.95);
-    const h = tall ? 110 : 92;
-    g.fillRoundedRect(x-115, y-46, 230, h, 8);
+    const K = this._K, h = Math.round((tall ? 110 : 92) * K), w = Math.round((tall ? 290 : 230) * K);
+    g.fillRoundedRect(x - w / 2, y - Math.round(46 * K), w, h, 8);
     g.lineStyle(2, selected ? (color || 0xcc8833) : 0x2a2a3a);
-    g.strokeRoundedRect(x-115, y-46, 230, h, 8);
+    g.strokeRoundedRect(x - w / 2, y - Math.round(46 * K), w, h, 8);
+    g.rect = { x: x - w / 2, y: y - Math.round(46 * K), w, h }; // read by the smoke run
   }
 
   setMode(mode) {

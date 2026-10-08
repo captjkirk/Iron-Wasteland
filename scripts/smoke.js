@@ -345,6 +345,26 @@ async function bossReach(page) {
     }, { viewport: vp, hasTouch: true });
   }
 
+  // Title screen on a phone (#406): the four mode and difficulty boxes must not overlap and every text
+  // must lie inside the canvas, at 640x360 and 874x402.
+  for (const [vw, vh] of [[640, 360], [874, 402]]) {
+    failures += await pass(browser, `title screen ${vw}x${vh}`, base, async page => {
+      const err = await page.evaluate(() => {
+        const sc = _phaserGame.scene.getScene('ModeSelect'), { W, H } = CFG, bad = [];
+        const rects = [...sc.pBoxes, ...sc.dBoxes].map(b => b.box.rect);
+        rects.forEach((a, i) => {
+          if (a.x < 0 || a.y < 0 || a.x + a.w > W || a.y + a.h > H) bad.push(`box ${i} runs off the canvas`);
+          rects.slice(i + 1).forEach((c, j) => { if (a.x < c.x + c.w && c.x < a.x + a.w && a.y < c.y + c.h && c.y < a.y + a.h) bad.push(`box ${i} overlaps box ${i + j + 1}`); });
+        });
+        for (const o of sc.children.list) if (o.type === 'Text' && o.visible && o.text) {
+          const b = o.getBounds(); if (b.x < -1 || b.y < -1 || b.right > W + 1 || b.bottom > H + 1) bad.push(`text off canvas: ${o.text.slice(0, 20)}`);
+        }
+        return bad.join('; ');
+      });
+      if (err) throw new Error(err);
+    }, { viewport: { width: vw, height: vh }, hasTouch: true });
+  }
+
   await browser.close();
   process.exit(failures ? 1 : 0);
 })();
