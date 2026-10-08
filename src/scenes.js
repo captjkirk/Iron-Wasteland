@@ -55,7 +55,9 @@ class ControlsScene extends Phaser.Scene {
   }
 
   create() {
-    const { W, H } = CFG;
+    // Laid out on a 1280x720 sheet and zoomed to fit the phone canvas (#332).
+    const S = Math.min(CFG.W / 1280, CFG.H / 720), W = CFG.W / S, H = CFG.H / S;
+    this.cameras.main.setZoom(S).centerOn(W / 2, H / 2);
     this.cameras.main.fadeIn(300, 0, 0, 0);
 
     const bg = this.add.graphics();

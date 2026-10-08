@@ -65,7 +65,11 @@ class GameOverScene extends Phaser.Scene {
   }
 
   create() {
-    const { W, H } = CFG;
+    // Laid out on a 1280x720 sheet and zoomed down to fit the phone canvas (#332); this._dw/_dh
+    // are the sheet's size, the same as the canvas on a desktop.
+    const S = this._S = Math.min(CFG.W / 1280, CFG.H / 720);
+    const W = this._dw = CFG.W / S, H = this._dh = CFG.H / S;
+    this.cameras.main.setZoom(S).centerOn(W / 2, H / 2);
     this.cameras.main.fadeIn(600, 0, 0, 0);
     this._score      = this._calcScore();
     this._nameSaved  = false;
@@ -168,7 +172,7 @@ class GameOverScene extends Phaser.Scene {
     this._htmlInp = this._createNameInput(this._defaultName, nameAreaY + 22);
 
     // SAVE button
-    const saveY = nameAreaY + 58;   // 472
+    const saveY = nameAreaY + 72;   // 6 px clear of the input, which ends at nameAreaY + 52
     this._saveBg  = this.add.graphics();
     this._saveTxt = this.add.text(W/2, saveY + 1, 'SAVE SCORE  \u21b5', {
       fontFamily:'monospace', fontSize:'13px', color:'#aaffaa', stroke:'#000', strokeThickness:2,
@@ -279,8 +283,8 @@ class GameOverScene extends Phaser.Scene {
   _createNameInput(defaultName, gameY) {
     const canvas = this.game.canvas;
     const rect   = canvas.getBoundingClientRect();
-    const sx = rect.width  / CFG.W;
-    const sy = rect.height / CFG.H;
+    const sx = rect.width  / CFG.W * this._S;
+    const sy = rect.height / CFG.H * this._S;
 
     const inp = document.createElement('input');
     inp.type      = 'text';
@@ -288,7 +292,7 @@ class GameOverScene extends Phaser.Scene {
     inp.maxLength = 28;
     inp.style.cssText = [
       'position:fixed',
-      `left:${Math.round(rect.left + (CFG.W / 2 - 130) * sx)}px`,
+      `left:${Math.round(rect.left + (this._dw / 2 - 130) * sx)}px`,
       `top:${Math.round(rect.top  + gameY * sy)}px`,
       `width:${Math.round(260 * sx)}px`,
       `height:${Math.round(30 * sy)}px`,
@@ -350,7 +354,7 @@ class GameOverScene extends Phaser.Scene {
 
   // Show optional feedback textarea after name is saved.
   _showFeedback(isHighScore) {
-    const { W } = CFG;
+    const W = this._dw;
     let y = this._postSaveY;
 
     const label = this.add.text(W/2, y, 'HOW WAS YOUR RUN?  (optional)', {
@@ -389,8 +393,8 @@ class GameOverScene extends Phaser.Scene {
   _createFeedbackInput(gameY) {
     const canvas = this.game.canvas;
     const rect   = canvas.getBoundingClientRect();
-    const sx = rect.width  / CFG.W;
-    const sy = rect.height / CFG.H;
+    const sx = rect.width  / CFG.W * this._S;
+    const sy = rect.height / CFG.H * this._S;
 
     const ta = document.createElement('textarea');
     ta.placeholder = 'What happened? Any bugs or suggestions? (max 300 chars)';
@@ -398,7 +402,7 @@ class GameOverScene extends Phaser.Scene {
     ta.rows        = 3;
     ta.style.cssText = [
       'position:fixed',
-      `left:${Math.round(rect.left + (CFG.W / 2 - 170) * sx)}px`,
+      `left:${Math.round(rect.left + (this._dw / 2 - 170) * sx)}px`,
       `top:${Math.round(rect.top  + gameY * sy)}px`,
       `width:${Math.round(340 * sx)}px`,
       `height:${Math.round(58 * sy)}px`,
@@ -442,7 +446,7 @@ class GameOverScene extends Phaser.Scene {
       ...this._scoreBody(this._savedName || 'Player'), kind: 'feedback', comment: text,
       platform: ('ontouchstart' in window || navigator.maxTouchPoints > 0 ? 'touch ' : 'keyboard ') + window.innerWidth + 'x' + window.innerHeight,
     };
-    const note = this.add.text(CFG.W/2, this._postSaveY - 16, 'Sending\u2026', {
+    const note = this.add.text(this._dw/2, this._postSaveY - 16, 'Sending\u2026', {
       fontFamily:'monospace', fontSize:'11px', color:'#8899aa',
     }).setOrigin(0.5);
     _postFeedback(msg).then(ok => {
@@ -501,7 +505,7 @@ class GameOverScene extends Phaser.Scene {
 
   // Render TOP SCORES after save.  Fits between postSaveY (492) and buttons (636).
   _showLeaderboard(isHighScore) {
-    const { W } = CFG;
+    const W = this._dw;
     let y = this._postSaveY;
 
     if (isHighScore) {
@@ -548,7 +552,7 @@ class GameOverScene extends Phaser.Scene {
     if (!this._saveScore(name)) {
       // Storage full / disabled: tell the player so they know the run
       // didn't make it onto the leaderboard.
-      const warn = this.add.text(CFG.W/2, CFG.H - 12, '⚠ Could not save score (storage full?)', {
+      const warn = this.add.text(this._dw/2, this._dh - 12, '⚠ Could not save score (storage full?)', {
         fontFamily: 'monospace', fontSize: '10px', color: '#ff8844',
         backgroundColor: '#000000cc', padding: { x: 6, y: 3 },
       }).setOrigin(0.5).setDepth(500);

@@ -345,6 +345,44 @@ async function bossReach(page) {
     }, { viewport: vp, hasTouch: true });
   }
 
+  // Game Over and Controls on a phone (#332): every text lies inside the canvas, no two texts
+  // overlap, and the game over name field sits inside the canvas and clear of the SAVE button.
+  for (const [name, vp] of [['phone game over 640x360', { width: 740, height: 390 }], ['phone game over 874x402', { width: 874, height: 402 }]]) {
+    failures += await pass(browser, name, base + '?seed=1&renderer=canvas', async page => {
+      await page.evaluate(() => saveSettings({ inputMode: 'touch', tutorial: false }));
+      for (const scene of ['GameOver', 'Controls']) {
+        await page.evaluate(sc => {
+          STATE.mode = 1; STATE.p1CharId = 'knight';
+          _phaserGame.scene.getScenes(true).forEach(o => _phaserGame.scene.stop(o.scene.key));
+          _phaserGame.scene.start(sc, sc === 'GameOver' ? { reason: 'Smoke', days: 3, kills: 4, timeAlive: 200, mode: 1 } : {});
+        }, scene);
+        await page.waitForFunction(sc => _phaserGame.scene.isActive(sc), scene, { timeout: 10000 });
+        await page.waitForTimeout(1800);
+        const err = await page.evaluate(sceneKey => {
+          const sc = _phaserGame.scene.getScene(sceneKey), cam = sc.cameras.main, z = cam.zoom, { W, H } = CFG, bad = [];
+          const boxes = sc.children.list.filter(o => o.type === 'Text' && o.visible && o.text && o.alpha > 0.3).map(o => {
+            const b = o.getBounds(), q = { n: o.text.slice(0, 18), x: (b.x - cam.worldView.x) * z, y: (b.y - cam.worldView.y) * z, w: b.width * z, h: b.height * z };
+            return q;
+          });
+          for (const q of boxes) if (q.x < -1 || q.y < -1 || q.x + q.w > W + 1 || q.y + q.h > H + 1) bad.push(`"${q.n}" runs off the canvas`);
+          for (let i = 0; i < boxes.length; i++) for (let j = i + 1; j < boxes.length; j++) {
+            const a = boxes[i], c = boxes[j];
+            if (a.x < c.x + c.w - 1 && c.x < a.x + a.w - 1 && a.y < c.y + c.h - 1 && c.y < a.y + a.h - 1) bad.push(`"${a.n}" overlaps "${c.n}"`);
+          }
+          if (sc._htmlInp) {
+            const r = sc._htmlInp.getBoundingClientRect(), cr = _phaserGame.canvas.getBoundingClientRect(), k = cr.width / W;
+            const f = { x: (r.left - cr.left) / k, y: (r.top - cr.top) / k, w: r.width / k, h: r.height / k };
+            if (f.x < 0 || f.y < 0 || f.x + f.w > W || f.y + f.h > H) bad.push('the name field runs off the canvas');
+            const sz = sc._saveZone;
+            if (sz && f.y + f.h > (sz.y - sz.height / 2 - cam.worldView.y) * z + 0.5) bad.push('the name field overlaps SAVE SCORE');
+          }
+          return bad.join('; ');
+        }, scene);
+        if (err) throw new Error(`${scene}: ${err}`);
+      }
+    }, { viewport: vp, hasTouch: true });
+  }
+
   await browser.close();
   process.exit(failures ? 1 : 0);
 })();
