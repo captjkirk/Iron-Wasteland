@@ -28,8 +28,21 @@ const _isMobile = typeof navigator !== 'undefined' &&
   (navigator.maxTouchPoints > 0 || 'ontouchstart' in window) &&
   typeof window !== 'undefined' && Math.min(window.innerWidth, window.innerHeight) < 600;
 
+// Widen the canvas to the screen shape (#385): the height stays 360 (phone) or 720, the width follows
+// the screen between 16:9 and 2.4:1, so a phone shows more ground at the sides instead of black bars.
+// Measured once at load, from the game container inside the safe area (notch, rounded corners).
+const _screenAspect = (() => {
+  try {
+    const el = document.getElementById('game-container'), cs = window.getComputedStyle(el);
+    const w = el.clientWidth - parseFloat(cs.paddingLeft) - parseFloat(cs.paddingRight);
+    const h = el.clientHeight - parseFloat(cs.paddingTop) - parseFloat(cs.paddingBottom);
+    const a = Math.max(w, h) / Math.min(w, h); // landscape shape, whichever way the phone was held at load
+    return Math.min(2.4, Math.max(16 / 9, a)) || 16 / 9;
+  } catch (e) { return 16 / 9; }
+})();
+
 const CFG = {
-  W: _isMobile ? 640 : 1280, H: _isMobile ? 360 : 720,
+  H: _isMobile ? 360 : 720, W: Math.round((_isMobile ? 360 : 720) * _screenAspect),
   TILE: 32,
   MAP_W: 300, MAP_H: 300,
   SAFE_R: 10,
