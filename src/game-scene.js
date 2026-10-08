@@ -1241,6 +1241,7 @@ class GameScene extends Phaser.Scene {
     if (p._toxicUntil > now) s.push('toxic');
     if (p._rallyUntil > now) s.push('rally');
     if (p['_' + p.charData.id + 'Upgraded']) s.push('upgrade');
+    if (p._sheltered) s.push('shelter');
     return s;
   }
 
@@ -1262,6 +1263,9 @@ class GameScene extends Phaser.Scene {
         gfx.fillStyle(0x44ff22, 1).fillCircle(cx, cy + 2, r - 2).fillTriangle(cx, y, cx - r + 2, cy + 1, cx + r - 2, cy + 1);
       } else if (name === 'rally') {   // yellow up arrow
         gfx.fillStyle(0xffdd44, 1).fillTriangle(cx, y, x, cy + 1, x + SZ, cy + 1).fillRect(cx - 2, cy, 4, r);
+      } else if (name === 'shelter') { // warm house: roof over a wall with a lit door
+        gfx.fillStyle(0xe8b060, 1).fillTriangle(cx, y, x, cy, x + SZ, cy).fillRect(x + 2, cy, SZ - 4, r);
+        gfx.fillStyle(0xff7722, 1).fillRect(cx - 1.5, cy + 2, 3, r - 2);
       } else {                         // upgrade: orange square star
         gfx.fillStyle(0xffaa22, 1).fillRect(x + 2, y + 2, SZ - 4, SZ - 4).fillTriangle(cx, y - 1, x + 1, cy, x + SZ - 1, cy).fillTriangle(cx, y + SZ + 1, x + 1, cy, x + SZ - 1, cy);
       }
@@ -2549,6 +2553,7 @@ class GameScene extends Phaser.Scene {
     { const _t0 = performance.now(); if (this._hudDirty) { _safe('redrawHUD', () => { this.redrawHUD(); this._hudDirty = false; }); } this._perfBudget.hud += performance.now() - _t0; }
     { const _t0 = performance.now(); _safe('threatIndicators', () => this._drawThreatIndicators());   this._perfBudget.threats += performance.now() - _t0; }
     _safe('_updateScoutPanel', () => this._updateScoutPanel());
+    _safe('_updateShelter', () => this._updateShelter());
     if (this._touchActive) _safe('_drawTouchHUD', () => this._drawTouchHUD());
   }
 
@@ -4555,6 +4560,7 @@ class GameScene extends Phaser.Scene {
       const wx = wall.x, wy = wall.y;
       this._removeWallFromBuckets(wall);
       this.builtWalls = this.builtWalls.filter(w => w !== wall);
+      this._shelterDirty = true;
       this._refreshWallClustersNear(wx, wy);
       this._unpaintMinimapTile(wx, wy);
       if (wall._hpBg && wall._hpBg.active) wall._hpBg.destroy();

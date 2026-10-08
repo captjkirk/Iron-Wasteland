@@ -56,6 +56,8 @@
 //
 //   src/touch.js         — System 19's touch pads (one per player), added to GameScene.prototype
 //
+//   src/shelter.js       — System 8's Sheltered test, added to GameScene.prototype
+//
 //   src/world-gen.js     — System 1, added to GameScene.prototype; loads after game-scene.js
 //
 //   src/waves-bosses.js  — System 4, added to GameScene.prototype; loads after world-gen.js
@@ -138,13 +140,17 @@
 //    data: player.isDowned, player.downedTimer, reviving, reviveProgress
 //    log:  [PLAYER]
 //
-// 8. BUILDING & CRAFTING  (src/building-crafting.js; GameScene.RECIPES stays in src/game-scene.js)
+// 8. BUILDING & CRAFTING  (src/building-crafting.js; GameScene.RECIPES stays in src/game-scene.js; shelter in src/shelter.js)
 //    build: updateBuildMode, placeBuild, _buildSpotError, exitBuildMode, _placeWallSprite,
 //           _tryTeardownBuild, openGate, getBuildCost, getTeamInv
 //    craft: openCraftMenu, closeCraftMenu, updateCraftMenu, craftSelected,
 //           renderCraftMenu, _craftScrollToSel
 //    barracks: openBarrack, closeBarrack, barrackNav, barrackConfirm,
 //              refreshBarrackCards, buildBarrackOverlay, checkBarrackRange
+//    shelter: isShelteredAt (a closed ring of built walls, gates count, holding a campfire, craftbench
+//             or bed; 8-way flood fill, so a corner-only join is a gap), _updateShelter (rechecks
+//             on a new tile or when _shelterDirty after a build or a destroyed wall; sets p._sheltered,
+//             shown as the 'shelter' status icon)
 //    data: buildType, buildRotation, buildOwner, RECIPES,
 //          structures, player.carriedAmmo
 //    log:  [BUILD ], [PLAYER]
