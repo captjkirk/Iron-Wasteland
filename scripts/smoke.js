@@ -5,6 +5,9 @@
 //      plays PLAY_MS and fails on any console or page error. WebGL-only bugs stay invisible.
 //      Fires wave 1 at the start and fails unless it is awake and closing on the player.
 //      Also fails when textures and object canvases hold more than PIXEL_BUDGET_MB of pixels.
+//      Then spawns each boss beside the knight and fails unless its hitbox fits the drawing and
+//      mirrors, and a knight swing from 20 px outside it, left and right, deals damage and one
+//      from 100 px out does not (#312, #317).
 //      Then jumps to boss days 5 and 10 and fails unless each brings a boss, of two types.
 //      Then lines up three 1-HP enemies in front of the knight and fails unless one swing kills all three.
 //      Then ends the run and types a two-word name on the game over screen (#328).
@@ -63,6 +66,62 @@ async function pass(browser, name, url, run, opts = {}) {
   for (const e of errors) console.error(`::error::${name}: ${e}`);
   if (!errors.length) console.log(`Smoke ${name} OK.`);
   return errors.length;
+}
+
+// Boss hitboxes fit the drawing (#312, #317): each box spans at least 60% of the drawn width and
+// height (the old 84 px square was under half), mirrors when the boss turns, and the knight's
+// sword (range 55, as doAttack swings it) reaches it from 20 px outside, not from 100 px.
+async function bossReach(page) {
+  const keys = ['boss_golem', 'boss_wolf', 'boss_spider', 'boss_troll', 'boss_hydra'];
+  const misses = [];
+  for (const key of keys) {
+    misses.push(...await page.evaluate(key => {
+      const g = _phaserGame.scene.getScene('Game');
+      g.bossSpawned = false; g.spawnBoss(key);
+      const b = g.boss; // stands still and holds its attacks
+      b.speed = 0; b.specialTimer = b.specialInterval = b.attackTimer = b.atkInterval = 1e9;
+      g.p1.hp = g.p1.maxHp = 1e6;
+      g._reachHome = g._reachHome || { x: g.p1.spr.x, y: g.p1.spr.y };
+      const img = g.textures.get(key).getSourceImage(), c = document.createElement('canvas');
+      c.width = img.width; c.height = img.height;
+      const ctx = c.getContext('2d'); ctx.drawImage(img, 0, 0);
+      const a = ctx.getImageData(0, 0, c.width, c.height).data;
+      let x0 = c.width, x1 = -1, y0 = c.height, y1 = -1;
+      for (let y = 0; y < c.height; y++) for (let x = 0; x < c.width; x++) {
+        if (a[(y * c.width + x) * 4 + 3] > 40) { x0 = Math.min(x0, x); x1 = Math.max(x1, x); y0 = Math.min(y0, y); y1 = y; }
+      }
+      const hb = b.hitbox, fit = Math.min(hb.w / (x1 - x0 + 1), hb.h / (y1 - y0 + 1));
+      return fit < 0.6 ? [`${key}: hitbox ${hb.w}x${hb.h} covers only ${Math.round(fit * 100)}% of the ${x1 - x0 + 1}x${y1 - y0 + 1} drawing`] : [];
+    }, key));
+    const offsets = [];
+    for (const side of [-1, 1]) {
+      await page.evaluate(side => { // the boss turns toward the knight and mirrors its box
+        const g = _phaserGame.scene.getScene('Game'), h = g._reachHome;
+        g.boss.spr.body.reset(h.x, h.y);
+        g.p1.spr.body.reset(h.x + side * 300, h.y);
+      }, side);
+      await page.waitForTimeout(300);
+      const r = await page.evaluate(({ key, side }) => {
+        const g = _phaserGame.scene.getScene('Game'), b = g.boss, body = b.spr.body, p = g.p1;
+        // The box's centre from its offset, in texture px off the frame centre. body.center - spr.x
+        // drifts while the big body is pushed off scenery or a hit tween rescales it (#317).
+        const out = [], offset = body.offset.x + b.hitbox.w / 2 - b.spr.width / 2;
+        for (const gap of [100, 20]) {
+          p.spr.setPosition(side < 0 ? body.left - gap : body.right + gap, body.center.y);
+          p.aimAngle = side < 0 ? 0 : Math.PI;
+          const hp = b.hp;
+          g.meleeSwing(p, 55, 0xdddddd, 0.18, 0);
+          if ((b.hp < hp) !== (gap === 20)) out.push(`${key}: swing ${gap} px ${side < 0 ? 'left' : 'right'} of the hitbox ${b.hp < hp ? 'hit' : 'missed'}`);
+        }
+        return { out, offset };
+      }, { key, side });
+      misses.push(...r.out); offsets.push(r.offset);
+    }
+    if (Math.abs(offsets[0] + offsets[1]) > 1) misses.push(`${key}: hitbox does not mirror (centre ${offsets.map(o => o.toFixed(1)).join(' vs ')} texture px off the sprite centre)`);
+    await page.evaluate(() => { const g = _phaserGame.scene.getScene('Game'); g.killEnemy(g.boss); });
+  }
+  if (misses.length) throw new Error(misses.join('; '));
+  console.log(`in play: ${keys.length} boss hitboxes fit, mirror, and the knight reaches them from 20 px out, not 100 px`);
 }
 
 (async () => {
@@ -156,6 +215,7 @@ async function pass(browser, name, url, run, opts = {}) {
     const mb = Math.round(px * 4 / 1e6);
     console.log(`in play: ${mb} MB of pixel memory (budget ${PIXEL_BUDGET_MB} MB)`);
     if (mb > PIXEL_BUDGET_MB) throw new Error(`pixel memory ${mb} MB is over the ${PIXEL_BUDGET_MB} MB budget`);
+    await bossReach(page);
     // Boss days (#329): the day-5 boss spawns, dies, and day 10 brings a second boss of
     // another type. The day is set directly; the day-10 roll is forced to 100%.
     const bosses = [];
