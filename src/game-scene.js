@@ -497,6 +497,7 @@ class GameScene extends Phaser.Scene {
                 this.time.delayedCall(9200, () => this.startTutorial());
 
                 this._worldReady = true;
+                this._debugBossFromUrl();
                 this._log('World init: READY  display objects=' + this.children.length, 'world');
                 this.showStartupControls();
               });
@@ -1578,7 +1579,7 @@ class GameScene extends Phaser.Scene {
     if (this.isOver) return;
     this.isOver = true;
     this._log(`GAME OVER — ${reason}  day=${this.dayNum}  kills=${this.kills||0}  T=${Math.floor(this.timeAlive||0)}s`, 'world');
-    // Auto-download log so players can share/report without remembering to copy
+    // Home play keeps a copy in code/logs/; the global scoreboard gets the log with the score.
     this.time.delayedCall(800, () => this._downloadLog(true));
     // Close controls overlay if it was open when game ended
     if (this.controlsVis && this.ctrlObjs) {
@@ -3868,7 +3869,8 @@ class GameScene extends Phaser.Scene {
     if (this.enemies) {
       this.enemies.forEach(e => {
         if (e.dying) return;
-        const d = Phaser.Math.Distance.Between(player.spr.x, player.spr.y, e.spr.x, e.spr.y);
+        const d = e.isBoss ? this._bossDist(e, player.spr.x, player.spr.y)
+                           : Phaser.Math.Distance.Between(player.spr.x, player.spr.y, e.spr.x, e.spr.y);
         if (d < range + 20) {
           // Check enemy is roughly in facing direction
           const angToE = Phaser.Math.Angle.Between(player.spr.x, player.spr.y, e.spr.x, e.spr.y);
@@ -4225,22 +4227,13 @@ class GameScene extends Phaser.Scene {
     this._dbgTxt.setText([...header, ...entries].join('\n'));
   }
 
-  // Trigger a .txt download of the full session log.
-  // auto=true means the caller is an auto-trigger (game over, crash); those
-  // respect the settings opt-out so fullscreen/kiosk sessions aren't spammed
-  // with a download prompt. Manual calls (G in overlay) always download.
+  // Save the full session log. On a home-network host every call posts it to the dev server's
+  // /save-log (code/logs/, works offline). A manual call (G in the overlay) also downloads it as
+  // a .txt file; auto calls (game over, victory, boss forensics) do not, since the log now rides
+  // with the score to the global scoreboard (GameOverScene._postScore).
   _downloadLog(auto) {
     if (!this._dbgEntries) return;
     const isLAN = /^(localhost|127\.|192\.168\.|10\.|172\.(1[6-9]|2\d|3[01])\.)/.test(location.hostname);
-    if (!isLAN) return;
-    if (auto) {
-      try {
-        if (loadSettings().autoDownloadLog === false) {
-          this._log('auto log download suppressed by setting', 'world');
-          return;
-        }
-      } catch(e) {}
-    }
     const t    = Math.floor(this.timeAlive || 0);
     const mode = `${this.solo ? 'Solo' : '2P'} ${this.hardcore ? 'Hardcore' : 'Survival'}`;
     const p1s  = this.p1 ? `P1 (${this.p1.charData?.id||'?'}): HP ${this.p1.hp}/${this.p1.maxHp}` : '';
@@ -4261,19 +4254,14 @@ class GameScene extends Phaser.Scene {
       `─────────────────────────────────────────`,
       ...this._dbgEntries,
     ].filter(Boolean).join('\n');
-    const blob = new Blob([lines], { type: 'text/plain' });
-    const url  = URL.createObjectURL(blob);
     const ts   = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
     const fname = `iron-wasteland-${ts}.txt`;
-    const a    = Object.assign(document.createElement('a'), {
-      href: url,
-      download: fname,
-    });
-    a.click();
-    URL.revokeObjectURL(url);
-    // Also save to ./logs/ via dev server — same-origin so it works whether served
-    // as localhost, 127.0.0.1, or LAN IP. No-op if running from file:// (no server).
-    if (location.protocol !== 'file:') {
+    if (!auto) {
+      const url = URL.createObjectURL(new Blob([lines], { type: 'text/plain' }));
+      Object.assign(document.createElement('a'), { href: url, download: fname }).click();
+      URL.revokeObjectURL(url);
+    }
+    if (isLAN) {
       const body = JSON.stringify({ filename: fname, content: lines });
       const tryPost = (attempt) => fetch('/save-log', {
         method: 'POST',
@@ -4290,8 +4278,6 @@ class GameScene extends Phaser.Scene {
         console.warn('[save-log] failed after', attempt + 1, 'tries:', e);
       });
       tryPost(0);
-    } else {
-      console.warn('[save-log] skipped — running from file://; run `node server.js` to save logs to disk');
     }
   }
 
