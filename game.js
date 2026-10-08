@@ -45,7 +45,11 @@
 //   src/scenes.js        — All non-gameplay scenes + input helpers
 //                          DEFAULT_BINDINGS, keyDisplayName,
 //                          ControlsScene, BootScene, ModeSelectScene,
-//                          SettingsScene, CharSelectScene
+//                          SettingsScene
+//
+//   src/char-select.js   — CharSelectScene: the character carousel (selected character large in
+//                          the centre, the others dimmed on an arc; keys, drag, scroll or tap turn it)
+//                          _buildWheel, _layoutWheel, _spinTo, _settle, nav, confirm, refresh, _turn
 //
 //   src/game-scene.js    — GameScene: gameplay systems 3, 5-7, 9-16 and 19-23 (see list below)
 //                          Also: GameScene.RECIPES static property (system 8's recipe list)
