@@ -15,3 +15,12 @@ Avoid: bandit, human enemy, NPC.
 **Carousel** — the character screen (`src/char-select.js`): the selected character large in the
 centre with its stats and ability, the others smaller and dimmed on an arc. Keys, a swipe or a tap turn it.
 Avoid: card row, character picker.
+
+**Two cameras** — the world camera (`cameras.main`) draws the map and everything in it; the HUD camera
+(`hudCam`) draws the screen furniture at a fixed zoom. Each object is drawn by one of them.
+Avoid: overlay camera, UI camera.
+
+**Split screen (face-to-face)** — an iPad (short side 600 points or more) in a 2-player touch game: the
+screen is cut into a bottom half for P1 and a top half for P2 turned 180 degrees, with a thin centre strip
+for shared items. Each half has its own world camera, stick zone and attack button.
+Avoid: split view, side by side. Phones keep the left/right layout, called the phone layout.

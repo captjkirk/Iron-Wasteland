@@ -209,12 +209,15 @@
 //     character draws: paintGrid, pixelActorFrames, buildPixelActors
 //                      art in SPRITE_ART[id][front|back|side|fside|bside]; step2 = step legs mirrored
 //
-// 19. INPUT MODES (kbd / gamepad / touch)  (src/scenes.js; getControls in src/textures.js; touch pads in src/touch.js)
+// 19. INPUT MODES (kbd / gamepad / touch)  (src/scenes.js; getControls in src/textures.js; touch pads in src/touch.js; split cameras in src/game-scene.js)
 //     fns:  getControls, activeInputMode, isTouchDevice,
 //           initTouchControls, applyTouchInput, _onTouchDown/Move/Up, _onBtnPress, _drawTouchHUD,
 //           keyDisplayName
 //     data: wasd, p2keys, _pads (one touch pad per player: stick, buttons, the screen area its fingers
-//           land in; 2P touch splits the screen in halves), _joy and _tcBtns (P1's pad)
+//           land in; 2P touch on a phone splits the screen left/right), _joy and _tcBtns (P1's pad),
+//           _split (face-to-face iPad: 2P touch, short side >= 600), cam2 (P2's camera, top half, turned 180)
+//     fns:  _worldCams, _ignoreInWorldCams, _camFx (shake/flash/fade on every world camera), _initSplitCams
+//     cfg:  SPLIT_STRIP, SPLIT_ZOOM
 //
 // 20. DEBUG LOG & PERF  (src/game-scene.js; _qlog in src/constants.js)
 //     fns:  _log, _qlog, _dbgRefresh, _downloadLog, hint
@@ -245,6 +248,9 @@
 //
 // ── COMMON GOTCHAS ───────────────────────────────────────────
 // • Two cameras: new world objects must call hudCam.ignore(obj).
+// • Face-to-face split (_split): there are TWO world cameras (main = P1, cam2 = P2). New HUD objects go
+//   through _h() or _ignoreInWorldCams(); camera shake/flash/fade go through _camFx(); any code that reads
+//   cameras.main.worldView to cull or paint must also look at cam2 (see updateFog, dormant enemies).
 // • Draw order: trees, rocks, mountains, players and enemies are Y-sorted in depth band 9..9.9 via _sortDepth(feetY); keep ground items/structures <= 8 and bullets/bars >= 10.
 // • Water detection uses the _waterMap Uint8Array (index tx + ty*MAP_W), NOT physics overlap.
 // • Enemy dormancy: enemies > DORMANT_RADIUS are physics-disabled and hidden;

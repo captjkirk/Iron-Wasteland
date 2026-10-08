@@ -80,31 +80,54 @@ async function pass(browser, name, url, run, opts = {}) {
     if (mb > PIXEL_BUDGET_MB) throw new Error(`pixel memory ${mb} MB is over the ${PIXEL_BUDGET_MB} MB budget`);
   });
 
-  // 2-player on touch: split touch, one pad per half. Fingers on each half's stick move only that
-  // half's player; fails on any page error or when a player does not move.
-  failures += await pass(browser, '2-player touch', base + '?seed=1&renderer=canvas', async page => {
+  // 2-player on touch. Fingers on each player's stick move only that player; fails on any page error
+  // or when a player does not move the way their stick was dragged.
+  //  - phone (740x390, touch): left/right halves, P1 left and P2 right (#288).
+  //  - tablet (1280x720): face-to-face split, P1 bottom half, P2 top half turned 180 degrees (#387).
+  const twoPlayer = async (page, split) => {
     await page.evaluate(() => {
       saveSettings({ inputMode: 'touch', tutorial: false });
       STATE.mode = 2; STATE.p1CharId = 'knight'; STATE.p2CharId = 'gunslinger'; _phaserGame.scene.start('Game');
     });
     await page.waitForFunction(() => _phaserGame.scene.getScene('Game')._worldReady === true, null, { timeout: 60000 });
     await page.waitForTimeout(1500);
-    const moved = await page.evaluate(async () => {
+    const r = await page.evaluate(async (split) => {
       const g = _phaserGame.scene.getScene('Game'), { W, H } = CFG;
       if (!g._pads || g._pads.length !== 2) throw new Error('no split touch pads');
+      if (g._split !== split) throw new Error(`_split is ${g._split}, expected ${split}`);
       const at = () => [g.p1.spr.x, g.p1.spr.y, g.p2.spr.x, g.p2.spr.y];
       const before = at();
-      // P1's finger drags right on the left half, P2's drags left on the right half, at once.
-      g._onTouchDown({ id: 1, x: W * 0.15, y: H * 0.8 }); g._onTouchDown({ id: 2, x: W * 0.65, y: H * 0.8 });
-      g._onTouchMove({ id: 1, x: W * 0.15 + 60, y: H * 0.8 }); g._onTouchMove({ id: 2, x: W * 0.65 - 60, y: H * 0.8 });
+      // Both fingers drag screen-right at once. P2's stick zone is top-right in a split.
+      const p2x = split ? W * 0.85 : W * 0.65, p2y = split ? 100 : H * 0.8;
+      g._onTouchDown({ id: 1, x: W * 0.15, y: H * 0.8 }); g._onTouchDown({ id: 2, x: p2x, y: p2y });
+      g._onTouchMove({ id: 1, x: W * 0.15 + 60, y: H * 0.8 });
+      g._onTouchMove({ id: 2, x: p2x + (split ? 60 : -60), y: p2y });
       await new Promise(r => setTimeout(r, 700));
       g._onTouchUp({ id: 1 }); g._onTouchUp({ id: 2 });
       const after = at();
-      return { p1: after[0] - before[0], p2: after[2] - before[2] };
-    });
-    console.log(`2-player touch: P1 moved ${Math.round(moved.p1)} px, P2 moved ${Math.round(moved.p2)} px`);
-    if (!(moved.p1 > 5 && moved.p2 < -5)) throw new Error('a player did not move the way their half was dragged');
-  });
+      const cams = split && {
+        count: g._worldCams().length, H, rot: g.cam2.rotation,
+        h1: g.cameras.main.height, y1: g.cameras.main.y, h2: g.cam2.height, y2: g.cam2.y,
+        d1: Math.hypot(g.cameras.main.midPoint.x - g.p1.spr.x, g.cameras.main.midPoint.y - g.p1.spr.y),
+        d2: Math.hypot(g.cam2.midPoint.x - g.p2.spr.x, g.cam2.midPoint.y - g.p2.spr.y),
+      };
+      return { p1: after[0] - before[0], p2: after[2] - before[2], cams };
+    }, split);
+    console.log(`2-player touch (${split ? 'split' : 'phone'}): P1 moved ${Math.round(r.p1)} px, P2 moved ${Math.round(r.p2)} px`);
+    // Phone: P2's finger dragged left. Split: P2's finger dragged screen-right, but P2's view is turned
+    // around, so P2 walks world-left. Either way P1 goes right and P2 goes left.
+    if (!(r.p1 > 5 && r.p2 < -5)) throw new Error('a player did not move the way their half was dragged');
+    if (split) {
+      const c = r.cams;
+      if (c.count !== 2 || Math.abs(c.rot - Math.PI) > 1e-6) throw new Error('P2 has no camera turned 180 degrees');
+      if (!(c.y1 > c.y2 && c.h1 === c.h2 && c.h1 < c.H / 2)) throw new Error('the halves are not top and bottom with a strip between');
+      if (c.d1 > 60 || c.d2 > 60) throw new Error(`a half is not centred on its player (off by ${Math.round(c.d1)}, ${Math.round(c.d2)} px)`);
+    }
+  };
+  failures += await pass(browser, '2-player touch, phone', base + '?seed=1&renderer=canvas',
+    page => twoPlayer(page, false), { viewport: { width: 740, height: 390 }, hasTouch: true });
+  failures += await pass(browser, '2-player touch, tablet split', base + '?seed=1&renderer=canvas',
+    page => twoPlayer(page, true));
 
   await browser.close();
   process.exit(failures ? 1 : 0);

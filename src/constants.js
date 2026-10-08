@@ -34,6 +34,8 @@ const CFG = {
   MAP_W: 300, MAP_H: 300,
   SAFE_R: 10,
   CAM_ZOOM_MAX: 1.0,
+  SPLIT_STRIP: 48,  // face-to-face iPad: shared strip between the two halves (#387)
+  SPLIT_ZOOM: 0.8,  // each half's camera zoom
   CAM_ZOOM_MIN: _isMobile ? 0.15 : 0.25, // mobile: show more world at min zoom
   CAM_PAD: _isMobile ? 115 : 230,        // mobile: tighter 2-player framing
   TREES: 400,

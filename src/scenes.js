@@ -840,7 +840,7 @@ class SettingsScene extends Phaser.Scene {
           this.scene.stop('Settings');
           this.scene.resume('Game');
           if (gameScene && gameScene.cameras && gameScene.cameras.main) {
-            gameScene.cameras.main.fadeIn(300, 0, 0, 0);
+            gameScene._camFx('fadeIn', [300, 0, 0, 0]);
           }
         } else {
           this.scene.start('ModeSelect');

@@ -5,6 +5,8 @@
 // belongs to the pad whose area it landed in. 1 player: one pad over the whole screen (stick on
 // the left, five buttons on the right). 2 players on a touch device: each half of the screen is
 // one player's pad, P1 left and P2 right, each with a stick and a big attack button.
+// Face-to-face (this._split, #387): P1's pad is the bottom half, P2's the top half turned 180 degrees,
+// so P2's stick zone and button sit at the top-right and top-left, and P2's stick vector is flipped.
 // this._joy and this._tcBtns stay P1's stick and buttons (the craft menu and harvesting read them).
 
 Object.assign(GameScene.prototype, {
@@ -22,7 +24,7 @@ Object.assign(GameScene.prototype, {
       // Layout: ATK bottom-right, ALT above ATK, USE left of ATK, BLD left of ALT, MENU top-right.
       // The stick takes the left 45% of the screen, bottom 55%.
       this._pads = [{
-        who: 'p1', x0: 0, x1: W, joy: stick(), hintX: W * 0.12,
+        who: 'p1', x0: 0, x1: W, y0: 0, y1: H, joy: stick(), hintX: W * 0.12, hintY: H * 0.82,
         stickZone: (px, py) => px < W * 0.45 && py > H * 0.35,
         btns: {
           attack:   btn(W - 100, H - 100, 52, 0xff6644, '⚔ ATK'),
@@ -32,12 +34,25 @@ Object.assign(GameScene.prototype, {
           menu:     btn(W - 32,  32,      28, 0x888888, '☰'),
         },
       }];
+    } else if (this._split) {
+      const halfH = (H - CFG.SPLIT_STRIP) / 2;
+      this._pads = [0, 1].map(i => {
+        // P1: bottom half, stick in its left 30%, lower 65%, ATK bottom-right. P2: the same turned 180.
+        const y0 = i ? 0 : H - halfH, y1 = y0 + halfH;
+        return {
+          who: i ? 'p2' : 'p1', x0: 0, x1: W, y0, y1, joy: stick(), flip: !!i,
+          hintX: i ? W * 0.88 : W * 0.12, hintY: i ? y0 + 70 : y1 - 70,
+          stickZone: i ? (px, py) => px > W * 0.7 && py < y0 + halfH * 0.65
+                       : (px, py) => px < W * 0.3 && py > y0 + halfH * 0.35,
+          btns: { attack: btn(i ? 100 : W - 100, i ? y0 + 80 : y1 - 80, 56, i ? 0xff8844 : 0x4488ff, '⚔ ATK') },
+        };
+      });
     } else {
       // Each half: the stick in its left 60%, bottom 55%; ATK at its bottom-right corner.
       this._pads = [0, 1].map(i => {
         const x0 = i * W / 2, x1 = x0 + W / 2;
         return {
-          who: i ? 'p2' : 'p1', x0, x1, joy: stick(), hintX: x0 + W * 0.12,
+          who: i ? 'p2' : 'p1', x0, x1, y0: 0, y1: H, joy: stick(), hintX: x0 + W * 0.12, hintY: H * 0.82,
           stickZone: (px, py) => px < x0 + W * 0.3 && py > H * 0.35,
           btns: { attack: btn(x1 - 100, H - 100, 56, i ? 0xff8844 : 0x4488ff, '⚔ ATK') },
         };
@@ -55,7 +70,7 @@ Object.assign(GameScene.prototype, {
       this._h(this.add.text(b.hx, b.hy, b.label, {
         fontFamily: 'monospace', fontSize: name === 'attack' ? '11px' : '9px',
         color: '#ffffff', stroke: '#000', strokeThickness: 2,
-      }).setOrigin(0.5).setDepth(151));
+      }).setOrigin(0.5).setDepth(151).setAngle(pad.flip ? 180 : 0));
     }
 
     // Remove before re-adding to prevent listener accumulation on scene restart
@@ -80,7 +95,7 @@ Object.assign(GameScene.prototype, {
       if (px >= PX && px <= PX + PW && py >= PY && py <= PY + PH) return;
     }
 
-    const pad = this._pads.find(p => px >= p.x0 && px < p.x1);
+    const pad = this._pads.find(p => px >= p.x0 && px < p.x1 && py >= p.y0 && py < p.y1);
     if (!pad) return;
     const joy = pad.joy;
     if (pad.stickZone(px, py) && !joy.active) {
@@ -117,9 +132,9 @@ Object.assign(GameScene.prototype, {
       joy.knobX = pointer.x;
       joy.knobY = pointer.y;
     }
-    const clamped = Math.min(dist, r);
-    joy.vec.x = (dx/Math.max(dist,1)) * (clamped/r);
-    joy.vec.y = (dy/Math.max(dist,1)) * (clamped/r);
+    const clamped = Math.min(dist, r), sg = pad.flip ? -1 : 1; // P2's view is turned 180 degrees
+    joy.vec.x = sg * (dx/Math.max(dist,1)) * (clamped/r);
+    joy.vec.y = sg * (dy/Math.max(dist,1)) * (clamped/r);
   },
 
   _onTouchUp(pointer) {
@@ -206,8 +221,7 @@ Object.assign(GameScene.prototype, {
     this._tcHudHash = hash;
     gfx.clear();
 
-    const { H } = CFG;
-    for (const { joy, btns, hintX } of this._pads) {
+    for (const { joy, btns, hintX, hintY } of this._pads) {
       if (joy.active) {
         // Base ring
         gfx.lineStyle(2, 0xffffff, 0.35);
@@ -222,9 +236,9 @@ Object.assign(GameScene.prototype, {
       } else {
         // Hint ring — very faint, shows where joystick zone is
         gfx.lineStyle(1, 0xffffff, 0.1);
-        gfx.strokeCircle(hintX, H * 0.82, 55);
+        gfx.strokeCircle(hintX, hintY, 55);
         gfx.fillStyle(0xffffff, 0.03);
-        gfx.fillCircle(hintX, H * 0.82, 55);
+        gfx.fillCircle(hintX, hintY, 55);
       }
 
       // Action buttons
