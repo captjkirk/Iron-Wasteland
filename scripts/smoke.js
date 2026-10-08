@@ -345,6 +345,33 @@ async function bossReach(page) {
     }, { viewport: vp, hasTouch: true });
   }
 
+  // Touch USE button (#397): on a phone the keyboard key is never pressed, so the relic hold must
+  // read the USE button. Player 1 stands next to a relic and holds it; fails unless the hold starts
+  // and, 3.5 s later, the relic is picked up.
+  failures += await pass(browser, 'touch relic pickup', base + '?seed=1&renderer=canvas', async page => {
+    await page.evaluate(() => {
+      saveSettings({ inputMode: 'touch', tutorial: false });
+      STATE.mode = 1; STATE.p1CharId = 'knight'; _phaserGame.scene.start('Game');
+    });
+    await page.waitForFunction(() => _phaserGame.scene.getScene('Game')._worldReady === true, null, { timeout: 60000 });
+    await page.waitForTimeout(1500);
+    const started = await page.evaluate(async () => {
+      const g = _phaserGame.scene.getScene('Game'), r = g._relicPOIs[0];
+      if (!r) throw new Error('no relic in this seed');
+      g.p1.spr.setPosition(r.x + 10, r.y); g.p1.spr.setVelocity(0, 0);
+      // Enemies guard relics and a hit cancels the hold, so keep the area clear for the test.
+      window._clearRelicArea = setInterval(() => { for (const e of g.enemies.slice()) if (Math.hypot(e.spr.x - r.x, e.spr.y - r.y) < 500) g._hurtEnemy(e, 1e6); }, 150);
+      g._tcBtns.interact.down = true;
+      await new Promise(res => setTimeout(res, 600));
+      return g._relicChannels.size;
+    });
+    if (started !== 1) throw new Error(`holding touch USE next to a relic started ${started} holds, wanted 1`);
+    await page.waitForTimeout(3500);
+    const after = await page.evaluate(() => { const g = _phaserGame.scene.getScene('Game'); clearInterval(window._clearRelicArea); g._tcBtns.interact.down = false; return g.relicsHeld; });
+    if (after !== 1) throw new Error(`relicsHeld is ${after} after a 3.5 s touch USE hold, wanted 1`);
+    console.log('touch relic pickup: hold started and the relic was picked up');
+  }, { viewport: { width: 874, height: 402 }, hasTouch: true });
+
   await browser.close();
   process.exit(failures ? 1 : 0);
 })();
