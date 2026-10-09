@@ -41,6 +41,9 @@ const _screenAspect = (() => {
   } catch (e) { return 16 / 9; }
 })();
 
+// The phone layout: the menus and the HUD use their own coordinates on a canvas 360 high (GLOSSARY.md).
+const PHONE_LAYOUT = _isMobile;
+
 const CFG = {
   H: _isMobile ? 360 : 720, W: Math.round((_isMobile ? 360 : 720) * _screenAspect),
   TILE: 32,

@@ -33,6 +33,8 @@ class CharSelectScene extends Phaser.Scene {
     this.add.graphics().fillStyle(0x0a0a14).fillRect(0, 0, W, H);
 
     const S = this._S = Math.min(W / 1280, H / 720);
+    // On a touch phone the prompts name swipes and taps, not keys (the phone layout, GLOSSARY.md).
+    const touchUI = this._touchUI = PHONE_LAYOUT && activeInputMode() === 'touch';
     const modeLabel = STATE.difficulty === 'hardcore' ? '  ☠ HARDCORE' : '  ♥ SURVIVAL';
     this.add.text(W/2, 34, 'SELECT YOUR SURVIVOR' + (this.solo ? '' : 'S') + modeLabel, {
       fontFamily:'monospace', fontSize: Math.max(14, Math.round(24*S)) + 'px',
@@ -40,7 +42,8 @@ class CharSelectScene extends Phaser.Scene {
       stroke:'#000', strokeThickness:3,
     }).setOrigin(0.5);
 
-    const hint = this.solo ? 'Swipe or ◀ ▶ to turn  —  tap the centre or F to choose'
+    const hint = touchUI ? 'Swipe to turn  —  tap the centre to choose'
+               : this.solo ? 'Swipe or ◀ ▶ to turn  —  tap the centre or F to choose'
                            : 'P1: A/D + F   |   P2: Arrows + /   |   or swipe and tap';
     this.add.text(W/2, 66, hint, {
       fontFamily:'monospace', fontSize: Math.max(11, Math.round(13*S)) + 'px', color:'#666677',
@@ -48,15 +51,15 @@ class CharSelectScene extends Phaser.Scene {
 
     this._buildWheel(S);
 
-    this.statusText = this.add.text(W/2, H-36, '', {
+    this.statusText = this.add.text(W/2, PHONE_LAYOUT ? H-17 : H-36, '', {
       fontFamily:'monospace', fontSize: Math.max(11, Math.round(14*S)) + 'px', color:'#aaaaaa',
     }).setOrigin(0.5);
 
     // Tutorial toggle checkbox — bottom-center, unobtrusive
     this._charSelTutOn = loadSettings().tutorial !== false;
-    this._tutCheckTxt = this.add.text(W/2, H - 64, '', {
+    this._tutCheckTxt = this.add.text(W/2, PHONE_LAYOUT ? H - 47 : H - 64, '', {
       fontFamily:'monospace', fontSize: Math.max(11, Math.round(11*S)) + 'px', color:'#557755',
-      stroke:'#000', strokeThickness:1,
+      stroke:'#000', strokeThickness:1, padding: PHONE_LAYOUT ? { x:10, y:10 } : undefined,
     }).setOrigin(0.5).setInteractive({ useHandCursor: true });
     this._tutCheckTxt.on('pointerover', () => this._tutCheckTxt.setStyle({ color:'#88cc88' }));
     this._tutCheckTxt.on('pointerout',  () => this._tutCheckTxt.setStyle({ color:'#557755' }));
@@ -131,7 +134,10 @@ class CharSelectScene extends Phaser.Scene {
     const backBtn = this.add.text(backBtnPad.x + 10, backBtnPad.y + 8, '← MAIN MENU', {
       fontFamily:'monospace', fontSize: Math.max(13, Math.round(17*S)) + 'px', color:'#cc8833',
       stroke:'#000', strokeThickness:2,
-    }).setOrigin(0, 0).setInteractive({ useHandCursor: true });
+    }).setOrigin(0, 0);
+    // The whole drawn button takes the tap, not just its text.
+    const backZone = this.add.zone(backBtnPad.x, backBtnPad.y, backBtn.width + 20, backBtn.height + 16)
+      .setOrigin(0, 0).setInteractive({ useHandCursor: true });
     const drawBackBg = (hover) => {
       backBtnBg.clear();
       backBtnBg.fillStyle(hover ? 0x1a1208 : 0x100c06, 0.9);
@@ -140,9 +146,9 @@ class CharSelectScene extends Phaser.Scene {
       backBtnBg.strokeRoundedRect(backBtnPad.x, backBtnPad.y, backBtn.width + 20, backBtn.height + 16, 6);
     };
     drawBackBg(false);
-    backBtn.on('pointerover', () => { backBtn.setColor('#ffcc44'); drawBackBg(true); });
-    backBtn.on('pointerout',  () => { backBtn.setColor('#cc8833'); drawBackBg(false); });
-    backBtn.on('pointerdown', () => goBack());
+    backZone.on('pointerover', () => { backBtn.setColor('#ffcc44'); drawBackBg(true); });
+    backZone.on('pointerout',  () => { backBtn.setColor('#cc8833'); drawBackBg(false); });
+    backZone.on('pointerdown', () => goBack());
     const goBack = () => {
       this.cameras.main.fadeOut(200, 0, 0, 0);
       this.time.delayedCall(200, () => this.scene.start('ModeSelect'));
@@ -180,7 +186,7 @@ class CharSelectScene extends Phaser.Scene {
     this._nameT = this.add.text(W/2, y, '', {
       fontFamily:'monospace', fontSize: Math.max(14, sc(26)) + 'px', stroke:'#000', strokeThickness:3,
     }).setOrigin(0.5, 0);
-    y += Math.max(15, sc(32));
+    y += Math.max(PHONE_LAYOUT ? 21 : 15, sc(32));
     this._titleT = this.add.text(W/2, y, '', { fontFamily:'monospace', fontSize: fs(14), color:'#8888a0' }).setOrigin(0.5, 0);
     y += rowH(28);
     const statX = W/2 - Math.max(70, sc(100));
@@ -245,7 +251,7 @@ class CharSelectScene extends Phaser.Scene {
       this.p1Done = true; STATE.p1CharId = CHARS[this.p1Idx].id;
       if (this.solo) { this.statusText.setText('Get ready…'); this.go(); return; }
       if (this.p2Idx===this.p1Idx) this.p2Idx = Phaser.Math.Wrap(this.p1Idx+1, 0, CHARS.length);
-      this.statusText.setText('Now Player 2 — Arrows to pick, / to confirm');
+      this.statusText.setText(this._touchUI ? 'Now Player 2 — swipe, then tap the centre' : 'Now Player 2 — Arrows to pick, / to confirm');
     }
     if (player===2 && this.p1Done && !this.p2Done && !this.solo) {
       this.p2Done = true; STATE.p2CharId = CHARS[this.p2Idx].id;
@@ -272,6 +278,6 @@ class CharSelectScene extends Phaser.Scene {
     this._stats.forEach((bars, si) => bars.forEach((bar, b) => bar.setFillStyle(b < ch.stats[si] ? ch.color : 0x222233)));
     this._descT.setText(ch.desc.join('\n'));
     this._spinTo(idx);
-    if (!this.p1Done) this.statusText.setText(this.solo ? '' : 'Player 1 — A/D to choose, F to confirm');
+    if (!this.p1Done) this.statusText.setText(this.solo ? '' : this._touchUI ? 'Player 1 — swipe, then tap the centre' : 'Player 1 — A/D to choose, F to confirm');
   }
 }

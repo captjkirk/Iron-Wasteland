@@ -48,6 +48,10 @@
 //                          ControlsScene, BootScene, ModeSelectScene,
 //                          SettingsScene
 //
+//   src/settings-phone.js — SettingsScene in the phone layout (PHONE_LAYOUT, canvas 360 high):
+//                          _createPhone, _phoneControlsList. The menus' other phone coordinates
+//                          sit beside the desktop ones in their scenes (the L tables).
+//
 //   src/char-select.js   — CharSelectScene: the character carousel (selected character large in
 //                          the centre, the others dimmed on an arc; keys, drag, scroll or tap turn it)
 //                          _buildWheel, _layoutWheel, _spinTo, _settle, nav, confirm, refresh, _turn
@@ -251,6 +255,10 @@
 //     cfg:  TUT_AUTO_ADVANCE_MS
 //     data: _tutShown
 //     tips are hint() calls with a title; hint(text, dur, {urgent}) jumps the queue
+//     touch: no startup controls popup (showStartupControls), no TAB hint, tutorial starts at 1.5 s.
+//     phone layout: the banner is small, at the bottom centre (1P) or top left (2P), clear of the
+//             player and the controls; each tip has a shorter `phone` text (_tutTrigger). smoke.js
+//             ("phone tips") fails when a banner covers a player, button, radar or the day panel.
 //
 // 22. GAME OVER / VICTORY  (src/game-scene.js; GameOverScene in src/game-over.js)
 //     fns:  triggerGameOver, _triggerVictory, checkBothDead, handleDeath
@@ -269,6 +277,10 @@
 // 23. SETTINGS / SAVE  (src/scenes.js; toggleSleep in src/game-scene.js)
 //     fns:  loadSettings, saveSettings, toggleSleep
 //     data: STATE (mode/difficulty), persisted via localStorage
+//     phone menus: PHONE_LAYOUT (src/constants.js) picks the phone coordinates in ModeSelect,
+//             Controls, CharSelect, GameOver (its P table) and Settings (_createPhone, src/settings-phone.js).
+//             scripts/phone-menus.js (run by smoke.js) fails on overlap, off-canvas and tap
+//             targets under 32 px at five phone sizes. A new menu scene or control goes in its MENUS.
 //
 // 24. TRACKS (boot prints)  (src/tracks.js; table in CFG.TRACKS in src/constants.js)
 //     Players and raiders leave alternating left/right boot prints; animals do not. The ground
