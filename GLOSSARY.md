@@ -30,3 +30,12 @@ Avoid: split view, side by side. Phones keep the left/right layout with nothing 
 **Wave marcher** — wildlife a wave spawns (`_waveMarch`, #330): it appears off-screen 900–1,300 px
 from a player and walks in, awake, until it first reaches someone; then it is ordinary wildlife.
 Avoid: wave spawn, edge spawn, attacker.
+
+**Phone layout** — the layout for a touch screen whose short side is under 600 points (`PHONE_LAYOUT`): a canvas 360 high
+and 640 to 864 wide, with its own coordinates in the title screen, settings, rebind and character screens. An iPad is not
+the phone layout; it gets the 720-high canvas.
+Avoid: mobile layout, compact layout, small screen.
+
+**Tap target** — anything on a menu that takes a tap: a button, a box, a slider or a tap zone (an invisible `Zone` laid over a
+drawn box). On the phone layout each is at least 32 px either way, and no two overlap (`scripts/phone-menus.js`).
+Avoid: hit area, hit box, click zone.

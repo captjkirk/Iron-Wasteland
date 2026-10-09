@@ -14,12 +14,15 @@
 //      Then lines up three 1-HP enemies in front of the knight and fails unless one swing kills all three.
 //      Then ends the run and types a two-word name on the game over screen (#328).
 //      Also, on an iPad-sized touch screen (1180x820), fails unless every inventory icon and number has a real position above the fog (#414).
+//   Phone menus: on five phone screens, fails on any overlap, off-canvas object or tap target under
+//      32 px in the title screen, settings, rebind and character screens (scripts/phone-menus.js).
 //   3. Hardcore: the same start with STATE.difficulty = 'hardcore'; fails unless timeAlive
 //      advances over HARDCORE_MS of play. Hardcore's own multipliers once froze the tab (#327).
 // Every in-game page call goes through `ask`, so a hung main thread fails the run, not stalls it.
 const { webkit } = require('playwright');
 process.env.PORT = '0'; // any free port, so a running `npm run serve` is no obstacle
 const server = require('../server.js');
+const { checkPhoneMenus, PHONE_SIZES } = require('./phone-menus.js');
 const PLAY_MS = 10000;
 const WALK_MS = 3000; // spent walking east before the wave check
 const PIXEL_BUDGET_MB = 64; // RGBA bytes; an iPhone tab dies well short of 1 GB in total
@@ -136,6 +139,12 @@ async function bossReach(page) {
   let failures = 0;
 
   failures += await pass(browser, 'title screen', base, async () => {});
+
+  // Every menu on a phone: nothing overlaps or leaves the canvas, every tap target is big enough.
+  for (const [w, h] of PHONE_SIZES) {
+    failures += await pass(browser, `phone menus ${w}x${h}`, base, page => checkPhoneMenus(page, `${w}x${h}`),
+      { viewport: { width: w, height: h }, hasTouch: true, isMobile: true, deviceScaleFactor: 2 });
+  }
 
   // Character screen at both layouts: 1280x720, and the 640x360 phone layout (a touch device
   // whose short side is under 600 px). Turns the wheel both ways and fails on any page error.

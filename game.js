@@ -48,6 +48,10 @@
 //                          ControlsScene, BootScene, ModeSelectScene,
 //                          SettingsScene
 //
+//   src/settings-phone.js — SettingsScene in the phone layout (PHONE_LAYOUT, canvas 360 high):
+//                          _createPhone, _phoneControlsList. The menus' other phone coordinates
+//                          sit beside the desktop ones in their scenes (the L tables).
+//
 //   src/char-select.js   — CharSelectScene: the character carousel (selected character large in
 //                          the centre, the others dimmed on an arc; keys, drag, scroll or tap turn it)
 //                          _buildWheel, _layoutWheel, _spinTo, _settle, nav, confirm, refresh, _turn
@@ -269,6 +273,10 @@
 // 23. SETTINGS / SAVE  (src/scenes.js; toggleSleep in src/game-scene.js)
 //     fns:  loadSettings, saveSettings, toggleSleep
 //     data: STATE (mode/difficulty), persisted via localStorage
+//     phone menus: PHONE_LAYOUT (src/constants.js) picks the phone coordinates in ModeSelect,
+//             Controls, CharSelect and Settings (_createPhone, src/settings-phone.js).
+//             scripts/phone-menus.js (run by smoke.js) fails on overlap, off-canvas and tap
+//             targets under 32 px at five phone sizes. A new menu scene or control goes in its MENUS.
 //
 // 24. TRACKS (boot prints)  (src/tracks.js; table in CFG.TRACKS in src/constants.js)
 //     Players and raiders leave alternating left/right boot prints; animals do not. The ground
