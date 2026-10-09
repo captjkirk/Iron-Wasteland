@@ -255,6 +255,9 @@
 //     cfg:  TUT_AUTO_ADVANCE_MS
 //     data: _tutShown
 //     tips are hint() calls with a title; hint(text, dur, {urgent}) jumps the queue
+//     phone layout: the banner is small, at the bottom centre (1P) or top left (2P), clear of the
+//             player and the controls; each tip has a shorter `phone` text (_tutTrigger). smoke.js
+//             ("phone tips") fails when a banner covers a player, button, radar or the day panel.
 //
 // 22. GAME OVER / VICTORY  (src/game-scene.js; GameOverScene in src/game-over.js)
 //     fns:  triggerGameOver, _triggerVictory, checkBothDead, handleDeath
@@ -274,7 +277,7 @@
 //     fns:  loadSettings, saveSettings, toggleSleep
 //     data: STATE (mode/difficulty), persisted via localStorage
 //     phone menus: PHONE_LAYOUT (src/constants.js) picks the phone coordinates in ModeSelect,
-//             Controls, CharSelect and Settings (_createPhone, src/settings-phone.js).
+//             Controls, CharSelect, GameOver (its P table) and Settings (_createPhone, src/settings-phone.js).
 //             scripts/phone-menus.js (run by smoke.js) fails on overlap, off-canvas and tap
 //             targets under 32 px at five phone sizes. A new menu scene or control goes in its MENUS.
 //

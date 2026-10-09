@@ -2234,34 +2234,48 @@ class GameScene extends Phaser.Scene {
     if (this._activeHint && this._activeHint.active) return;
     if (!this._hintQueue || this._hintQueue.length === 0) return;
     const { text, duration, title } = this._hintQueue.shift();
-    const { W } = CFG;
-    const P = this._layout1p(); // phone, 1 player: 80% size, 75% solid (#388)
+    const { W, H } = CFG;
+    const ph = PHONE_LAYOUT;
+    const P = ph ? null : this._layout1p(); // iPad, 1 player touch: 80% size, 75% solid (#388)
     const k = P ? P.tipScale : 1, sol = P ? P.tipSolid : 1;
-    const PW = 560 * k, PH = (title ? 88 : 46) * k, PX = (W - PW) / 2, PY = 108;
+    // Phone layout: a small banner clear of the player and of every control (the old one sat 108 px
+    // down, on top of the player). 1 player: bottom centre, between the stick and the buttons, growing
+    // upward. 2 players: top left, where nothing sits but the name; the bottom is all controls.
+    // The body is created first so its wrapped height can size the box.
+    const corner = ph && !this.solo;
+    // Widths: 1 player, the gap between the stick and the buttons (220 at W 640); 2 players, the room left of the day panel.
+    const PW = corner ? Math.min(250, W / 2 - 115) : ph ? Math.max(220, Math.min(360, W - 420)) : 560 * k;
+    const body = this.add.text(W / 2, 0, text, {
+      fontFamily:'monospace', fontSize:(ph ? 11 : 15 * k) + 'px', color:'#ccdfc8',
+      stroke:'#000', strokeThickness: ph ? 1 : 2,
+      wordWrap:{ width: PW - (ph ? 20 : 32 * k) }, align: ph ? 'center' : 'left',
+    });
+    const head = title ? this.add.text(W / 2, 0, title, {
+      fontFamily:'monospace', fontSize:(ph ? 12 : 18 * k) + 'px', color:'#aadd88',
+      stroke:'#000', strokeThickness: ph ? 2 : 3,
+    }) : null;
+    const PH = ph ? 8 + (head ? head.height + 2 : 0) + body.height + 8 : (title ? 88 : 46) * k;
+    const PX = corner ? 10 : (W - PW) / 2, PY = corner ? 40 : ph ? H - 10 - PH : 108, cx = PX + PW / 2;
+    this._hintRect = { x: PX, y: PY, w: PW, h: PH }; // read by the smoke run (phone tips stay clear of the player)
 
     const bg = this.add.graphics().setDepth(160).setAlpha(0);
-    bg.fillStyle(0x050d05, P ? 1 : 0.88);
+    bg.fillStyle(0x050d05, P ? 1 : ph ? 0.8 : 0.88);
     bg.fillRoundedRect(PX, PY, PW, PH, 8);
     bg.lineStyle(2, 0x4a7a38, 0.80);
     bg.strokeRoundedRect(PX, PY, PW, PH, 8);
     this._ignoreInWorldCams(bg);
 
-    const h = this.add.text(W / 2, title ? PY + 56 * k : PY + PH / 2, text, {
-      fontFamily:'monospace', fontSize:(15 * k) + 'px', color:'#ccdfc8',
-      stroke:'#000', strokeThickness:2,
-      wordWrap:{ width: PW - 32 * k },
-    }).setOrigin(0.5).setDepth(161).setAlpha(0);
+    const h = body.setOrigin(0.5, ph ? 1 : 0.5).setDepth(161).setAlpha(0).setX(cx);
+    if (ph) h.setY(PY + PH - 8);
+    else h.setY(title ? PY + 56 * k : PY + PH / 2);
     this._ignoreInWorldCams(h);
     h._hintText = text;
     h._isTip = !!title;
     const parts = [bg, h];
-    if (title) {
-      const t = this.add.text(W / 2, PY + 16 * k, title, {
-        fontFamily:'monospace', fontSize:(18 * k) + 'px', color:'#aadd88',
-        stroke:'#000', strokeThickness:3,
-      }).setOrigin(0.5).setDepth(161).setAlpha(0);
-      this._ignoreInWorldCams(t);
-      parts.push(t);
+    if (head) {
+      head.setOrigin(0.5, ph ? 0 : 0.5).setDepth(161).setAlpha(0).setX(cx).setY(ph ? PY + 8 : PY + 16 * k);
+      this._ignoreInWorldCams(head);
+      parts.push(head);
     }
     this._activeHint = h;
     this._activeHintBg = bg;
@@ -2343,25 +2357,26 @@ class GameScene extends Phaser.Scene {
     const B = Object.assign({}, DEFAULT_BINDINGS, loadSettings().bindings || {});
     const k = a => keyDisplayName(B[a]);
     const touch = !!this._touchActive;
+    // `phone` is the shorter text for the phone layout's small banner (touch controls only).
     const TIPS = {
-      move:     { title: 'MOVE',          text: touch
+      move:     { title: 'MOVE',          phone: touch && 'Drag the left side of the screen to move.', text: touch
         ? 'Drag the left side of the screen to move.  Explore each biome — grassland, wasteland, swamp, tundra, ruins.'
         : `P1: ${k('p1up')}${k('p1left')}${k('p1down')}${k('p1right')} · P2: ${k('p2up')}${k('p2left')}${k('p2down')}${k('p2right')}.  Explore each biome — grassland, wasteland, swamp, tundra, ruins.` },
-      attack:   { title: 'ATTACK',        text: touch
+      attack:   { title: 'ATTACK',        phone: touch && 'Tap ATK to attack the way you face.', text: touch
         ? 'Tap the ATK button to attack in the direction you are facing.'
         : `P1: ${k('p1attack')} to attack · P2: ${k('p2attack')}.  In 1-player mode: aim with the mouse and left-click to shoot.` },
-      gather:   { title: 'GATHER RESOURCES', text: touch
+      gather:   { title: 'GATHER RESOURCES', phone: touch && 'Hold USE by a tree to chop wood. Crates hold metal, fiber, ammo, food.', text: touch
         ? 'Hold the USE button near a tree to harvest wood.  Open crates for metal, fiber, ammo, and food.'
         : `Hold ${k('p1interact')} (P1) or ${k('p2interact')} (P2) near a tree to harvest wood.  Open crates for metal, fiber, ammo, and food.` },
-      craft:    { title: 'CRAFT & BUILD', text: touch
+      craft:    { title: 'CRAFT & BUILD', phone: touch && 'Tap BLD to open Crafting: walls, campfires, traps and more.', text: touch
         ? 'Tap the BLD button to open the Crafting Menu.  Build walls, campfires, spike traps, and more.'
         : `Press ${k('p1build')} (P1) or ${k('p2build')} (P2) to open the Crafting Menu.  Build walls, campfires, spike traps, and more.` },
-      nightfall:{ title: 'SURVIVE THE NIGHT', text: 'Enemies are stronger after dark.  Build a Bed (needs Craftbench) and sleep to fast-forward the night.' },
-      caches:   { title: 'SUPPLY CACHES', text: 'Each biome hides a Supply Cache — rare loot but guarded by enemies.  Find them before the boss arrives!' },
-      minimap:  { title: 'MINIMAP',       text: 'Top-right minimap shows biome edges, enemies (red dots), and points of interest.  Stay aware!' },
+      nightfall:{ title: 'SURVIVE THE NIGHT', phone: 'Enemies are stronger after dark. Build a Bed and sleep to skip the night.', text: 'Enemies are stronger after dark.  Build a Bed (needs Craftbench) and sleep to fast-forward the night.' },
+      caches:   { title: 'SUPPLY CACHES', phone: 'Each biome hides a guarded Supply Cache with rare loot.', text: 'Each biome hides a Supply Cache — rare loot but guarded by enemies.  Find them before the boss arrives!' },
+      minimap:  { title: 'MINIMAP',       phone: 'The radar shows biome edges and enemies (red dots). Stay aware!', text: 'Top-right minimap shows biome edges, enemies (red dots), and points of interest.  Stay aware!' },
     };
     const step = TIPS[key];
-    if (step) this.hint(step.text, CFG.TUT_AUTO_ADVANCE_MS, { title: step.title });
+    if (step) this.hint(PHONE_LAYOUT && step.phone || step.text, CFG.TUT_AUTO_ADVANCE_MS, { title: step.title });
   }
 
   _endTutorial() {

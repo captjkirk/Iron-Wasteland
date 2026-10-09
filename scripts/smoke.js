@@ -16,6 +16,8 @@
 //      Also, on an iPad-sized touch screen (1180x820), fails unless every inventory icon and number has a real position above the fog (#414).
 //   Phone menus: on five phone screens, fails on any overlap, off-canvas object or tap target under
 //      32 px in the title screen, settings, rebind and character screens (scripts/phone-menus.js).
+//   Phone tips: on a phone, fails when a tutorial tip's banner runs off the screen, is over 90 px tall or
+//      covers a player, the radar, a button or the day panel, in 1 and 2 player games.
 //   3. Hardcore: the same start with STATE.difficulty = 'hardcore'; fails unless timeAlive
 //      advances over HARDCORE_MS of play. Hardcore's own multipliers once froze the tab (#327).
 // Every in-game page call goes through `ask`, so a hung main thread fails the run, not stalls it.
@@ -391,6 +393,51 @@ async function bossReach(page) {
       });
       if (err) throw new Error(err);
     }, { viewport: vp, hasTouch: true });
+  }
+
+  // Tips on a phone: every tutorial tip's banner stays small and clear of the players, the radar, the
+  // buttons and the day panel, in 1 and 2 player games. The tip used to sit 108 px down, on the player.
+  for (const [w, h, mode] of [[640, 360, 1], [844, 390, 1], [640, 360, 2], [844, 390, 2]]) {
+    failures += await pass(browser, `phone tips ${w}x${h} ${mode}P`, base + '?seed=1&renderer=canvas', async page => {
+      await page.evaluate(m => {
+        saveSettings({ inputMode: 'touch', tutorial: false }); // no automatic tips; each is fired below
+        STATE.mode = m; STATE.p1CharId = 'knight'; STATE.p2CharId = 'gunslinger'; _phaserGame.scene.start('Game');
+      }, mode);
+      await page.waitForFunction(() => _phaserGame.scene.getScene('Game')._worldReady === true, null, { timeout: 60000 });
+      await page.waitForTimeout(1500);
+      const bad = [];
+      for (const key of ['move', 'attack', 'gather', 'craft', 'nightfall', 'caches', 'minimap']) {
+        await ask(page, k => { const g = _phaserGame.scene.getScene('Game'); g._tutActive = true; g._tutShown = new Set(); g._tutTrigger(k); }, key);
+        await page.waitForFunction(() => !!_phaserGame.scene.getScene('Game')._activeHint, null, { timeout: 5000 });
+        const err = await ask(page, k => {
+          const g = _phaserGame.scene.getScene('Game'), { W, H } = CFG, r = g._hintRect, bad = [];
+          const cam = g.cameras.main, wv = cam.worldView, z = cam.width / wv.width;
+          const items = [];
+          const circle = (n, c) => items.push({ n, circle: true, ...c });
+          const rd = g.radarCenter; circle('radar', { x: rd.x, y: rd.y, r: rd.r });
+          for (const pad of g._pads) for (const b of Object.values(pad.btns)) if (b.r) circle('a button', { x: b.hx, y: b.hy, r: b.r });
+          for (const [n, q] of Object.entries(g._hudRects)) items.push({ n: n + ' panel', ...q });
+          for (const [n, p] of [['P1', g.p1], ['P2', g.p2]]) {
+            if (!p || !p.spr) continue;
+            const b = p.spr.getBounds();
+            items.push({ n, x: (b.x - wv.x) * z, y: (b.y - wv.y) * z, w: b.width * z, h: b.height * z });
+          }
+          if (r.x < 0 || r.y < 0 || r.x + r.w > W || r.y + r.h > H) bad.push('runs off the screen');
+          if (r.h > 90) bad.push(`is ${Math.round(r.h)} px tall (over 90)`);
+          for (const i of items) {
+            const hit = i.circle
+              ? Math.hypot(i.x - Math.max(r.x, Math.min(i.x, r.x + r.w)), i.y - Math.max(r.y, Math.min(i.y, r.y + r.h))) < i.r
+              : r.x < i.x + i.w && i.x < r.x + r.w && r.y < i.y + i.h && i.y < r.y + r.h;
+            if (hit) bad.push(`covers ${i.n}`);
+          }
+          g._hintTimer?.remove(); g._hintTimer = null; if (g._hintHide) g._hintHide();
+          return bad.length ? `${k} tip ${bad.join(', ')} (box ${Math.round(r.x)},${Math.round(r.y)} ${Math.round(r.w)}x${Math.round(r.h)})` : '';
+        }, key);
+        if (err) bad.push(err);
+        await page.waitForFunction(() => !_phaserGame.scene.getScene('Game')._activeHint, null, { timeout: 5000 });
+      }
+      if (bad.length) throw new Error(bad.join('; '));
+    }, { viewport: { width: w, height: h }, hasTouch: true, isMobile: true });
   }
 
   // iPad inventory (#414): the bottom-left resource panel must sit above the fog and night layers, and
