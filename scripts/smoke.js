@@ -393,6 +393,17 @@ async function bossReach(page) {
         return bad.join('; ');
       });
       if (err) throw new Error(err);
+      // Tapping BLD, even where the open craft menu overlaps it, must close the menu (Jared's phone, Oct 8).
+      const menu = await page.evaluate(() => {
+        const g = _phaserGame.scene.getScene('Game'), { W, H } = CFG, b = g._pads[0].btns.build;
+        g.openCraftMenu(g.p1);
+        const PW = 440, PH = 330, PX = (W - PW) / 2, PY = H - PH - 20;
+        // Tap the part of BLD that lies under the panel's edge, the case that failed on a phone.
+        const x = Math.max(b.hx - b.r * 0.8, PX + PW - 2);
+        g._onTouchDown({ x: Math.min(x, b.hx), y: b.hy, id: 7 });
+        return g.craftMenuOpen ? 'tapping BLD left the craft menu open' : '';
+      });
+      if (menu) throw new Error(menu);
     }, { viewport: vp, hasTouch: true });
   }
 
