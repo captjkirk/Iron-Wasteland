@@ -498,10 +498,11 @@ class GameScene extends Phaser.Scene {
                 // Opening hints (delayed to appear after the startup controls popup fades)
                 const modeNote = this.hardcore ? '\u2620 HARDCORE \u2014 death is permanent!' : '\u2665 SURVIVAL mode';
                 this.time.delayedCall(10000, () => this.hint(modeNote + ' Explore the biomes! Watch your minimap.', 5000));
-                this.time.delayedCall(16500, () => this.hint('TAB for controls  |  Beware toxic swamps and frozen tundra!', 3500));
+                // Touch has no TAB key, and no startup controls popup (below), so the hint goes too.
+                if (activeInputMode() !== 'touch') this.time.delayedCall(16500, () => this.hint('TAB for controls  |  Beware toxic swamps and frozen tundra!', 3500));
 
-                // Tutorial sequence — starts after startup controls dismiss (~9 s)
-                this.time.delayedCall(9200, () => this.startTutorial());
+                // Tutorial sequence — starts after startup controls dismiss (~9 s); at once on touch
+                this.time.delayedCall(activeInputMode() === 'touch' ? 1500 : 9200, () => this.startTutorial());
 
                 this.tracks = new Tracks(this); // boot prints (src/tracks.js)
                 this._worldReady = true;
@@ -518,7 +519,11 @@ class GameScene extends Phaser.Scene {
     }); // end deferred world init
   }
 
+  // The key list over the whole screen at the start of a game. Touch players get no popup: it lists
+  // keys and mouse buttons they do not have, dimmed the screen for 8 s, and only a key press closed
+  // it. Their controls are on screen and the first tips name them.
   showStartupControls() {
+    if (activeInputMode() === 'touch') return;
     const { W, H } = CFG;
     const objs = [];
     const push = o => { objs.push(o); this._h(o); return o; };
@@ -605,6 +610,7 @@ class GameScene extends Phaser.Scene {
     };
     this.time.delayedCall(8000, dismiss);
     this.input.keyboard.once('keydown', dismiss);
+    this.input.once('pointerdown', dismiss); // a click or tap closes it too
   }
 
   // ── FOG OF WAR ────────────────────────────────────────────────
@@ -2310,9 +2316,11 @@ class GameScene extends Phaser.Scene {
       this.tweens.killTweensOf(this._statusTxt);
       this._statusTxt.setText(text).setAlpha(1);
     } else {
-      this._statusTxt = this.add.text(CFG.W / 2, 162, text, {
-        fontFamily:'monospace', fontSize:'15px', color:'#ffffff',
-        stroke:'#000', strokeThickness:3, backgroundColor:'#000000bb', padding:{x:14,y:7},
+      // Phone layout: just under the day panel, not on the player's head (y 162 of 360).
+      const ph = PHONE_LAYOUT;
+      this._statusTxt = this.add.text(CFG.W / 2, ph ? 84 : 162, text, {
+        fontFamily:'monospace', fontSize: ph ? '12px' : '15px', color:'#ffffff',
+        stroke:'#000', strokeThickness: ph ? 2 : 3, backgroundColor:'#000000bb', padding: ph ? {x:10,y:4} : {x:14,y:7},
       }).setOrigin(0.5).setDepth(158).setAlpha(1);
       this._ignoreInWorldCams(this._statusTxt);
     }

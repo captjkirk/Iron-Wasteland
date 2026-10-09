@@ -17,7 +17,8 @@
 //   Phone menus: on five phone screens, fails on any overlap, off-canvas object or tap target under
 //      32 px in the title screen, settings, rebind and character screens (scripts/phone-menus.js).
 //   Phone tips: on a phone, fails when a tutorial tip's banner runs off the screen, is over 90 px tall or
-//      covers a player, the radar, a button or the day panel, in 1 and 2 player games.
+//      covers a player, the radar, a button or the day panel, in 1 and 2 player games, or when the full-screen
+//      startup controls popup shows on a touch phone.
 //   3. Hardcore: the same start with STATE.difficulty = 'hardcore'; fails unless timeAlive
 //      advances over HARDCORE_MS of play. Hardcore's own multipliers once froze the tab (#327).
 // Every in-game page call goes through `ask`, so a hung main thread fails the run, not stalls it.
@@ -406,6 +407,9 @@ async function bossReach(page) {
       await page.waitForFunction(() => _phaserGame.scene.getScene('Game')._worldReady === true, null, { timeout: 60000 });
       await page.waitForTimeout(1500);
       const bad = [];
+      // No full-screen key list at the start of a touch game: it lists keys a phone does not have and dims the screen.
+      const popup = await ask(page, () => _phaserGame.scene.getScene('Game').children.list.filter(o => o.depth === 200 && o.visible && o.alpha > 0).length);
+      if (popup) bad.push(`the startup controls popup is up on a touch phone (${popup} objects)`);
       for (const key of ['move', 'attack', 'gather', 'craft', 'nightfall', 'caches', 'minimap']) {
         await ask(page, k => { const g = _phaserGame.scene.getScene('Game'); g._tutActive = true; g._tutShown = new Set(); g._tutTrigger(k); }, key);
         await page.waitForFunction(() => !!_phaserGame.scene.getScene('Game')._activeHint, null, { timeout: 5000 });

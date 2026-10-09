@@ -255,6 +255,7 @@
 //     cfg:  TUT_AUTO_ADVANCE_MS
 //     data: _tutShown
 //     tips are hint() calls with a title; hint(text, dur, {urgent}) jumps the queue
+//     touch: no startup controls popup (showStartupControls), no TAB hint, tutorial starts at 1.5 s.
 //     phone layout: the banner is small, at the bottom centre (1P) or top left (2P), clear of the
 //             player and the controls; each tip has a shorter `phone` text (_tutTrigger). smoke.js
 //             ("phone tips") fails when a banner covers a player, button, radar or the day panel.
