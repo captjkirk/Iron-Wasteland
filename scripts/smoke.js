@@ -4,7 +4,8 @@
 //      Game scene, so the canvas renderer stands in), starts a solo game, waits for the world,
 //      plays PLAY_MS and fails on any console or page error. WebGL-only bugs stay invisible.
 //      Walks east for the first WALK_MS and fails unless that leaves boot prints, none on water.
-//      Fires wave 1 at the start and fails unless it is awake and closing on the player.
+//      Fires wave 1 at the start and fails unless it is awake and closing on the player, and its
+//      first group is small (night 1 comes in groups, not all at once).
 //      Also fails when textures and object canvases hold more than PIXEL_BUDGET_MB of pixels.
 //      Then spawns each boss beside the knight and fails unless its hitbox fits the drawing and
 //      mirrors, and a knight swing from 20 px outside it, left and right, deals damage and one
@@ -12,16 +13,24 @@
 //      Then jumps to boss days 5 and 10 and fails unless each brings a boss, of two types.
 //      Then lines up three 1-HP enemies in front of the knight and fails unless one swing kills all three.
 //      Then ends the run and types a two-word name on the game over screen (#328).
+//      Also, on an iPad-sized touch screen (1180x820), fails unless every inventory icon and number has a real position above the fog (#414).
+//   Phone menus: on five phone screens, fails on any overlap, off-canvas object or tap target under
+//      32 px in the title screen, settings, rebind and character screens (scripts/phone-menus.js).
+//   Phone tips: on a phone, fails when a tutorial tip's banner runs off the screen, is over 90 px tall or
+//      covers a player, the radar, a button or the day panel, in 1 and 2 player games, or when the full-screen
+//      startup controls popup shows on a touch phone.
 //   3. Hardcore: the same start with STATE.difficulty = 'hardcore'; fails unless timeAlive
 //      advances over HARDCORE_MS of play. Hardcore's own multipliers once froze the tab (#327).
 // Every in-game page call goes through `ask`, so a hung main thread fails the run, not stalls it.
 const { webkit } = require('playwright');
 process.env.PORT = '0'; // any free port, so a running `npm run serve` is no obstacle
 const server = require('../server.js');
+const { checkPhoneMenus, PHONE_SIZES } = require('./phone-menus.js');
 const PLAY_MS = 10000;
 const WALK_MS = 3000; // spent walking east before the wave check
 const PIXEL_BUDGET_MB = 64; // RGBA bytes; an iPhone tab dies well short of 1 GB in total
 const HARDCORE_MS = 5000;
+const FIRST_WAVE_MAX = 10; // night 1's first group; matches _spawnFirstWave's cap
 const ASK_MS = 10000; // a page call that takes longer means the game's main thread is stuck
 
 // page.evaluate with a deadline: Playwright waits forever on a page whose script never yields.
@@ -134,6 +143,12 @@ async function bossReach(page) {
 
   failures += await pass(browser, 'title screen', base, async () => {});
 
+  // Every menu on a phone: nothing overlaps or leaves the canvas, every tap target is big enough.
+  for (const [w, h] of PHONE_SIZES) {
+    failures += await pass(browser, `phone menus ${w}x${h}`, base, page => checkPhoneMenus(page, `${w}x${h}`),
+      { viewport: { width: w, height: h }, hasTouch: true, isMobile: true, deviceScaleFactor: 2 });
+  }
+
   // Character screen at both layouts: 1280x720, and the 640x360 phone layout (a touch device
   // whose short side is under 600 px). Turns the wheel both ways and fails on any page error.
   for (const [name, opts] of [['character screen 1280x720', {}],
@@ -180,6 +195,11 @@ async function bossReach(page) {
     console.log(`in play: wave 1 spawned ${march0.spawned}, ${march0.marching} awake and marching, ` +
       `${closed} closed in by 100+ px in ${PLAY_MS / 1000} s`);
     if (!march0.marching || !closed) throw new Error('wave 1 did not march on the players (#330)');
+    // Night 1 arrives in small groups: no more than FIRST_WAVE_MAX of wave 1 awake in its first group
+    // (all 21 at once swarmed a young player). The later groups would reach the knight during the
+    // checks below, so the pacing timer is stopped.
+    await ask(page, () => { _phaserGame.scene.getScene('Game')._firstWaveTimer?.remove(); });
+    if (march0.spawned > FIRST_WAVE_MAX) throw new Error(`wave 1 sent ${march0.spawned} animals at once, over ${FIRST_WAVE_MAX}`);
     // The wave would kill a knight who stands still in about 20 s; clear it so the checks
     // below run on a living player.
     await ask(page, () => {
@@ -280,37 +300,68 @@ async function bossReach(page) {
     if (!(ran >= 1)) throw new Error(`timeAlive advanced only ${ran} s in ${HARDCORE_MS / 1000} s of Hardcore play`);
   });
 
-  // 2-player on touch: split touch, one pad per half. Fingers on each half's stick move only that
-  // half's player; fails on any page error or when a player does not move.
-  failures += await pass(browser, '2-player touch', base + '?seed=1&renderer=canvas', async page => {
+  // 2-player on touch. Fingers on each player's stick move only that player; fails on any page error
+  // or when a player does not move the way their stick was dragged.
+  //  - phone (740x390, touch): left/right halves, P1 left and P2 right (#288).
+  //  - tablet (1280x720): face-to-face split, a player at each short end: P1 left half turned a quarter
+  //    turn clockwise, P2 right half turned anticlockwise (#387).
+  const twoPlayer = async (page, split) => {
     await page.evaluate(() => {
       saveSettings({ inputMode: 'touch', tutorial: false });
       STATE.mode = 2; STATE.p1CharId = 'knight'; STATE.p2CharId = 'gunslinger'; _phaserGame.scene.start('Game');
     });
     await page.waitForFunction(() => _phaserGame.scene.getScene('Game')._worldReady === true, null, { timeout: 60000 });
     await page.waitForTimeout(1500);
-    const moved = await page.evaluate(async () => {
+    const r = await page.evaluate(async (split) => {
       const g = _phaserGame.scene.getScene('Game'), { W, H } = CFG;
       if (!g._pads || g._pads.length !== 2) throw new Error('no split touch pads');
+      if (g._split !== split) throw new Error(`_split is ${g._split}, expected ${split}`);
       const at = () => [g.p1.spr.x, g.p1.spr.y, g.p2.spr.x, g.p2.spr.y];
       const before = at();
-      // P1's finger drags right on the left half, P2's drags left on the right half, at once.
-      g._onTouchDown({ id: 1, x: W * 0.15, y: H * 0.8 }); g._onTouchDown({ id: 2, x: W * 0.65, y: H * 0.8 });
-      g._onTouchMove({ id: 1, x: W * 0.15 + 60, y: H * 0.8 }); g._onTouchMove({ id: 2, x: W * 0.65 - 60, y: H * 0.8 });
+      // Phone: P1 drags right on the left half, P2 drags left on the right half. Split: both drag screen-down
+      // in their own stick zone (P1 near the left edge, top; P2 near the right edge, bottom); with the
+      // views turned, that is world-right for P1 and world-left for P2.
+      const p1s = split ? [100, 100] : [W * 0.15, H * 0.8], p2s = split ? [W - 100, H - 100 - 60] : [W * 0.65, H * 0.8];
+      const d1 = split ? [0, 60] : [60, 0], d2 = split ? [0, 60] : [-60, 0];
+      g._onTouchDown({ id: 1, x: p1s[0], y: p1s[1] }); g._onTouchDown({ id: 2, x: p2s[0], y: p2s[1] });
+      g._onTouchMove({ id: 1, x: p1s[0] + d1[0], y: p1s[1] + d1[1] });
+      g._onTouchMove({ id: 2, x: p2s[0] + d2[0], y: p2s[1] + d2[1] });
       await new Promise(r => setTimeout(r, 700));
       g._onTouchUp({ id: 1 }); g._onTouchUp({ id: 2 });
       const after = at();
-      return { p1: after[0] - before[0], p2: after[2] - before[2] };
-    });
-    console.log(`2-player touch: P1 moved ${Math.round(moved.p1)} px, P2 moved ${Math.round(moved.p2)} px`);
-    if (!(moved.p1 > 5 && moved.p2 < -5)) throw new Error('a player did not move the way their half was dragged');
-  });
+      const cams = split && {
+        count: g._worldCams().length, W, rot1: g.cameras.main.rotation, rot2: g.cam2.rotation,
+        w1: g.cameras.main.width, x1: g.cameras.main.x, w2: g.cam2.width, x2: g.cam2.x,
+        d1: Math.hypot(g.cameras.main.midPoint.x - g.p1.spr.x, g.cameras.main.midPoint.y - g.p1.spr.y),
+        d2: Math.hypot(g.cam2.midPoint.x - g.p2.spr.x, g.cam2.midPoint.y - g.p2.spr.y),
+      };
+      // Every pad matches the #388 sizes (shares of its own view's height) within 2%.
+      const Lh = split ? (W - CFG.SPLIT_STRIP) / 2 : H;
+      const sizes = g._pads.map(p => [p.joy.radius * 2 / Lh - PHONE1P.stick.d, p.btns.attack.r * 2 / Lh - PHONE1P.btn.d]);
+      return { p1: after[0] - before[0], p2: after[2] - before[2], cams, sizes };
+    }, split);
+    console.log(`2-player touch (${split ? 'split' : 'phone'}): P1 moved ${Math.round(r.p1)} px, P2 moved ${Math.round(r.p2)} px`);
+    // Phone: P2's finger dragged left. Split: P2's finger dragged screen-right, but P2's view is turned
+    // around, so P2 walks world-left. Either way P1 goes right and P2 goes left.
+    if (!(r.p1 > 5 && r.p2 < -5)) throw new Error('a player did not move the way their half was dragged');
+    if (r.sizes.flat().some(d => Math.abs(d) > 0.02)) throw new Error(`a stick or button is not the #388 size (off by ${r.sizes.flat().map(d => d.toFixed(3))})`);
+    if (split) {
+      const c = r.cams;
+      if (c.count !== 2 || Math.abs(c.rot1 - Math.PI / 2) > 1e-6 || Math.abs(c.rot2 + Math.PI / 2) > 1e-6) throw new Error('the two cameras are not turned a quarter turn each way');
+      if (!(c.x2 > c.x1 && c.w1 === c.w2 && c.w1 < c.W / 2)) throw new Error('the halves are not left and right with a strip between');
+      if (c.d1 > 60 || c.d2 > 60) throw new Error(`a half is not centred on its player (off by ${Math.round(c.d1)}, ${Math.round(c.d2)} px)`);
+    }
+  };
+  failures += await pass(browser, '2-player touch, phone', base + '?seed=1&renderer=canvas',
+    page => twoPlayer(page, false), { viewport: { width: 740, height: 390 }, hasTouch: true });
+  failures += await pass(browser, '2-player touch, tablet split', base + '?seed=1&renderer=canvas',
+    page => twoPlayer(page, true));
 
   // Phone layout, 1 player (#388): at 640x360 and at 874x402 (the canvas stays 640x360) reads the real
   // controls and panels and fails when the radar, the four buttons or the stick differ from the
   // agreed sizes by more than 2% of the screen height, or when any circle or box overlaps another
   // or runs off the screen. The stick ring is left out: it only appears where the thumb lands.
-  for (const [name, vp] of [['phone layout 640x360', { width: 640, height: 360 }], ['phone layout 874x402', { width: 874, height: 402 }]]) {
+  for (const [name, vp] of [['phone layout 640x360', { width: 640, height: 360 }], ['phone layout 874x402', { width: 874, height: 402 }], ['iPad layout 1180x820', { width: 1180, height: 820 }]]) {
     failures += await pass(browser, name, base + '?seed=1&renderer=canvas', async page => {
       await page.evaluate(() => {
         saveSettings({ inputMode: 'touch', tutorial: false });
@@ -320,7 +371,7 @@ async function bossReach(page) {
       await page.waitForTimeout(1500);
       const err = await page.evaluate(() => {
         const g = _phaserGame.scene.getScene('Game'), { W, H } = CFG, tol = 0.02 * H;
-        if (Math.abs(W / H - innerWidth / innerHeight) > 0.01) return `canvas is ${W}x${H}, not the shape of the screen`;
+        if (_isMobile && Math.abs(W / H - innerWidth / innerHeight) > 0.01) return `canvas is ${W}x${H}, not the shape of the screen`;
         const b = g._pads[0].btns, items = [], bad = [];
         const diam = (what, got, share) => { if (Math.abs(got - share * H) > tol) bad.push(`${what} is ${Math.round(got)} px across, wanted ${Math.round(share * H)}`); };
         const circle = (n, c) => items.push({ n, circle: true, ...c });
@@ -355,6 +406,81 @@ async function bossReach(page) {
       if (menu) throw new Error(menu);
     }, { viewport: vp, hasTouch: true });
   }
+
+  // Tips on a phone: every tutorial tip's banner stays small and clear of the players, the radar, the
+  // buttons and the day panel, in 1 and 2 player games. The tip used to sit 108 px down, on the player.
+  for (const [w, h, mode] of [[640, 360, 1], [844, 390, 1], [640, 360, 2], [844, 390, 2]]) {
+    failures += await pass(browser, `phone tips ${w}x${h} ${mode}P`, base + '?seed=1&renderer=canvas', async page => {
+      await page.evaluate(m => {
+        saveSettings({ inputMode: 'touch', tutorial: false }); // no automatic tips; each is fired below
+        STATE.mode = m; STATE.p1CharId = 'knight'; STATE.p2CharId = 'gunslinger'; _phaserGame.scene.start('Game');
+      }, mode);
+      await page.waitForFunction(() => _phaserGame.scene.getScene('Game')._worldReady === true, null, { timeout: 60000 });
+      await page.waitForTimeout(1500);
+      const bad = [];
+      // No full-screen key list at the start of a touch game: it lists keys a phone does not have and dims the screen.
+      const popup = await ask(page, () => _phaserGame.scene.getScene('Game').children.list.filter(o => o.depth === 200 && o.visible && o.alpha > 0).length);
+      if (popup) bad.push(`the startup controls popup is up on a touch phone (${popup} objects)`);
+      for (const key of ['move', 'attack', 'gather', 'craft', 'nightfall', 'caches', 'minimap']) {
+        await ask(page, k => { const g = _phaserGame.scene.getScene('Game'); g._tutActive = true; g._tutShown = new Set(); g._tutTrigger(k); }, key);
+        await page.waitForFunction(() => !!_phaserGame.scene.getScene('Game')._activeHint, null, { timeout: 5000 });
+        const err = await ask(page, k => {
+          const g = _phaserGame.scene.getScene('Game'), { W, H } = CFG, r = g._hintRect, bad = [];
+          const cam = g.cameras.main, wv = cam.worldView, z = cam.width / wv.width;
+          const items = [];
+          const circle = (n, c) => items.push({ n, circle: true, ...c });
+          const rd = g.radarCenter; circle('radar', { x: rd.x, y: rd.y, r: rd.r });
+          for (const pad of g._pads) for (const b of Object.values(pad.btns)) if (b.r) circle('a button', { x: b.hx, y: b.hy, r: b.r });
+          for (const [n, q] of Object.entries(g._hudRects)) items.push({ n: n + ' panel', ...q });
+          for (const [n, p] of [['P1', g.p1], ['P2', g.p2]]) {
+            if (!p || !p.spr) continue;
+            const b = p.spr.getBounds();
+            items.push({ n, x: (b.x - wv.x) * z, y: (b.y - wv.y) * z, w: b.width * z, h: b.height * z });
+          }
+          if (r.x < 0 || r.y < 0 || r.x + r.w > W || r.y + r.h > H) bad.push('runs off the screen');
+          if (r.h > 90) bad.push(`is ${Math.round(r.h)} px tall (over 90)`);
+          for (const i of items) {
+            const hit = i.circle
+              ? Math.hypot(i.x - Math.max(r.x, Math.min(i.x, r.x + r.w)), i.y - Math.max(r.y, Math.min(i.y, r.y + r.h))) < i.r
+              : r.x < i.x + i.w && i.x < r.x + r.w && r.y < i.y + i.h && i.y < r.y + r.h;
+            if (hit) bad.push(`covers ${i.n}`);
+          }
+          g._hintTimer?.remove(); g._hintTimer = null; if (g._hintHide) g._hintHide();
+          return bad.length ? `${k} tip ${bad.join(', ')} (box ${Math.round(r.x)},${Math.round(r.y)} ${Math.round(r.w)}x${Math.round(r.h)})` : '';
+        }, key);
+        if (err) bad.push(err);
+        await page.waitForFunction(() => !_phaserGame.scene.getScene('Game')._activeHint, null, { timeout: 5000 });
+      }
+      if (bad.length) throw new Error(bad.join('; '));
+    }, { viewport: { width: w, height: h }, hasTouch: true, isMobile: true });
+  }
+
+  // iPad inventory (#414): the bottom-left resource panel must sit above the fog and night layers, and
+  // every icon and number must have a real position on the screen. A scale named like the panel's
+  // change-detection string once put them all at NaN, so the strip drew empty.
+  failures += await pass(browser, 'iPad inventory panel', base + '?seed=1&renderer=canvas', async page => {
+    await page.evaluate(() => {
+      saveSettings({ inputMode: 'touch', tutorial: false });
+      STATE.mode = 1; STATE.p1CharId = 'knight'; _phaserGame.scene.start('Game');
+    });
+    await page.waitForFunction(() => _phaserGame.scene.getScene('Game')._worldReady === true, null, { timeout: 60000 });
+    await page.waitForTimeout(1500);
+    const err = await page.evaluate(() => {
+      const g = _phaserGame.scene.getScene('Game'), { W, H } = CFG;
+      if (W !== 1280) return `canvas is ${W} wide, wanted the iPad's 1280`;
+      const parts = g._ho.filter(o => o.depth >= 100 && o.visible && ((o.type === 'Image' && /^item_/.test(o.texture.key)) || (o.type === 'Text' && /^\d+$/.test(o.text))));
+      if (parts.length < 8) return `found ${parts.length} inventory icons and numbers, wanted 8`;
+      const bad = [];
+      for (const o of parts) {
+        if (!(o.x >= 0 && o.x <= W && o.y >= 0 && o.y <= H)) bad.push(`${o.type} at ${o.x},${o.y}`);
+        if (o.depth <= g.fogGfx.depth || o.depth <= g.nightOverlay.depth) bad.push(`${o.type} is not above the fog`);
+        if (o.alpha < 0.1) bad.push(`${o.type} alpha ${o.alpha}`);
+      }
+      return bad.join('; ');
+    });
+    if (err) throw new Error(err);
+  }, { viewport: { width: 1180, height: 820 }, hasTouch: true });
+
 
   // Canvas shape (#385): the canvas widens to the screen shape between 16:9 and 2.4:1 and keeps its
   // height; 16:9 and narrower screens stay exactly as before. At 874x402 (a phone) it fills the

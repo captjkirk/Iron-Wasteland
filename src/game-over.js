@@ -94,21 +94,30 @@ class GameOverScene extends Phaser.Scene {
     }
     bg.fillRect(0, 0, W, H);
 
-    this.add.text(W/2, 46, this.won ? 'VICTORY!' : 'GAME OVER', {
-      fontFamily:'monospace', fontSize:'64px',
+    // Phone layout (canvas 360 high): the score breakdown on the left, the name entry (later the
+    // feedback box and the score lists) on the right, the two buttons along the bottom. Desktop and
+    // iPad keep the one column. P holds the phone's numbers; null on the other layouts.
+    const ph = PHONE_LAYOUT, touchUI = ph && activeInputMode() === 'touch';
+    const P = this._P = ph ? { colX: W/2 + 10, colW: 300, cx: W/2 + 160, postY: 92, listY: 108, rowH: 17, rowSize: 12 } : null;
+
+    this.add.text(W/2, ph ? 28 : 46, this.won ? 'VICTORY!' : 'GAME OVER', {
+      fontFamily:'monospace', fontSize: ph ? '34px' : '64px',
       color: this.won ? '#ffdd44' : '#cc2222',
-      stroke: this.won ? '#886600' : '#440000', strokeThickness:8,
+      stroke: this.won ? '#886600' : '#440000', strokeThickness: ph ? 5 : 8,
     }).setOrigin(0.5);
 
-    this.add.text(W/2, 116, this.reason, {
-      fontFamily:'monospace', fontSize:'18px',
-      color: this.won ? '#ffcc44' : '#cc8855', stroke:'#000', strokeThickness:3,
+    this.add.text(W/2, ph ? 66 : 116, this.reason, {
+      fontFamily:'monospace', fontSize: ph ? '13px' : '18px',
+      color: this.won ? '#ffcc44' : '#cc8855', stroke:'#000', strokeThickness: ph ? 2 : 3,
     }).setOrigin(0.5);
 
     // ── Score breakdown panel ──────────────────────────────
-    const panelX = W/2 - 220, panelY = 148, panelW = 440;
-    const panelH = (this.p2Name ? 262 : 236) + (this.won ? 26 : 0);
+    this._panelObjs = [];  // the phone layout clears the panel to make room for the score lists
+    const panelX = ph ? W/2 - 310 : W/2 - 220, panelY = ph ? 82 : 148, panelW = ph ? 300 : 440;
+    const nRows = 7 + (this.p2Name ? 1 : 0) + (this.won ? 1 : 0);
+    const panelH = ph ? 14 + nRows * P.rowH : (this.p2Name ? 262 : 236) + (this.won ? 26 : 0);
     const panel = this.add.graphics();
+    this._panelObjs.push(panel);
     const _panelFill = this.won ? 0x001111 : 0x110000;
     const _panelBorder = this.won ? 0x336655 : 0x553333;
     panel.fillStyle(_panelFill, 0.85); panel.fillRoundedRect(panelX, panelY, panelW, panelH, 10);
@@ -136,15 +145,16 @@ class GameOverScene extends Phaser.Scene {
       ...(this.won ? [['Relics deposited', this.relicsDeposited + ' / 5  +' + (2000 + this.relicsDeposited * 400), '#cc88ff']] : []),
     ];
     rows.forEach(([label, val, col], i) => {
-      const y = panelY + 18 + i * 26;
-      this.add.text(panelX + 18, y, label, { fontFamily:'monospace', fontSize:'13px', color:'#556677' }).setOrigin(0,0);
-      this.add.text(panelX + panelW - 18, y, val, { fontFamily:'monospace', fontSize:'13px', color: col }).setOrigin(1,0);
+      const y = ph ? panelY + 9 + i * P.rowH : panelY + 18 + i * 26, fs = ph ? P.rowSize + 'px' : '13px', pad = ph ? 12 : 18;
+      this._panelObjs.push(
+        this.add.text(panelX + pad, y, label, { fontFamily:'monospace', fontSize:fs, color:'#556677' }).setOrigin(0,0),
+        this.add.text(panelX + panelW - pad, y, val, { fontFamily:'monospace', fontSize:fs, color: col }).setOrigin(1,0));
     });
 
     // Total score — animates from 0 to final value over ~900 ms
-    const scoreTxt = this.add.text(W/2, panelY + panelH + 18, 'SCORE   0', {
-      fontFamily:'monospace', fontSize:'32px', color:'#ffdd44',
-      stroke:'#000', strokeThickness:4,
+    const scoreTxt = this.add.text(panelX + panelW/2, panelY + panelH + (ph ? 24 : 18), 'SCORE   0', {
+      fontFamily:'monospace', fontSize: ph ? '24px' : '32px', color:'#ffdd44',
+      stroke:'#000', strokeThickness: ph ? 3 : 4,
     }).setOrigin(0.5);
     const _scoreTarget = this._score;
     this.time.delayedCall(350, () => {
@@ -159,62 +169,70 @@ class GameOverScene extends Phaser.Scene {
     // ── Name entry section ─────────────────────────────────
     //   Layout (H=720): score total ~376, label ~414, input ~436, save btn ~472,
     //   leaderboard reveals from ~492, nav buttons at 636 (H-84).
-    const nameAreaY = panelY + panelH + 56;  // 414
-    this.add.text(W/2, nameAreaY, 'ENTER YOUR NAME', {
+    // The phone keeps the name field near the top so the on-screen keyboard (half a landscape phone)
+    // does not hide it.
+    const nameAreaY = ph ? 90 : panelY + panelH + 56;  // 414
+    const nameCx = ph ? P.cx : W/2;
+    this._nameLabel = this.add.text(nameCx, nameAreaY, 'ENTER YOUR NAME', {
       fontFamily:'monospace', fontSize:'11px', color:'#778899',
     }).setOrigin(0.5);
 
     // HTML <input> overlaid on the Phaser canvas at game-space position
-    this._htmlInp = this._createNameInput(this._defaultName, nameAreaY + 22);
+    this._htmlInp = this._createNameInput(this._defaultName, ph ? 102 : nameAreaY + 22);
 
     // SAVE button
-    const saveY = nameAreaY + 58;   // 472
+    const saveY = ph ? 160 : nameAreaY + 58;   // 472
+    const saveW = ph ? 220 : 180, saveH = ph ? 36 : 30;
     this._saveBg  = this.add.graphics();
-    this._saveTxt = this.add.text(W/2, saveY + 1, 'SAVE SCORE  \u21b5', {
-      fontFamily:'monospace', fontSize:'13px', color:'#aaffaa', stroke:'#000', strokeThickness:2,
+    this._saveTxt = this.add.text(nameCx, saveY + 1, 'SAVE SCORE' + (touchUI ? '' : '  \u21b5'), {
+      fontFamily:'monospace', fontSize: ph ? '15px' : '13px', color:'#aaffaa', stroke:'#000', strokeThickness:2,
     }).setOrigin(0.5);
     const _drawSave = (hl) => {
       this._saveBg.clear();
       this._saveBg.fillStyle(hl ? 0x113311 : 0x001a00, 0.9);
-      this._saveBg.fillRoundedRect(W/2 - 90, saveY - 14, 180, 30, 8);
+      this._saveBg.fillRoundedRect(nameCx - saveW/2, saveY - saveH/2 + 1, saveW, saveH, 8);
       this._saveBg.lineStyle(2, hl ? 0x66cc66 : 0x44aa44, 0.9);
-      this._saveBg.strokeRoundedRect(W/2 - 90, saveY - 14, 180, 30, 8);
+      this._saveBg.strokeRoundedRect(nameCx - saveW/2, saveY - saveH/2 + 1, saveW, saveH, 8);
     };
     _drawSave(false);
-    this._saveZone = this.add.zone(W/2, saveY, 180, 30).setInteractive({ useHandCursor: true });
+    this._saveZone = this.add.zone(nameCx, saveY, saveW, saveH).setInteractive({ useHandCursor: true });
     this._saveZone.on('pointerover',  () => { _drawSave(true);  this._saveTxt.setColor('#ffffff'); });
     this._saveZone.on('pointerout',   () => { _drawSave(false); this._saveTxt.setColor('#aaffaa'); });
     this._saveZone.on('pointerdown',  () => this._onNameSubmit());
 
     // Y anchor for leaderboard — revealed by _onNameSubmit after save btn hides
-    this._postSaveY = saveY + 20;   // 492
+    this._postSaveY = ph ? P.postY : saveY + 20;   // 492
 
     // ── Navigation buttons — always visible ──────────────
+    // B: the button box and where its texts sit; the phone's boxes are shorter and carry no key hint.
+    const B = ph ? { w:200, h:40, cy:H - 26, dx:110, size:16, labelDy:0 }
+                 : { w:280, h:64, cy:H - 52, dx:165, size:20, labelDy:-11 };
     const makeBtn = (x, label, sublabel, col, borderCol, action) => {
-      const g = this.add.graphics();
-      g.fillStyle(0x110000, 0.9); g.fillRoundedRect(x - 140, H - 84, 280, 64, 10);
-      g.lineStyle(2, borderCol, 0.9); g.strokeRoundedRect(x - 140, H - 84, 280, 64, 10);
-      const t = this.add.text(x, H - 63, label, {
-        fontFamily:'monospace', fontSize:'20px', color: col, stroke:'#000', strokeThickness:3,
+      const g = this.add.graphics(), bx = x - B.w/2, by = B.cy - B.h/2;
+      const draw = (fill, a, line) => { g.clear(); g.fillStyle(fill, a); g.fillRoundedRect(bx, by, B.w, B.h, 10); g.lineStyle(2, borderCol, line); g.strokeRoundedRect(bx, by, B.w, B.h, 10); };
+      draw(0x110000, 0.9, 0.9);
+      const t = this.add.text(x, B.cy + B.labelDy, label, {
+        fontFamily:'monospace', fontSize:B.size + 'px', color: col, stroke:'#000', strokeThickness: ph ? 2 : 3,
       }).setOrigin(0.5);
-      this.add.text(x, H - 37, sublabel, {
+      if (!ph) this.add.text(x, B.cy + 15, sublabel, {
         fontFamily:'monospace', fontSize:'10px', color:'#445566',
       }).setOrigin(0.5);
-      const zone = this.add.zone(x, H - 52, 280, 64).setInteractive({ useHandCursor: true });
-      zone.on('pointerover', () => { t.setColor('#ffffff'); g.clear(); g.fillStyle(borderCol, 0.25); g.fillRoundedRect(x-140, H-84, 280, 64, 10); g.lineStyle(2, borderCol, 1); g.strokeRoundedRect(x-140, H-84, 280, 64, 10); });
-      zone.on('pointerout',  () => { t.setColor(col); g.clear(); g.fillStyle(0x110000, 0.9); g.fillRoundedRect(x-140, H-84, 280, 64, 10); g.lineStyle(2, borderCol, 0.9); g.strokeRoundedRect(x-140, H-84, 280, 64, 10); });
+      const zone = this.add.zone(x, B.cy, B.w, B.h).setInteractive({ useHandCursor: true });
+      zone.on('pointerover', () => { t.setColor('#ffffff'); draw(borderCol, 0.25, 1); });
+      zone.on('pointerout',  () => { t.setColor(col); draw(0x110000, 0.9, 0.9); });
       zone.on('pointerdown', action);
       this.tweens.add({ targets: t, alpha: 0.45, duration: 700, yoyo: true, repeat: -1 });
       return zone;
     };
 
-    makeBtn(W/2 - 165, '\u25b6  PLAY AGAIN', 'ENTER  /  SPACE', '#aaffaa', 0x44aa44, () => this.restart());
-    makeBtn(W/2 + 165, '\u2302  MAIN MENU',  'ESC', '#aaccff', 0x4466aa, () => this.goMenu());
+    makeBtn(W/2 - B.dx, '\u25b6  PLAY AGAIN', 'ENTER  /  SPACE', '#aaffaa', 0x44aa44, () => this.restart());
+    makeBtn(W/2 + B.dx, '\u2302  MAIN MENU',  'ESC', '#aaccff', 0x4466aa, () => this.goMenu());
 
     // ── Download Log — user gesture so Safari will honour the save ──
-    const dlTxt = this.add.text(W/2, H - 7, '↓  download log  [G]', {
-      fontFamily:'monospace', fontSize:'10px', color:'#334455',
-    }).setOrigin(0.5, 1).setInteractive({ useHandCursor: true });
+    // (Phone: top right, padded to a tap target, since the bottom row is the two buttons.)
+    const dlTxt = this.add.text(ph ? W - 6 : W/2, ph ? 4 : H - 7, '↓  download log' + (touchUI ? '' : '  [G]'), {
+      fontFamily:'monospace', fontSize: ph ? '11px' : '10px', color: ph ? '#556677' : '#334455', padding: ph ? { x:8, y:10 } : undefined,
+    }).setOrigin(ph ? 1 : 0.5, ph ? 0 : 1).setInteractive({ useHandCursor: true });
     dlTxt.on('pointerover',  () => dlTxt.setColor('#6699bb'));
     dlTxt.on('pointerout',   () => dlTxt.setColor('#334455'));
     dlTxt.on('pointerdown',  () => this._doDownload());
@@ -281,6 +299,7 @@ class GameOverScene extends Phaser.Scene {
     const rect   = canvas.getBoundingClientRect();
     const sx = rect.width  / CFG.W;
     const sy = rect.height / CFG.H;
+    const P = this._P, boxW = P ? P.colW : 260, boxH = P ? 36 : 30;
 
     const inp = document.createElement('input');
     inp.type      = 'text';
@@ -288,15 +307,16 @@ class GameOverScene extends Phaser.Scene {
     inp.maxLength = 28;
     inp.style.cssText = [
       'position:fixed',
-      `left:${Math.round(rect.left + (CFG.W / 2 - 130) * sx)}px`,
+      `left:${Math.round(rect.left + (P ? P.colX : CFG.W / 2 - 130) * sx)}px`,
       `top:${Math.round(rect.top  + gameY * sy)}px`,
-      `width:${Math.round(260 * sx)}px`,
-      `height:${Math.round(30 * sy)}px`,
+      `width:${Math.round(boxW * sx)}px`,
+      `height:${Math.round(boxH * sy)}px`,
       'background:#1a0808',
       'border:2px solid #885533',
       'color:#ffcc88',
       'font-family:monospace',
-      `font-size:${Math.round(14 * Math.min(sx, sy))}px`,
+      // iOS zooms the page when a field under 16 px gets focus.
+      `font-size:${P ? 16 : Math.round(14 * Math.min(sx, sy))}px`,
       'text-align:center',
       'padding:2px 8px',
       'box-sizing:border-box',
@@ -317,8 +337,9 @@ class GameOverScene extends Phaser.Scene {
     inp.addEventListener('keyup', (e) => e.stopPropagation());
 
     document.body.appendChild(inp);
-    // Brief delay so Phaser's own focus-management doesn't steal it
-    this.time.delayedCall(120, () => { if (inp.parentNode) { inp.focus(); inp.select(); } });
+    // Brief delay so Phaser's own focus-management doesn't steal it. A touch phone leaves the
+    // field alone until it is tapped: focusing it would raise the keyboard over the whole screen.
+    if (!(P && activeInputMode() === 'touch')) this.time.delayedCall(120, () => { if (inp.parentNode) { inp.focus(); inp.select(); } });
     return inp;
   }
 
@@ -333,6 +354,7 @@ class GameOverScene extends Phaser.Scene {
     // Swap save button text to a quick confirmation, then reveal leaderboard
     if (this._saveTxt) this._saveTxt.setText('\u2713  ' + name).setColor('#66ee66');
     if (this._saveZone) this._saveZone.disableInteractive();
+    if (this._P) this._nameLabel.setVisible(false); // the phone's feedback box takes this spot
 
     const lb = this._loadLeaderboard();
     // isHighScore = true only if this score will appear in the visible top-5 after saving.
@@ -350,36 +372,39 @@ class GameOverScene extends Phaser.Scene {
 
   // Show optional feedback textarea after name is saved.
   _showFeedback(isHighScore) {
-    const { W } = CFG;
+    const { W } = CFG, P = this._P;
     let y = this._postSaveY;
+    const cx = P ? P.cx : W/2;               // centre of the column the feedback box sits in
+    const btnY = P ? y + 90 : y + 86, btnH = P ? 34 : 28, sendW = P ? 140 : 132;
 
-    const label = this.add.text(W/2, y, 'HOW WAS YOUR RUN?  (optional)', {
+    const label = this.add.text(cx, y, 'HOW WAS YOUR RUN?  (optional)', {
       fontFamily:'monospace', fontSize:'11px', color:'#556677',
     }).setOrigin(0.5);
 
-    this._fbInp = this._createFeedbackInput(y + 18);
+    this._fbInp = this._createFeedbackInput(P ? y + 12 : y + 18);
 
     // SEND button
+    const sendX = P ? cx - 80 : W/2 - 72;
     const sendG = this.add.graphics();
-    const sendT = this.add.text(W/2 - 72, y + 86, 'SEND \u2191 LOG', {
+    const sendT = this.add.text(sendX, btnY, 'SEND \u2191 LOG', {
       fontFamily:'monospace', fontSize:'13px', color:'#aaccff', stroke:'#000', strokeThickness:2,
     }).setOrigin(0.5);
     const _drawSend = (hl) => {
       sendG.clear();
       sendG.fillStyle(hl ? 0x112233 : 0x0a1520, 0.9);
-      sendG.fillRoundedRect(W/2 - 138, y + 72, 132, 28, 6);
+      sendG.fillRoundedRect(sendX - sendW/2, btnY - btnH/2, sendW, btnH, 6);
       sendG.lineStyle(2, hl ? 0x6699cc : 0x3a5a7a, 0.9);
-      sendG.strokeRoundedRect(W/2 - 138, y + 72, 132, 28, 6);
+      sendG.strokeRoundedRect(sendX - sendW/2, btnY - btnH/2, sendW, btnH, 6);
     };
     _drawSend(false);
-    const sendZ = this.add.zone(W/2 - 72, y + 86, 132, 28).setInteractive({ useHandCursor: true });
+    const sendZ = this.add.zone(sendX, btnY, sendW, btnH).setInteractive({ useHandCursor: true });
     sendZ.on('pointerover',  () => { _drawSend(true);  sendT.setColor('#ffffff'); });
     sendZ.on('pointerout',   () => { _drawSend(false); sendT.setColor('#aaccff'); });
     sendZ.on('pointerdown',  () => this._submitFeedback(isHighScore, [label, sendG, sendT, sendZ, skipT]));
 
     // SKIP link
-    const skipT = this.add.text(W/2 + 60, y + 86, 'SKIP \u2192', {
-      fontFamily:'monospace', fontSize:'12px', color:'#445566',
+    const skipT = this.add.text(P ? cx + 60 : W/2 + 60, btnY, 'SKIP \u2192', {
+      fontFamily:'monospace', fontSize:'12px', color:'#445566', padding: P ? { x:14, y:10 } : undefined,
     }).setOrigin(0.5).setInteractive({ useHandCursor: true });
     skipT.on('pointerover',  () => skipT.setColor('#778899'));
     skipT.on('pointerout',   () => skipT.setColor('#445566'));
@@ -391,6 +416,7 @@ class GameOverScene extends Phaser.Scene {
     const rect   = canvas.getBoundingClientRect();
     const sx = rect.width  / CFG.W;
     const sy = rect.height / CFG.H;
+    const P = this._P, boxW = P ? P.colW : 340, boxH = P ? 54 : 58;
 
     const ta = document.createElement('textarea');
     ta.placeholder = 'What happened? Any bugs or suggestions? (max 300 chars)';
@@ -398,15 +424,15 @@ class GameOverScene extends Phaser.Scene {
     ta.rows        = 3;
     ta.style.cssText = [
       'position:fixed',
-      `left:${Math.round(rect.left + (CFG.W / 2 - 170) * sx)}px`,
+      `left:${Math.round(rect.left + (P ? P.colX : CFG.W / 2 - 170) * sx)}px`,
       `top:${Math.round(rect.top  + gameY * sy)}px`,
-      `width:${Math.round(340 * sx)}px`,
-      `height:${Math.round(58 * sy)}px`,
+      `width:${Math.round(boxW * sx)}px`,
+      `height:${Math.round(boxH * sy)}px`,
       'background:#0d1a22',
       'border:2px solid #3a5a7a',
       'color:#aaccee',
       'font-family:monospace',
-      `font-size:${Math.round(12 * Math.min(sx, sy))}px`,
+      `font-size:${P ? 16 : Math.round(12 * Math.min(sx, sy))}px`,  // 16 px: iOS zooms smaller fields
       'padding:4px 8px',
       'box-sizing:border-box',
       'z-index:9999',
@@ -417,7 +443,7 @@ class GameOverScene extends Phaser.Scene {
 
     ta.addEventListener('keydown', (e) => { e.stopPropagation(); }); // don't let Phaser see keys
     document.body.appendChild(ta);
-    this.time.delayedCall(120, () => { if (ta.parentNode) ta.focus(); });
+    if (!(P && activeInputMode() === 'touch')) this.time.delayedCall(120, () => { if (ta.parentNode) ta.focus(); });
     return ta;
   }
 
@@ -442,7 +468,7 @@ class GameOverScene extends Phaser.Scene {
       ...this._scoreBody(this._savedName || 'Player'), kind: 'feedback', comment: text,
       platform: ('ontouchstart' in window || navigator.maxTouchPoints > 0 ? 'touch ' : 'keyboard ') + window.innerWidth + 'x' + window.innerHeight,
     };
-    const note = this.add.text(CFG.W/2, this._postSaveY - 16, 'Sending\u2026', {
+    const note = this.add.text(CFG.W/2, this._P ? CFG.H - 60 : this._postSaveY - 16, 'Sending\u2026', {
       fontFamily:'monospace', fontSize:'11px', color:'#8899aa',
     }).setOrigin(0.5);
     _postFeedback(msg).then(ok => {
@@ -501,9 +527,15 @@ class GameOverScene extends Phaser.Scene {
 
   // Render TOP SCORES after save.  Fits between postSaveY (492) and buttons (636).
   _showLeaderboard(isHighScore) {
-    const { W } = CFG;
+    const { W } = CFG, P = this._P;
     let y = this._postSaveY;
 
+    // Phone: the score breakdown makes way, and the two lists share the width under the headline.
+    if (P) {
+      this._panelObjs.forEach(o => o.destroy());
+      this._panelObjs = [];
+      y = P.listY - 22;
+    }
     if (isHighScore) {
       this.add.text(W/2, y, '\u2605  NEW HIGH SCORE  \u2605', {
         fontFamily:'monospace', fontSize:'14px', color:'#ffcc22',
@@ -512,8 +544,8 @@ class GameOverScene extends Phaser.Scene {
     }
 
     // With a global scoreboard the local list moves left and the global top 10 sits beside it.
-    const lx = CFG.SCOREBOARD_URL ? W/2 - 280 : W/2 - 200;
-    this._showGlobalTop(W/2 + 10, y);
+    const lx = P ? W/2 - 300 : CFG.SCOREBOARD_URL ? W/2 - 280 : W/2 - 200;
+    this._showGlobalTop(P ? W/2 + 10 : W/2 + 10, y);
     this.add.text(lx, y, 'TOP SCORES', {
       fontFamily:'monospace', fontSize:'10px', color:'#445566',
     });
@@ -528,8 +560,8 @@ class GameOverScene extends Phaser.Scene {
       const isMe = _highlightRank >= 0 && i === _highlightRank;
       const col = isMe ? '#ffdd44' : '#778899';
       const datePart = entry.date ? '  ' + entry.date : '';
-      const txt = (i + 1) + '.  ' + entry.name.padEnd(14) + entry.score.toLocaleString() + '  Day ' + entry.days + datePart;
-      this.add.text(lx, y + i * 14, txt, { fontFamily:'monospace', fontSize:'10px', color: col });
+      const txt = (i + 1) + '.  ' + entry.name.padEnd(Math.max(15, entry.name.length + 1)) + entry.score.toLocaleString() + '  Day ' + entry.days + datePart;
+      this.add.text(lx, y + i * (P ? 15 : 14), txt, { fontFamily:'monospace', fontSize:'10px', color: col });
     });
   }
 
@@ -619,6 +651,7 @@ class GameOverScene extends Phaser.Scene {
     if (!CFG.SCOREBOARD_URL) return;
     const head = this.add.text(x, y, 'GLOBAL TOP 10', { fontFamily:'monospace', fontSize:'10px', color:'#445566' });
     const status = this.add.text(x, y + 12, 'loading\u2026', { fontFamily:'monospace', fontSize:'10px', color:'#556677' });
+    const pitch = this._P ? 13 : 11; // 10 px text is about 12 px tall
     Promise.resolve(this._posted)
       .then(reply => {
         if (reply && reply.ok === false && head.active) head.setText('GLOBAL TOP 10  \u2022  Score not accepted').setColor('#cc8844');
@@ -631,7 +664,7 @@ class GameOverScene extends Phaser.Scene {
         rows.slice(0, 10).forEach((r, i) => {
           const isMe = r.name === this._savedName && r.score === this._score;
           const txt = String(i + 1).padEnd(4) + String(r.name).slice(0, 16).padEnd(17) + Number(r.score).toLocaleString() + '  Day ' + r.days;
-          this.add.text(x, y + 12 + i * 11, txt, { fontFamily:'monospace', fontSize:'10px', color: isMe ? '#ffdd44' : '#778899' });
+          this.add.text(x, y + 12 + i * pitch, txt, { fontFamily:'monospace', fontSize:'10px', color: isMe ? '#ffdd44' : '#778899' });
         });
       })
       .catch(e => {

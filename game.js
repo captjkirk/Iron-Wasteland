@@ -48,6 +48,10 @@
 //                          ControlsScene, BootScene, ModeSelectScene,
 //                          SettingsScene
 //
+//   src/settings-phone.js — SettingsScene in the phone layout (PHONE_LAYOUT, canvas 360 high):
+//                          _createPhone, _phoneControlsList. The menus' other phone coordinates
+//                          sit beside the desktop ones in their scenes (the L tables).
+//
 //   src/char-select.js   — CharSelectScene: the character carousel (selected character large in
 //                          the centre, the others dimmed on an arc; keys, drag, scroll or tap turn it)
 //                          _buildWheel, _layoutWheel, _spinTo, _settle, nav, confirm, refresh, _turn
@@ -115,7 +119,7 @@
 //    data: enemyDens[], waterDens[]   (each: liveCount, type, pos, timer)
 //
 // 4. WAVES & BOSSES  (src/waves-bosses.js)
-//    fns:  updateWaves, updateBoss, spawnBoss, _bossExecuteSpecial,
+//    fns:  updateWaves, _spawnFirstWave, updateBoss, spawnBoss, _bossExecuteSpecial,
 //          _bossSmash, _bossTelegraph, _bossDist (reach to a drawn-to-fit hitbox),
 //          _debugBossFromUrl (?boss=wolf spawns a boss for testing),
 //          _pickBossType (every boss once per round, biome match first)
@@ -227,12 +231,16 @@
 //     character draws: paintGrid, pixelActorFrames, buildPixelActors
 //                      art in SPRITE_ART[id][front|back|side|fside|bside]; step2 = step legs mirrored
 //
-// 19. INPUT MODES (kbd / gamepad / touch)  (src/scenes.js; getControls in src/textures.js; touch pads in src/touch.js)
+// 19. INPUT MODES (kbd / gamepad / touch)  (src/scenes.js; getControls in src/textures.js; touch pads in src/touch.js; split cameras in src/game-scene.js)
 //     fns:  getControls, activeInputMode, isTouchDevice,
-//           initTouchControls, applyTouchInput, _onTouchDown/Move/Up, _onBtnPress, _drawTouchHUD,
+//           initTouchControls, applyTouchInput, _onTouchDown/Move/Up, _logTouchStick, _onBtnPress, _drawTouchHUD,
 //           keyDisplayName
 //     data: wasd, p2keys, _pads (one touch pad per player: stick, buttons, the screen area its fingers
-//           land in; 2P touch splits the screen in halves), _joy and _tcBtns (P1's pad)
+//           land in; 2P touch on a phone splits the screen left/right), _joy and _tcBtns (P1's pad),
+//           _split (face-to-face iPad: 2P touch, short side >= 600), cam2 (P2's camera, right half, quarter-turned; P1's is the left half)
+//     fns:  _worldCams, _ignoreInWorldCams, _camFx (shake/flash/fade on every world camera), _initSplitCams, _worldRect (true visible
+//           rectangle of a camera: use it, not worldView, when the cameras are turned)
+//     cfg:  SPLIT_STRIP, SPLIT_ZOOM
 //
 // 20. DEBUG LOG & PERF  (src/game-scene.js; _qlog in src/constants.js)
 //     fns:  _log, _qlog, _dbgRefresh, _downloadLog, hint
@@ -247,6 +255,10 @@
 //     cfg:  TUT_AUTO_ADVANCE_MS
 //     data: _tutShown
 //     tips are hint() calls with a title; hint(text, dur, {urgent}) jumps the queue
+//     touch: no startup controls popup (showStartupControls), no TAB hint, tutorial starts at 1.5 s.
+//     phone layout: the banner is small, at the bottom centre (1P) or top left (2P), clear of the
+//             player and the controls; each tip has a shorter `phone` text (_tutTrigger). smoke.js
+//             ("phone tips") fails when a banner covers a player, button, radar or the day panel.
 //
 // 22. GAME OVER / VICTORY  (src/game-scene.js; GameOverScene in src/game-over.js)
 //     fns:  triggerGameOver, _triggerVictory, checkBothDead, handleDeath
@@ -265,6 +277,10 @@
 // 23. SETTINGS / SAVE  (src/scenes.js; toggleSleep in src/game-scene.js)
 //     fns:  loadSettings, saveSettings, toggleSleep
 //     data: STATE (mode/difficulty), persisted via localStorage
+//     phone menus: PHONE_LAYOUT (src/constants.js) picks the phone coordinates in ModeSelect,
+//             Controls, CharSelect, GameOver (its P table) and Settings (_createPhone, src/settings-phone.js).
+//             scripts/phone-menus.js (run by smoke.js) fails on overlap, off-canvas and tap
+//             targets under 32 px at five phone sizes. A new menu scene or control goes in its MENUS.
 //
 // 24. TRACKS (boot prints)  (src/tracks.js; table in CFG.TRACKS in src/constants.js)
 //     Players and raiders leave alternating left/right boot prints; animals do not. The ground
@@ -279,6 +295,9 @@
 //
 // ── COMMON GOTCHAS ───────────────────────────────────────────
 // • Two cameras: new world objects must call hudCam.ignore(obj).
+// • Face-to-face split (_split): there are TWO world cameras (main = P1, cam2 = P2). New HUD objects go
+//   through _h() or _ignoreInWorldCams(); camera shake/flash/fade go through _camFx(); any code that reads
+//   cameras.main.worldView to cull or paint must also look at cam2 (see updateFog, dormant enemies).
 // • Draw order: trees, rocks, mountains, players and enemies are Y-sorted in depth band 9..9.9 via _sortDepth(feetY); keep ground items/structures <= 8 and bullets/bars >= 10.
 // • Water detection uses the _waterMap Uint8Array (index tx + ty*MAP_W), NOT physics overlap.
 // • Enemy dormancy: enemies > DORMANT_RADIUS are physics-disabled and hidden;

@@ -147,7 +147,7 @@ Object.assign(GameScene.prototype, {
       Music.switchFromBoss(this.isNight ? 'night' : 'day');
       SFX._play(880, 'triangle', 0.3, 0.6, 'rise');
       SFX._play(1100, 'triangle', 0.25, 0.5, 'rise');
-      this.cameras.main.shake(600, 0.018);
+      this._camFx('shake', [600, 0.018]);
       // Scale-up flash on the corpse sprite — tween fights with the fade, but
       // since it targets scale not alpha, both complete naturally.
       const bs = e.baseScale || 1.5;
@@ -448,21 +448,25 @@ Object.assign(GameScene.prototype, {
   // The ring widens past the view's edge when a 2-player camera has zoomed out.
   _waveSpawnPoint(ring, worldW, worldH) {
     const { TILE, MAP_W, WAVE_RING_MIN, WAVE_RING_MAX } = CFG;
-    const view = this.cameras.main.worldView, PAD = 64;
+    // Two world cameras in the face-to-face split: measure from the one that shows the ring's
+    // player, and keep the point out of both views.
+    const views = this._worldCams().map(c => this._worldRect(c)), PAD = 64;
+    const inView = (v, x, y) => x > v.x - PAD && x < v.right + PAD && y > v.y - PAD && y < v.bottom + PAD;
+    const view = views.find(v => inView(v, ring.x, ring.y)) || views[0];
     const ps = [this.p1, this.p2].filter(p => p && p.spr && p.spr.active);
     let x = ring.x, y = ring.y;
     for (let i = 0; i < 24; i++) {
-      const a = ring.ang + Phaser.Math.FloatBetween(-1, 1) * (i < 10 ? 0.6 : Math.PI);
+      const a = ring.ang + Phaser.Math.FloatBetween(-1, 1) * (i < 10 ? (ring.spread ? 1.4 : 0.6) : Math.PI);
       const c = Math.cos(a), sn = Math.sin(a);
       const toEdge = Math.min(c > 0 ? (view.right - ring.x) / c : c < 0 ? (view.x - ring.x) / c : Infinity,
                               sn > 0 ? (view.bottom - ring.y) / sn : sn < 0 ? (view.y - ring.y) / sn : Infinity);
       const rMin = Math.max(WAVE_RING_MIN, toEdge + PAD);
-      const r = Phaser.Math.Between(rMin, rMin + WAVE_RING_MAX - WAVE_RING_MIN);
+      const r = Phaser.Math.Between(rMin, rMin + WAVE_RING_MAX - WAVE_RING_MIN + (ring.spread || 0));
       x = Phaser.Math.Clamp(ring.x + c * r, TILE * 3, worldW - TILE * 3);
       y = Phaser.Math.Clamp(ring.y + sn * r, TILE * 3, worldH - TILE * 3);
       if (this._waterMap && this._waterMap[Math.floor(x / TILE) + Math.floor(y / TILE) * MAP_W]) continue;
       if (this._solidTileSet && this._solidTileSet.has(Math.round(x / TILE) + ',' + Math.round(y / TILE))) continue;
-      if (x > view.x - PAD && x < view.right + PAD && y > view.y - PAD && y < view.bottom + PAD) continue;
+      if (views.some(v => inView(v, x, y))) continue;
       if (ps.some(p => Phaser.Math.Distance.Between(x, y, p.spr.x, p.spr.y) < WAVE_RING_MIN)) continue;
       if (i < 20 && ring.open && !this._waveLineClear(x, y, ring.x, ring.y)) continue;
       break;
@@ -470,13 +474,14 @@ Object.assign(GameScene.prototype, {
     return { x, y };
   },
 
-  _spawnGroup(worldW, worldH, cx, cy, counts, asWave) {
+  _spawnGroup(worldW, worldH, cx, cy, counts, asWave, spread = 0) {
     const { TILE, SAFE_R } = CFG;
     const D = this._diffMult();
     const S = this._diffSpeedMult();
     // A wave marches: awake from spawn, so it fits in what MAX_ACTIVE_ENEMIES leaves.
     const ring = asWave ? this._waveRing() : null;
     if (asWave && !ring) return;
+    if (ring) ring.spread = spread; // night 1 only: extra px of distance and arc so arrivals string out
     let marchRoom = asWave
       ? Math.max(0, CFG.MAX_ACTIVE_ENEMIES - this.enemies.filter(e => e.spr?.active && !e._dormant).length)
       : Infinity;
@@ -661,8 +666,10 @@ Object.assign(GameScene.prototype, {
     const _pPos = _scratchPPos;
     // Hoist camera view once per frame for dormancy + culling checks
     const _cam = this.cameras.main;
-    const _view = _cam.worldView;
+    const _view = this._worldRect(_cam), _view2 = this.cam2 ? this._worldRect(this.cam2) : null;
     const _VIEW_BUF = 400; // px buffer outside viewport before hiding sprite
+    const _near = (v, x, y) => x > v.x - _VIEW_BUF && x < v.x + v.width + _VIEW_BUF && y > v.y - _VIEW_BUF && y < v.y + v.height + _VIEW_BUF;
+    const _inView = (x, y) => _near(_view, x, y) || (_view2 !== null && _near(_view2, x, y));
     // Single pass: count active enemies AND build pack index (was two separate O(n) loops).
     // Reuse the Map and its array values across frames so we don't allocate them every tick.
     let _activeCount = 0;
@@ -717,8 +724,7 @@ Object.assign(GameScene.prototype, {
             _activeCount++;
           } else {
             // Stay dormant — update visibility only, skip all AI
-            const _onScr = (e.spr.x > _view.x - _VIEW_BUF && e.spr.x < _view.x + _view.width  + _VIEW_BUF &&
-                            e.spr.y > _view.y - _VIEW_BUF && e.spr.y < _view.y + _view.height + _VIEW_BUF);
+            const _onScr = _inView(e.spr.x, e.spr.y);
             e.spr.setVisible(_onScr);
             return;
           }
@@ -754,8 +760,7 @@ Object.assign(GameScene.prototype, {
 
       // ── Viewport culling for active enemies — hide sprite if off-screen ──
       {
-        const _onScr = (e.spr.x > _view.x - _VIEW_BUF && e.spr.x < _view.x + _view.width  + _VIEW_BUF &&
-                        e.spr.y > _view.y - _VIEW_BUF && e.spr.y < _view.y + _view.height + _VIEW_BUF);
+        const _onScr = _inView(e.spr.x, e.spr.y);
         if (!_onScr) { e.spr.setVisible(false); }
         else {
           // Hide enemies that are on-screen but outside current LOS fog
