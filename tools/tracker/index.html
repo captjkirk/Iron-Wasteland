@@ -84,11 +84,38 @@ button:hover { border-color: var(--muted); }
 .tip b { display: block; margin-bottom: 2px; }
 footer { color: var(--muted); font-size: 12px; }
 
+/* Ticket panel (#431): a side sheet on a laptop, full screen on a phone. */
+dialog#panel { margin: 0 0 0 auto; height: 100%; max-height: 100%; width: min(680px, 100%); max-width: 100%; border: 0; border-left: 1px solid var(--line); padding: 0; background: var(--bg); color: var(--fg); }
+dialog#panel::backdrop { background: rgb(0 0 0 / .45); }
+.p-head { position: sticky; top: 0; z-index: 1; background: var(--bg); border-bottom: 1px solid var(--line); padding: 14px 16px; display: grid; gap: 8px; }
+.p-top { display: flex; justify-content: space-between; align-items: center; gap: 10px; font: 13px var(--mono); color: var(--muted); }
+.p-top div { display: flex; gap: 8px; align-items: center; }
+.p-head h2 { font: 600 18px/1.3 var(--body); text-transform: none; letter-spacing: 0; color: var(--fg); text-wrap: balance; overflow-wrap: anywhere; }
+.chips { display: flex; flex-wrap: wrap; gap: 6px; }
+.stage-chip { color: var(--fg); border-color: var(--muted); }
+.p-body { padding: 16px; display: grid; gap: 18px; }
+.p-sec { display: grid; gap: 8px; min-width: 0; }
+.pr { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 4px 10px; border: 1px solid var(--line); border-radius: 6px; padding: 8px 10px; }
+.pr span { color: var(--muted); font-size: 12px; }
+.post { border: 1px solid var(--line); border-radius: 8px; min-width: 0; }
+.post-head { display: flex; justify-content: space-between; gap: 8px; padding: 6px 12px; border-bottom: 1px solid var(--line); background: var(--panel); border-radius: 8px 8px 0 0; font-size: 12px; color: var(--muted); }
+.post-head b { color: var(--fg); }
+.md { padding: 4px 12px; overflow-wrap: anywhere; min-width: 0; }
+.md img { max-width: 100%; height: auto; }
+.md pre, .md table { display: block; overflow-x: auto; max-width: 100%; }
+.md pre { background: var(--panel); border-radius: 6px; padding: 10px; font: 12px/1.5 var(--mono); }
+.md code { font-family: var(--mono); font-size: 12px; }
+.md blockquote { margin: 0; padding-left: 12px; border-left: 3px solid var(--line); color: var(--muted); }
+.md table { border-collapse: collapse; }
+.md th, .md td { border: 1px solid var(--line); padding: 4px 8px; text-align: left; }
+.md h1, .md h2, .md h3 { font: 600 15px/1.3 var(--body); text-transform: none; letter-spacing: 0; color: var(--fg); margin: 14px 0 6px; }
+
 @media (max-width: 760px) {
   .strip { grid-template-columns: repeat(4, minmax(0, 1fr)); }
   .strip a { border-bottom: 1px solid var(--line); }
   .strip a::after { display: none; }
   .board { grid-template-columns: 1fr; min-width: 0; gap: 18px; }
+  dialog#panel { border-left: 0; }
 }
 </style>
 </head>
@@ -120,6 +147,14 @@ footer { color: var(--muted); font-size: 12px; }
   </section>
   <footer>Reads the public issues of captjkirk/Iron-Wasteland. Refreshes every 5 minutes while this tab is open. Maps (label wayfinder:map) are the filter, not cards.</footer>
 </div>
+<dialog id="panel" aria-labelledby="p-title">
+  <div class="p-head">
+    <div class="p-top"><span id="p-num"></span><div><a id="p-gh" target="_blank" rel="noopener">Open on GitHub</a><button id="p-close" type="button">Close</button></div></div>
+    <h2 id="p-title"></h2>
+    <div class="chips" id="p-chips"></div>
+  </div>
+  <div class="p-body" id="p-body"></div>
+</dialog>
 <script src="stages.js"></script>
 <script>
 const REPO = 'https://api.github.com/repos/captjkirk/Iron-Wasteland';
@@ -145,8 +180,9 @@ function ago(t) {
   return m < 60 ? Math.max(1, Math.round(m)) + ' min' : m < 1440 ? Math.round(m / 60) + ' h' : Math.round(m / 1440) + ' d';
 }
 
-async function get(url) {
-  const r = await fetch(url, { headers: { Accept: 'application/vnd.github+json' } });
+// html: ask for GitHub's own rendering of every body (body_html), so markdown needs no library here.
+async function get(url, html) {
+  const r = await fetch(url, { headers: { Accept: html ? 'application/vnd.github.html+json' : 'application/vnd.github+json' } });
   if (r.status === 403 || r.status === 429) {
     const reset = +r.headers.get('X-RateLimit-Reset');
     throw new Error('GitHub asks this network to slow down' + (reset ? '; it will answer again at ' + new Date(reset * 1000).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' }) : '') + '. The board shows the last tickets it loaded.');
@@ -201,7 +237,13 @@ function render() {
     if (!list.length) col.append(el('div', 'empty', 'Nothing here'));
     const cap = 60;
     for (const r of list.slice(0, cap)) {
-      const card = el('a', 'card'); card.href = r.url; card.target = '_blank'; card.rel = 'noopener';
+      const card = el('a', 'card'); card.href = '#ticket-' + r.number;
+      card.addEventListener('click', e => {
+        if (e.metaKey || e.ctrlKey || e.shiftKey || e.button) return; // a new tab opens the page on this ticket
+        e.preventDefault();
+        history.pushState({ fromBoard: true }, '', '#ticket-' + r.number);
+        route();
+      });
       const top = el('div', 'top');
       top.append(el('span', null, '#' + r.number), el('span', null, s === 'live' ? fmtDay(new Date(r.since)) : ago(r.since)));
       card.append(top, el('div', 'ttl', r.title));
@@ -298,11 +340,97 @@ async function refresh() {
   }
 }
 
+// Ticket panel (#431). #ticket-N in the address opens it, so links and the back button work.
+// A thread is two requests (the ticket and its comments), kept until the ticket changes.
+const threads = new Map();
+let current = null;
+
+async function thread(n) {
+  const updated = items.has(n) ? items.get(n).updated_at : null, hit = threads.get(n);
+  if (hit && hit.updated === updated) return hit;
+  // ponytail: the first 100 comments; page through when a ticket outgrows that.
+  const [issue, comments] = await Promise.all([get(`${REPO}/issues/${n}`, true), get(`${REPO}/issues/${n}/comments?per_page=100`, true)]);
+  const t = { updated, issue, comments };
+  threads.set(n, t);
+  return t;
+}
+
+function post(user, at, html) {
+  const box = el('article', 'post'), head = el('div', 'post-head'), md = el('div', 'md');
+  head.append(el('b', null, user), el('span', null, fmtTime(at)));
+  md.innerHTML = html || '<p>No description.</p>'; // body_html is GitHub's sanitized rendering, as github.com shows it
+  md.querySelectorAll('a').forEach(a => { a.target = '_blank'; a.rel = 'noopener'; });
+  box.append(head, md);
+  return box;
+}
+
+function section(title, ...kids) {
+  const s = el('section', 'p-sec');
+  s.append(el('h2', null, title), ...kids);
+  return s;
+}
+
+async function openPanel(n) {
+  const row = rows.find(r => r.number === n), it = items.get(n), dlg = $('panel');
+  $('p-num').textContent = '#' + n;
+  $('p-title').textContent = row ? row.title : it ? it.title : 'Ticket #' + n;
+  $('p-gh').href = 'https://github.com/captjkirk/Iron-Wasteland/issues/' + n;
+  const chips = $('p-chips');
+  chips.replaceChildren();
+  if (row) chips.append(el('span', 'chip stage-chip', COLS[row.stage] ? COLS[row.stage][0] : 'Dropped'));
+  if (row && row.map) chips.append(el('span', 'chip', mapName(row.map)));
+  (row ? row.labels : []).forEach(l => chips.append(el('span', 'chip', l)));
+  const body = $('p-body');
+  body.replaceChildren(el('div', 'empty', 'Loading the ticket…'));
+  if (!dlg.open) dlg.showModal();
+  try {
+    const t = await thread(n);
+    if (current !== n) return;
+    body.replaceChildren();
+    if (row && row.prs.length) {
+      body.append(section('Pull requests', ...row.prs.map(p => {
+        const box = el('div', 'pr'), link = el('a', null, '#' + p.number + ' ' + p.title);
+        link.href = p.url; link.target = '_blank'; link.rel = 'noopener';
+        const checks = el('a', null, 'checks'); checks.href = p.url + '/checks'; checks.target = '_blank'; checks.rel = 'noopener';
+        const state = el('span', null, (p.state === 'merged' ? 'Merged' : p.state === 'closed' ? 'Closed' : p.draft ? 'Draft' : 'Open') + ' · ');
+        state.append(checks);
+        box.append(link, state);
+        return box;
+      })));
+    }
+    body.append(section('Description', post(t.issue.user.login, t.issue.created_at, t.issue.body_html)));
+    body.append(section('Comments (' + t.comments.length + ')',
+      ...(t.comments.length ? t.comments.map(c => post(c.user.login, c.created_at, c.body_html)) : [el('div', 'empty', 'No comments yet')])));
+  } catch (e) {
+    if (current === n) body.replaceChildren(el('div', 'err', e.message));
+  }
+}
+
+function route() {
+  const m = location.hash.match(/^#ticket-(\d+)$/);
+  if (m) { current = +m[1]; openPanel(current); }
+  else if ($('panel').open) { current = null; $('panel').close(); }
+}
+
+// Closing clears the ticket from the address. Done here rather than on the dialog's close event,
+// which the browser only fires once the page draws again.
+function closePanel() {
+  $('panel').close();
+  current = null;
+  if (!/^#ticket-/.test(location.hash)) return;
+  if (history.state && history.state.fromBoard) history.back();
+  else history.replaceState(null, '', location.pathname + location.search);
+}
+$('panel').addEventListener('cancel', e => { e.preventDefault(); closePanel(); }); // Esc
+$('panel').addEventListener('click', e => { if (e.target === $('panel')) closePanel(); }); // a click on the backdrop
+$('p-close').addEventListener('click', closePanel);
+window.addEventListener('hashchange', route);
+
 $('refresh').addEventListener('click', refresh);
 $('map').addEventListener('change', render);
 $('q').addEventListener('input', render);
 setInterval(() => { if (!document.hidden) refresh(); }, REFRESH_MS);
-refresh();
+refresh().then(route);
 </script>
 </body>
 </html>

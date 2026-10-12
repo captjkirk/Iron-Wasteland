@@ -35,4 +35,7 @@ assert.ok(!got[9] && !got[20], 'maps and PRs are not tickets');
 assert.strictEqual(got[3].map, 9, '#3 belongs to map #9');
 assert.strictEqual(got[6].since, '2026-10-05T00:01:00Z', '#6 went live when the deploy finished');
 assert.strictEqual(got[5].since, '2026-10-04T00:00:00Z', '#5 entered review when its PR opened');
+assert.deepStrictEqual(got[5].prs.map(p => [p.number, p.state]), [[20, 'open']], '#5 lists its open PR #20');
+assert.deepStrictEqual(got[6].prs.map(p => [p.number, p.state]), [[21, 'merged']], '#6 lists its merged PR #21');
+assert.deepStrictEqual(got[1].prs, [], '#1 has no PRs');
 assert.deepStrictEqual([...refsOf({ title: 'Feedback (#275, #347) (#384)', body: '' })].sort(), [275, 347, 384]);
