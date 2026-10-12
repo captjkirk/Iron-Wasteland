@@ -79,6 +79,7 @@ async function readScene(m) {
       sc.p1Idx = i; sc.refresh();
       if (m.mode === 2) { sc.p1Done = true; sc.p2Idx = (i + 1) % CHARS.length; sc.refresh(); sc.p1Done = false; }
       sc._pos = i; sc._layoutWheel(); out.push(snap(`character ${i}`));
+      if (window.__shot) await window.__shot(`character ${i}`); // scripts/shots.js photographs each state
     }
   } else {
     if (m.p1Done) { sc.confirm(1); sc.statusText.setText('Now Player 2 — Arrows to pick, / to confirm'); }
@@ -86,6 +87,7 @@ async function readScene(m) {
       if (st === 'save') { sc._onNameSubmit(); await wait(1100); }
       if (st === 'skip') { sc.children.list.find(o => o.text === 'SKIP \u2192').emit('pointerdown'); await wait(900); }
       out.push(snap(st || 'as shown'));
+      if (window.__shot) await window.__shot(st || 'as shown');
     }
   }
   saveSettings({ inputMode: before.input });
@@ -145,4 +147,4 @@ async function checkPhoneMenus(page, size) {
   if (found.length) throw new Error(`${found.length} menu layout problems at ${size} (listed above)`);
 }
 
-module.exports = { checkPhoneMenus, findProblems, PHONE_SIZES, MENUS };
+module.exports = { checkPhoneMenus, findProblems, readScene, PHONE_SIZES, MENUS };
