@@ -70,6 +70,10 @@ button:hover { border-color: var(--muted); }
 .card:hover { border-color: var(--muted); }
 .card .top { display: flex; justify-content: space-between; gap: 8px; font: 12px var(--mono); color: var(--muted); }
 .card .ttl { overflow-wrap: anywhere; }
+/* Waits on Jared (#440): a slight accent tint, an accent edge, and the words, so it never rests on colour alone. */
+.card.needs { border-color: var(--accent); background: var(--panel); background: color-mix(in srgb, var(--accent) 9%, var(--panel)); box-shadow: inset 3px 0 0 var(--accent); }
+.needs-tag { font: 600 11px var(--body); color: var(--accent); }
+.status .needs-count { color: var(--accent); font-weight: 600; }
 .chip { font-size: 11px; color: var(--muted); border: 1px solid var(--line); border-radius: 999px; padding: 0 7px; justify-self: start; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .empty { color: var(--muted); font-size: 13px; padding: 6px 0; }
 .more { color: var(--muted); font-size: 12px; }
@@ -141,6 +145,7 @@ dialog#settings::backdrop { background: rgb(0 0 0 / .45); }
     <h1>Iron Wasteland <span>Tracker</span></h1>
     <div class="status">
       <span id="updated">Loading tickets from GitHub…</span>
+      <span id="needs" class="needs-count"></span>
       <span id="deploy"></span>
       <button id="refresh" type="button">Refresh now</button>
       <button id="open-settings" type="button">Settings</button>
@@ -286,7 +291,7 @@ function render() {
     if (!list.length) col.append(el('div', 'empty', 'Nothing here'));
     const cap = 60;
     for (const r of list.slice(0, cap)) {
-      const card = el('a', 'card'); card.href = '#ticket-' + r.number;
+      const card = el('a', r.needsYou ? 'card needs' : 'card'); card.href = '#ticket-' + r.number;
       card.addEventListener('click', e => {
         if (e.metaKey || e.ctrlKey || e.shiftKey || e.button) return; // a new tab opens the page on this ticket
         e.preventDefault();
@@ -296,12 +301,15 @@ function render() {
       const top = el('div', 'top');
       top.append(el('span', null, '#' + r.number), el('span', null, s === 'live' ? fmtDay(new Date(r.since)) : ago(r.since)));
       card.append(top, el('div', 'ttl', r.title));
+      if (r.needsYou) card.append(el('span', 'needs-tag', 'Needs you'));
       if (r.map && !mapSel) card.append(el('span', 'chip', mapName(r.map)));
       col.append(card);
     }
     if (list.length > cap) col.append(el('div', 'more', (list.length - cap) + ' more; pick a map or search to narrow'));
     board.append(col);
   }
+  const waiting = rows.filter(r => r.needsYou).length;
+  $('needs').textContent = waiting ? 'Needs you: ' + waiting : '';
   renderChart(shown);
 }
 
@@ -427,6 +435,7 @@ async function openPanel(n) {
   const chips = $('p-chips');
   chips.replaceChildren();
   if (row) chips.append(el('span', 'chip stage-chip', COLS[row.stage] ? COLS[row.stage][0] : 'Dropped'));
+  if (row && row.needsYou) chips.append(el('span', 'chip needs-tag', 'Needs you'));
   if (row && row.map) chips.append(el('span', 'chip', mapName(row.map)));
   (row ? row.labels : []).forEach(l => chips.append(el('span', 'chip', l)));
   const body = $('p-body');

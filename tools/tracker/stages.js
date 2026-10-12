@@ -4,6 +4,8 @@
 (function (root) {
   const STAGES = ['idea', 'deciding', 'ready', 'building', 'review', 'shipping', 'live'];
   const DECIDE = ['question', 'wayfinder:grilling', 'wayfinder:research', 'wayfinder:prototype'];
+  // An open ticket waits on Jared with one of these labels, or when the judge held its PR for him (#440).
+  const NEEDS_YOU = ['question', 'wayfinder:grilling', 'ready-for-human'];
 
   const labelsOf = it => (it.labels || []).map(l => (typeof l === 'string' ? l : l.name));
 
@@ -34,7 +36,7 @@
     return best ? best.updated_at : null;
   }
 
-  // One row per issue (maps and PRs excluded): {number, title, url, stage, map, labels, since, created, prs}.
+  // One row per issue (maps and PRs excluded): {number, title, url, stage, map, labels, since, created, prs, needsYou}.
   // `prs` lists every linked PR as {number, title, url, draft, state: 'open'|'closed'|'merged'}.
   // `since` is when the ticket entered its stage as far as GitHub tells us without the events
   // API: filed for open ones, PR opened for review, merged for shipping, deployed for live.
@@ -77,7 +79,9 @@
       }
       const linked = prs.map(p => ({ number: p.number, title: p.title, url: p.html_url, draft: !!p.draft,
         state: p.pull_request.merged_at ? 'merged' : p.state }));
-      rows.push({ number: it.number, title: it.title, url: it.html_url, stage, map: mapOf(it), labels, since, created: it.created_at, prs: linked });
+      const needsYou = it.state === 'open' &&
+        (labels.some(l => NEEDS_YOU.includes(l)) || open.some(p => labelsOf(p).includes('needs-owner-look')));
+      rows.push({ number: it.number, title: it.title, url: it.html_url, stage, map: mapOf(it), labels, since, created: it.created_at, prs: linked, needsYou });
     }
     return rows;
   }
