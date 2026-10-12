@@ -50,4 +50,9 @@ jobs:
 
       - if: steps.want.outputs.yes == 'yes'
         name: Post the changed pairs on the PR and its ticket
+        env:  # the evidence commit's author
+          GIT_AUTHOR_NAME: github-actions[bot]
+          GIT_AUTHOR_EMAIL: 41898282+github-actions[bot]@users.noreply.github.com
+          GIT_COMMITTER_NAME: github-actions[bot]
+          GIT_COMMITTER_EMAIL: 41898282+github-actions[bot]@users.noreply.github.com
         run: node scripts/evidence.js "$PR" "${{ github.event.pull_request.head.sha }}" ../shots/before ../shots/after
