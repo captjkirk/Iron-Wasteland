@@ -75,7 +75,9 @@ the ticket's copy. Labelling the PR starts a run at once; labelling only the tic
 the next push. Every other PR stops after the label lookup.
 
 The shots are deterministic (a paused clock stepped in fixed steps, fixed random seeds, animations
-settled before each shot), so a screen nobody changed gives identical bytes and drops out. To take
+settled before each shot), so a screen nobody changed comes out the same and drops out. On the CI
+runner a pulsing button can still be a frame apart, so pairs are compared pixel by pixel and a
+difference of a few brightness levels is ignored (`TOLERANCE` in `scripts/evidence.js`). To take
 them locally: `npm install --no-save playwright@1.63.0`, then `node scripts/shots.js <out-dir>`.
 
 **Screens the fixed set cannot reach** (a boss sprite, a night scene, a new building): take your own
