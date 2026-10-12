@@ -1,0 +1,436 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>Iron Wasteland Tracker</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Silkscreen&family=IBM+Plex+Sans:wght@400;600&family=IBM+Plex+Mono:wght@400;600&display=swap">
+<style>
+/* Layout: a stage strip (summary), then the board (one column per stage), then 30 days of flow. */
+:root {
+  --bg: #121110; --panel: #1b1a18; --line: #2e2b27; --fg: #ece6dc; --muted: #a39b8f;
+  --accent: #e0702e; --series-1: #3987e5; --series-2: #d95926;
+  --display: 'Silkscreen', ui-monospace, monospace;
+  --body: 'IBM Plex Sans', system-ui, -apple-system, sans-serif;
+  --mono: 'IBM Plex Mono', ui-monospace, Menlo, monospace;
+  color-scheme: dark;
+}
+@media (prefers-color-scheme: light) {
+  :root:not([data-theme="dark"]) {
+    --bg: #f6f4f0; --panel: #fbfaf7; --line: #dfdad1; --fg: #1c1a17; --muted: #5e584f;
+    --accent: #b4521c; --series-1: #2a78d6; --series-2: #eb6834; color-scheme: light;
+  }
+}
+:root[data-theme="light"] {
+  --bg: #f6f4f0; --panel: #fbfaf7; --line: #dfdad1; --fg: #1c1a17; --muted: #5e584f;
+  --accent: #b4521c; --series-1: #2a78d6; --series-2: #eb6834; color-scheme: light;
+}
+* { box-sizing: border-box; }
+body { margin: 0; background: var(--bg); color: var(--fg); font: 14px/1.45 var(--body); }
+.wrap { max-width: 1600px; margin: 0 auto; padding-inline: 16px; padding-block: 20px 40px; display: grid; grid-template-columns: minmax(0, 1fr); gap: 20px; }
+a { color: inherit; }
+a:focus-visible, button:focus-visible, select:focus-visible, input:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+header { display: flex; flex-wrap: wrap; gap: 8px 20px; align-items: baseline; justify-content: space-between; }
+h1 { font: 22px/1.1 var(--display); letter-spacing: .02em; margin: 0; text-wrap: balance; }
+h1 span { color: var(--accent); }
+h2 { font: 600 12px/1 var(--body); text-transform: uppercase; letter-spacing: .08em; color: var(--muted); margin: 0; }
+.status { color: var(--muted); font-size: 13px; display: flex; flex-wrap: wrap; gap: 4px 14px; align-items: center; }
+.status b { color: var(--fg); font-weight: 600; }
+button, select, input { font: inherit; color: var(--fg); background: var(--panel); border: 1px solid var(--line); border-radius: 6px; padding: 5px 10px; }
+button { cursor: pointer; }
+button:hover { border-color: var(--muted); }
+.err { border: 1px solid var(--accent); border-radius: 8px; padding: 10px 14px; }
+
+.strip { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); border: 1px solid var(--line); border-radius: 8px; overflow: hidden; }
+.strip a { text-decoration: none; padding: 10px 12px; border-right: 1px solid var(--line); display: grid; gap: 2px; position: relative; }
+.strip a:last-child { border-right: 0; }
+.strip a:not(:last-child)::after { content: '›'; position: absolute; right: -6px; top: 50%; transform: translateY(-50%); color: var(--muted); background: var(--bg); line-height: 1; z-index: 1; }
+.strip a:hover { background: var(--panel); }
+.strip .n { font: 600 26px/1 var(--mono); font-variant-numeric: tabular-nums; }
+.strip .live .n { color: var(--accent); }
+.strip .k { font-size: 12px; color: var(--muted); }
+
+.filters { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+.filters label { color: var(--muted); font-size: 13px; }
+.filters input { width: 16rem; max-width: 100%; }
+.filters select { max-width: 100%; min-width: 0; }
+
+.board-scroll { overflow-x: auto; }
+.board { display: grid; grid-template-columns: repeat(7, minmax(180px, 1fr)); gap: 10px; min-width: 1320px; }
+.col { display: grid; align-content: start; gap: 8px; min-width: 0; }
+.col-head { display: grid; gap: 2px; padding-bottom: 6px; border-bottom: 2px solid var(--line); }
+.col-head .t { display: flex; justify-content: space-between; gap: 8px; font-weight: 600; }
+.col-head .t span { font-family: var(--mono); color: var(--muted); }
+.col-head p { margin: 0; font-size: 12px; color: var(--muted); }
+.col.live .col-head { border-bottom-color: var(--accent); }
+.card { display: grid; gap: 4px; background: var(--panel); border: 1px solid var(--line); border-radius: 6px; padding: 8px 10px; text-decoration: none; min-width: 0; }
+.card:hover { border-color: var(--muted); }
+.card .top { display: flex; justify-content: space-between; gap: 8px; font: 12px var(--mono); color: var(--muted); }
+.card .ttl { overflow-wrap: anywhere; }
+.chip { font-size: 11px; color: var(--muted); border: 1px solid var(--line); border-radius: 999px; padding: 0 7px; justify-self: start; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.empty { color: var(--muted); font-size: 13px; padding: 6px 0; }
+.more { color: var(--muted); font-size: 12px; }
+
+.flow { display: grid; gap: 10px; }
+.flow-head { display: flex; flex-wrap: wrap; gap: 8px 20px; align-items: baseline; justify-content: space-between; }
+.legend { display: flex; gap: 14px; font-size: 13px; color: var(--muted); }
+.legend i { display: inline-block; width: 10px; height: 10px; border-radius: 2px; margin-right: 6px; vertical-align: -1px; }
+.chart { position: relative; }
+.chart svg { display: block; width: 100%; height: auto; max-width: 100%; }
+.chart text { fill: var(--muted); font: 11px var(--mono); }
+.tip { position: absolute; pointer-events: none; background: var(--panel); border: 1px solid var(--line); border-radius: 6px; padding: 6px 9px; font-size: 12px; white-space: nowrap; }
+.tip b { display: block; margin-bottom: 2px; }
+footer { color: var(--muted); font-size: 12px; }
+
+/* Ticket panel (#431): a side sheet on a laptop, full screen on a phone. */
+dialog#panel { margin: 0 0 0 auto; height: 100%; max-height: 100%; width: min(680px, 100%); max-width: 100%; border: 0; border-left: 1px solid var(--line); padding: 0; background: var(--bg); color: var(--fg); }
+dialog#panel::backdrop { background: rgb(0 0 0 / .45); }
+.p-head { position: sticky; top: 0; z-index: 1; background: var(--bg); border-bottom: 1px solid var(--line); padding: 14px 16px; display: grid; gap: 8px; }
+.p-top { display: flex; justify-content: space-between; align-items: center; gap: 10px; font: 13px var(--mono); color: var(--muted); }
+.p-top div { display: flex; gap: 8px; align-items: center; }
+.p-head h2 { font: 600 18px/1.3 var(--body); text-transform: none; letter-spacing: 0; color: var(--fg); text-wrap: balance; overflow-wrap: anywhere; }
+.chips { display: flex; flex-wrap: wrap; gap: 6px; }
+.stage-chip { color: var(--fg); border-color: var(--muted); }
+.p-body { padding: 16px; display: grid; gap: 18px; }
+.p-sec { display: grid; gap: 8px; min-width: 0; }
+.pr { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 4px 10px; border: 1px solid var(--line); border-radius: 6px; padding: 8px 10px; }
+.pr span { color: var(--muted); font-size: 12px; }
+.post { border: 1px solid var(--line); border-radius: 8px; min-width: 0; }
+.post-head { display: flex; justify-content: space-between; gap: 8px; padding: 6px 12px; border-bottom: 1px solid var(--line); background: var(--panel); border-radius: 8px 8px 0 0; font-size: 12px; color: var(--muted); }
+.post-head b { color: var(--fg); }
+.md { padding: 4px 12px; overflow-wrap: anywhere; min-width: 0; }
+.md img { max-width: 100%; height: auto; }
+.md pre, .md table { display: block; overflow-x: auto; max-width: 100%; }
+.md pre { background: var(--panel); border-radius: 6px; padding: 10px; font: 12px/1.5 var(--mono); }
+.md code { font-family: var(--mono); font-size: 12px; }
+.md blockquote { margin: 0; padding-left: 12px; border-left: 3px solid var(--line); color: var(--muted); }
+.md table { border-collapse: collapse; }
+.md th, .md td { border: 1px solid var(--line); padding: 4px 8px; text-align: left; }
+.md h1, .md h2, .md h3 { font: 600 15px/1.3 var(--body); text-transform: none; letter-spacing: 0; color: var(--fg); margin: 14px 0 6px; }
+
+@media (max-width: 760px) {
+  .strip { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+  .strip a { border-bottom: 1px solid var(--line); }
+  .strip a::after { display: none; }
+  .board { grid-template-columns: 1fr; min-width: 0; gap: 18px; }
+  dialog#panel { border-left: 0; }
+}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <h1>Iron Wasteland <span>Tracker</span></h1>
+    <div class="status">
+      <span id="updated">Loading tickets from GitHub…</span>
+      <span id="deploy"></span>
+      <button id="refresh" type="button">Refresh now</button>
+    </div>
+  </header>
+  <div id="error" class="err" hidden></div>
+  <nav class="strip" id="strip" aria-label="Tickets per stage"></nav>
+  <div class="filters">
+    <label for="map">Map</label>
+    <select id="map"><option value="">All tickets</option></select>
+    <label for="q">Search</label>
+    <input id="q" type="search" placeholder="Title or #number">
+  </div>
+  <div class="board-scroll"><div class="board" id="board"></div></div>
+  <section class="flow" aria-labelledby="flow-title">
+    <div class="flow-head">
+      <h2 id="flow-title">Last 30 days: tickets filed and tickets gone live</h2>
+      <div class="legend"><span><i style="background:var(--series-1)"></i>Filed</span><span><i style="background:var(--series-2)"></i>Live</span></div>
+    </div>
+    <div class="chart" id="chart"></div>
+  </section>
+  <footer>Reads the public issues of captjkirk/Iron-Wasteland. Refreshes every 5 minutes while this tab is open. Maps (label wayfinder:map) are the filter, not cards.</footer>
+</div>
+<dialog id="panel" aria-labelledby="p-title">
+  <div class="p-head">
+    <div class="p-top"><span id="p-num"></span><div><a id="p-gh" target="_blank" rel="noopener">Open on GitHub</a><button id="p-close" type="button">Close</button></div></div>
+    <h2 id="p-title"></h2>
+    <div class="chips" id="p-chips"></div>
+  </div>
+  <div class="p-body" id="p-body"></div>
+</dialog>
+<script src="stages.js"></script>
+<script>
+const REPO = 'https://api.github.com/repos/captjkirk/Iron-Wasteland';
+const COLS = {
+  idea: ['Idea', 'Filed, not yet shaped'],
+  deciding: ['Deciding', 'Waits on a decision'],
+  ready: ['Ready', 'Shaped, waiting for a builder'],
+  building: ['Building', 'Claimed, or a draft PR'],
+  review: ['In review', 'PR open'],
+  shipping: ['Shipping', 'Merged, deploying to the game'],
+  live: ['Live', 'In the game, last 14 days'],
+};
+const LIVE_DAYS = 14, CHART_DAYS = 30, REFRESH_MS = 5 * 60 * 1000;
+const items = new Map(), runs = new Map();
+let lastFetch = null, rows = [];
+
+const $ = id => document.getElementById(id);
+const el = (tag, cls, text) => { const e = document.createElement(tag); if (cls) e.className = cls; if (text != null) e.textContent = text; return e; };
+const fmtTime = t => new Date(t).toLocaleString('en-US', { month: 'long', day: 'numeric', hour: 'numeric', minute: '2-digit' });
+const fmtDay = d => d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+function ago(t) {
+  const m = (Date.now() - Date.parse(t)) / 60000;
+  return m < 60 ? Math.max(1, Math.round(m)) + ' min' : m < 1440 ? Math.round(m / 60) + ' h' : Math.round(m / 1440) + ' d';
+}
+
+// html: ask for GitHub's own rendering of every body (body_html), so markdown needs no library here.
+async function get(url, html) {
+  const r = await fetch(url, { headers: { Accept: html ? 'application/vnd.github.html+json' : 'application/vnd.github+json' } });
+  if (r.status === 403 || r.status === 429) {
+    const reset = +r.headers.get('X-RateLimit-Reset');
+    throw new Error('GitHub asks this network to slow down' + (reset ? '; it will answer again at ' + new Date(reset * 1000).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' }) : '') + '. The board shows the last tickets it loaded.');
+  }
+  if (!r.ok) throw new Error('GitHub answered ' + r.status + '. The board shows the last tickets it loaded.');
+  return r.json();
+}
+
+// First load reads every ticket; later loads read only what changed since the last one (2 requests),
+// which keeps a tab left open well under GitHub's 60 requests an hour for visitors without a login.
+async function load() {
+  const started = new Date().toISOString();
+  const since = lastFetch ? '&since=' + lastFetch : '';
+  for (let page = 1; ; page++) {
+    const batch = await get(`${REPO}/issues?state=all&per_page=100&page=${page}${since}`);
+    batch.forEach(it => items.set(it.number, it));
+    if (batch.length < 100) break;
+  }
+  // ponytail: the last 200 deploys date every merge in the chart's window; older merges count as live.
+  for (let page = 1; page <= (lastFetch ? 1 : 2); page++) {
+    const batch = await get(`${REPO}/actions/workflows/pages.yml/runs?per_page=100&page=${page}`);
+    batch.workflow_runs.forEach(r => runs.set(r.id, r));
+    if (batch.workflow_runs.length < 100) break;
+  }
+  lastFetch = started;
+  rows = Tracker.classify([...items.values()], [...runs.values()]);
+}
+
+function render() {
+  const mapSel = $('map').value, q = $('q').value.trim().toLowerCase().replace(/^#/, '');
+  const shown = rows.filter(r =>
+    (!mapSel || r.map === +mapSel) &&
+    (!q || String(r.number) === q || r.title.toLowerCase().includes(q)));
+  const cutoff = Date.now() - LIVE_DAYS * 86400000;
+  const by = {};
+  Tracker.STAGES.forEach(s => (by[s] = []));
+  shown.forEach(r => { if (by[r.stage] && (r.stage !== 'live' || Date.parse(r.since) >= cutoff)) by[r.stage].push(r); });
+
+  const strip = $('strip'); strip.replaceChildren();
+  const board = $('board'); board.replaceChildren();
+  for (const s of Tracker.STAGES) {
+    const list = by[s].sort((a, b) => s === 'live' || s === 'shipping' ? Date.parse(b.since) - Date.parse(a.since) : a.number - b.number);
+    const tile = el('a', s); tile.href = '#col-' + s;
+    tile.append(el('span', 'n', list.length), el('span', 'k', COLS[s][0]));
+    strip.append(tile);
+
+    const col = el('section', 'col ' + s); col.id = 'col-' + s;
+    const head = el('div', 'col-head'), t = el('div', 't');
+    t.append(el('span', null, COLS[s][0]), el('span', null, list.length));
+    head.append(t, el('p', null, COLS[s][1]));
+    col.append(head);
+    if (!list.length) col.append(el('div', 'empty', 'Nothing here'));
+    const cap = 60;
+    for (const r of list.slice(0, cap)) {
+      const card = el('a', 'card'); card.href = '#ticket-' + r.number;
+      card.addEventListener('click', e => {
+        if (e.metaKey || e.ctrlKey || e.shiftKey || e.button) return; // a new tab opens the page on this ticket
+        e.preventDefault();
+        history.pushState({ fromBoard: true }, '', '#ticket-' + r.number);
+        route();
+      });
+      const top = el('div', 'top');
+      top.append(el('span', null, '#' + r.number), el('span', null, s === 'live' ? fmtDay(new Date(r.since)) : ago(r.since)));
+      card.append(top, el('div', 'ttl', r.title));
+      if (r.map && !mapSel) card.append(el('span', 'chip', mapName(r.map)));
+      col.append(card);
+    }
+    if (list.length > cap) col.append(el('div', 'more', (list.length - cap) + ' more; pick a map or search to narrow'));
+    board.append(col);
+  }
+  renderChart(shown);
+}
+
+function mapName(n) {
+  const m = items.get(n);
+  return m ? '#' + n + ' ' + m.title.replace(/^(wayfinder|map):\s*/i, '').replace(/\s*\(.*$/, '') : '#' + n;
+}
+
+function fillMaps() {
+  const sel = $('map'), keep = sel.value;
+  const maps = [...items.values()].filter(it => !it.pull_request && it.state === 'open' && (it.labels || []).some(l => l.name === 'wayfinder:map')).sort((a, b) => b.number - a.number);
+  sel.replaceChildren(new Option('All tickets', ''), ...maps.map(m => new Option(mapName(m.number), m.number)));
+  sel.value = keep;
+}
+
+function renderChart(shown) {
+  const days = [];
+  const start = new Date(); start.setHours(0, 0, 0, 0); start.setDate(start.getDate() - (CHART_DAYS - 1));
+  for (let i = 0; i < CHART_DAYS; i++) { const d = new Date(start); d.setDate(start.getDate() + i); days.push({ d, filed: 0, live: 0 }); }
+  const idx = t => Math.floor((Date.parse(t) - start) / 86400000);
+  for (const r of shown) {
+    const f = idx(r.created); if (f >= 0 && f < CHART_DAYS) days[f].filed++;
+    if (r.stage === 'live') { const l = idx(r.since); if (l >= 0 && l < CHART_DAYS) days[l].live++; }
+  }
+  const W = 900, H = 220, L = 34, R = 8, T = 10, B = 26;
+  const max = Math.max(4, ...days.map(d => Math.max(d.filed, d.live)));
+  const step = Math.ceil(max / 4), top = step * 4;
+  const y = v => T + (H - T - B) * (1 - v / top);
+  const slot = (W - L - R) / CHART_DAYS, bw = Math.max(2, (slot - 6) / 2);
+  const ns = 'http://www.w3.org/2000/svg';
+  const svg = document.createElementNS(ns, 'svg');
+  svg.setAttribute('viewBox', `0 0 ${W} ${H}`);
+  svg.setAttribute('role', 'img');
+  svg.setAttribute('aria-label', 'Tickets filed and gone live per day, last 30 days');
+  const add = (tag, attrs, text) => { const e = document.createElementNS(ns, tag); for (const k in attrs) e.setAttribute(k, attrs[k]); if (text != null) e.textContent = text; svg.append(e); return e; };
+  for (let v = 0; v <= top; v += step) {
+    add('line', { x1: L, x2: W - R, y1: y(v), y2: y(v), stroke: 'var(--line)', 'stroke-width': 1 });
+    add('text', { x: L - 6, y: y(v) + 4, 'text-anchor': 'end' }, v);
+  }
+  const bar = (x, v, color) => {
+    if (!v) return;
+    const h = y(0) - y(v), r = Math.min(3, h / 2, bw / 2);
+    add('path', { fill: color, d: `M${x},${y(0)} V${y(v) + r} Q${x},${y(v)} ${x + r},${y(v)} H${x + bw - r} Q${x + bw},${y(v)} ${x + bw},${y(v) + r} V${y(0)} Z` });
+  };
+  days.forEach((d, i) => {
+    const x = L + i * slot + 2;
+    bar(x, d.filed, 'var(--series-1)');
+    bar(x + bw + 2, d.live, 'var(--series-2)');
+    if (i % 5 === 0 || i === CHART_DAYS - 1) add('text', { x: x + bw, y: H - 8, 'text-anchor': 'middle' }, fmtDay(d.d));
+  });
+  const hover = add('rect', { x: 0, y: T, width: slot, height: H - T - B, fill: 'var(--fg)', opacity: 0 });
+  const box = $('chart'); box.replaceChildren(svg);
+  const tip = el('div', 'tip'); tip.hidden = true; box.append(tip);
+  svg.addEventListener('pointermove', e => {
+    const p = svg.getBoundingClientRect(), sx = (e.clientX - p.left) * W / p.width;
+    const i = Math.floor((sx - L) / slot);
+    if (i < 0 || i >= CHART_DAYS) { tip.hidden = true; hover.setAttribute('opacity', 0); return; }
+    const d = days[i];
+    hover.setAttribute('x', L + i * slot); hover.setAttribute('opacity', 0.06);
+    tip.replaceChildren(el('b', null, d.d.toLocaleDateString('en-US', { weekday: 'short', month: 'long', day: 'numeric' })), el('div', null, 'Filed: ' + d.filed), el('div', null, 'Live: ' + d.live));
+    tip.hidden = false;
+    const px = (L + i * slot + slot / 2) * p.width / W;
+    tip.style.left = Math.min(Math.max(0, px - 60), p.width - 130) + 'px';
+    tip.style.top = '0px';
+  });
+  svg.addEventListener('pointerleave', () => { tip.hidden = true; hover.setAttribute('opacity', 0); });
+}
+
+async function refresh() {
+  $('refresh').disabled = true;
+  try {
+    await load();
+    $('error').hidden = true;
+    fillMaps();
+    render();
+    $('updated').replaceChildren('Updated ', el('b', null, new Date().toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })));
+    const done = [...runs.values()].filter(r => r.conclusion === 'success').sort((a, b) => Date.parse(b.updated_at) - Date.parse(a.updated_at))[0];
+    const busy = [...runs.values()].some(r => r.status !== 'completed');
+    $('deploy').textContent = busy ? 'Deploying to the live game now' : done ? 'Live game last deployed ' + fmtTime(done.updated_at) : '';
+  } catch (e) {
+    $('error').textContent = e.message;
+    $('error').hidden = false;
+  } finally {
+    $('refresh').disabled = false;
+  }
+}
+
+// Ticket panel (#431). #ticket-N in the address opens it, so links and the back button work.
+// A thread is two requests (the ticket and its comments), kept until the ticket changes.
+const threads = new Map();
+let current = null;
+
+async function thread(n) {
+  const updated = items.has(n) ? items.get(n).updated_at : null, hit = threads.get(n);
+  if (hit && hit.updated === updated) return hit;
+  // ponytail: the first 100 comments; page through when a ticket outgrows that.
+  const [issue, comments] = await Promise.all([get(`${REPO}/issues/${n}`, true), get(`${REPO}/issues/${n}/comments?per_page=100`, true)]);
+  const t = { updated, issue, comments };
+  threads.set(n, t);
+  return t;
+}
+
+function post(user, at, html) {
+  const box = el('article', 'post'), head = el('div', 'post-head'), md = el('div', 'md');
+  head.append(el('b', null, user), el('span', null, fmtTime(at)));
+  md.innerHTML = html || '<p>No description.</p>'; // body_html is GitHub's sanitized rendering, as github.com shows it
+  md.querySelectorAll('a').forEach(a => { a.target = '_blank'; a.rel = 'noopener'; });
+  box.append(head, md);
+  return box;
+}
+
+function section(title, ...kids) {
+  const s = el('section', 'p-sec');
+  s.append(el('h2', null, title), ...kids);
+  return s;
+}
+
+async function openPanel(n) {
+  const row = rows.find(r => r.number === n), it = items.get(n), dlg = $('panel');
+  $('p-num').textContent = '#' + n;
+  $('p-title').textContent = row ? row.title : it ? it.title : 'Ticket #' + n;
+  $('p-gh').href = 'https://github.com/captjkirk/Iron-Wasteland/issues/' + n;
+  const chips = $('p-chips');
+  chips.replaceChildren();
+  if (row) chips.append(el('span', 'chip stage-chip', COLS[row.stage] ? COLS[row.stage][0] : 'Dropped'));
+  if (row && row.map) chips.append(el('span', 'chip', mapName(row.map)));
+  (row ? row.labels : []).forEach(l => chips.append(el('span', 'chip', l)));
+  const body = $('p-body');
+  body.replaceChildren(el('div', 'empty', 'Loading the ticket…'));
+  if (!dlg.open) dlg.showModal();
+  try {
+    const t = await thread(n);
+    if (current !== n) return;
+    body.replaceChildren();
+    if (row && row.prs.length) {
+      body.append(section('Pull requests', ...row.prs.map(p => {
+        const box = el('div', 'pr'), link = el('a', null, '#' + p.number + ' ' + p.title);
+        link.href = p.url; link.target = '_blank'; link.rel = 'noopener';
+        const checks = el('a', null, 'checks'); checks.href = p.url + '/checks'; checks.target = '_blank'; checks.rel = 'noopener';
+        const state = el('span', null, (p.state === 'merged' ? 'Merged' : p.state === 'closed' ? 'Closed' : p.draft ? 'Draft' : 'Open') + ' · ');
+        state.append(checks);
+        box.append(link, state);
+        return box;
+      })));
+    }
+    body.append(section('Description', post(t.issue.user.login, t.issue.created_at, t.issue.body_html)));
+    body.append(section('Comments (' + t.comments.length + ')',
+      ...(t.comments.length ? t.comments.map(c => post(c.user.login, c.created_at, c.body_html)) : [el('div', 'empty', 'No comments yet')])));
+  } catch (e) {
+    if (current === n) body.replaceChildren(el('div', 'err', e.message));
+  }
+}
+
+function route() {
+  const m = location.hash.match(/^#ticket-(\d+)$/);
+  if (m) { current = +m[1]; openPanel(current); }
+  else if ($('panel').open) { current = null; $('panel').close(); }
+}
+
+// Closing clears the ticket from the address. Done here rather than on the dialog's close event,
+// which the browser only fires once the page draws again.
+function closePanel() {
+  $('panel').close();
+  current = null;
+  if (!/^#ticket-/.test(location.hash)) return;
+  if (history.state && history.state.fromBoard) history.back();
+  else history.replaceState(null, '', location.pathname + location.search);
+}
+$('panel').addEventListener('cancel', e => { e.preventDefault(); closePanel(); }); // Esc
+$('panel').addEventListener('click', e => { if (e.target === $('panel')) closePanel(); }); // a click on the backdrop
+$('p-close').addEventListener('click', closePanel);
+window.addEventListener('hashchange', route);
+
+$('refresh').addEventListener('click', refresh);
+$('map').addEventListener('change', render);
+$('q').addEventListener('input', render);
+setInterval(() => { if (!document.hidden) refresh(); }, REFRESH_MS);
+refresh().then(route);
+</script>
+</body>
+</html>
