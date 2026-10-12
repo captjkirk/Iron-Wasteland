@@ -375,7 +375,7 @@ class ModeSelectScene extends Phaser.Scene {
     }).setOrigin(0.5);
 
     // ── PLAYERS row ──
-    this.add.text(W/2, L.pLabel.y, 'PLAYERS', {
+    this.add.text(W/2, L.pLabel.y, 'HOW MANY PLAYERS', {
       fontFamily:'monospace', fontSize:L.pLabel.size + 'px', color:'#556655',
     }).setOrigin(0.5);
 
