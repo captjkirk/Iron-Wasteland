@@ -5,8 +5,9 @@
 // in-play frame (?seed=1, as the smoke run plays it).
 // Renders are deterministic, so a screen nobody changed gives the same bytes on both sides: the page
 // runs on Playwright's paused clock, advanced in fixed steps by `pump`; Math.random and Phaser's RND
-// are reseeded before each screen; animations are settled before each shot; VERSION is pinned (the
-// server stamps it with the commit time).
+// are reseeded before each screen; network calls answer inside the page; each screen runs SETTLE_MS
+// and its animations are settled before its shot; VERSION is pinned (the server stamps it with the
+// commit time).
 const fs = require('fs');
 const path = require('path');
 const { webkit } = require('playwright');
@@ -19,6 +20,7 @@ process.env.PORT = '0';
 const server = require(path.resolve(gameDir, 'server.js'));
 const T0 = new Date('2026-01-01T12:00:00Z').getTime();
 const STEP_MS = 50;
+const SETTLE_MS = 1000; // game time a screen runs before its shot, so a wheel or a fade has come to rest
 
 const slug = s => s.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
 
@@ -37,10 +39,10 @@ async function pump(page, fn, arg, take = () => {}) {
     await page.clock.runFor(STEP_MS);
     const s = await page.evaluate(() => ({ busy: window.__busy, label: window.__shotWanted ? window.__shotWanted.label : null }));
     if (s.label != null) {
-      console.log('DBG', s.label, JSON.stringify(await page.evaluate(() => ({ hidden: document.hidden, vis: document.visibilityState, focus: document.hasFocus(), running: _phaserGame.loop.running, frame: _phaserGame.loop.frame, now: Date.now() % 1e6, raf: String(window.requestAnimationFrame).slice(0, 60), scenes: _phaserGame.scene.getScenes(true).map(x => x.scene.key).join() }))));
-      // A one-frame jitter still creeps in now and then (cause not found), so every animation is
-      // settled before the shot: one-off tweens jump to their end, looping ones to their start,
-      // and the frame is redrawn without moving time.
+      // A one-frame jitter still creeps in now and then (cause not found), so the screen first runs
+      // SETTLE_MS more, then every animation is settled: one-off tweens jump to their end, looping
+      // ones to their start, and the frame is redrawn without moving time.
+      await page.clock.runFor(SETTLE_MS);
       await page.evaluate(() => {
         for (const sc of _phaserGame.scene.getScenes(true)) for (const t of sc.tweens.getTweens()) t.seek(t.isInfinite ? 0 : t.totalDuration + 1000, 16, true);
         _phaserGame.step(_phaserGame.loop.now, 0);
@@ -54,6 +56,15 @@ async function pump(page, fn, arg, take = () => {}) {
 async function newPage(browser, opts) {
   const page = await browser.newPage(opts);
   await page.clock.install({ time: T0 });
+  // The global scoreboard (its top 10 at its longest) and the log upload answer at once, inside the
+  // page: a stubbed network reply arrives in real time, so it would land on a different step each run.
+  const rows = Array.from({ length: 10 }, (_, i) => ({ name: 'Wasteland Walker ' + i, score: 123456 - i * 9000, days: 10 + i }));
+  await page.addInitScript(rows => {
+    const realFetch = window.fetch;
+    window.fetch = (url, opts) => /script\.google\.com|\/save-log/.test(String(url))
+      ? Promise.resolve({ ok: true, json: () => Promise.resolve(opts && opts.method === 'POST' ? { ok: true } : rows), text: () => Promise.resolve('ok') })
+      : realFetch(url, opts);
+  }, rows);
   await page.addInitScript(() => {
     window.__reseed = () => {
       let s = 1; // mulberry32
@@ -67,9 +78,6 @@ async function newPage(browser, opts) {
     const r = await route.fetch();
     route.fulfill({ response: r, body: (await r.text()).replace(/const VERSION = '[^']*';/, "const VERSION = 'dev build';") });
   });
-  const rows = Array.from({ length: 10 }, (_, i) => ({ name: 'Wasteland Walker ' + i, score: 123456 - i * 9000, days: 10 + i }));
-  await page.route('https://script.google.com/**', route => route.fulfill({ contentType: 'application/json',
-    body: route.request().method() === 'POST' ? '{"ok":true}' : JSON.stringify(rows) }));
   return page;
 }
 
