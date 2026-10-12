@@ -1,0 +1,53 @@
+name: Screenshots
+
+# Before-and-after screenshots for visual and ux work (scripts/shots.js, scripts/evidence.js).
+# Runs when a PR opens or changes, and when it gets the visual or ux label. Its first step asks
+# whether the PR, or a ticket it closes, has one of those labels; on any other PR it stops there.
+on:
+  pull_request:
+    branches: [main]
+    types: [opened, synchronize, reopened, labeled]
+
+permissions:
+  contents: write       # the evidence branch
+  issues: write         # the comment on the ticket
+  pull-requests: write  # the comment on the PR
+
+concurrency:
+  group: shots-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  shots:
+    name: Before-and-after screenshots (visual and ux only)
+    if: github.event.action != 'labeled' || github.event.label.name == 'visual' || github.event.label.name == 'ux'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      GH_TOKEN: ${{ github.token }}
+      PR: ${{ github.event.pull_request.number }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 2  # the checkout is the PR merged into main; its first parent is main, the "before"
+
+      - id: want
+        name: Is this visual or ux work?
+        run: echo "yes=$(node scripts/evidence.js wants "$PR")" | tee -a "$GITHUB_OUTPUT"
+
+      - if: steps.want.outputs.yes == 'yes'
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - if: steps.want.outputs.yes == 'yes'
+        name: Take the shots, before (main) and after (this PR)
+        run: |
+          npm install --no-save playwright@1.63.0 && npx playwright install --with-deps webkit
+          git worktree add ../before HEAD^1
+          node scripts/shots.js ../shots/before ../before
+          node scripts/shots.js ../shots/after .
+
+      - if: steps.want.outputs.yes == 'yes'
+        name: Post the changed pairs on the PR and its ticket
+        run: node scripts/evidence.js "$PR" "${{ github.event.pull_request.head.sha }}" ../shots/before ../shots/after
