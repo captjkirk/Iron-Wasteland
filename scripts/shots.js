@@ -37,6 +37,7 @@ async function pump(page, fn, arg, take = () => {}) {
     await page.clock.runFor(STEP_MS);
     const s = await page.evaluate(() => ({ busy: window.__busy, label: window.__shotWanted ? window.__shotWanted.label : null }));
     if (s.label != null) {
+      console.log('DBG', s.label, JSON.stringify(await page.evaluate(() => ({ hidden: document.hidden, vis: document.visibilityState, focus: document.hasFocus(), running: _phaserGame.loop.running, frame: _phaserGame.loop.frame, now: Date.now() % 1e6, raf: String(window.requestAnimationFrame).slice(0, 60), scenes: _phaserGame.scene.getScenes(true).map(x => x.scene.key).join() }))));
       // A one-frame jitter still creeps in now and then (cause not found), so every animation is
       // settled before the shot: one-off tweens jump to their end, looping ones to their start,
       // and the frame is redrawn without moving time.
