@@ -3,7 +3,7 @@
 // Serves game-dir (default: this checkout) in headless WebKit and writes one PNG per screen to
 // out-dir: every menu state scripts/phone-menus.js reaches, at each of its PHONE_SIZES, plus one
 // in-play frame (?seed=1, as the smoke run plays it).
-// Renders are deterministic, so a screen nobody changed gives the same bytes on both sides: the page
+// Renders are deterministic, so a screen nobody changed looks the same on both sides: the page
 // runs on Playwright's paused clock, advanced in fixed steps by `pump`; Math.random and Phaser's RND
 // are reseeded before each screen; network calls answer inside the page; each screen runs SETTLE_MS
 // and its animations are settled before its shot; VERSION is pinned (the server stamps it with the

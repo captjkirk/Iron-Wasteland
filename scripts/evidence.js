@@ -2,23 +2,66 @@
 //   node scripts/evidence.js wants <pr>
 //     prints yes when the PR or a ticket it closes carries the `visual` or `ux` label, else no.
 //   node scripts/evidence.js <pr> <sha> <before-dir> <after-dir> [set]
-//     pairs the PNGs in the two folders by file name, drops pairs whose bytes are identical, pushes
+//     pairs the PNGs in the two folders by file name, drops pairs that look the same, pushes
 //     the rest to the `evidence` branch (pr-<pr>/<sha>/before|after/<name>.png) and posts or updates
 //     one comment per set (default `fixed`, the screens scripts/shots.js takes) on the PR and on each
 //     ticket it closes. The ticket copy is what the tracker panel shows. Needs `gh` signed in.
 const fs = require('fs');
 const os = require('os');
 const path = require('path');
+const zlib = require('zlib');
 const { execFileSync } = require('child_process');
 
 const LABELS = ['visual', 'ux'];
 const MAX_SCREENS = 40; // keeps a comment well under GitHub's 65,536 characters
 
+// Two renders of an unchanged screen on the CI runner can still differ by a frame of a pulsing button:
+// a few brightness levels out of 255 (4 at most, measured on PR 438), while a real change measures
+// tens. So a pair looks the same when no colour channel of any pixel differs by more than this.
+const TOLERANCE = 8;
+
+// Decodes an 8-bit, non-interlaced RGB or RGBA PNG (what Playwright writes) to { w, h, bpp, px }, or
+// null for any other kind, which then counts as changed.
+function decodePng(buf) {
+  let p = 8, w, h, bpp;
+  const idat = [];
+  while (p < buf.length) {
+    const n = buf.readUInt32BE(p), type = buf.toString('ascii', p + 4, p + 8), d = buf.subarray(p + 8, p + 8 + n);
+    if (type === 'IHDR') {
+      if (d[8] !== 8 || d[12] !== 0 || (d[9] !== 2 && d[9] !== 6)) return null;
+      w = d.readUInt32BE(0); h = d.readUInt32BE(4); bpp = d[9] === 6 ? 4 : 3;
+    }
+    if (type === 'IDAT') idat.push(d);
+    p += 12 + n;
+  }
+  const raw = zlib.inflateSync(Buffer.concat(idat)), row = w * bpp, px = Buffer.alloc(h * row);
+  for (let y = 0; y < h; y++) {
+    const f = raw[y * (row + 1)], o = y * row;
+    for (let x = 0; x < row; x++) {
+      const a = x >= bpp ? px[o + x - bpp] : 0, u = y ? px[o - row + x] : 0, c = x >= bpp && y ? px[o - row + x - bpp] : 0;
+      let pred = 0;
+      if (f === 1) pred = a; else if (f === 2) pred = u; else if (f === 3) pred = (a + u) >> 1;
+      else if (f === 4) { const q = a + u - c, pa = Math.abs(q - a), pb = Math.abs(q - u), pc = Math.abs(q - c); pred = pa <= pb && pa <= pc ? a : pb <= pc ? u : c; }
+      px[o + x] = (raw[y * (row + 1) + 1 + x] + pred) & 255;
+    }
+  }
+  return { w, h, bpp, px };
+}
+
+function looksSame(a, b) {
+  if (a.equals(b)) return true;
+  const A = decodePng(a), B = decodePng(b);
+  if (!A || !B || A.w !== B.w || A.h !== B.h) return false;
+  for (let i = 0; i < A.w * A.h; i++)
+    for (let c = 0; c < 3; c++) if (Math.abs(A.px[i * A.bpp + c] - B.px[i * B.bpp + c]) > TOLERANCE) return false;
+  return true;
+}
+
 // before and after map a screen name to its PNG bytes. Returns the screens that changed, appeared or
 // went away, by name: [{ name, before: bool, after: bool }].
 function pairShots(before, after) {
   const names = [...new Set([...Object.keys(before), ...Object.keys(after)])].sort();
-  return names.filter(n => !(before[n] && after[n] && before[n].equals(after[n])))
+  return names.filter(n => !(before[n] && after[n] && looksSame(before[n], after[n])))
     .map(n => ({ name: n, before: !!before[n], after: !!after[n] }));
 }
 

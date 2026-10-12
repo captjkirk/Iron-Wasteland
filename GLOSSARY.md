@@ -39,3 +39,8 @@ Avoid: mobile layout, compact layout, small screen.
 **Tap target** — anything on a menu that takes a tap: a button, a box, a slider or a tap zone (an invisible `Zone` laid over a
 drawn box). On the phone layout each is at least 32 px either way, and no two overlap (`scripts/phone-menus.js`).
 Avoid: hit area, hit box, click zone.
+
+**Access key** — Jared's fine-grained GitHub key for the tracker page (`tools/tracker/`, #432): this repo only,
+Issues and Pull requests read and write, pasted once per device and kept in that browser. With it the
+page can reply and change tickets; without it the page is read-only.
+Avoid: token, PAT, password, API key.

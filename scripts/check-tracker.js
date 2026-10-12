@@ -39,3 +39,28 @@ assert.deepStrictEqual(got[5].prs.map(p => [p.number, p.state]), [[20, 'open']],
 assert.deepStrictEqual(got[6].prs.map(p => [p.number, p.state]), [[21, 'merged']], '#6 lists its merged PR #21');
 assert.deepStrictEqual(got[1].prs, [], '#1 has no PRs');
 assert.deepStrictEqual([...refsOf({ title: 'Feedback (#275, #347) (#384)', body: '' })].sort(), [275, 347, 384]);
+
+// Tickets that wait on Jared stand out on the board (#440).
+const held = Object.fromEntries(classify([
+  issue(30, { labels: [{ name: 'question' }] }),
+  issue(31, { labels: [{ name: 'ready-for-human' }] }),
+  issue(32, { labels: [{ name: 'ready-for-agent' }] }),
+  issue(33, { labels: [{ name: 'question' }], state: 'closed', state_reason: 'completed', closed_at: '2026-10-05T00:00:00Z' }),
+  pr(40, { body: 'Closes #32', labels: [{ name: 'needs-owner-look' }] }),
+], runs).map(r => [r.number, r.needsYou]));
+assert.deepStrictEqual(held, { 30: true, 31: true, 32: true, 33: false }, 'needs you: decision and ready-for-human labels, a held PR, never a closed ticket');
+assert.strictEqual(got[1].needsYou, false, 'needs-triage alone does not wait on Jared');
+
+// Writes with Jared's access key (#432): tools/tracker/github.js builds them.
+const gh = require('../tools/tracker/github.js');
+assert.deepStrictEqual(gh.commentRequest(432, '  Looks good.\n'), { method: 'POST', path: '/issues/432/comments', body: { body: 'Looks good.' } });
+assert.strictEqual(gh.commentRequest(432, '   '), null, 'a blank reply is never posted');
+assert.strictEqual(gh.commentRequest(NaN, 'hi'), null, 'a reply needs a ticket number');
+assert.ok(gh.KEY_PROBES.every(p => p.method === 'GET' || (p.method === 'POST' && Object.keys(p.body).length === 0)), 'checking a key writes nothing');
+assert.ok(gh.keyShapeProblem('abc') && gh.keyShapeProblem('ghp_' + 'a'.repeat(36)), 'only a fine-grained key is taken');
+assert.strictEqual(gh.keyShapeProblem('github_pat_' + 'A1_'.repeat(28)), null);
+assert.strictEqual(gh.keyProblem([200, 422, 422]), null, 'a key that sees the repo and writes both works');
+assert.match(gh.keyProblem([401, 0, 0]), /does not recognise/);
+assert.match(gh.keyProblem([404, 0, 0]), /cannot see/);
+assert.match(gh.keyProblem([200, 403, 422]), /cannot write Issues\./);
+assert.match(gh.keyProblem([200, 422, 404]), /cannot write Pull requests\./);
