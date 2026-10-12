@@ -34,7 +34,8 @@
     return best ? best.updated_at : null;
   }
 
-  // One row per issue (maps and PRs excluded): {number, title, url, stage, map, labels, since}.
+  // One row per issue (maps and PRs excluded): {number, title, url, stage, map, labels, since, created, prs}.
+  // `prs` lists every linked PR as {number, title, url, draft, state: 'open'|'closed'|'merged'}.
   // `since` is when the ticket entered its stage as far as GitHub tells us without the events
   // API: filed for open ones, PR opened for review, merged for shipping, deployed for live.
   // Closed as not planned (duplicates, superseded) comes back as stage 'dropped'.
@@ -74,7 +75,9 @@
       } else {
         stage = 'idea';
       }
-      rows.push({ number: it.number, title: it.title, url: it.html_url, stage, map: mapOf(it), labels, since, created: it.created_at });
+      const linked = prs.map(p => ({ number: p.number, title: p.title, url: p.html_url, draft: !!p.draft,
+        state: p.pull_request.merged_at ? 'merged' : p.state }));
+      rows.push({ number: it.number, title: it.title, url: it.html_url, stage, map: mapOf(it), labels, since, created: it.created_at, prs: linked });
     }
     return rows;
   }
