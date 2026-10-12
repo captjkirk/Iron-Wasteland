@@ -28,6 +28,7 @@
   --accent: #b4521c; --series-1: #2a78d6; --series-2: #eb6834; color-scheme: light;
 }
 * { box-sizing: border-box; }
+[hidden] { display: none !important; }
 body { margin: 0; background: var(--bg); color: var(--fg); font: 14px/1.45 var(--body); }
 .wrap { max-width: 1600px; margin: 0 auto; padding-inline: 16px; padding-block: 20px 40px; display: grid; grid-template-columns: minmax(0, 1fr); gap: 20px; }
 a { color: inherit; }
@@ -69,6 +70,10 @@ button:hover { border-color: var(--muted); }
 .card:hover { border-color: var(--muted); }
 .card .top { display: flex; justify-content: space-between; gap: 8px; font: 12px var(--mono); color: var(--muted); }
 .card .ttl { overflow-wrap: anywhere; }
+/* Waits on Jared (#440): a slight accent tint, an accent edge, and the words, so it never rests on colour alone. */
+.card.needs { border-color: var(--accent); background: var(--panel); background: color-mix(in srgb, var(--accent) 9%, var(--panel)); box-shadow: inset 3px 0 0 var(--accent); }
+.needs-tag { font: 600 11px var(--body); color: var(--accent); }
+.status .needs-count { color: var(--accent); font-weight: 600; }
 .chip { font-size: 11px; color: var(--muted); border: 1px solid var(--line); border-radius: 999px; padding: 0 7px; justify-self: start; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .empty { color: var(--muted); font-size: 13px; padding: 6px 0; }
 .more { color: var(--muted); font-size: 12px; }
@@ -110,6 +115,21 @@ dialog#panel::backdrop { background: rgb(0 0 0 / .45); }
 .md th, .md td { border: 1px solid var(--line); padding: 4px 8px; text-align: left; }
 .md h1, .md h2, .md h3 { font: 600 15px/1.3 var(--body); text-transform: none; letter-spacing: 0; color: var(--fg); margin: 14px 0 6px; }
 
+/* Settings and the reply box (#432). */
+dialog#settings { width: min(480px, calc(100% - 32px)); border: 1px solid var(--line); border-radius: 10px; padding: 18px; background: var(--bg); color: var(--fg); }
+dialog#settings::backdrop { background: rgb(0 0 0 / .45); }
+.s-form { display: grid; gap: 12px; }
+.s-form h2 { font: 600 16px/1.3 var(--body); text-transform: none; letter-spacing: 0; color: var(--fg); }
+.s-form p { margin: 0; color: var(--muted); }
+.s-form input { width: 100%; font-family: var(--mono); }
+.s-row { display: flex; flex-wrap: wrap; gap: 8px; justify-content: flex-end; }
+.ok { color: var(--fg); }
+.reply { display: grid; gap: 8px; }
+.reply textarea { font: inherit; color: var(--fg); background: var(--panel); border: 1px solid var(--line); border-radius: 6px; padding: 8px 10px; min-height: 6em; resize: vertical; width: 100%; }
+.reply textarea:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.reply .s-row { align-items: center; justify-content: space-between; }
+.reply .note { color: var(--muted); font-size: 13px; }
+
 @media (max-width: 760px) {
   .strip { grid-template-columns: repeat(4, minmax(0, 1fr)); }
   .strip a { border-bottom: 1px solid var(--line); }
@@ -125,8 +145,10 @@ dialog#panel::backdrop { background: rgb(0 0 0 / .45); }
     <h1>Iron Wasteland <span>Tracker</span></h1>
     <div class="status">
       <span id="updated">Loading tickets from GitHub…</span>
+      <span id="needs" class="needs-count"></span>
       <span id="deploy"></span>
       <button id="refresh" type="button">Refresh now</button>
+      <button id="open-settings" type="button">Settings</button>
     </div>
   </header>
   <div id="error" class="err" hidden></div>
@@ -145,7 +167,7 @@ dialog#panel::backdrop { background: rgb(0 0 0 / .45); }
     </div>
     <div class="chart" id="chart"></div>
   </section>
-  <footer>Reads the public issues of captjkirk/Iron-Wasteland. Refreshes every 5 minutes while this tab is open. Maps (label wayfinder:map) are the filter, not cards.</footer>
+  <footer>Reads the public issues of captjkirk/Iron-Wasteland, with your access key when this browser has one (Settings). Refreshes every 5 minutes while this tab is open. Maps (label wayfinder:map) are the filter, not cards.</footer>
 </div>
 <dialog id="panel" aria-labelledby="p-title">
   <div class="p-head">
@@ -155,7 +177,26 @@ dialog#panel::backdrop { background: rgb(0 0 0 / .45); }
   </div>
   <div class="p-body" id="p-body"></div>
 </dialog>
+<dialog id="settings" aria-labelledby="s-title">
+  <form class="s-form" id="s-form">
+    <h2 id="s-title">Access key</h2>
+    <div id="s-saved" class="s-form" hidden>
+      <p class="ok">A key is saved in this browser. You can reply from a ticket, and GitHub allows 5,000 requests an hour.</p>
+      <div class="s-row"><button id="s-forget" type="button">Forget the key</button><button class="s-close" type="button">Close</button></div>
+    </div>
+    <div id="s-new" class="s-form">
+      <p>Add your GitHub key once on this device to reply from a ticket. Without it the board is read-only.</p>
+      <p>Make one at <a href="https://github.com/settings/personal-access-tokens/new" target="_blank" rel="noopener">GitHub, Fine-grained tokens</a>: only the repository captjkirk/Iron-Wasteland, with Issues and Pull requests set to Read and write.</p>
+      <label for="s-key">Your key</label>
+      <input id="s-key" type="password" autocomplete="off" spellcheck="false" placeholder="github_pat_…">
+      <p>It stays in this browser only. Other pages on captjkirk.github.io could read it, which is why it may reach this one repository and nothing else.</p>
+      <div class="err" id="s-msg" role="alert" hidden></div>
+      <div class="s-row"><button class="s-close" type="button">Cancel</button><button id="s-save" type="submit">Check and save</button></div>
+    </div>
+  </form>
+</dialog>
 <script src="stages.js"></script>
+<script src="github.js"></script>
 <script>
 const REPO = 'https://api.github.com/repos/captjkirk/Iron-Wasteland';
 const COLS = {
@@ -180,9 +221,22 @@ function ago(t) {
   return m < 60 ? Math.max(1, Math.round(m)) + ' min' : m < 1440 ? Math.round(m / 60) + ' h' : Math.round(m / 1440) + ' d';
 }
 
+// Jared's access key (#432), kept in this browser. Every request sends it in a header, never in the address.
+const KEY_STORE = 'iron-wasteland-tracker-key';
+let key = null;
+try { key = localStorage.getItem(KEY_STORE); } catch (e) { /* storage blocked: read-only */ }
+
+function call(url, { method = 'GET', body, html, withKey = key } = {}) {
+  const headers = { Accept: html ? 'application/vnd.github.html+json' : 'application/vnd.github+json' };
+  if (withKey) headers.Authorization = 'Bearer ' + withKey;
+  if (body) headers['Content-Type'] = 'application/json';
+  return fetch(url, { method, headers, body: body && JSON.stringify(body) });
+}
+
 // html: ask for GitHub's own rendering of every body (body_html), so markdown needs no library here.
 async function get(url, html) {
-  const r = await fetch(url, { headers: { Accept: html ? 'application/vnd.github.html+json' : 'application/vnd.github+json' } });
+  const r = await call(url, { html });
+  if (r.status === 401 && key) throw new Error('GitHub no longer accepts the access key saved in this browser (it may have expired). Open Settings to forget it or add a new one.');
   if (r.status === 403 || r.status === 429) {
     const reset = +r.headers.get('X-RateLimit-Reset');
     throw new Error('GitHub asks this network to slow down' + (reset ? '; it will answer again at ' + new Date(reset * 1000).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' }) : '') + '. The board shows the last tickets it loaded.');
@@ -237,7 +291,7 @@ function render() {
     if (!list.length) col.append(el('div', 'empty', 'Nothing here'));
     const cap = 60;
     for (const r of list.slice(0, cap)) {
-      const card = el('a', 'card'); card.href = '#ticket-' + r.number;
+      const card = el('a', r.needsYou ? 'card needs' : 'card'); card.href = '#ticket-' + r.number;
       card.addEventListener('click', e => {
         if (e.metaKey || e.ctrlKey || e.shiftKey || e.button) return; // a new tab opens the page on this ticket
         e.preventDefault();
@@ -247,12 +301,15 @@ function render() {
       const top = el('div', 'top');
       top.append(el('span', null, '#' + r.number), el('span', null, s === 'live' ? fmtDay(new Date(r.since)) : ago(r.since)));
       card.append(top, el('div', 'ttl', r.title));
+      if (r.needsYou) card.append(el('span', 'needs-tag', 'Needs you'));
       if (r.map && !mapSel) card.append(el('span', 'chip', mapName(r.map)));
       col.append(card);
     }
     if (list.length > cap) col.append(el('div', 'more', (list.length - cap) + ' more; pick a map or search to narrow'));
     board.append(col);
   }
+  const waiting = rows.filter(r => r.needsYou).length;
+  $('needs').textContent = waiting ? 'Needs you: ' + waiting : '';
   renderChart(shown);
 }
 
@@ -378,6 +435,7 @@ async function openPanel(n) {
   const chips = $('p-chips');
   chips.replaceChildren();
   if (row) chips.append(el('span', 'chip stage-chip', COLS[row.stage] ? COLS[row.stage][0] : 'Dropped'));
+  if (row && row.needsYou) chips.append(el('span', 'chip needs-tag', 'Needs you'));
   if (row && row.map) chips.append(el('span', 'chip', mapName(row.map)));
   (row ? row.labels : []).forEach(l => chips.append(el('span', 'chip', l)));
   const body = $('p-body');
@@ -401,10 +459,95 @@ async function openPanel(n) {
     body.append(section('Description', post(t.issue.user.login, t.issue.created_at, t.issue.body_html)));
     body.append(section('Comments (' + t.comments.length + ')',
       ...(t.comments.length ? t.comments.map(c => post(c.user.login, c.created_at, c.body_html)) : [el('div', 'empty', 'No comments yet')])));
+    body.append(section('Reply', replyBox(n)));
   } catch (e) {
     if (current === n) body.replaceChildren(el('div', 'err', e.message));
   }
 }
+
+// With a key: a box that posts a comment, then reloads the thread. Without one: how to add a key.
+function replyBox(n) {
+  const box = el('form', 'reply');
+  if (!key) {
+    const note = el('p', 'note', 'Read-only on this device. To reply here, add your access key once in ');
+    const open = el('button', null, 'Settings'); open.type = 'button'; open.addEventListener('click', openSettings);
+    note.append(open, '.');
+    box.append(note);
+    return box;
+  }
+  const text = el('textarea'); text.setAttribute('aria-label', 'Reply to #' + n); text.placeholder = 'Write a reply. It posts to GitHub as you.';
+  const msg = el('div', 'err'); msg.setAttribute('role', 'alert'); msg.hidden = true;
+  const send = el('button', null, 'Post reply'); send.type = 'submit';
+  const row = el('div', 's-row'); row.append(el('span', 'note', 'Markdown works, as on GitHub.'), send);
+  box.append(text, msg, row);
+  box.addEventListener('submit', async e => {
+    e.preventDefault();
+    const req = TrackerGitHub.commentRequest(n, text.value);
+    if (!req) { text.focus(); return; }
+    send.disabled = true; send.textContent = 'Posting…'; msg.hidden = true;
+    try {
+      const r = await call(REPO + req.path, req);
+      if (!r.ok) throw new Error(r.status === 401 ? 'GitHub no longer accepts your key (it may have expired). Open Settings to add a new one.'
+        : r.status === 403 || r.status === 404 ? 'Your key may not write issues (GitHub answered ' + r.status + '). Open Settings to check it.'
+        : 'GitHub answered ' + r.status + '. Your reply is still here; try again.');
+      threads.delete(n);
+      if (current === n) await openPanel(n);
+    } catch (err) {
+      msg.textContent = err.message === 'Failed to fetch' || err.name === 'TypeError' ? 'Could not reach GitHub. Your reply is still here; try again.' : err.message;
+      msg.hidden = false;
+      send.disabled = false; send.textContent = 'Post reply';
+    }
+  });
+  return box;
+}
+
+// Settings (#432): check a pasted key against GitHub, keep it in this browser, or forget it.
+function openSettings() {
+  $('s-saved').hidden = !key; $('s-new').hidden = !!key;
+  $('s-key').value = ''; $('s-msg').hidden = true;
+  if (!$('settings').open) $('settings').showModal();
+  (key ? $('s-forget') : $('s-key')).focus();
+}
+
+function keyChanged() {
+  if ($('settings').open) openSettings();
+  refresh().then(() => { if (current) { threads.delete(current); openPanel(current); } });
+}
+
+$('s-form').addEventListener('submit', async e => {
+  e.preventDefault();
+  const pasted = $('s-key').value.trim(), msg = $('s-msg');
+  const show = text => { msg.textContent = text; msg.hidden = false; };
+  const shape = TrackerGitHub.keyShapeProblem(pasted);
+  if (shape) return show(shape);
+  $('s-save').disabled = true; $('s-save').textContent = 'Checking…'; msg.hidden = true;
+  try {
+    const statuses = [];
+    for (const p of TrackerGitHub.KEY_PROBES) {
+      statuses.push((await call(REPO + p.path, { method: p.method, body: p.body, withKey: pasted })).status);
+      if (statuses[0] !== 200) break; // a key that cannot see the repo needs no more questions
+    }
+    const problem = TrackerGitHub.keyProblem(statuses);
+    if (problem) return show(problem);
+    key = pasted;
+    let kept = true;
+    try { localStorage.setItem(KEY_STORE, key); } catch (err) { kept = false; }
+    keyChanged();
+    if (!kept) $('s-saved').querySelector('p').textContent = 'The key works, but this browser would not keep it (a private window?). It lasts until you close this tab.';
+  } catch (err) {
+    show('Could not reach GitHub to check the key. Try again.');
+  } finally {
+    $('s-save').disabled = false; $('s-save').textContent = 'Check and save';
+  }
+});
+$('s-forget').addEventListener('click', () => {
+  key = null;
+  try { localStorage.removeItem(KEY_STORE); } catch (e) { /* nothing kept */ }
+  keyChanged();
+});
+document.querySelectorAll('.s-close').forEach(b => b.addEventListener('click', () => $('settings').close()));
+$('settings').addEventListener('click', e => { if (e.target === $('settings')) $('settings').close(); });
+$('open-settings').addEventListener('click', openSettings);
 
 function route() {
   const m = location.hash.match(/^#ticket-(\d+)$/);
