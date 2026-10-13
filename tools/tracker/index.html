@@ -71,6 +71,11 @@ button:hover { border-color: var(--muted); }
 .card .top { display: flex; justify-content: space-between; gap: 8px; font: 12px var(--mono); color: var(--muted); }
 .card .ttl { overflow-wrap: anywhere; }
 /* Waits on Jared (#440): a slight accent tint, an accent edge, and the words, so it never rests on colour alone. */
+/* A ticket waiting on another (#446): faded until hovered, and its blocker's card is outlined. */
+.card.waits { opacity: 0.5; }
+.card.waits:hover, .card.waits:focus-visible { opacity: 1; }
+.card .waits-tag { font: 12px var(--mono); color: var(--muted); }
+.card.blocker { outline: 2px solid var(--fg); outline-offset: 2px; }
 .card.needs { border-color: var(--accent); background: var(--panel); background: color-mix(in srgb, var(--accent) 9%, var(--panel)); box-shadow: inset 3px 0 0 var(--accent); }
 .needs-tag { font: 600 11px var(--body); color: var(--accent); }
 .status .needs-count { color: var(--accent); font-weight: 600; }
@@ -129,6 +134,8 @@ dialog#settings::backdrop { background: rgb(0 0 0 / .45); }
 .reply textarea:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 .reply .s-row { align-items: center; justify-content: space-between; }
 .reply .note { color: var(--muted); font-size: 13px; }
+.reply .s-row.moves { justify-content: flex-start; }
+.btns { display: flex; flex-wrap: wrap; gap: 8px; }
 
 @media (max-width: 760px) {
   .strip { grid-template-columns: repeat(4, minmax(0, 1fr)); }
@@ -209,7 +216,7 @@ const COLS = {
   live: ['Live', 'In the game, last 14 days'],
 };
 const LIVE_DAYS = 14, CHART_DAYS = 30, REFRESH_MS = 5 * 60 * 1000;
-const items = new Map(), runs = new Map();
+const items = new Map(), runs = new Map(), blockers = new Map();
 let lastFetch = null, rows = [];
 
 const $ = id => document.getElementById(id);
@@ -262,14 +269,24 @@ async function load() {
     if (batch.workflow_runs.length < 100) break;
   }
   lastFetch = started;
+  restage();
+  // Which tickets each waiting one is blocked by: one request each, kept until that ticket changes.
+  for (const r of rows.filter(r => r.blockedBy)) {
+    const updated = items.get(r.number).updated_at, hit = blockers.get(r.number);
+    if (!hit || hit.updated !== updated) blockers.set(r.number, { updated, nums: Tracker.openBlockers(await get(`${REPO}/issues/${r.number}/dependencies/blocked_by`)) });
+    r.waitsOn = blockers.get(r.number).nums;
+  }
+}
+
+// Rows from the tickets in hand. Also runs after a button changes one, so its card moves without a reload.
+function restage() {
   rows = Tracker.classify([...items.values()], [...runs.values()]);
+  rows.forEach(r => { if (r.blockedBy && blockers.has(r.number)) r.waitsOn = blockers.get(r.number).nums; });
 }
 
 function render() {
-  const mapSel = $('map').value, q = $('q').value.trim().toLowerCase().replace(/^#/, '');
-  const shown = rows.filter(r =>
-    (!mapSel || r.map === +mapSel) &&
-    (!q || String(r.number) === q || r.title.toLowerCase().includes(q)));
+  const mapSel = $('map').value;
+  const shown = rows.filter(r => (!mapSel || r.map === +mapSel) && Tracker.matches(r, $('q').value));
   const cutoff = Date.now() - LIVE_DAYS * 86400000;
   const by = {};
   Tracker.STAGES.forEach(s => (by[s] = []));
@@ -291,7 +308,9 @@ function render() {
     if (!list.length) col.append(el('div', 'empty', 'Nothing here'));
     const cap = 60;
     for (const r of list.slice(0, cap)) {
-      const card = el('a', r.needsYou ? 'card needs' : 'card'); card.href = '#ticket-' + r.number;
+      const waits = (r.waitsOn || []).length > 0;
+      const card = el('a', 'card' + (r.needsYou ? ' needs' : '') + (waits ? ' waits' : '')); card.href = '#ticket-' + r.number;
+      card.dataset.n = r.number;
       card.addEventListener('click', e => {
         if (e.metaKey || e.ctrlKey || e.shiftKey || e.button) return; // a new tab opens the page on this ticket
         e.preventDefault();
@@ -302,6 +321,12 @@ function render() {
       top.append(el('span', null, '#' + r.number), el('span', null, s === 'live' ? fmtDay(new Date(r.since)) : ago(r.since)));
       card.append(top, el('div', 'ttl', r.title));
       if (r.needsYou) card.append(el('span', 'needs-tag', 'Needs you'));
+      if (waits) {
+        card.append(el('span', 'waits-tag', 'Waits on ' + r.waitsOn.map(n => '#' + n).join(', ')));
+        const mark = on => r.waitsOn.forEach(n => { const b = board.querySelector(`.card[data-n="${n}"]`); if (b) b.classList.toggle('blocker', on); });
+        card.addEventListener('pointerenter', () => mark(true)); card.addEventListener('pointerleave', () => mark(false));
+        card.addEventListener('focus', () => mark(true)); card.addEventListener('blur', () => mark(false));
+      }
       if (r.map && !mapSel) card.append(el('span', 'chip', mapName(r.map)));
       col.append(card);
     }
@@ -436,6 +461,7 @@ async function openPanel(n) {
   chips.replaceChildren();
   if (row) chips.append(el('span', 'chip stage-chip', COLS[row.stage] ? COLS[row.stage][0] : 'Dropped'));
   if (row && row.needsYou) chips.append(el('span', 'chip needs-tag', 'Needs you'));
+  if (row && (row.waitsOn || []).length) chips.append(el('span', 'chip', 'Waits on ' + row.waitsOn.map(n => '#' + n).join(', ')));
   if (row && row.map) chips.append(el('span', 'chip', mapName(row.map)));
   (row ? row.labels : []).forEach(l => chips.append(el('span', 'chip', l)));
   const body = $('p-body');
@@ -459,14 +485,70 @@ async function openPanel(n) {
     body.append(section('Description', post(t.issue.user.login, t.issue.created_at, t.issue.body_html)));
     body.append(section('Comments (' + t.comments.length + ')',
       ...(t.comments.length ? t.comments.map(c => post(c.user.login, c.created_at, c.body_html)) : [el('div', 'empty', 'No comments yet')])));
-    body.append(section('Reply', replyBox(n)));
+    const moves = key && row ? TrackerGitHub.stageButtons(row) : [];
+    if (moves.length) body.append(section('Move', moveBox(n, moves)));
+    body.append(section('Reply', replyBox(n, row)));
   } catch (e) {
     if (current === n) body.replaceChildren(el('div', 'err', e.message));
   }
 }
 
-// With a key: a box that posts a comment, then reloads the thread. Without one: how to add a key.
-function replyBox(n) {
+// Why a write failed, in words. A key problem first, since that is the usual cause.
+function writeError(r) {
+  return r.status === 401 ? 'GitHub no longer accepts your key (it may have expired). Open Settings to add a new one.'
+    : r.status === 403 || r.status === 404 ? 'Your key may not write issues (GitHub answered ' + r.status + '). Open Settings to check it.'
+    : 'GitHub answered ' + r.status + '. Try again.';
+}
+const failed = err => (err.name === 'TypeError' ? 'Could not reach GitHub. Try again.' : err.message);
+
+// A button (#433): change the ticket's labels or close it, then redraw from GitHub's answer, so the card moves now.
+async function act(n, action) {
+  const req = TrackerGitHub.actionRequest(n, items.get(n).labels, action);
+  const r = await call(REPO + req.path, req);
+  if (!r.ok) throw new Error(writeError(r));
+  items.set(n, { ...items.get(n), ...(await r.json()) });
+  restage(); render();
+  threads.delete(n);
+  if (current === n) await openPanel(n);
+}
+
+function buttonsFor(list, onClick) {
+  const buttons = list.map(([label, action]) => {
+    const b = el('button', null, label); b.type = 'button';
+    b.addEventListener('click', () => onClick(b, label, action));
+    return b;
+  });
+  // While one works, all wait; the pressed one says what it is doing.
+  const busy = (b, text) => { buttons.forEach(x => (x.disabled = text !== b.dataset.label)); b.textContent = text; };
+  buttons.forEach((b, i) => (b.dataset.label = list[i][0]));
+  return { buttons, busy };
+}
+
+// Stage buttons (#433). Drop asks why first and posts the reason; cancelling keeps the ticket.
+function moveBox(n, moves) {
+  const box = el('div', 'reply'), row = el('div', 's-row moves'), msg = el('div', 'err');
+  msg.setAttribute('role', 'alert'); msg.hidden = true;
+  const { buttons, busy } = buttonsFor(moves, async (b, label, action) => {
+    let reason = '';
+    if (action === 'drop' && (reason = prompt('Drop #' + n + '? Say why if you like; it is posted on the ticket.', '')) === null) return;
+    busy(b, 'Saving…'); msg.hidden = true;
+    try {
+      const c = TrackerGitHub.commentRequest(n, reason);
+      if (c) { const r = await call(REPO + c.path, c); if (!r.ok) throw new Error(writeError(r)); }
+      await act(n, action);
+    } catch (err) {
+      msg.textContent = failed(err); msg.hidden = false;
+      busy(b, label);
+    }
+  });
+  row.append(...buttons);
+  box.append(row, msg);
+  return box;
+}
+
+// With a key: a box that posts a comment, then reloads the thread. On a ticket that needs Jared,
+// its buttons also mark it answered (#433), so Needs you clears. Without a key: how to add one.
+function replyBox(n, ticket) {
   const box = el('form', 'reply');
   if (!key) {
     const note = el('p', 'note', 'Read-only on this device. To reply here, add your access key once in ');
@@ -477,27 +559,28 @@ function replyBox(n) {
   }
   const text = el('textarea'); text.setAttribute('aria-label', 'Reply to #' + n); text.placeholder = 'Write a reply. It posts to GitHub as you.';
   const msg = el('div', 'err'); msg.setAttribute('role', 'alert'); msg.hidden = true;
-  const send = el('button', null, 'Post reply'); send.type = 'submit';
-  const row = el('div', 's-row'); row.append(el('span', 'note', 'Markdown works, as on GitHub.'), send);
-  box.append(text, msg, row);
-  box.addEventListener('submit', async e => {
-    e.preventDefault();
+  const { buttons, busy } = buttonsFor(ticket ? TrackerGitHub.replyButtons(ticket) : [['Post reply', null]], async (b, label, action) => {
     const req = TrackerGitHub.commentRequest(n, text.value);
     if (!req) { text.focus(); return; }
-    send.disabled = true; send.textContent = 'Posting…'; msg.hidden = true;
+    busy(b, 'Posting…'); msg.hidden = true;
+    let posted = false;
     try {
       const r = await call(REPO + req.path, req);
-      if (!r.ok) throw new Error(r.status === 401 ? 'GitHub no longer accepts your key (it may have expired). Open Settings to add a new one.'
-        : r.status === 403 || r.status === 404 ? 'Your key may not write issues (GitHub answered ' + r.status + '). Open Settings to check it.'
-        : 'GitHub answered ' + r.status + '. Your reply is still here; try again.');
+      if (!r.ok) throw new Error(writeError(r));
+      posted = true; text.value = '';
       threads.delete(n);
-      if (current === n) await openPanel(n);
+      if (action) await act(n, action);
+      else if (current === n) await openPanel(n);
     } catch (err) {
-      msg.textContent = err.message === 'Failed to fetch' || err.name === 'TypeError' ? 'Could not reach GitHub. Your reply is still here; try again.' : err.message;
+      msg.textContent = posted ? 'Your reply posted, but the ticket did not change. ' + failed(err) : failed(err) + ' Your reply is still here.';
       msg.hidden = false;
-      send.disabled = false; send.textContent = 'Post reply';
+      busy(b, label);
     }
   });
+  box.addEventListener('submit', e => e.preventDefault());
+  const btns = el('div', 'btns'); btns.append(...buttons);
+  const row = el('div', 's-row'); row.append(el('span', 'note', 'Markdown works, as on GitHub.'), btns);
+  box.append(text, msg, row);
   return box;
 }
 
