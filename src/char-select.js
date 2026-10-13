@@ -3,8 +3,12 @@
 // The selected character stands large in the centre with its stats and ability; the others sit
 // smaller and dimmed on an arc behind it. Left/right (keys, a swipe or mouse drag, the trackpad
 // or mouse wheel, or a tap on a side character) turns the wheel; F, Enter or a tap on the centre confirms. In 2-player games P2
-// turns the same wheel after P1 confirms, and P1's pick is skipped.
+// turns the same wheel after P1 confirms, under a "P2 SELECT" heading; P1's pick is tagged and skipped,
+// and Back or Esc during P2's turn returns to P1's turn.
 // Sized from S = min(W/1280, H/720): 1280x720 gives S=1, the 640x360 phone layout S=0.5.
+
+// Each player's colour, as on the controls screen.
+const P_COLOR = { 1: '#88cc44', 2: '#4488cc' };
 
 class CharSelectScene extends Phaser.Scene {
   constructor() { super('CharSelect'); }
@@ -36,7 +40,8 @@ class CharSelectScene extends Phaser.Scene {
     // On a touch phone the prompts name swipes and taps, not keys (the phone layout, GLOSSARY.md).
     const touchUI = this._touchUI = PHONE_LAYOUT && activeInputMode() === 'touch';
     const modeLabel = STATE.difficulty === 'hardcore' ? '  ☠ HARDCORE' : '  ♥ SURVIVAL';
-    this.add.text(W/2, 34, 'SELECT YOUR SURVIVOR' + (this.solo ? '' : 'S') + modeLabel, {
+    this._modeLabel = modeLabel;
+    this._head = this.add.text(W/2, 34, 'SELECT YOUR SURVIVOR' + modeLabel, {
       fontFamily:'monospace', fontSize: Math.max(14, Math.round(24*S)) + 'px',
       color: STATE.difficulty === 'hardcore' ? '#ff6644' : '#cc8833',
       stroke:'#000', strokeThickness:3,
@@ -150,6 +155,8 @@ class CharSelectScene extends Phaser.Scene {
     backZone.on('pointerout',  () => { backBtn.setColor('#cc8833'); drawBackBg(false); });
     backZone.on('pointerdown', () => goBack());
     const goBack = () => {
+      // During P2's turn, Back undoes P1's pick instead of leaving.
+      if (!this.solo && this.p1Done && !this.p2Done) { this.p1Done = false; this.refresh(); return; }
       this.cameras.main.fadeOut(200, 0, 0, 0);
       this.time.delayedCall(200, () => this.scene.start('ModeSelect'));
     };
@@ -179,6 +186,10 @@ class CharSelectScene extends Phaser.Scene {
     this._big = Math.min(3.2 * S, (this._feetY - 80) / 66);
     this._portraits = CHARS.map(ch =>
       this.add.image(W/2, this._feetY, 'player_atlas', ch.id).setOrigin(0.5, 1));
+    // P1's pick wears a "P1" tag during P2's turn (placed by _layoutWheel).
+    this._p1Tag = this.add.text(0, 0, 'P1', {
+      fontFamily:'monospace', fontSize: Math.max(12, sc(18)) + 'px', color: P_COLOR[1], stroke:'#000', strokeThickness:3,
+    }).setOrigin(0.5, 1).setDepth(11);
     this._pos = this.p1Idx;
     this._layoutWheel();
 
@@ -213,6 +224,9 @@ class CharSelectScene extends Phaser.Scene {
         .setAlpha(Math.max(0, Math.min(1, (2.5 - a) * 2)) * (1 - 0.5 * Math.min(1, a)))
         .setDepth(10 - a);
     });
+    const p1 = this._portraits[this.p1Idx];
+    this._p1Tag.setVisible(this._turn() === 2)
+      .setPosition(p1.x, p1.y - 66 * p1.scaleY - 4).setAlpha(Math.max(p1.alpha, 0.6));
   }
 
   // Turn the wheel to the active player's character over ~250 ms, the short way round.
@@ -278,6 +292,10 @@ class CharSelectScene extends Phaser.Scene {
     this._stats.forEach((bars, si) => bars.forEach((bar, b) => bar.setFillStyle(b < ch.stats[si] ? ch.color : 0x222233)));
     this._descT.setText(ch.desc.join('\n'));
     this._spinTo(idx);
+    if (!this.solo) {
+      const t = this._turn();
+      this._head.setText(`P${t} SELECT` + this._modeLabel).setColor(P_COLOR[t]);
+    }
     if (!this.p1Done) this.statusText.setText(this.solo ? '' : this._touchUI ? 'Player 1 — swipe, then tap the centre' : 'Player 1 — A/D to choose, F to confirm');
   }
 }
