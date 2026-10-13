@@ -25,7 +25,8 @@ session works in its own worktree; see `CLAUDE.md`, "Working directory"), then r
 has a `<script>` tag in `index.html`, the manifest check, the scoreboard check, a check that every
 doorway in `STRUCTURE_LAYOUTS` is at least 2 tiles wide, the recipe check
 (`scripts/check-recipes.js`: every cost in `src/recipes.js` names a real resource and is what
-`getBuildCost` charges), and ESLint. A failure aborts the commit.
+`getBuildCost` charges), the wrap check (`scripts/check-wrap.js`: lists cycle with `wrapIndex`, never
+`Phaser.Math.Wrap` from 0, and character select reaches every character both ways), and ESLint. A failure aborts the commit.
 
 `VERSION` in `src/constants.js` stays `'dev build'` in git. `npm run serve` stamps it with the
 commit time of `HEAD` on every request, and the deploy stamps it with the publish time, so the
