@@ -2,7 +2,7 @@
 // Part of `npm run check`. Sample issues and PRs cover every stage, a ticket dropped as a
 // duplicate, and a merge before and after the last finished Pages deploy.
 const assert = require('assert');
-const { classify, refsOf } = require('../tools/tracker/stages.js');
+const { classify, refsOf, matches, openBlockers } = require('../tools/tracker/stages.js');
 
 process.on('uncaughtException', e => { console.error('check-tracker: ' + e.message.split('\n')[0]); process.exit(1); });
 
@@ -64,3 +64,13 @@ assert.match(gh.keyProblem([401, 0, 0]), /does not recognise/);
 assert.match(gh.keyProblem([404, 0, 0]), /cannot see/);
 assert.match(gh.keyProblem([200, 403, 422]), /cannot write Issues\./);
 assert.match(gh.keyProblem([200, 422, 404]), /cannot write Pull requests\./);
+
+// Search (#446): a linked PR's number finds its ticket, with or without #; titles still match.
+assert.ok(matches(got[5], '20') && matches(got[5], '#20'), 'searching PR #20 finds ticket #5');
+assert.ok(matches(got[5], '#5') && matches(got[5], 'T5') && matches(got[5], ''), 'ticket number, title words and an empty box match');
+assert.ok(!matches(got[1], '20'), 'a ticket without PR #20 does not match it');
+// Waiting tickets (#446): the count comes from the issue, the numbers from the blocked_by answer (open ones only).
+const waiting = classify([issue(30, { issue_dependencies_summary: { blocked_by: 1 } }), issue(31, { state: 'closed', issue_dependencies_summary: { blocked_by: 1 } })], [])
+  .map(r => [r.number, r.blockedBy]);
+assert.deepStrictEqual(waiting, [[30, 1], [31, 0]], 'an open ticket counts its blockers; a closed one waits on nothing');
+assert.deepStrictEqual(openBlockers([{ number: 389, state: 'open' }, { number: 387, state: 'closed' }]), [389], 'only open blockers are named');
