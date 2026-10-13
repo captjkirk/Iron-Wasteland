@@ -250,12 +250,12 @@ class CharSelectScene extends Phaser.Scene {
 
   nav(player, dir) {
     if (player===1 && !this.p1Done) {
-      this.p1Idx = Phaser.Math.Wrap(this.p1Idx+dir, 0, CHARS.length);
+      this.p1Idx = wrapIndex(this.p1Idx+dir, CHARS.length);
       this.refresh();
     }
     if (player===2 && this.p1Done && !this.p2Done && !this.solo) {
-      let n = Phaser.Math.Wrap(this.p2Idx+dir, 0, CHARS.length);
-      if (n===this.p1Idx) n = Phaser.Math.Wrap(n+Math.sign(dir), 0, CHARS.length);
+      let n = wrapIndex(this.p2Idx+dir, CHARS.length);
+      if (n===this.p1Idx) n = wrapIndex(n+Math.sign(dir), CHARS.length);
       this.p2Idx = n; this.refresh();
     }
   }
@@ -264,7 +264,7 @@ class CharSelectScene extends Phaser.Scene {
     if (player===1 && !this.p1Done) {
       this.p1Done = true; STATE.p1CharId = CHARS[this.p1Idx].id;
       if (this.solo) { this.statusText.setText('Get ready…'); this.go(); return; }
-      if (this.p2Idx===this.p1Idx) this.p2Idx = Phaser.Math.Wrap(this.p1Idx+1, 0, CHARS.length);
+      if (this.p2Idx===this.p1Idx) this.p2Idx = wrapIndex(this.p1Idx+1, CHARS.length);
       this.statusText.setText(this._touchUI ? 'Now Player 2 — swipe, then tap the centre' : 'Now Player 2 — Arrows to pick, / to confirm');
     }
     if (player===2 && this.p1Done && !this.p2Done && !this.solo) {
