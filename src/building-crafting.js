@@ -696,7 +696,7 @@ Object.assign(GameScene.prototype, {
   },
 
   barrackNav(dir) {
-    this.barrackSel = Phaser.Math.Wrap(this.barrackSel+dir, 0, CHARS.length);
+    this.barrackSel = wrapIndex(this.barrackSel+dir, CHARS.length);
     this._log(`barracks nav ${dir > 0 ? 'right' : 'left'}  sel=${this.barrackSel} (${CHARS[this.barrackSel].id})  owner=${this.barrackOwner?.charData?.player}`, 'player');
     this.refreshBarrackCards();
   },

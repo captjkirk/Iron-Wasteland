@@ -1,0 +1,12 @@
+# graphify reads this file instead of .gitignore, so it repeats .gitignore's lines.
+__MACOSX/
+.DS_Store
+*.icloud
+.iCloud/
+logs/
+graphify-out/
+node_modules/
+texture-renders/
+
+# Minified one-letter names (r(), T()) get matched with the game's own helpers.
+lib/phaser.min.js

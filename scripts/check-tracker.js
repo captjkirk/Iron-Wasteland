@@ -2,7 +2,7 @@
 // Part of `npm run check`. Sample issues and PRs cover every stage, a ticket dropped as a
 // duplicate, and a merge before and after the last finished Pages deploy.
 const assert = require('assert');
-const { classify, refsOf } = require('../tools/tracker/stages.js');
+const { classify, refsOf, matches, openBlockers } = require('../tools/tracker/stages.js');
 
 process.on('uncaughtException', e => { console.error('check-tracker: ' + e.message.split('\n')[0]); process.exit(1); });
 
@@ -64,3 +64,54 @@ assert.match(gh.keyProblem([401, 0, 0]), /does not recognise/);
 assert.match(gh.keyProblem([404, 0, 0]), /cannot see/);
 assert.match(gh.keyProblem([200, 403, 422]), /cannot write Issues\./);
 assert.match(gh.keyProblem([200, 422, 404]), /cannot write Pull requests\./);
+
+// Search (#446): a linked PR's number finds its ticket, with or without #; titles still match.
+assert.ok(matches(got[5], '20') && matches(got[5], '#20'), 'searching PR #20 finds ticket #5');
+assert.ok(matches(got[5], '#5') && matches(got[5], 'T5') && matches(got[5], ''), 'ticket number, title words and an empty box match');
+assert.ok(!matches(got[1], '20'), 'a ticket without PR #20 does not match it');
+// Waiting tickets (#446): the count comes from the issue, the numbers from the blocked_by answer (open ones only).
+const waiting = classify([issue(30, { issue_dependencies_summary: { blocked_by: 1 } }), issue(31, { state: 'closed', issue_dependencies_summary: { blocked_by: 1 } })], [])
+  .map(r => [r.number, r.blockedBy]);
+assert.deepStrictEqual(waiting, [[30, 1], [31, 0]], 'an open ticket counts its blockers; a closed one waits on nothing');
+assert.deepStrictEqual(openBlockers([{ number: 389, state: 'open' }, { number: 387, state: 'closed' }]), [389], 'only open blockers are named');
+
+// Buttons (#433): the exact request each one sends, and the stage the card lands in after it.
+const after = (it, action) => {
+  const req = gh.actionRequest(it.number, it.labels, action);
+  const next = { ...it, ...req.body, labels: req.body.labels || it.labels };
+  return { req, row: classify([next], [])[0] };
+};
+const idea = issue(50, { labels: [{ name: 'needs-triage' }, { name: 'enhancement' }] });
+assert.deepStrictEqual(after(idea, 'ready').req, { method: 'PATCH', path: '/issues/50', body: { labels: ['enhancement', 'ready-for-agent'] } });
+assert.strictEqual(after(idea, 'ready').row.stage, 'ready', 'Mark ready moves an idea to Ready');
+assert.deepStrictEqual(after(idea, 'decide').req.body, { labels: ['needs-triage', 'enhancement', 'question'] });
+assert.ok(after(idea, 'decide').row.stage === 'deciding' && after(idea, 'decide').row.needsYou, 'Needs a decision moves it to Deciding and asks Jared');
+assert.deepStrictEqual(after(idea, 'drop').req.body, { state: 'closed', state_reason: 'not_planned' });
+assert.strictEqual(after(idea, 'drop').row.stage, 'dropped');
+const ready = issue(51, { labels: [{ name: 'ready-for-agent' }] });
+assert.deepStrictEqual(after(ready, 'hold').req.body, { labels: [] });
+assert.strictEqual(after(ready, 'hold').row.stage, 'idea', 'Hold moves Ready back to Idea');
+assert.deepStrictEqual(gh.stageButtons({ stage: 'idea' }).map(b => b[1]), ['ready', 'decide', 'drop']);
+assert.deepStrictEqual(gh.stageButtons({ stage: 'ready' }).map(b => b[1]), ['hold']);
+assert.deepStrictEqual(gh.stageButtons({ stage: 'review' }), []);
+
+// Replying clears Needs you (#433): `answered` turns it off, also on a grilling ticket.
+const asked = issue(52, { labels: [{ name: 'question' }, { name: 'needs-triage' }] });
+assert.deepStrictEqual(after(asked, 'reply').req.body, { labels: ['needs-triage', 'answered'] });
+assert.strictEqual(after(asked, 'reply').row.needsYou, false, 'Reply clears Needs you');
+assert.deepStrictEqual(after(asked, 'replyReady').req.body, { labels: ['answered', 'ready-for-agent'] });
+assert.ok(after(asked, 'replyReady').row.stage === 'ready' && !after(asked, 'replyReady').row.needsYou, 'Reply and mark ready moves it to Ready');
+assert.deepStrictEqual(after(asked, 'answerClose').req.body, { labels: ['needs-triage', 'answered'], state: 'closed', state_reason: 'completed' });
+const grill = issue(53, { labels: [{ name: 'wayfinder:grilling' }] });
+assert.ok(after(grill, 'reply').row.stage === 'deciding' && !after(grill, 'reply').row.needsYou, 'an answered grilling ticket stays Deciding without Needs you');
+assert.strictEqual(after(grill, 'answerClose').row.stage, 'live', 'Answer and close ends a decision ticket');
+assert.strictEqual(after({ ...asked, labels: ['needs-triage', 'answered'] }, 'decide').row.needsYou, true, 'asking again needs Jared again');
+const heldAnswered = Object.fromEntries(classify([issue(54, { labels: [{ name: 'answered' }, { name: 'ready-for-human' }] }),
+  pr(55, { body: 'Closes #54', labels: [{ name: 'needs-owner-look' }] })], []).map(r => [r.number, r.needsYou]));
+assert.deepStrictEqual(heldAnswered, { 54: true }, 'a PR held for Jared still needs him after an answer');
+const row = labels => ({ needsYou: true, stage: 'deciding', labels });
+assert.deepStrictEqual(gh.replyButtons(row(['question'])), [['Reply', 'reply'], ['Answer and close', 'answerClose']]);
+assert.deepStrictEqual(gh.replyButtons(row(['wayfinder:grilling'])).map(b => b[0]), ['Reply', 'Answer and close']);
+assert.deepStrictEqual(gh.replyButtons({ needsYou: true, stage: 'idea', labels: ['ready-for-human'] }).map(b => b[0]), ['Reply', 'Reply and mark ready']);
+assert.deepStrictEqual(gh.replyButtons({ needsYou: false, stage: 'idea', labels: [] }), [['Post reply', null]], 'a ticket not waiting on Jared gets a plain reply');
+assert.strictEqual(gh.actionRequest(52, [], 'nope'), null);

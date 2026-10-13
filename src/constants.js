@@ -327,6 +327,10 @@ const BIOME_COLORS = {
   desert: 0xc8a060,
 };
 
+// Index i wrapped into 0..n-1. Phaser's Math.Wrap includes its top, so a wrap from 0 can return n,
+// not 0; never use it to cycle through a list.
+const wrapIndex = (i, n) => ((i % n) + n) % n;
+
 // ── CHARACTER DEFINITIONS ─────────────────────────────────────
 const CHARS = [
   {
