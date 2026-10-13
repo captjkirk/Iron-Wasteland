@@ -80,8 +80,9 @@
       }
       const linked = prs.map(p => ({ number: p.number, title: p.title, url: p.html_url, draft: !!p.draft,
         state: p.pull_request.merged_at ? 'merged' : p.state }));
+      // `answered` (#433): Jared replied from the tracker, so the label no longer asks him. A PR held for him still does.
       const needsYou = it.state === 'open' &&
-        (labels.some(l => NEEDS_YOU.includes(l)) || open.some(p => labelsOf(p).includes('needs-owner-look')));
+        ((labels.some(l => NEEDS_YOU.includes(l)) && !labels.includes('answered')) || open.some(p => labelsOf(p).includes('needs-owner-look')));
       const blockedBy = it.state === 'open' ? ((it.issue_dependencies_summary || {}).blocked_by || 0) : 0;
       rows.push({ number: it.number, title: it.title, url: it.html_url, stage, map: mapOf(it), labels, since, created: it.created_at, prs: linked, needsYou, blockedBy });
     }
