@@ -71,6 +71,11 @@ button:hover { border-color: var(--muted); }
 .card .top { display: flex; justify-content: space-between; gap: 8px; font: 12px var(--mono); color: var(--muted); }
 .card .ttl { overflow-wrap: anywhere; }
 /* Waits on Jared (#440): a slight accent tint, an accent edge, and the words, so it never rests on colour alone. */
+/* A ticket waiting on another (#446): faded until hovered, and its blocker's card is outlined. */
+.card.waits { opacity: 0.5; }
+.card.waits:hover, .card.waits:focus-visible { opacity: 1; }
+.card .waits-tag { font: 12px var(--mono); color: var(--muted); }
+.card.blocker { outline: 2px solid var(--fg); outline-offset: 2px; }
 .card.needs { border-color: var(--accent); background: var(--panel); background: color-mix(in srgb, var(--accent) 9%, var(--panel)); box-shadow: inset 3px 0 0 var(--accent); }
 .needs-tag { font: 600 11px var(--body); color: var(--accent); }
 .status .needs-count { color: var(--accent); font-weight: 600; }
@@ -209,7 +214,7 @@ const COLS = {
   live: ['Live', 'In the game, last 14 days'],
 };
 const LIVE_DAYS = 14, CHART_DAYS = 30, REFRESH_MS = 5 * 60 * 1000;
-const items = new Map(), runs = new Map();
+const items = new Map(), runs = new Map(), blockers = new Map();
 let lastFetch = null, rows = [];
 
 const $ = id => document.getElementById(id);
@@ -263,13 +268,17 @@ async function load() {
   }
   lastFetch = started;
   rows = Tracker.classify([...items.values()], [...runs.values()]);
+  // Which tickets each waiting one is blocked by: one request each, kept until that ticket changes.
+  for (const r of rows.filter(r => r.blockedBy)) {
+    const updated = items.get(r.number).updated_at, hit = blockers.get(r.number);
+    if (!hit || hit.updated !== updated) blockers.set(r.number, { updated, nums: Tracker.openBlockers(await get(`${REPO}/issues/${r.number}/dependencies/blocked_by`)) });
+    r.waitsOn = blockers.get(r.number).nums;
+  }
 }
 
 function render() {
-  const mapSel = $('map').value, q = $('q').value.trim().toLowerCase().replace(/^#/, '');
-  const shown = rows.filter(r =>
-    (!mapSel || r.map === +mapSel) &&
-    (!q || String(r.number) === q || r.title.toLowerCase().includes(q)));
+  const mapSel = $('map').value;
+  const shown = rows.filter(r => (!mapSel || r.map === +mapSel) && Tracker.matches(r, $('q').value));
   const cutoff = Date.now() - LIVE_DAYS * 86400000;
   const by = {};
   Tracker.STAGES.forEach(s => (by[s] = []));
@@ -291,7 +300,9 @@ function render() {
     if (!list.length) col.append(el('div', 'empty', 'Nothing here'));
     const cap = 60;
     for (const r of list.slice(0, cap)) {
-      const card = el('a', r.needsYou ? 'card needs' : 'card'); card.href = '#ticket-' + r.number;
+      const waits = (r.waitsOn || []).length > 0;
+      const card = el('a', 'card' + (r.needsYou ? ' needs' : '') + (waits ? ' waits' : '')); card.href = '#ticket-' + r.number;
+      card.dataset.n = r.number;
       card.addEventListener('click', e => {
         if (e.metaKey || e.ctrlKey || e.shiftKey || e.button) return; // a new tab opens the page on this ticket
         e.preventDefault();
@@ -302,6 +313,12 @@ function render() {
       top.append(el('span', null, '#' + r.number), el('span', null, s === 'live' ? fmtDay(new Date(r.since)) : ago(r.since)));
       card.append(top, el('div', 'ttl', r.title));
       if (r.needsYou) card.append(el('span', 'needs-tag', 'Needs you'));
+      if (waits) {
+        card.append(el('span', 'waits-tag', 'Waits on ' + r.waitsOn.map(n => '#' + n).join(', ')));
+        const mark = on => r.waitsOn.forEach(n => { const b = board.querySelector(`.card[data-n="${n}"]`); if (b) b.classList.toggle('blocker', on); });
+        card.addEventListener('pointerenter', () => mark(true)); card.addEventListener('pointerleave', () => mark(false));
+        card.addEventListener('focus', () => mark(true)); card.addEventListener('blur', () => mark(false));
+      }
       if (r.map && !mapSel) card.append(el('span', 'chip', mapName(r.map)));
       col.append(card);
     }
@@ -436,6 +453,7 @@ async function openPanel(n) {
   chips.replaceChildren();
   if (row) chips.append(el('span', 'chip stage-chip', COLS[row.stage] ? COLS[row.stage][0] : 'Dropped'));
   if (row && row.needsYou) chips.append(el('span', 'chip needs-tag', 'Needs you'));
+  if (row && (row.waitsOn || []).length) chips.append(el('span', 'chip', 'Waits on ' + row.waitsOn.map(n => '#' + n).join(', ')));
   if (row && row.map) chips.append(el('span', 'chip', mapName(row.map)));
   (row ? row.labels : []).forEach(l => chips.append(el('span', 'chip', l)));
   const body = $('p-body');

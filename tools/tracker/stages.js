@@ -36,7 +36,8 @@
     return best ? best.updated_at : null;
   }
 
-  // One row per issue (maps and PRs excluded): {number, title, url, stage, map, labels, since, created, prs, needsYou}.
+  // One row per issue (maps and PRs excluded): {number, title, url, stage, map, labels, since, created, prs, needsYou, blockedBy}.
+  // `blockedBy` is how many open tickets it waits on (GitHub's "blocked by" links); which ones takes a request per ticket (openBlockers).
   // `prs` lists every linked PR as {number, title, url, draft, state: 'open'|'closed'|'merged'}.
   // `since` is when the ticket entered its stage as far as GitHub tells us without the events
   // API: filed for open ones, PR opened for review, merged for shipping, deployed for live.
@@ -81,12 +82,22 @@
         state: p.pull_request.merged_at ? 'merged' : p.state }));
       const needsYou = it.state === 'open' &&
         (labels.some(l => NEEDS_YOU.includes(l)) || open.some(p => labelsOf(p).includes('needs-owner-look')));
-      rows.push({ number: it.number, title: it.title, url: it.html_url, stage, map: mapOf(it), labels, since, created: it.created_at, prs: linked, needsYou });
+      const blockedBy = it.state === 'open' ? ((it.issue_dependencies_summary || {}).blocked_by || 0) : 0;
+      rows.push({ number: it.number, title: it.title, url: it.html_url, stage, map: mapOf(it), labels, since, created: it.created_at, prs: linked, needsYou, blockedBy });
     }
     return rows;
   }
 
-  const api = { STAGES, classify, deployedAt, refsOf, mapOf };
+  // The search box: a ticket's number, a linked PR's number (with or without #), or words in its title.
+  function matches(row, query) {
+    const q = String(query || '').trim().toLowerCase().replace(/^#/, '');
+    return !q || String(row.number) === q || row.prs.some(p => String(p.number) === q) || row.title.toLowerCase().includes(q);
+  }
+
+  // Ticket numbers still open in GitHub's answer to /issues/N/dependencies/blocked_by.
+  const openBlockers = list => (list || []).filter(i => i.state === 'open').map(i => i.number);
+
+  const api = { STAGES, classify, deployedAt, refsOf, mapOf, matches, openBlockers };
   if (typeof module !== 'undefined') module.exports = api;
   else root.Tracker = api;
 })(this);
