@@ -239,7 +239,7 @@
 //           initTouchControls, applyTouchInput, _onTouchDown/Move/Up, _logTouchStick, _onBtnPress, _drawTouchHUD,
 //           keyDisplayName
 //     data: wasd, p2keys, _pads (one touch pad per player: stick, buttons, the screen area its fingers
-//           land in; 2P touch on a phone splits the screen left/right), _joy and _tcBtns (P1's pad),
+//           land in; 2P touch is the face-to-face tablet only, a phone plays 1P), _joy and _tcBtns (P1's pad),
 //           _split (face-to-face iPad: 2P touch, short side >= 600), cam2 (P2's camera, right half, quarter-turned; P1's is the left half)
 //     fns:  _worldCams, _ignoreInWorldCams, _camFx (shake/flash/fade on every world camera), _initSplitCams, _worldRect (true visible
 //           rectangle of a camera: use it, not worldView, when the cameras are turned), _padOf/_stickOf (a player's own touch pad and

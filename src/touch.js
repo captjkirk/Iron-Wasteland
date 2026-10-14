@@ -3,11 +3,11 @@
 // Loads after src/game-scene.js and adds these methods to GameScene (ADR 0002).
 // One touch pad per player: a stick that appears where the finger lands, plus buttons. A finger
 // belongs to the pad whose area it landed in. 1 player: one pad over the whole screen (stick on
-// the left, five buttons on the right). 2 players on a touch device: each half of the screen is
-// one player's pad, P1 left and P2 right, each with a stick and a big attack button.
-// Face-to-face (this._split, #387): the iPad lies flat with a player at each short end. P1's pad is the
+// the left, five buttons on the right). 2 players on touch is only the face-to-face tablet (this._split,
+// #387); a phone plays 1 player (#463). The iPad lies flat with a player at each short end. P1's pad is the
 // left half, P2's the right half, each turned a quarter turn (pad.rot) toward its player: the stick
-// zone and attack button sit at the player's near edge, and the stick vector is turned back into world axes.
+// zone and the ATK, USE and BLD buttons sit at the player's near edge, and the stick vector is turned back
+// into world axes.
 // this._joy and this._tcBtns stay P1's stick and buttons (the craft menu and harvesting read them).
 
 Object.assign(GameScene.prototype, {
@@ -48,21 +48,19 @@ Object.assign(GameScene.prototype, {
       }];
       if (P) this._pads[0].joy.radius = P.stick.d * H / 2; // scales with the screen height (#406)
     } else {
-      // 2 players (#403): each pad mirrors the 1-player layout (PHONE1P) in its own view; sizes are shares
-      // of that view's height. Phone: the view is a half of the screen. Face-to-face (#387): the view is a
-      // half turned a quarter turn, so it is H wide and halfW tall. lx, ly are points in the player's own
-      // view (ly grows toward the near edge); toScreen and toLocal convert.
-      const P = PHONE1P, split = this._split;
-      const halfW = split ? (W - CFG.SPLIT_STRIP) / 2 : W / 2, Lw = split ? H : halfW, Lh = split ? halfW : H;
+      // 2 players, face-to-face on a tablet (#387, #403): each pad mirrors the 1-player layout (PHONE1P) in its
+      // own view, a half of the screen turned a quarter turn, so it is H wide and halfW tall. Sizes are shares
+      // of that view's height. lx, ly are points in the player's own view (ly grows toward the near edge);
+      // toScreen and toLocal convert.
+      const P = PHONE1P;
+      const halfW = (W - CFG.SPLIT_STRIP) / 2, Lw = H, Lh = halfW;
       const sr = P.stick.d * Lh / 2, br = P.btn.d * Lh / 2, pad2 = 0.02 * Lh;
       this._pads = [0, 1].map(i => {
         const x0 = i ? W - halfW : 0, x1 = x0 + halfW;
         // P1 (left end, view turned +90): near edge is screen-left; their left is screen-top.
         // P2 (right end, view turned -90): near edge is screen-right; their left is screen-bottom.
-        const toScreen = !split ? (lx, ly) => [x0 + lx, ly]
-          : i ? (lx, ly) => [x1 - (Lh - ly), H - lx] : (lx, ly) => [x0 + (Lh - ly), lx];
-        const toLocal = !split ? (px, py) => [px - x0, py]
-          : i ? (px, py) => [H - py, Lh - (x1 - px)] : (px, py) => [py, Lh - (px - x0)];
+        const toScreen = i ? (lx, ly) => [x1 - (Lh - ly), H - lx] : (lx, ly) => [x0 + (Lh - ly), lx];
+        const toLocal = i ? (px, py) => [H - py, Lh - (x1 - px)] : (px, py) => [py, Lh - (px - x0)];
         const [hintX, hintY] = toScreen(Math.max(P.stick.cx * Lw, sr + pad2), P.stick.cy * Lh);
         // The 1-player diamond without ALT: ATK bottom, USE (context) left, BLD (menu) top.
         const bx = Lw - Math.max((1 - P.btn.cx) * Lw, br + pad2), by = P.btn.cy * Lh, g = P.btn.gap * br;
@@ -77,7 +75,7 @@ Object.assign(GameScene.prototype, {
           },
         };
         pad.joy.radius = sr;
-        if (split) Object.assign(pad, { rot: i ? -Math.PI / 2 : Math.PI / 2, toScreen, toLocal, Lw, Lh, btnLeft: bx - g - br }); // the player's own view (craft menu)
+        Object.assign(pad, { rot: i ? -Math.PI / 2 : Math.PI / 2, toScreen, toLocal, Lw, Lh, btnLeft: bx - g - br }); // the player's own view (craft menu)
         return pad;
       });
     }
