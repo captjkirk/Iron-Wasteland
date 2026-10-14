@@ -437,7 +437,7 @@ Object.assign(GameScene.prototype, {
     const T = CFG.TILE, steps = Math.ceil(Phaser.Math.Distance.Between(x1, y1, x2, y2) / 16);
     for (let i = 1; i < steps; i++) {
       const sx = x1 + (x2 - x1) * i / steps, sy = y1 + (y2 - y1) * i / steps;
-      if (set.has(Math.round(sx / T) + ',' + Math.round(sy / T)) || set.has(Math.floor(sx / T) + ',' + Math.floor(sy / T))) return false;
+      if (this._tileAt(set, Math.round(sx / T), Math.round(sy / T)) || this._tileAt(set, Math.floor(sx / T), Math.floor(sy / T))) return false;
     }
     return true;
   },
@@ -465,7 +465,7 @@ Object.assign(GameScene.prototype, {
       x = Phaser.Math.Clamp(ring.x + c * r, TILE * 3, worldW - TILE * 3);
       y = Phaser.Math.Clamp(ring.y + sn * r, TILE * 3, worldH - TILE * 3);
       if (this._waterMap && this._waterMap[Math.floor(x / TILE) + Math.floor(y / TILE) * MAP_W]) continue;
-      if (this._solidTileSet && this._solidTileSet.has(Math.round(x / TILE) + ',' + Math.round(y / TILE))) continue;
+      if (this._solidTileSet && this._tileAt(this._solidTileSet, Math.round(x / TILE), Math.round(y / TILE))) continue;
       if (views.some(v => inView(v, x, y))) continue;
       if (this._inShelter(x, y)) continue;
       if (ps.some(p => Phaser.Math.Distance.Between(x, y, p.spr.x, p.spr.y) < WAVE_RING_MIN)) continue;
@@ -511,10 +511,10 @@ Object.assign(GameScene.prototype, {
         // Nudge spawn off solid tiles (mountains) — up to 8 attempts at a random offset
         if (this._solidTileSet) {
           const _stx = Math.round(ex / TILE), _sty = Math.round(ey / TILE);
-          if (this._solidTileSet.has(_stx + ',' + _sty)) {
+          if (this._tileAt(this._solidTileSet, _stx, _sty)) {
             for (let _sa = 0; _sa < 8; _sa++) {
               const _ox = Phaser.Math.Between(-3, 3), _oy = Phaser.Math.Between(-3, 3);
-              if (!this._solidTileSet.has((_stx + _ox) + ',' + (_sty + _oy))) {
+              if (!this._tileAt(this._solidTileSet, (_stx + _ox), (_sty + _oy))) {
                 ex = (_stx + _ox) * TILE; ey = (_sty + _oy) * TILE;
                 break;
               }
@@ -594,7 +594,7 @@ Object.assign(GameScene.prototype, {
     for (let i = 1; i < steps; i++) {
       const sx = x1 + dx * i, sy = y1 + dy * i;
       const tx = Math.round(sx / T), ty = Math.round(sy / T);
-      if (this._solidTileSet.has(tx + ',' + ty)) return false;
+      if (this._tileAt(this._solidTileSet, tx, ty)) return false;
       // Also check player-built walls — spatial hash keeps this O(1) per sample
       if (this._wallNearby(sx, sy, 20)) return false;
     }
@@ -615,7 +615,7 @@ Object.assign(GameScene.prototype, {
       const px = e.spr.x + Math.cos(ang) * PROBE;
       const py = e.spr.y + Math.sin(ang) * PROBE;
       const tx = Math.round(px / T), ty = Math.round(py / T);
-      if (this._solidTileSet.has(tx + ',' + ty)) return false;
+      if (this._tileAt(this._solidTileSet, tx, ty)) return false;
       if (this._wallNearby(px, py, 24)) return false;
       return true;
     };

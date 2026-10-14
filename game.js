@@ -94,7 +94,8 @@
 //          RIVER_COUNT, RIVER_WANDER, RIVER_WIDTH_MIN, RIVER_WIDTH_MAX,
 //          PLACEMENT, ROCKS
 //    data: _biomeSeeds, _waterMap, _iceMap, waterTiles, iceTiles,
-//          deepWaterTiles, mountainTiles, obstacles
+//          deepWaterTiles, mountainTiles, obstacles,
+//          _solidTileSet, _impassableTileSet, _wallTileSet (enemy line of sight, steering, placement)
 //    ambient anim: _grassGroups, _grassPhase (grass sway);
 //          _riverTex, _riverScroll, _riverOffLast + drawRiverFrame (shared scrolling
 //          river canvas); _pondWaterTiles, _shimmerTable (pond/lake alpha shimmer)
@@ -173,9 +174,9 @@
 //
 // 9. WALLS / SPIKES / STRUCTURE DAMAGE
 //    fns:  updateSpikeTraps, damageStructure, _addWallToBuckets,
-//          _removeWallFromBuckets, _wallBucketKey, _wallNearby,
+//          _removeWallFromBuckets, _wallBucketKey, _wallNearby, _tileAt, _markTile,
 //          _refreshWallClustersNear, _addFireGlow
-//    data: structures, spikes, _wallBuckets, _wallTileSet
+//    data: structures, spikes, _wallBuckets (Map keyed tx + ty*MAP_W), _wallTileSet
 //    cfg:  SPIKE_TRAP_DMG, CAMPFIRE_HEAL_MS, CAMPFIRE_HEAL_R (campfire heal lives in building-crafting.js)
 //    log:  [COMBAT], [BUILD ]
 //
@@ -303,7 +304,9 @@
 //   through _h() or _ignoreInWorldCams(); camera shake/flash/fade go through _camFx(); any code that reads
 //   cameras.main.worldView to cull or paint must also look at cam2 (see updateFog, dormant enemies).
 // • Draw order: trees, rocks, mountains, players and enemies are Y-sorted in depth band 9..9.9 via _sortDepth(feetY); keep ground items/structures <= 8 and bullets/bars >= 10.
-// • Water detection uses the _waterMap Uint8Array (index tx + ty*MAP_W), NOT physics overlap.
+// • Water detection uses the _waterMap Uint8Array (index tx + ty*MAP_W), NOT physics overlap. The tile
+//   flags _solidTileSet, _impassableTileSet and _wallTileSet are Uint8Arrays too: read them through
+//   _tileAt, which treats off-map tiles as clear (a raw index past a row's end wraps to the next row).
 // • Enemy dormancy: enemies > DORMANT_RADIUS are physics-disabled and hidden;
 //   they re-enable inside WAKE_RADIUS (hysteresis). Raiders, boss escorts and wave
 //   marchers (_waveMarch, until first contact) never sleep; nothing else wakes a den.

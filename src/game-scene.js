@@ -189,7 +189,7 @@ class GameScene extends Phaser.Scene {
     this.buildMode = false;
     this.buildGhost = null;
     this.builtWalls = [];
-    // Spatial bucket: tile-coord key -> array of walls. Keeps LOS/steering/placement
+    // Spatial bucket: tile index (tx + ty*MAP_W) -> array of walls. Keeps LOS/steering/placement
     // checks O(1) per sample instead of O(walls).
     this._wallBuckets = new Map();
     this.craftBenchPlaced = false;
@@ -627,7 +627,7 @@ class GameScene extends Phaser.Scene {
       if (e2 > -dy) { err -= dy; x += sx; }
       if (e2 <  dx) { err += dx; y += sy; }
       if (x === x1 && y === y1) return false; // about to step onto target — still clear
-      if (this._wallTileSet && this._wallTileSet.has(x + ',' + y)) return true;
+      if (this._wallTileSet && this._tileAt(this._wallTileSet, x, y)) return true;
     }
     if (!this._losCapLogged) {
       this._losCapLogged = true;
@@ -1039,11 +1039,8 @@ class GameScene extends Phaser.Scene {
 
     // Ruins + biome structure walls — bright white outline so structures are clearly legible
     if (this._wallTileSet) {
-      for (const key of this._wallTileSet) {
-        const sep = key.indexOf(',');
-        const tx = parseInt(key, 10), ty = parseInt(key.slice(sep + 1), 10);
-        if (tx >= 0 && tx < MAP_W && ty >= 0 && ty < MAP_H)
-          this._mmColorMap[tx + ty * MAP_W] = 0xeeeeff; // near-white wall outline
+      for (let i = 0; i < this._wallTileSet.length; i++) {
+        if (this._wallTileSet[i]) this._mmColorMap[i] = 0xeeeeff; // near-white wall outline
       }
     }
 
@@ -4587,7 +4584,12 @@ class GameScene extends Phaser.Scene {
   // ── Wall spatial hash ────────────────────────────────────────
   // Bucket walls by tile coord so LOS/steering/placement probes check only
   // the 3×3 tiles around a sample, not the entire builtWalls array.
-  _wallBucketKey(tx, ty) { return tx + ',' + ty; }
+  // Off-map coords wrap to another tile's key; callers' distance checks reject those walls.
+  _wallBucketKey(tx, ty) { return tx + ty * CFG.MAP_W; }
+  // Tile flag maps (_solidTileSet, _impassableTileSet, _wallTileSet): Uint8Array(MAP_W*MAP_H).
+  // Off-map tiles read as clear and ignore writes.
+  _tileAt(a, tx, ty) { return tx >= 0 && tx < CFG.MAP_W && ty >= 0 && ty < CFG.MAP_H && a[tx + ty * CFG.MAP_W] === 1; }
+  _markTile(a, tx, ty, v) { if (tx >= 0 && tx < CFG.MAP_W && ty >= 0 && ty < CFG.MAP_H) a[tx + ty * CFG.MAP_W] = v; }
   _addWallToBuckets(w) {
     const T = CFG.TILE;
     const tx = Math.floor(w.x / T), ty = Math.floor(w.y / T);
@@ -4598,7 +4600,7 @@ class GameScene extends Phaser.Scene {
     w._bucketKey = k;
   }
   _removeWallFromBuckets(w) {
-    if (!w._bucketKey) return;
+    if (w._bucketKey == null) return;
     const arr = this._wallBuckets.get(w._bucketKey);
     if (!arr) return;
     const i = arr.indexOf(w);

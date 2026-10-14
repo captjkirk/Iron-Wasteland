@@ -91,7 +91,7 @@ Object.assign(GameScene.prototype, {
     const tx = Math.floor(x / CFG.TILE), ty = Math.floor(y / CFG.TILE);
     if (this._waterMap && this._waterMap[tx + ty * CFG.MAP_W]) return "Can't build on water!";
     if (this._iceMap && this._iceMap[tx + ty * CFG.MAP_W]) return "Can't build on ice!";
-    if (this._solidTileSet && this._solidTileSet.has(tx + ',' + ty)) return "Can't build on a mountain!";
+    if (this._solidTileSet && this._tileAt(this._solidTileSet, tx, ty)) return "Can't build on a mountain!";
     if (this._toxicTileIndex && this._toxicTileIndex.has(ty * CFG.MAP_W + tx)) return "Can't build on toxic ground!";
     if (this._wallNearby(x, y, 24)) return "Too close to existing structure!";
     // Enemy overlap — an active enemy within ~24px of the placement point blocks it.
