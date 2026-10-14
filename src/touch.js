@@ -64,11 +64,17 @@ Object.assign(GameScene.prototype, {
         const toLocal = !split ? (px, py) => [px - x0, py]
           : i ? (px, py) => [H - py, Lh - (x1 - px)] : (px, py) => [py, Lh - (px - x0)];
         const [hintX, hintY] = toScreen(Math.max(P.stick.cx * Lw, sr + pad2), P.stick.cy * Lh);
-        const [ax, ay] = toScreen(Lw - Math.max((1 - P.btn.cx) * Lw, br + pad2), P.btn.cy * Lh + P.btn.gap * br);
+        // The 1-player diamond without ALT: ATK bottom, USE (context) left, BLD (menu) top.
+        const bx = Lw - Math.max((1 - P.btn.cx) * Lw, br + pad2), by = P.btn.cy * Lh, g = P.btn.gap * br;
+        const [ax, ay] = toScreen(bx, by + g), [cx, cy] = toScreen(bx - g, by), [mx, my] = toScreen(bx, by - g);
         const pad = {
           who: i ? 'p2' : 'p1', x0, x1, y0: 0, y1: H, joy: stick(), hintX, hintY, hintR: sr,
           stickZone: (px, py) => { const [lx, ly] = toLocal(px, py); return lx < Lw * 0.6 && ly > Lh * 0.35; },
-          btns: { attack: btn(ax, ay, br, i ? 0xff8844 : 0x4488ff, '⚔ ATK') },
+          btns: {
+            attack: btn(ax, ay, br, i ? 0xff8844 : 0x4488ff, '⚔ ATK'),
+            context: btn(cx, cy, br, 0x44cc66, 'E USE'), // interact when near something, else the alt ability
+            build: btn(mx, my, br, 0xccaa33, '■ BLD'), // opens this player's craft menu
+          },
         };
         pad.joy.radius = sr;
         if (split) pad.rot = i ? -Math.PI / 2 : Math.PI / 2;
@@ -191,11 +197,28 @@ Object.assign(GameScene.prototype, {
       if (!p.isDowned && !p.isSleeping) this.doAlt(p);
     } else if (name === 'interact') {
       if (!this.barrackOpen) this.tryInteract(p);
+    } else if (name === 'context') {
+      if (this.barrackOpen || p.isDowned || p.isSleeping) return;
+      if (!this.tryInteract(p) && !this._useTargetNear(p)) this.doAlt(p);
     } else if (name === 'build') {
       if (!p.isDowned && !p.isSleeping) this.openCraftMenu(p);
     } else if (name === 'menu') {
       this.toggleControls();
     }
+  },
+
+  // The player's own pad (null without touch), their stick and their held USE/context button. The craft
+  // menu, the barracks, harvesting, revive and the relic hold read these so each player acts alone (#289).
+  _padOf(p) { return this._touchActive && this._pads ? this._pads.find(x => this[x.who] === p) || null : null; },
+  _stickOf(p) { const pad = this._padOf(p); return pad ? pad.joy : null; },
+
+  // A tree to harvest or a downed ally to revive within reach: held USE does those, so context must not fire ALT.
+  _useTargetNear(p) {
+    const near = (x, y, r) => Phaser.Math.Distance.Between(p.spr.x, p.spr.y, x, y) < r;
+    const ally = p === this.p1 ? this.p2 : this.p1;
+    if (ally && ally.isDowned && ally.spr && near(ally.spr.x, ally.spr.y, CFG.REVIVE_RANGE)) return true;
+    // 72 = HARVEST_RANGE in updateHarvest, measured to the trunk box
+    return this.obstacles.getChildren().some(o => o.isTree && o.active && near(o.body.center.x, o.body.center.y, 72));
   },
 
   // Drive one player from their pad's stick: movement and facing. GameScene.update calls it per

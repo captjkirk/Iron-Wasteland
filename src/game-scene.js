@@ -1828,10 +1828,10 @@ class GameScene extends Phaser.Scene {
     // and refunds 50% of its cost. Lets the player undo misclicks without a
     // separate keybind.
     if (this.buildMode && this.buildOwner === player) {
-      if (this._tryTeardownBuild(player)) return;
+      if (this._tryTeardownBuild(player)) return true;
     }
     const dist = Phaser.Math.Distance.Between(player.spr.x, player.spr.y, this.bPos.x, this.bPos.y);
-    if (dist < 110) { this.openBarrack(player); return; }
+    if (dist < 110) { this.openBarrack(player); return true; }
 
     // Radio tower interaction — starts 10-second activation (handled in checkRadioTowerRange)
     if (this.radioTower && !this.radioTower.used) {
@@ -1840,7 +1840,7 @@ class GameScene extends Phaser.Scene {
         this.radioTower.activating = true;
         this.radioTower.activateProgress = 0;
         this._log(`${player.charData.player} began activating Radio Tower  day=${this.dayNum}`, 'world');
-        return;
+        return true;
       }
     }
 
@@ -1848,7 +1848,7 @@ class GameScene extends Phaser.Scene {
     if (this.raidCamp && this.raidCamp.cache && !this.raidCamp.cache.locked && !this.raidCamp.cache.opened) {
       const cache = this.raidCamp.cache;
       const cd = Phaser.Math.Distance.Between(player.spr.x, player.spr.y, cache.x, cache.y);
-      if (cd < 70) { this.openRaidCache(cache); return; }
+      if (cd < 70) { this.openRaidCache(cache); return true; }
     }
 
     // Bed interaction — toggle sleep
@@ -1856,7 +1856,7 @@ class GameScene extends Phaser.Scene {
       const bd = Phaser.Math.Distance.Between(player.spr.x, player.spr.y, bed.x, bed.y);
       if (bd < 70) {
         this.toggleSleep(player, bed);
-        return;
+        return true;
       }
     }
 
@@ -1870,7 +1870,7 @@ class GameScene extends Phaser.Scene {
         const _rd = Phaser.Math.Distance.Between(player.spr.x, player.spr.y, _rel.x, _rel.y);
         if (_rd < 70) {
           this.hint('Hold Interact for 3s to retrieve relic', 1800);
-          return;
+          return true;
         }
       }
     }
@@ -1880,12 +1880,13 @@ class GameScene extends Phaser.Scene {
       const _ad = Phaser.Math.Distance.Between(player.spr.x, player.spr.y, this.altarPos.x, this.altarPos.y);
       if (_ad < 90) {
         this._depositRelic();
-        return;
+        return true;
       }
     }
 
     // Nothing interactable in range — log so we can diagnose "E key not working" reports
     this._log(`${player.charData.player} interact: nothing in range  pos=(${Math.floor(player.spr.x/CFG.TILE)},${Math.floor(player.spr.y/CFG.TILE)})`, 'player');
+    return false;
   }
 
   // Per-frame relic pickup channel. Mirrors checkRadioTowerRange — requires
@@ -1896,7 +1897,8 @@ class GameScene extends Phaser.Scene {
   _useHeld(p) {
     const key = this.hotkeys && this.hotkeys[p === this.p1 ? 'p1use' : 'p2use'];
     if (key && key.isDown) return true;
-    return p === this.p1 && !!(this._touchActive && this._tcBtns && this._tcBtns.interact && this._tcBtns.interact.down);
+    const b = this._padOf(p)?.btns;
+    return !!(b && (b.context || b.interact).down);
   }
 
   updateRelicChannels(delta) {
@@ -2614,6 +2616,7 @@ class GameScene extends Phaser.Scene {
     const _safe = (name, fn) => { _stageLog(name); try { fn(); } catch (e) { this._log(`${name} ERR: ${e && e.message || e}`, 'error'); } };
     _safe('updateBuildMode',  () => this.updateBuildMode());
     _safe('updateCraftMenu',  () => this.updateCraftMenu(delta));
+    _safe('updateBarrackStick', () => this.updateBarrackStick(delta));
     _safe('updateHarvest',    () => this.updateHarvest(delta));
     _safe('updateSpikeTraps', () => this.updateSpikeTraps());
     { const _t0 = performance.now(); _safe('updateFog',        () => this.updateFog());               this._perfBudget.fog     += performance.now() - _t0; }

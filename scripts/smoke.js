@@ -338,12 +338,27 @@ async function bossReach(page) {
       // Every pad matches the #388 sizes (shares of its own view's height) within 2%.
       const Lh = split ? (W - CFG.SPLIT_STRIP) / 2 : H;
       const sizes = g._pads.map(p => [p.joy.radius * 2 / Lh - PHONE1P.stick.d, p.btns.attack.r * 2 / Lh - PHONE1P.btn.d]);
-      return { p1: after[0] - before[0], p2: after[2] - before[2], cams, sizes };
+      // Each half has its own USE (context) and BLD (menu) button. P2's BLD opens P2's craft menu, and only
+      // P2's stick steps it; P2's USE counts as held for P2 alone (#289).
+      const [pa, pb] = g._pads, tap = (pad, name) => { const b = pad.btns[name]; g._onTouchDown({ id: 9, x: b.hx, y: b.hy }); g._onTouchUp({ id: 9 }); };
+      const pause = ms => new Promise(r => setTimeout(r, ms));
+      const menu = {};
+      tap(pb, 'build');
+      menu.owner = g.craftMenuOpen && g.craftMenuOwner === g.p2;
+      pa.joy.vec = { x: 0, y: 1 }; await pause(150); menu.p1Stick = g.craftMenuSel; pa.joy.vec = { x: 0, y: 0 };
+      pb.joy.vec = { x: 0, y: 1 }; await pause(150); menu.p2Stick = g.craftMenuSel; pb.joy.vec = { x: 0, y: 0 };
+      g.closeCraftMenu();
+      pb.btns.context.down = true; menu.held = [g._useHeld(g.p1), g._useHeld(g.p2)]; pb.btns.context.down = false;
+      return { p1: after[0] - before[0], p2: after[2] - before[2], cams, sizes, menu };
     }, split);
     console.log(`2-player touch (${split ? 'split' : 'phone'}): P1 moved ${Math.round(r.p1)} px, P2 moved ${Math.round(r.p2)} px`);
     // Phone: P2's finger dragged left. Split: P2's finger dragged screen-right, but P2's view is turned
     // around, so P2 walks world-left. Either way P1 goes right and P2 goes left.
     if (!(r.p1 > 5 && r.p2 < -5)) throw new Error('a player did not move the way their half was dragged');
+    const m = r.menu;
+    if (!m.owner) throw new Error("P2's BLD button did not open P2's craft menu");
+    if (m.p1Stick !== 0 || m.p2Stick === 0) throw new Error(`craft menu selection moved ${m.p1Stick} by P1's stick and ${m.p2Stick} by P2's; only the opener's stick may move it`);
+    if (m.held[0] || !m.held[1]) throw new Error(`P2's USE button reads held for P1/P2 as ${m.held}, wanted false/true`);
     if (r.sizes.flat().some(d => Math.abs(d) > 0.02)) throw new Error(`a stick or button is not the #388 size (off by ${r.sizes.flat().map(d => d.toFixed(3))})`);
     if (split) {
       const c = r.cams;

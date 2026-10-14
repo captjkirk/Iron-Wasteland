@@ -403,9 +403,10 @@ Object.assign(GameScene.prototype, {
     }
 
     // Touch joystick navigate up / down (350ms repeat debounce)
-    if (this._touchActive && this._joy) {
+    const joy = this._stickOf(this.craftMenuOwner); // the stick of the player who opened it
+    if (joy) {
       this._craftTouchNavCd = (this._craftTouchNavCd || 0) - delta;
-      const jy = this._joy.vec.y;
+      const jy = joy.vec.y;
       if (this._craftTouchNavCd <= 0 && Math.abs(jy) > 0.5) {
         this.craftMenuSel = (this.craftMenuSel + (jy > 0 ? 1 : -1) + RECIPES.length) % RECIPES.length;
         this._craftScrollToSel();
@@ -699,6 +700,14 @@ Object.assign(GameScene.prototype, {
     this.barrackSel = wrapIndex(this.barrackSel+dir, CHARS.length);
     this._log(`barracks nav ${dir > 0 ? 'right' : 'left'}  sel=${this.barrackSel} (${CHARS[this.barrackSel].id})  owner=${this.barrackOwner?.charData?.player}`, 'player');
     this.refreshBarrackCards();
+  },
+
+  // Touch: the opener's stick steps the barracks cards left and right (350ms repeat).
+  updateBarrackStick(delta) {
+    const joy = this.barrackOpen && this._stickOf(this.barrackOwner);
+    if (!joy) return;
+    this._barrackNavCd = (this._barrackNavCd || 0) - delta;
+    if (this._barrackNavCd <= 0 && Math.abs(joy.vec.x) > 0.5) { this.barrackNav(joy.vec.x > 0 ? 1 : -1); this._barrackNavCd = 350; }
   },
 
   barrackConfirm() {
