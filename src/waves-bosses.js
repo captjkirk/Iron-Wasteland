@@ -513,6 +513,7 @@ Object.assign(GameScene.prototype, {
             const ang = Math.random() * Math.PI * 2;
             const ex = Phaser.Math.Clamp(b.spr.x + Math.cos(ang) * 90, CFG.TILE*2, wW-CFG.TILE*2);
             const ey = Phaser.Math.Clamp(b.spr.y + Math.sin(ang) * 90, CFG.TILE*2, wH-CFG.TILE*2);
+            if (this._inShelter(ex, ey)) continue;
             const sizeMult = Phaser.Math.FloatBetween(0.9, 1.15);
             const sc = 0.95 * sizeMult;
             const eSpr = this.physics.add.image(ex, ey, 'wolf').setScale(sc).setDepth(9);

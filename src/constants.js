@@ -74,6 +74,12 @@ const CFG = {
   SPIKE_TRAP_DMG: 35,      // one hit, then the trap is spent
   CAMPFIRE_HEAL_MS: 2000,  // a campfire heals nearby players this often; the amount is hc.campfireHeal
   CAMPFIRE_HEAL_R: 80,     // px from the campfire
+  // Sheltered (#293, src/shelter.js): +1 HP this often anywhere in the ring; the night
+  // multiplier for enemies whose target is sheltered (1 = no night boost); and how many tiles
+  // past a sheltered ring are kept clear of new enemy spawns.
+  SHELTER_HEAL_MS: 1000,
+  SHELTER_NIGHT_MULT: 1,
+  SHELTER_SPAWN_PAD: 1,
   // Tracks (#308, src/tracks.js): how long a boot print lasts (ms) and how dark it starts
   // (alpha), by the ground under it. Water takes no print. Starting values, tuned by eye.
   TRACKS: {
