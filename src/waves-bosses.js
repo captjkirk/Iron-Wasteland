@@ -217,7 +217,7 @@ Object.assign(GameScene.prototype, {
       const ox = obstacle.x, oy = obstacle.y;
       const tx = Math.floor(ox / CFG.TILE), ty = Math.floor(oy / CFG.TILE);
       // Free the tile so pathfinding/placement no longer treats it as solid.
-      if (this._solidTileSet) this._solidTileSet.delete(tx + ',' + ty);
+      if (this._solidTileSet) this._markTile(this._solidTileSet, tx, ty, 0);
       // Repaint the minimap cell back to its underlying terrain (takes world coords).
       if (this._unpaintMinimapTile) this._unpaintMinimapTile(ox, oy);
 

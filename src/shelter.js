@@ -58,7 +58,7 @@ Object.assign(GameScene.prototype, {
         .filter(o => SHELTER_HEARTHS.includes(o.type) && o.spr && o.spr.active).map(o => o.tx + ',' + o.ty));
       const walls = this._wallBuckets;
       p._shelterTiles = walls && walls.size > 0
-        ? isShelteredAt((x, y) => walls.has(x + ',' + y), (x, y) => hearths.has(x + ',' + y), tx, ty) : null;
+        ? isShelteredAt((x, y) => x >= 0 && x < CFG.MAP_W && walls.has(this._wallBucketKey(x, y)), (x, y) => hearths.has(x + ',' + y), tx, ty) : null;
       const on = !!p._shelterTiles;
       if (on !== !!p._sheltered) {
         p._sheltered = on;

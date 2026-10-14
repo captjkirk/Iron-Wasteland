@@ -246,7 +246,7 @@ Object.assign(GameScene.prototype, {
     // Typed-array terrain maps — numeric index (tx + ty*MAP_W), no string allocations
     this._waterMap = new Uint8Array(CFG.MAP_W * CFG.MAP_H); // 1=shallow water
     this._iceMap   = new Uint8Array(CFG.MAP_W * CFG.MAP_H); // 1=ice tile
-    this._wallTileSet = new Set(); // O(1) wall tile lookup for LOS raycasting (sparse)
+    this._wallTileSet = new Uint8Array(CFG.MAP_W * CFG.MAP_H); // 1=wall tile, for LOS raycasting
 
     // Trees — dense forest clusters, biome-appropriate, non-overlapping
     const treesPlaced = [];
@@ -570,12 +570,12 @@ Object.assign(GameScene.prototype, {
     }
 
     // Pre-build LOS blocker set for enemy AI — mountain tile coords → O(1) lookup
-    this._solidTileSet = new Set();
+    this._solidTileSet = new Uint8Array(CFG.MAP_W * CFG.MAP_H);
     for (const m of this.mountainTiles) {
       // Mark a small neighbourhood so the set works at diagonal query positions
       for (let dtx = -1; dtx <= 1; dtx++) {
         for (let dty = -1; dty <= 1; dty++) {
-          this._solidTileSet.add((m.tx + dtx) + ',' + (m.ty + dty));
+          this._markTile(this._solidTileSet, m.tx + dtx, m.ty + dty, 1);
         }
       }
     }
@@ -583,10 +583,10 @@ Object.assign(GameScene.prototype, {
     // Unified impassable tile set — mountains + deep water.
     // Built here (before rivers) so terrain cleanup and POI relocation can use it.
     // deepWaterTiles is already complete (_buildPonds is the only writer; _buildLakes and _buildRivers do not add to it).
-    this._impassableTileSet = new Set(this._solidTileSet);
+    this._impassableTileSet = this._solidTileSet.slice();
     for (const dt of this.deepWaterTiles) {
       const _itx = Math.floor(dt.x / TILE), _ity = Math.floor(dt.y / TILE);
-      this._impassableTileSet.add(_itx + ',' + _ity);
+      this._markTile(this._impassableTileSet, _itx, _ity, 1);
     }
 
     // Rivers — organic shallow-water channels connecting lakes and map edges.
@@ -660,7 +660,7 @@ Object.assign(GameScene.prototype, {
         if (k.startsWith('mountain')) return; // never cull mountains
         if (!ob.isTree && !_overlapKeys.has(k)) return;   // keep walls, ruin blocks
         const tx = Math.floor(ob.x / TILE), ty = Math.floor(ob.y / TILE);
-        if (this._waterMap[tx + ty * CFG.MAP_W] || this._impassableTileSet.has(tx + ',' + ty)) {
+        if (this._waterMap[tx + ty * CFG.MAP_W] || this._tileAt(this._impassableTileSet, tx, ty)) {
           ob.destroy();
           _overlapRemoved++;
         }
@@ -706,7 +706,7 @@ Object.assign(GameScene.prototype, {
       for (let ty = 2; ty < MH - 2; ty++) {
         for (let tx = 2; tx < MW - 2; tx++) {
           if (!dist[tx + ty * MW] || Math.random() > REED_P) continue;
-          if (this._impassableTileSet.has(tx + ',' + ty)) continue;
+          if (this._tileAt(this._impassableTileSet, tx, ty)) continue;
           if (Math.abs(tx - stx) < SAFE_R + 3 && Math.abs(ty - sty) < SAFE_R + 3) continue;
           const sc = Phaser.Math.FloatBetween(0.7, 1.3);
           const ox = Phaser.Math.Between(-10, 10), oy = Phaser.Math.Between(-8, 8);
@@ -727,7 +727,7 @@ Object.assign(GameScene.prototype, {
         const i = tx + ty * CFG.MAP_W;
         if (this._waterMap && this._waterMap[i]) return false;
         if (this._iceMap && this._iceMap[i]) return false; // ice is walkable but avoidable for POI placement
-        if (this._impassableTileSet && this._impassableTileSet.has(tx + ',' + ty)) return false;
+        if (this._impassableTileSet && this._tileAt(this._impassableTileSet, tx, ty)) return false;
         return true;
       };
       const _relocateWet = (pos) => {
@@ -790,7 +790,7 @@ Object.assign(GameScene.prototype, {
       const clear =
         getBiome(tx + 1, ty) === 'grass' && getBiome(tx - 1, ty) === 'grass' &&
         getBiome(tx, ty + 1) === 'grass' && getBiome(tx, ty - 1) === 'grass' &&
-        !(this._wallTileSet && this._wallTileSet.has(tx + ',' + ty));
+        !(this._wallTileSet && this._tileAt(this._wallTileSet, tx, ty));
       if (!clear) continue;
       bTX = tx; bTY = ty;
       break;
@@ -894,7 +894,7 @@ Object.assign(GameScene.prototype, {
     // player physically can't reach and the interaction never fires.
     const _isImpassable = (tx, ty) => {
       if (this._waterMap && this._waterMap[tx + ty * MAP_W]) return true;
-      if (this._impassableTileSet && this._impassableTileSet.has(tx + ',' + ty)) return true;
+      if (this._impassableTileSet && this._tileAt(this._impassableTileSet, tx, ty)) return true;
       return false;
     };
 
@@ -982,7 +982,7 @@ Object.assign(GameScene.prototype, {
       // Pre-computed den tiles are picked BEFORE mountains are placed; validate now.
       // If the tile ended up inside a mountain or deep water, find a fresh clear spot.
       let actualPos = pos;
-      if (this._impassableTileSet && this._impassableTileSet.has(pos.tx + ',' + pos.ty)) {
+      if (this._impassableTileSet && this._tileAt(this._impassableTileSet, pos.tx, pos.ty)) {
         const fb = findInBiome(getBiome(pos.tx, pos.ty), 60);
         if (fb) actualPos = fb;
         this._log(`den relocated from (${pos.tx},${pos.ty}) to (${actualPos.tx},${actualPos.ty}) — was inside mountain`, 'world');
@@ -1182,7 +1182,7 @@ Object.assign(GameScene.prototype, {
       w.setDepth(5 + ty*0.01).setImmovable(true);
       staticHitbox(w, 28, 28, 2, 2); // slightly smaller than full tile for passability at seams
       w.hp = 200; w.maxHp = 200;
-      this._wallTileSet.add(tx + ',' + ty);
+      this._markTile(this._wallTileSet, tx, ty, 1);
     };
 
     for (let col = 0; col < cols; col++) {
@@ -1382,7 +1382,7 @@ Object.assign(GameScene.prototype, {
           const w = this.obstacles.create(tx * TILE + 16, ty * TILE + 16, wallKey);
           w.setDepth(5 + ty * 0.01).setImmovable(true);
           w.body.setSize(32, 32); w.refreshBody();
-          this._wallTileSet.add(tx + ',' + ty);
+          this._markTile(this._wallTileSet, tx, ty, 1);
         };
 
         // North wall (solid)
@@ -1429,7 +1429,7 @@ Object.assign(GameScene.prototype, {
       const w = this.obstacles.create(tx * TILE + 16, ty * TILE + 16, key);
       w.setDepth(5 + ty * 0.01).setImmovable(true);
       w.body.setSize(32, 32); w.refreshBody();
-      this._wallTileSet.add(tx + ',' + ty);
+      this._markTile(this._wallTileSet, tx, ty, 1);
     };
     layout.rows.forEach((row, dy) => {
       for (let dx = 0; dx < row.length; dx++) {
@@ -1610,7 +1610,7 @@ Object.assign(GameScene.prototype, {
     };
     let filled = 0, more = true;
     while (more) { more = false; for (let ty = 1; ty < MAP_H - 1; ty++) for (let tx = 1; tx < MAP_W - 1; tx++) {
-      if (kindAt(tx, ty) || (this._solidTileSet && this._solidTileSet.has(tx + ',' + ty))) continue;
+      if (kindAt(tx, ty) || (this._solidTileSet && this._tileAt(this._solidTileSet, tx, ty))) continue;
       const k = [kindAt(tx, ty - 1), kindAt(tx + 1, ty), kindAt(tx, ty + 1), kindAt(tx - 1, ty)].filter(Boolean);
       if (k.length < 3) continue;
       more = true;
@@ -1914,7 +1914,7 @@ Object.assign(GameScene.prototype, {
         let safety = 0;
         while ((cx !== nx || cy !== ny) && ++safety < 1200) {
           const key = cx + ',' + cy;
-          if ((!this._solidTileSet || !this._solidTileSet.has(key)) && !_inExcl(cx, cy)) centerline.add(key);
+          if ((!this._solidTileSet || !this._tileAt(this._solidTileSet, cx, cy)) && !_inExcl(cx, cy)) centerline.add(key);
           const remX = nx - cx, remY = ny - cy;
           let stepX = 0, stepY = 0;
           if (Math.abs(remX) >= Math.abs(remY)) {
@@ -1948,7 +1948,7 @@ Object.assign(GameScene.prototype, {
             if (nx < 1 || ny < 1 || nx >= MAP_W - 1 || ny >= MAP_H - 1) continue;
             const nk = nx + ',' + ny;
             if (riverTiles.has(nk)) continue;
-            if (this._solidTileSet && this._solidTileSet.has(nk)) continue;
+            if (this._solidTileSet && this._tileAt(this._solidTileSet, nx, ny)) continue;
             if (_inExcl(nx, ny)) continue;
             riverTiles.add(nk);
           }
