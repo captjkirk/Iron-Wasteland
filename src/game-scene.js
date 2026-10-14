@@ -30,6 +30,9 @@ class GameScene extends Phaser.Scene {
     this.fogRevealed = null;
     this.fogVisible = null;
     this._fogVisibleBuilding = false;
+    // Fog and radar read their on/off settings from here, not from storage every frame (#342).
+    // Refreshed on 'resume', which is how the Settings overlay hands control back.
+    this._settings = loadSettings();
     this._activePlayers = null;
     this.tracks = null;
     this._sleepIndicator = null;
@@ -44,6 +47,7 @@ class GameScene extends Phaser.Scene {
     // if scene restarts mid-session) and kill any leftover scene-owned tweens.
     if (!this._shutdownRegistered) {
       this._shutdownRegistered = true;
+      this.events.on('resume', () => { this._settings = loadSettings(); });
       this.events.on('shutdown', () => {
         if (this.input) {
           this.input.off('pointerdown',      this._onTouchDown, this);
@@ -648,8 +652,7 @@ class GameScene extends Phaser.Scene {
     // (updateFog calls this once per player per tick, so we reset before p1 and union p2).
     // Reuse the existing Set to avoid a fresh allocation every fog update.
     if (!this._fogVisibleBuilding) {
-      if (this.fogVisible) this.fogVisible.clear();
-      else this.fogVisible = new Set();
+      this.fogVisible.fill(0);
       this._fogVisibleBuilding = true;
     }
     for (let dx = -r; dx <= r; dx++) {
@@ -658,21 +661,17 @@ class GameScene extends Phaser.Scene {
         const tx = cx + dx, ty = cy + dy;
         if (tx < 0 || ty < 0 || tx >= CFG.MAP_W || ty >= CFG.MAP_H) continue;
         // Always reveal adjacent tiles so walls at edge of radius are visible
-        if (Math.abs(dx) <= 1 && Math.abs(dy) <= 1) {
-          this.fogRevealed.add(tx + ',' + ty);
-          this.fogVisible.add(tx + ',' + ty);
-          continue;
-        }
-        if (this._losBlocked(cx, cy, tx, ty)) continue;
-        this.fogRevealed.add(tx + ',' + ty);
-        this.fogVisible.add(tx + ',' + ty);
+        if ((Math.abs(dx) > 1 || Math.abs(dy) > 1) && this._losBlocked(cx, cy, tx, ty)) continue;
+        const i = tx + ty * CFG.MAP_W;
+        if (!this.fogRevealed[i]) { this.fogRevealed[i] = 1; this._mmPaint(tx, ty); }
+        this.fogVisible[i] = 1;
       }
     }
   }
 
   updateFog() {
     if (!this.fogGfx) return;
-    if (loadSettings().fogEnabled === false) { this.fogGfx.setVisible(false); return; }
+    if (this._settings.fogEnabled === false) { this.fogGfx.setVisible(false); return; }
     this._fogFrame++;
     if (this._fogFrame % CFG.FOG_UPDATE_INTERVAL !== 0) return;
 
@@ -708,7 +707,7 @@ class GameScene extends Phaser.Scene {
 
     // Paint the viewport's tiles into the fog texture: unexplored = dark,
     // explored-but-not-in-LOS = dim, in-LOS = clear.
-    for (const wc of this._worldCams()) {
+    for (const [ci, wc] of this._worldCams().entries()) {
     const wr = this._worldRect(wc);
     const vx = wr.x, vy = wr.y, vw = wr.width, vh = wr.height;
     const startTX = Math.max(0, Math.floor(vx / TILE) - 3);
@@ -717,12 +716,18 @@ class GameScene extends Phaser.Scene {
     const endTY = Math.min(CFG.MAP_H - 1, Math.ceil((vy + vh) / TILE) + 3);
     const w = endTX - startTX + 1, h = endTY - startTY + 1;
     const DARK = 217, DIM = 89; // 0.85 and 0.35 alpha
-    const a = new Uint8Array(w * h), b = new Uint8Array(w * h);
+    // Each camera keeps its buffers; they are rebuilt only when its tile window changes size (#342).
+    let buf = this._fogBufs[ci];
+    if (!buf || buf.w !== w || buf.h !== h) {
+      buf = this._fogBufs[ci] = { w, h, a: new Uint8Array(w * h), b: new Uint8Array(w * h),
+        img: this._fogTex.context.createImageData(w, h) };
+    }
+    const { a, b } = buf;
     for (let ty = startTY; ty <= endTY; ty++) {
       for (let tx = startTX; tx <= endTX; tx++) {
-        const key = tx + ',' + ty;
+        const i = tx + ty * CFG.MAP_W;
         a[(ty - startTY) * w + (tx - startTX)] =
-          !this.fogRevealed.has(key) ? DARK : (this.fogVisible.has(key) ? 0 : DIM);
+          !this.fogRevealed[i] ? DARK : (this.fogVisible[i] ? 0 : DIM);
       }
     }
     // 5-tap box blur across then down, so zone edges fade over ~3 tiles instead of one;
@@ -733,7 +738,7 @@ class GameScene extends Phaser.Scene {
       b[y * w + x] = sum / 5;
     }
     const ctx = this._fogTex.context;
-    const img = ctx.createImageData(w, h), d = img.data;
+    const img = buf.img, d = img.data;
     for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
       let sum = 0;
       for (let k = -2; k <= 2; k++) sum += b[Math.min(h - 1, Math.max(0, y + k)) * w + x];
@@ -890,8 +895,10 @@ class GameScene extends Phaser.Scene {
     mmBg.fillStyle(0x000000, 0.75); mmBg.fillCircle(mmCX, mmCY, mmR + 3);
     mmBg.lineStyle(1.5, 0x445566, 0.9); mmBg.strokeCircle(mmCX, mmCY, mmR + 3);
     this.minimapGfx = this._h(this.add.graphics().setDepth(111));
+    // Explored terrain: the map-sized radar picture, scaled and moved by updateMinimap (#344).
+    this.minimapImg = this._h(this.add.image(0, 0, 'mm_explored').setOrigin(0).setDepth(111));
     this.minimapDots = this._h(this.add.graphics().setDepth(112));
-    if (P) [mmBg, this.minimapGfx, this.minimapDots].forEach(o => o.setAlpha(P.radar.solid));
+    if (P) [mmBg, this.minimapGfx, this.minimapImg, this.minimapDots].forEach(o => o.setAlpha(P.radar.solid));
     this.mmBounds = { x: mmX, y: mmY, w: mmW, h: mmH };
     // Store radar geometry for boss indicator positioning
     this.radarCenter = { x: mmCX, y: mmCY, r: mmR };
@@ -903,7 +910,9 @@ class GameScene extends Phaser.Scene {
     const _mmMaskGfx = this._h(this.add.graphics());
     _mmMaskGfx.fillStyle(0xffffff, 1);
     _mmMaskGfx.fillCircle(mmCX, mmCY, mmR);
-    this.minimapDots.setMask(_mmMaskGfx.createGeometryMask());
+    const _mmMask = _mmMaskGfx.createGeometryMask();
+    this.minimapImg.setMask(_mmMask);
+    this.minimapDots.setMask(_mmMask);
 
     // Pre-render biome colors on minimap (static, done once)
     this._renderMinimapBase();
@@ -932,6 +941,7 @@ class GameScene extends Phaser.Scene {
     const tx = Math.floor(worldX / TILE), ty = Math.floor(worldY / TILE);
     if (tx < 0 || tx >= MAP_W || ty < 0 || ty >= MAP_H) return;
     this._mmColorMap[tx + ty * MAP_W] = color;
+    if (this.fogRevealed && this.fogRevealed[tx + ty * MAP_W]) this._mmPaint(tx, ty);
   }
 
   // Reset a minimap tile to its biome color. Used when a player-built structure
@@ -944,9 +954,23 @@ class GameScene extends Phaser.Scene {
     const i = tx + ty * MAP_W;
     // Prefer water/ice colors if the tile was water — walls can't be placed on
     // water, so in practice this falls through to the biome color.
-    if (this._waterMap && this._waterMap[i]) { this._mmColorMap[i] = 0x2255aa; return; }
-    if (this._iceMap && this._iceMap[i])     { this._mmColorMap[i] = 0x88aadd; return; }
-    this._mmColorMap[i] = BIOME_COLORS[getBiome(tx, ty)] || 0x333333;
+    this._mmColorMap[i] = (this._waterMap && this._waterMap[i]) ? 0x2255aa
+      : (this._iceMap && this._iceMap[i]) ? 0x88aadd
+      : (BIOME_COLORS[getBiome(tx, ty)] || 0x333333);
+    if (this.fogRevealed && this.fogRevealed[i]) this._mmPaint(tx, ty);
+  }
+
+  // Paint one explored tile into the radar picture (#344): when the tile is first revealed,
+  // and when a structure repaints a tile that is already explored.
+  _mmPaint(tx, ty) {
+    if (!this._mmTex) return;
+    const c = this._mmColorMap ? this._mmColorMap[tx + ty * CFG.MAP_W]
+                               : (BIOME_COLORS[getBiome(tx, ty)] || 0x333333);
+    const ctx = this._mmTex.context;
+    ctx.clearRect(tx, ty, 1, 1);
+    ctx.fillStyle = `rgba(${c >> 16},${(c >> 8) & 255},${c & 255},0.9)`;
+    ctx.fillRect(tx, ty, 1, 1);
+    this._mmDirty = true;
   }
 
   // Build a full-map color lookup (Uint32Array, one entry per tile).
@@ -1053,10 +1077,11 @@ class GameScene extends Phaser.Scene {
 
   updateMinimap() {
     if (!this.minimapDots || !this.mmBounds) return;
-    const _mmSet = loadSettings().minimapEnabled;
+    const _mmSet = this._settings.minimapEnabled;
     const _mmOn  = (_mmSet === undefined) ? !this.hc.minimapDefaultOff : (_mmSet !== false);
     if (!_mmOn) {
       this.minimapGfx.setVisible(false);
+      this.minimapImg.setVisible(false);
       this.minimapDots.setVisible(false);
       return;
     }
@@ -1072,6 +1097,7 @@ class GameScene extends Phaser.Scene {
     // Reference player for centering: P1 if active, else P2
     const refP = (this.p1?.spr?.active && !this.p1.isDowned) ? this.p1
                : (this.p2?.spr?.active && !this.p2.isDowned) ? this.p2 : null;
+    this.minimapImg.setVisible(!!refP);
     if (!refP) return;
 
     // Radar shows a 40-tile radius (1280px world) around the reference player.
@@ -1084,30 +1110,16 @@ class GameScene extends Phaser.Scene {
     const minTY = centerTY - VIEW, maxTY = centerTY + VIEW;
     const tileSize = Math.max(1, scale);
 
-    // Single unified terrain pass — color map encodes biome, water, ice, trees,
-    // rocks, ruins/structure walls, and mountains all at O(1) per tile.
-    // Falls back to live getBiome lookup if color map wasn't built yet.
-    for (let tx = minTX; tx <= maxTX; tx++) {
-      for (let ty = minTY; ty <= maxTY; ty++) {
-        if (tx < 0 || ty < 0 || tx >= CFG.MAP_W || ty >= CFG.MAP_H) continue;
-        if (!this.fogRevealed.has(tx + ',' + ty)) continue;
-        const color = this._mmColorMap
-          ? this._mmColorMap[tx + ty * CFG.MAP_W]
-          : (BIOME_COLORS[getBiome(tx, ty)] || 0x333333);
-        this.minimapDots.fillStyle(color, 0.9);
-        this.minimapDots.fillRect(
-          mm.x + (tx - minTX) * scale,
-          mm.y + (ty - minTY) * scale,
-          tileSize + 0.5, tileSize + 0.5
-        );
-      }
-    }
+    // Explored terrain is one picture, painted a tile at a time by _mmPaint as tiles are
+    // revealed; here it is only re-uploaded if it changed, and moved under the radar (#344).
+    if (this._mmDirty) { this._mmTex.refresh(); this._mmDirty = false; }
+    this.minimapImg.setScale(scale).setPosition(mm.x - minTX * scale, mm.y - minTY * scale);
 
     // POI dots — revealed and within radar range
     if (this.pois) {
       this.pois.forEach(poi => {
         if (poi.tx < minTX || poi.tx > maxTX || poi.ty < minTY || poi.ty > maxTY) return;
-        if (!this.fogRevealed.has(poi.tx + ',' + poi.ty)) return;
+        if (!this.fogRevealed[poi.tx + poi.ty * CFG.MAP_W]) return;
         let col = 0xffffff;
         if      (poi.type === 'cache')      col = 0xccaa00;
         else if (poi.type === 'den')        col = 0xcc4444;
