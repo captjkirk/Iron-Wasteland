@@ -2381,6 +2381,7 @@ class GameScene extends Phaser.Scene {
         : `Press ${k('p1build')} (P1) or ${k('p2build')} (P2) to open the Crafting Menu.  Build walls, campfires, spike traps, and more.` },
       nightfall:{ title: 'SURVIVE THE NIGHT', phone: 'Enemies are stronger after dark. Build a Bed and sleep to skip the night.', text: 'Enemies are stronger after dark.  Build a Bed (needs Craftbench) and sleep to fast-forward the night.' },
       caches:   { title: 'SUPPLY CACHES', phone: 'Each biome hides a guarded Supply Cache with rare loot.', text: 'Each biome hides a Supply Cache — rare loot but guarded by enemies.  Find them before the boss arrives!' },
+      sheltered:{ title: 'SHELTERED', phone: 'Walls all round, a campfire, bench or bed inside: you heal and nothing spawns here.', text: 'Walls all round with a campfire, craftbench or bed inside: you heal faster, night does not make enemies stronger against you, and nothing spawns inside.' },
       minimap:  { title: 'MINIMAP',       phone: 'The radar shows biome edges and enemies (red dots). Stay aware!', text: 'Top-right minimap shows biome edges, enemies (red dots), and points of interest.  Stay aware!' },
     };
     const step = TIPS[key];
@@ -3133,6 +3134,7 @@ class GameScene extends Phaser.Scene {
         const sc = t.baseScale * sizeMult;
         const ex = den.x + Phaser.Math.Between(-60, 60);
         const ey = den.y + Phaser.Math.Between(-60, 60);
+        if (this._inShelter(ex, ey)) return;
         const spr = this.physics.add.image(ex, ey, type).setScale(sc).setDepth(8);
         spr.setCollideWorldBounds(true);
         spr.body.setSize(t.w, t.h);

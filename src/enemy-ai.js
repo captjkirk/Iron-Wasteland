@@ -467,6 +467,7 @@ Object.assign(GameScene.prototype, {
       if (this._waterMap && this._waterMap[Math.floor(x / TILE) + Math.floor(y / TILE) * MAP_W]) continue;
       if (this._solidTileSet && this._solidTileSet.has(Math.round(x / TILE) + ',' + Math.round(y / TILE))) continue;
       if (views.some(v => inView(v, x, y))) continue;
+      if (this._inShelter(x, y)) continue;
       if (ps.some(p => Phaser.Math.Distance.Between(x, y, p.spr.x, p.spr.y) < WAVE_RING_MIN)) continue;
       if (i < 20 && ring.open && !this._waveLineClear(x, y, ring.x, ring.y)) continue;
       break;
@@ -1003,7 +1004,8 @@ Object.assign(GameScene.prototype, {
         nearDist = Phaser.Math.Distance.Between(e.spr.x, e.spr.y, nearest.spr.x, nearest.spr.y);
       }
       if (!nearest) { e.spr.setVelocity(0,0); return; }
-      const nightMult = (this.isNight) ? this.hc.nightMult : 1;
+      // A sheltered target takes no night boost (#293).
+      const nightMult = !this.isNight ? 1 : nearest._sheltered ? CFG.SHELTER_NIGHT_MULT : this.hc.nightMult;
       const aggroRange = e.aggroRange * nightMult * _rp.aggroMult;
       // A wave marcher chases from any distance until first contact or WAVE_MARCH_MS,
       // then it is ordinary wildlife: its own aggro range, and dormant when left behind.
