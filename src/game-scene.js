@@ -199,9 +199,6 @@ class GameScene extends Phaser.Scene {
 
     // D1 — Craft menu state
     this.craftMenuOpen = false;
-    this.craftMenuOwner = null;
-    this.craftMenuSel = 0;
-    this.craftMenuGfx = null;
 
     // Show loading progress bar on the black screen.
     // iOS PWA needs at least one yielded frame before heavy synchronous work.
@@ -399,7 +396,7 @@ class GameScene extends Phaser.Scene {
             });
             this.atkKeys.p1atk.on('down', () => {
               if (!this.barrackOpen && !this.isOver && !this.p1.isDowned && !this.p1.isSleeping) {
-                if (this.craftMenuOpen && this.craftMenuOwner === this.p1) { this.craftSelected(); return; }
+                if (this._craftOf(this.p1)) { this.craftSelected(this.p1); return; }
                 if (this.buildMode && this.buildOwner === this.p1) this.placeBuild();
                 else this.doAttack(this.p1);
               }
@@ -409,7 +406,7 @@ class GameScene extends Phaser.Scene {
             if (this.p2) {
               this.atkKeys.p2atk.on('down', () => {
                 if (!this.barrackOpen && !this.isOver && !this.p2.isDowned && !this.p2.isSleeping) {
-                  if (this.craftMenuOpen && this.craftMenuOwner === this.p2) { this.craftSelected(); return; }
+                  if (this._craftOf(this.p2)) { this.craftSelected(this.p2); return; }
                   if (this.buildMode && this.buildOwner === this.p2) this.placeBuild();
                   else this.doAttack(this.p2);
                 }
@@ -1471,7 +1468,7 @@ class GameScene extends Phaser.Scene {
     player.atkAnimUntil = 0;
     // If this player owned the craft menu, close it so input routing doesn't
     // reference a downed player and strand the menu on screen.
-    if (this.craftMenuOpen && this.craftMenuOwner === player) this.closeCraftMenu();
+    this.closeCraftMenu(player);
     this._log(`${player.charData.player} (${player.charData.id}) DOWNED  day=${this.dayNum}`, 'player');
     // Audible + visual cue — partners need to register the down even if they
     // aren't looking at the HUD hint.
@@ -1912,7 +1909,7 @@ class GameScene extends Phaser.Scene {
     for (const { p, keyName } of list) {
       if (!p || !p.spr || !p.spr.active) { this._cancelRelicChannel(p); continue; }
       const keyDown = this._useHeld(p);
-      const blocked = p.isDowned || p.isSleeping || this.barrackOpen || this.craftMenuOpen || this.isOver;
+      const blocked = p.isDowned || p.isSleeping || this.barrackOpen || !!this._craftOf(p) || this.isOver;
       if (blocked || !keyDown) { this._cancelRelicChannel(p); continue; }
 
       let nearest = null, bestD2 = RANGE2;
@@ -2484,7 +2481,7 @@ class GameScene extends Phaser.Scene {
     }
 
     // Movement — skip if downed, sleeping, or owns the open craft menu
-    const p1CraftHalt = this.craftMenuOpen && this.craftMenuOwner === this.p1;
+    const p1CraftHalt = !!this._craftOf(this.p1);
     if (!this.p1.isDowned && !this.p1.isSleeping && !p1CraftHalt) {
       if (this._touchActive) {
         this.applyTouchInput();  // touch: joystick drives movement + facing
@@ -2496,7 +2493,7 @@ class GameScene extends Phaser.Scene {
     else this.p1.spr.setVelocity(0,0);
 
     if (this.p2 && this.p2.spr) {
-      const p2CraftHalt = this.craftMenuOpen && this.craftMenuOwner === this.p2;
+      const p2CraftHalt = !!this._craftOf(this.p2);
       const p2pad = this._touchActive && this._pads[1];
       if (!this.p2.isDowned && !this.p2.isSleeping && !p2CraftHalt) {
         if (p2pad) this.applyTouchInput(this.p2, p2pad.joy);

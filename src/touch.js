@@ -77,7 +77,7 @@ Object.assign(GameScene.prototype, {
           },
         };
         pad.joy.radius = sr;
-        if (split) pad.rot = i ? -Math.PI / 2 : Math.PI / 2;
+        if (split) Object.assign(pad, { rot: i ? -Math.PI / 2 : Math.PI / 2, toScreen, toLocal, Lw, Lh, btnLeft: bx - g - br }); // the player's own view (craft menu)
         return pad;
       });
     }
@@ -113,10 +113,7 @@ Object.assign(GameScene.prototype, {
     const px = pointer.x, py = pointer.y;
 
     // Skip joystick/button activation when tapping inside the craft menu panel
-    if (this.craftMenuOpen) {
-      const PW = 440, PH = 330, PX = (W - PW) / 2, PY = H - PH - 20;
-      if (px >= PX && px <= PX + PW && py >= PY && py <= PY + PH) return;
-    }
+    if (this.craftMenuOpen && this._craftPanelHit(px, py)) return;
 
     const pad = this._pads.find(p => px >= p.x0 && px < p.x1 && py >= p.y0 && py < p.y1);
     if (!pad) return;
@@ -190,7 +187,7 @@ Object.assign(GameScene.prototype, {
     if (this.isOver || !p) return;
     if (name === 'attack') {
       if (this.barrackOpen || p.isDowned || p.isSleeping) return;
-      if (this.craftMenuOpen && this.craftMenuOwner === p) { this.craftSelected(); return; }
+      if (this._craftOf(p)) { this.craftSelected(p); return; }
       if (this.buildMode && this.buildOwner === p) this.placeBuild();
       else this.doAttack(p);
     } else if (name === 'alt') {

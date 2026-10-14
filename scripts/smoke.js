@@ -338,16 +338,25 @@ async function bossReach(page) {
       // Every pad matches the #388 sizes (shares of its own view's height) within 2%.
       const Lh = split ? (W - CFG.SPLIT_STRIP) / 2 : H;
       const sizes = g._pads.map(p => [p.joy.radius * 2 / Lh - PHONE1P.stick.d, p.btns.attack.r * 2 / Lh - PHONE1P.btn.d]);
-      // Each half has its own USE (context) and BLD (menu) button. P2's BLD opens P2's craft menu, and only
-      // P2's stick steps it; P2's USE counts as held for P2 alone (#289).
+      // Each half has its own USE (context) and BLD (menu) button, and its own craft menu: both can be open at
+      // once, each stepped only by its owner's stick (#289). In the split, a menu is clear of its owner's buttons.
       const [pa, pb] = g._pads, tap = (pad, name) => { const b = pad.btns[name]; g._onTouchDown({ id: 9, x: b.hx, y: b.hy }); g._onTouchUp({ id: 9 }); };
       const pause = ms => new Promise(r => setTimeout(r, ms));
       const menu = {};
-      tap(pb, 'build');
-      menu.owner = g.craftMenuOpen && g.craftMenuOwner === g.p2;
-      pa.joy.vec = { x: 0, y: 1 }; await pause(150); menu.p1Stick = g.craftMenuSel; pa.joy.vec = { x: 0, y: 0 };
-      pb.joy.vec = { x: 0, y: 1 }; await pause(150); menu.p2Stick = g.craftMenuSel; pb.joy.vec = { x: 0, y: 0 };
+      tap(pb, 'build'); menu.p2First = !!g._craftOf(g.p2) && !g._craftOf(g.p1);
+      tap(pa, 'build'); menu.both = !!g._craftOf(g.p2) && !!g._craftOf(g.p1);
+      const sels = () => [g._craftOf(g.p1)?.sel, g._craftOf(g.p2)?.sel];
+      pa.joy.vec = { x: 0, y: 1 }; await pause(150); menu.afterP1 = sels(); pa.joy.vec = { x: 0, y: 0 };
+      pb.joy.vec = { x: 0, y: 1 }; await pause(150); menu.afterP2 = sels(); pb.joy.vec = { x: 0, y: 0 };
+      menu.overlap = split ? [g.p1, g.p2].flatMap((p, i) => {
+        const L = g._craftLayout(p);
+        return Object.values(g._pads[i].btns).filter(b => {
+          const [lx, ly] = L.pad.toLocal(b.hx, b.hy), nx = Math.max(L.PX, Math.min(lx, L.PX + L.PW)), ny = Math.max(L.PY, Math.min(ly, L.PY + L.PH));
+          return Math.hypot(lx - nx, ly - ny) < b.r;
+        }).map(b => b.label);
+      }) : [];
       g.closeCraftMenu();
+      menu.closed = !g.craftMenuOpen && !g._craftOf(g.p1) && !g._craftOf(g.p2);
       pb.btns.context.down = true; menu.held = [g._useHeld(g.p1), g._useHeld(g.p2)]; pb.btns.context.down = false;
       return { p1: after[0] - before[0], p2: after[2] - before[2], cams, sizes, menu };
     }, split);
@@ -356,8 +365,11 @@ async function bossReach(page) {
     // around, so P2 walks world-left. Either way P1 goes right and P2 goes left.
     if (!(r.p1 > 5 && r.p2 < -5)) throw new Error('a player did not move the way their half was dragged');
     const m = r.menu;
-    if (!m.owner) throw new Error("P2's BLD button did not open P2's craft menu");
-    if (m.p1Stick !== 0 || m.p2Stick === 0) throw new Error(`craft menu selection moved ${m.p1Stick} by P1's stick and ${m.p2Stick} by P2's; only the opener's stick may move it`);
+    if (!m.p2First) throw new Error("P2's BLD button did not open P2's craft menu alone");
+    if (split && !m.both) throw new Error("both players' craft menus could not be open at once");
+    if (split && (m.afterP1[0] === 0 || m.afterP1[1] !== 0 || m.afterP2[1] === 0)) throw new Error(`craft menu selections after P1's then P2's stick: ${m.afterP1} then ${m.afterP2}; each stick may move only its own menu`);
+    if (m.overlap.length) throw new Error(`a craft menu is behind its owner's buttons: ${m.overlap}`);
+    if (!m.closed) throw new Error('closing the craft menus left one open');
     if (m.held[0] || !m.held[1]) throw new Error(`P2's USE button reads held for P1/P2 as ${m.held}, wanted false/true`);
     if (r.sizes.flat().some(d => Math.abs(d) > 0.02)) throw new Error(`a stick or button is not the #388 size (off by ${r.sizes.flat().map(d => d.toFixed(3))})`);
     if (split) {

@@ -157,7 +157,8 @@
 //    build: updateBuildMode, placeBuild, _buildSpotError, exitBuildMode, _placeWallSprite,
 //           _tryTeardownBuild, openGate, getBuildCost, getTeamInv
 //    craft: openCraftMenu, closeCraftMenu, updateCraftMenu, craftSelected,
-//           renderCraftMenu, _craftScrollToSel
+//           renderCraftMenu, _craftScrollToSel, _craftOf/_craftLayout/_craftPanelHit (one menu per player, kept on p.craft;
+//           face-to-face each is drawn in its owner's view, clear of their buttons)
 //    barracks: openBarrack, closeBarrack, barrackNav, barrackConfirm,
 //              refreshBarrackCards, buildBarrackOverlay, checkBarrackRange
 //    shelter: isShelteredAt (a closed ring of built walls, gates count, holding a campfire, craftbench
