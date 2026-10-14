@@ -331,7 +331,7 @@ class ModeSelectScene extends Phaser.Scene {
   create() {
     const { W, H } = CFG;
     this.cameras.main.fadeIn(400, 0, 0, 0);
-    this.selMode = 2;
+    this.selMode = PHONE_LAYOUT ? 1 : 2; // a phone plays 1 player (#463)
     this.selDiff = 'survival';
 
     const bg = this.add.graphics();
@@ -380,8 +380,8 @@ class ModeSelectScene extends Phaser.Scene {
     }).setOrigin(0.5);
 
     const playerOpts = [
-      { label:'1 PLAYER',  sub: touch ? 'Touch' : 'WASD + Mouse', mode:1, x: W/2 - L.pBox.dx },
-      { label:'2 PLAYERS', sub: touch ? 'Touch, left and right' : 'WASD + Arrows',  mode:2, x: W/2 + L.pBox.dx },
+      { label:'1 PLAYER',  sub: touch ? 'Touch' : 'WASD + Mouse', mode:1, x: ph ? W/2 : W/2 - L.pBox.dx },
+      ...(ph ? [] : [{ label:'2 PLAYERS', sub:'WASD + Arrows', mode:2, x: W/2 + L.pBox.dx }]),
     ];
     const pb = L.pBox;
     this.pBoxes = playerOpts.map(o => {
@@ -482,7 +482,7 @@ class ModeSelectScene extends Phaser.Scene {
     keys.space.on('down', () => this.confirm());
     keys.esc.on('down',   () => window.close());
 
-    this.setMode(2);
+    this.setMode(this.selMode);
     this.setDiff('survival');
   }
 
@@ -496,6 +496,7 @@ class ModeSelectScene extends Phaser.Scene {
   }
 
   setMode(mode) {
+    if (PHONE_LAYOUT) mode = 1; // no 2 PLAYERS card on a phone (#463)
     const changed = this.selMode !== mode;
     this.selMode = mode;
     this.pBoxes.forEach(b => {

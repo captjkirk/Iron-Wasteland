@@ -64,6 +64,8 @@
 //
 //   src/shelter.js       — System 8's Sheltered test, added to GameScene.prototype
 //
+//   src/bed-respawn.js   — System 7's bed respawn (2-player Survival), added to GameScene.prototype
+//
 //   src/world-gen.js     — System 1, added to GameScene.prototype; loads after game-scene.js
 //
 //   src/waves-bosses.js  — System 4, added to GameScene.prototype; loads after world-gen.js
@@ -145,19 +147,21 @@
 //    data: player.atkCooldown, player.ammo, player.reserveAmmo, player.carriedAmmo
 //    log:  [COMBAT], [PLAYER]
 //
-// 7. DEATH & REVIVE
+// 7. DEATH & REVIVE  (src/game-scene.js; bed respawn in src/bed-respawn.js)
 //    fns:  handleDeath, checkDeaths, updateDowned, updateRevive,
 //          revivePlayer, checkBothDead, buildReviveBar, drawReviveBar,
-//          _showSleepIndicator, _hideSleepIndicator
+//          _showSleepIndicator, _hideSleepIndicator,
+//          _bedRespawn (2P Survival: timer out + respawn bed = back at the bed, half HP and items)
 //    cfg:  DOWN_TIME, REVIVE_TIME, REVIVE_RANGE
-//    data: player.isDowned, player.downedTimer, reviving, reviveProgress
+//    data: player.isDowned, player.downTimer, player.respawnBed, reviving, reviveProgress
 //    log:  [PLAYER]
 //
 // 8. BUILDING & CRAFTING  (src/building-crafting.js; RECIPES in src/recipes.js; shelter in src/shelter.js)
 //    build: updateBuildMode, placeBuild, _buildSpotError, exitBuildMode, _placeWallSprite,
 //           _tryTeardownBuild, openGate, getBuildCost, getTeamInv
 //    craft: openCraftMenu, closeCraftMenu, updateCraftMenu, craftSelected,
-//           renderCraftMenu, _craftScrollToSel
+//           renderCraftMenu, _craftScrollToSel, _craftOf/_craftLayout/_craftPanelHit (one menu per player, kept on p.craft;
+//           face-to-face each is drawn in its owner's view, clear of their buttons)
 //    barracks: openBarrack, closeBarrack, barrackNav, barrackConfirm,
 //              refreshBarrackCards, buildBarrackOverlay, checkBarrackRange
 //    shelter: isShelteredAt (a closed ring of built walls, gates count, holding a campfire, craftbench
@@ -240,10 +244,11 @@
 //           initTouchControls, applyTouchInput, _onTouchDown/Move/Up, _logTouchStick, _onBtnPress, _drawTouchHUD,
 //           keyDisplayName
 //     data: wasd, p2keys, _pads (one touch pad per player: stick, buttons, the screen area its fingers
-//           land in; 2P touch on a phone splits the screen left/right), _joy and _tcBtns (P1's pad),
+//           land in; 2P touch is the face-to-face tablet only, a phone plays 1P), _joy and _tcBtns (P1's pad),
 //           _split (face-to-face iPad: 2P touch, short side >= 600), cam2 (P2's camera, right half, quarter-turned; P1's is the left half)
 //     fns:  _worldCams, _ignoreInWorldCams, _camFx (shake/flash/fade on every world camera), _initSplitCams, _worldRect (true visible
-//           rectangle of a camera: use it, not worldView, when the cameras are turned)
+//           rectangle of a camera: use it, not worldView, when the cameras are turned), _padOf/_stickOf (a player's own touch pad and
+//           stick: menus and USE read these, never _joy), _useTargetNear (tree or downed ally in reach), updateBarrackStick
 //     cfg:  SPLIT_STRIP, SPLIT_ZOOM
 //
 // 20. DEBUG LOG & PERF  (src/game-scene.js; _qlog in src/constants.js)
