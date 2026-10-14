@@ -164,7 +164,9 @@
 //    shelter: isShelteredAt (a closed ring of built walls, gates count, holding a campfire, craftbench
 //             or bed; 8-way flood fill, so a corner-only join is a gap), _updateShelter (rechecks
 //             on a new tile or when _shelterDirty after a build or a destroyed wall; sets p._sheltered,
-//             shown as the 'shelter' status icon)
+//             shown as the 'shelter' status icon, and p._shelterTiles; heals 1 HP per SHELTER_HEAL_MS),
+//             _inShelter (spawners skip points in a sheltered ring + SHELTER_SPAWN_PAD), nearShelterTiles.
+//             Enemies whose target is sheltered use SHELTER_NIGHT_MULT, not hc.nightMult.
 //    data: buildType, buildRotation, buildOwner, RECIPES, RECIPE_COSTS (getBuildCost's lookup),
 //          structures, player.carriedAmmo
 //    log:  [BUILD ], [PLAYER]
