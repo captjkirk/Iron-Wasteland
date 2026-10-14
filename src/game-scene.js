@@ -199,9 +199,6 @@ class GameScene extends Phaser.Scene {
 
     // D1 — Craft menu state
     this.craftMenuOpen = false;
-    this.craftMenuOwner = null;
-    this.craftMenuSel = 0;
-    this.craftMenuGfx = null;
 
     // Show loading progress bar on the black screen.
     // iOS PWA needs at least one yielded frame before heavy synchronous work.
@@ -399,7 +396,7 @@ class GameScene extends Phaser.Scene {
             });
             this.atkKeys.p1atk.on('down', () => {
               if (!this.barrackOpen && !this.isOver && !this.p1.isDowned && !this.p1.isSleeping) {
-                if (this.craftMenuOpen && this.craftMenuOwner === this.p1) { this.craftSelected(); return; }
+                if (this._craftOf(this.p1)) { this.craftSelected(this.p1); return; }
                 if (this.buildMode && this.buildOwner === this.p1) this.placeBuild();
                 else this.doAttack(this.p1);
               }
@@ -409,7 +406,7 @@ class GameScene extends Phaser.Scene {
             if (this.p2) {
               this.atkKeys.p2atk.on('down', () => {
                 if (!this.barrackOpen && !this.isOver && !this.p2.isDowned && !this.p2.isSleeping) {
-                  if (this.craftMenuOpen && this.craftMenuOwner === this.p2) { this.craftSelected(); return; }
+                  if (this._craftOf(this.p2)) { this.craftSelected(this.p2); return; }
                   if (this.buildMode && this.buildOwner === this.p2) this.placeBuild();
                   else this.doAttack(this.p2);
                 }
@@ -858,8 +855,16 @@ class GameScene extends Phaser.Scene {
 
     // Resource panel: item icon + count, always visible. Bottom-left for P1, bottom-right for P2
     // (above the MENU button). Below the joystick hint ring, clear of the touch buttons (1P only).
-    this.p1InvText = this._makeResPanel(12, H - 46, false);
-    if (this.p2) this.p2InvText = this._makeResPanel(W - 12, H - 80, true);
+    // Face-to-face: each player's bar sits on their own near edge, turned toward them (the origin and turn
+    // of each player's view, as in initTouchControls).
+    const resPanel = i => {
+      if (!this._split) return this._makeResPanel(i ? W - 12 : 12, i ? H - 80 : H - 46, !!i);
+      const halfW = (W - CFG.SPLIT_STRIP) / 2;
+      const host = this._h(this.add.container(i ? W - halfW : halfW, i ? H : 0).setRotation(i ? -Math.PI / 2 : Math.PI / 2).setDepth(100));
+      return this._makeResPanel(12, halfW - 46, false, host);
+    };
+    this.p1InvText = resPanel(0);
+    if (this.p2) this.p2InvText = resPanel(1);
 
     // Relic progress tracker — hidden until first relic activity
     this.hudRelicText = this._h(this.add.text(W/2, 76, '', {
@@ -1316,7 +1321,7 @@ class GameScene extends Phaser.Scene {
 
   // A row of item icon + count for wood, metal, fiber and food, plus carried ammo when a
   // non-Gunslinger holds some. A zero count is dimmed, not hidden, so the panel never jumps.
-  _makeResPanel(x, y, right) {
+  _makeResPanel(x, y, right, host) {
     const SLOTS = [['wood', 'item_wood'], ['metal', 'item_metal'], ['fiber', 'item_fiber'], ['food', 'item_food'], ['carriedAmmo', 'item_ammo']];
     const P = this._layout1p(); // phone, 1 player: 90% size, 45% solid (#388)
     const k = P ? P.hudScale : 1, sol = P ? P.hudSolid : 1;
@@ -1327,6 +1332,7 @@ class GameScene extends Phaser.Scene {
       icon: this._h(this.add.image(0, 0, tex).setScale(2 * k).setDepth(101)),
       txt: this._h(this.add.text(0, 0, '0', { fontFamily:'monospace', fontSize:(12 * k) + 'px', color:'#ddeecc', stroke:'#000', strokeThickness:2 }).setOrigin(0, 0.5).setDepth(101)),
     }));
+    if (host) host.add([bg, ...slots.flatMap(sl => [sl.icon, sl.txt])]); // positions are then in the host's own view
     let lastKey = '', shown = true;
     return {
       setVisible(v) { shown = v; bg.setVisible(v); lastKey = ''; slots.forEach(sl => { sl.icon.setVisible(false); sl.txt.setVisible(false); }); },
@@ -1471,7 +1477,7 @@ class GameScene extends Phaser.Scene {
     player.atkAnimUntil = 0;
     // If this player owned the craft menu, close it so input routing doesn't
     // reference a downed player and strand the menu on screen.
-    if (this.craftMenuOpen && this.craftMenuOwner === player) this.closeCraftMenu();
+    this.closeCraftMenu(player);
     this._log(`${player.charData.player} (${player.charData.id}) DOWNED  day=${this.dayNum}`, 'player');
     // Audible + visual cue — partners need to register the down even if they
     // aren't looking at the HUD hint.
@@ -1830,10 +1836,10 @@ class GameScene extends Phaser.Scene {
     // and refunds 50% of its cost. Lets the player undo misclicks without a
     // separate keybind.
     if (this.buildMode && this.buildOwner === player) {
-      if (this._tryTeardownBuild(player)) return;
+      if (this._tryTeardownBuild(player)) return true;
     }
     const dist = Phaser.Math.Distance.Between(player.spr.x, player.spr.y, this.bPos.x, this.bPos.y);
-    if (dist < 110) { this.openBarrack(player); return; }
+    if (dist < 110) { this.openBarrack(player); return true; }
 
     // Radio tower interaction — starts 10-second activation (handled in checkRadioTowerRange)
     if (this.radioTower && !this.radioTower.used) {
@@ -1842,7 +1848,7 @@ class GameScene extends Phaser.Scene {
         this.radioTower.activating = true;
         this.radioTower.activateProgress = 0;
         this._log(`${player.charData.player} began activating Radio Tower  day=${this.dayNum}`, 'world');
-        return;
+        return true;
       }
     }
 
@@ -1850,7 +1856,7 @@ class GameScene extends Phaser.Scene {
     if (this.raidCamp && this.raidCamp.cache && !this.raidCamp.cache.locked && !this.raidCamp.cache.opened) {
       const cache = this.raidCamp.cache;
       const cd = Phaser.Math.Distance.Between(player.spr.x, player.spr.y, cache.x, cache.y);
-      if (cd < 70) { this.openRaidCache(cache); return; }
+      if (cd < 70) { this.openRaidCache(cache); return true; }
     }
 
     // Bed interaction — toggle sleep
@@ -1858,7 +1864,7 @@ class GameScene extends Phaser.Scene {
       const bd = Phaser.Math.Distance.Between(player.spr.x, player.spr.y, bed.x, bed.y);
       if (bd < 70) {
         this.toggleSleep(player, bed);
-        return;
+        return true;
       }
     }
 
@@ -1872,7 +1878,7 @@ class GameScene extends Phaser.Scene {
         const _rd = Phaser.Math.Distance.Between(player.spr.x, player.spr.y, _rel.x, _rel.y);
         if (_rd < 70) {
           this.hint('Hold Interact for 3s to retrieve relic', 1800);
-          return;
+          return true;
         }
       }
     }
@@ -1882,12 +1888,13 @@ class GameScene extends Phaser.Scene {
       const _ad = Phaser.Math.Distance.Between(player.spr.x, player.spr.y, this.altarPos.x, this.altarPos.y);
       if (_ad < 90) {
         this._depositRelic();
-        return;
+        return true;
       }
     }
 
     // Nothing interactable in range — log so we can diagnose "E key not working" reports
     this._log(`${player.charData.player} interact: nothing in range  pos=(${Math.floor(player.spr.x/CFG.TILE)},${Math.floor(player.spr.y/CFG.TILE)})`, 'player');
+    return false;
   }
 
   // Per-frame relic pickup channel. Mirrors checkRadioTowerRange — requires
@@ -1898,7 +1905,8 @@ class GameScene extends Phaser.Scene {
   _useHeld(p) {
     const key = this.hotkeys && this.hotkeys[p === this.p1 ? 'p1use' : 'p2use'];
     if (key && key.isDown) return true;
-    return p === this.p1 && !!(this._touchActive && this._tcBtns && this._tcBtns.interact && this._tcBtns.interact.down);
+    const b = this._padOf(p)?.btns;
+    return !!(b && (b.context || b.interact).down);
   }
 
   updateRelicChannels(delta) {
@@ -1912,7 +1920,7 @@ class GameScene extends Phaser.Scene {
     for (const { p, keyName } of list) {
       if (!p || !p.spr || !p.spr.active) { this._cancelRelicChannel(p); continue; }
       const keyDown = this._useHeld(p);
-      const blocked = p.isDowned || p.isSleeping || this.barrackOpen || this.craftMenuOpen || this.isOver;
+      const blocked = p.isDowned || p.isSleeping || this.barrackOpen || !!this._craftOf(p) || this.isOver;
       if (blocked || !keyDown) { this._cancelRelicChannel(p); continue; }
 
       let nearest = null, bestD2 = RANGE2;
@@ -2489,7 +2497,7 @@ class GameScene extends Phaser.Scene {
     }
 
     // Movement — skip if downed, sleeping, or owns the open craft menu
-    const p1CraftHalt = this.craftMenuOpen && this.craftMenuOwner === this.p1;
+    const p1CraftHalt = !!this._craftOf(this.p1);
     if (!this.p1.isDowned && !this.p1.isSleeping && !p1CraftHalt) {
       if (this._touchActive) {
         this.applyTouchInput();  // touch: joystick drives movement + facing
@@ -2501,7 +2509,7 @@ class GameScene extends Phaser.Scene {
     else this.p1.spr.setVelocity(0,0);
 
     if (this.p2 && this.p2.spr) {
-      const p2CraftHalt = this.craftMenuOpen && this.craftMenuOwner === this.p2;
+      const p2CraftHalt = !!this._craftOf(this.p2);
       const p2pad = this._touchActive && this._pads[1];
       if (!this.p2.isDowned && !this.p2.isSleeping && !p2CraftHalt) {
         if (p2pad) this.applyTouchInput(this.p2, p2pad.joy);
@@ -2621,6 +2629,7 @@ class GameScene extends Phaser.Scene {
     const _safe = (name, fn) => { _stageLog(name); try { fn(); } catch (e) { this._log(`${name} ERR: ${e && e.message || e}`, 'error'); } };
     _safe('updateBuildMode',  () => this.updateBuildMode());
     _safe('updateCraftMenu',  () => this.updateCraftMenu(delta));
+    _safe('updateBarrackStick', () => this.updateBarrackStick(delta));
     _safe('updateHarvest',    () => this.updateHarvest(delta));
     _safe('updateSpikeTraps', () => this.updateSpikeTraps());
     { const _t0 = performance.now(); _safe('updateFog',        () => this.updateFog());               this._perfBudget.fog     += performance.now() - _t0; }
