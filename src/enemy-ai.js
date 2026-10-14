@@ -767,7 +767,7 @@ Object.assign(GameScene.prototype, {
           // Hide enemies that are on-screen but outside current LOS fog
           const etx = (e.spr.x / CFG.TILE) | 0;
           const ety = (e.spr.y / CFG.TILE) | 0;
-          const _inLOS = !this.fogVisible || this.fogVisible.has(etx + ',' + ety);
+          const _inLOS = !this.fogVisible || !!this.fogVisible[etx + ety * CFG.MAP_W];
           e.spr.setVisible(_inLOS);
         }
       }
