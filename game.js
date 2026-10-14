@@ -157,7 +157,8 @@
 //    build: updateBuildMode, placeBuild, _buildSpotError, exitBuildMode, _placeWallSprite,
 //           _tryTeardownBuild, openGate, getBuildCost, getTeamInv
 //    craft: openCraftMenu, closeCraftMenu, updateCraftMenu, craftSelected,
-//           renderCraftMenu, _craftScrollToSel
+//           renderCraftMenu, _craftScrollToSel, _craftOf/_craftLayout/_craftPanelHit (one menu per player, kept on p.craft;
+//           face-to-face each is drawn in its owner's view, clear of their buttons)
 //    barracks: openBarrack, closeBarrack, barrackNav, barrackConfirm,
 //              refreshBarrackCards, buildBarrackOverlay, checkBarrackRange
 //    shelter: isShelteredAt (a closed ring of built walls, gates count, holding a campfire, craftbench
@@ -241,7 +242,8 @@
 //           land in; 2P touch on a phone splits the screen left/right), _joy and _tcBtns (P1's pad),
 //           _split (face-to-face iPad: 2P touch, short side >= 600), cam2 (P2's camera, right half, quarter-turned; P1's is the left half)
 //     fns:  _worldCams, _ignoreInWorldCams, _camFx (shake/flash/fade on every world camera), _initSplitCams, _worldRect (true visible
-//           rectangle of a camera: use it, not worldView, when the cameras are turned)
+//           rectangle of a camera: use it, not worldView, when the cameras are turned), _padOf/_stickOf (a player's own touch pad and
+//           stick: menus and USE read these, never _joy), _useTargetNear (tree or downed ally in reach), updateBarrackStick
 //     cfg:  SPLIT_STRIP, SPLIT_ZOOM
 //
 // 20. DEBUG LOG & PERF  (src/game-scene.js; _qlog in src/constants.js)
