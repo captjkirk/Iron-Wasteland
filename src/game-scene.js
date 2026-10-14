@@ -855,8 +855,16 @@ class GameScene extends Phaser.Scene {
 
     // Resource panel: item icon + count, always visible. Bottom-left for P1, bottom-right for P2
     // (above the MENU button). Below the joystick hint ring, clear of the touch buttons (1P only).
-    this.p1InvText = this._makeResPanel(12, H - 46, false);
-    if (this.p2) this.p2InvText = this._makeResPanel(W - 12, H - 80, true);
+    // Face-to-face: each player's bar sits on their own near edge, turned toward them (the origin and turn
+    // of each player's view, as in initTouchControls).
+    const resPanel = i => {
+      if (!this._split) return this._makeResPanel(i ? W - 12 : 12, i ? H - 80 : H - 46, !!i);
+      const halfW = (W - CFG.SPLIT_STRIP) / 2;
+      const host = this._h(this.add.container(i ? W - halfW : halfW, i ? H : 0).setRotation(i ? -Math.PI / 2 : Math.PI / 2).setDepth(100));
+      return this._makeResPanel(12, halfW - 46, false, host);
+    };
+    this.p1InvText = resPanel(0);
+    if (this.p2) this.p2InvText = resPanel(1);
 
     // Relic progress tracker — hidden until first relic activity
     this.hudRelicText = this._h(this.add.text(W/2, 76, '', {
@@ -1313,7 +1321,7 @@ class GameScene extends Phaser.Scene {
 
   // A row of item icon + count for wood, metal, fiber and food, plus carried ammo when a
   // non-Gunslinger holds some. A zero count is dimmed, not hidden, so the panel never jumps.
-  _makeResPanel(x, y, right) {
+  _makeResPanel(x, y, right, host) {
     const SLOTS = [['wood', 'item_wood'], ['metal', 'item_metal'], ['fiber', 'item_fiber'], ['food', 'item_food'], ['carriedAmmo', 'item_ammo']];
     const P = this._layout1p(); // phone, 1 player: 90% size, 45% solid (#388)
     const k = P ? P.hudScale : 1, sol = P ? P.hudSolid : 1;
@@ -1324,6 +1332,7 @@ class GameScene extends Phaser.Scene {
       icon: this._h(this.add.image(0, 0, tex).setScale(2 * k).setDepth(101)),
       txt: this._h(this.add.text(0, 0, '0', { fontFamily:'monospace', fontSize:(12 * k) + 'px', color:'#ddeecc', stroke:'#000', strokeThickness:2 }).setOrigin(0, 0.5).setDepth(101)),
     }));
+    if (host) host.add([bg, ...slots.flatMap(sl => [sl.icon, sl.txt])]); // positions are then in the host's own view
     let lastKey = '', shown = true;
     return {
       setVisible(v) { shown = v; bg.setVisible(v); lastKey = ''; slots.forEach(sl => { sl.icon.setVisible(false); sl.txt.setVisible(false); }); },
