@@ -9,6 +9,8 @@
 
 // Each player's colour, as on the controls screen.
 const P_COLOR = { 1: '#88cc44', 2: '#4488cc' };
+// The background is this dark blue with 16% of the selected character's colour mixed in.
+const BG_BASE = 0x0a0a14, BG_TINT = 0.16;
 
 class CharSelectScene extends Phaser.Scene {
   constructor() { super('CharSelect'); }
@@ -34,7 +36,7 @@ class CharSelectScene extends Phaser.Scene {
     this.p1Done = false; this.p2Done = false;
     this.solo = STATE.mode === 1;
 
-    this.add.graphics().fillStyle(0x0a0a14).fillRect(0, 0, W, H);
+    this._bg = this.add.rectangle(0, 0, W, H, BG_BASE).setOrigin(0, 0);
 
     const S = this._S = Math.min(W / 1280, H / 720);
     // On a touch phone the prompts name swipes and taps, not keys (the phone layout, GLOSSARY.md).
@@ -229,6 +231,32 @@ class CharSelectScene extends Phaser.Scene {
       .setPosition(p1.x, p1.y - 66 * p1.scaleY - 4).setAlpha(Math.max(p1.alpha, 0.6));
   }
 
+  // Ease the background toward the selected character's colour over the wheel's turn.
+  _shiftBg(color) {
+    const from = Phaser.Display.Color.IntegerToColor(this._bg.fillColor);
+    const to = Phaser.Display.Color.IntegerToColor(BG_BASE), c = Phaser.Display.Color.IntegerToColor(color);
+    const goal = Phaser.Display.Color.Interpolate.ColorWithColor(to, c, 100, BG_TINT * 100);
+    if (this._bgTween) this._bgTween.stop();
+    this._bgTween = this.tweens.addCounter({
+      from: 0, to: 100, duration: 250,
+      onUpdate: t => {
+        const m = Phaser.Display.Color.Interpolate.ColorWithColor(from, goal, 100, t.getValue());
+        this._bg.setFillStyle(Phaser.Display.Color.GetColor(m.r, m.g, m.b));
+      },
+    });
+  }
+
+  // The name and tagline slide up into place and fade in as a character reaches the centre.
+  _animateIn() {
+    const dy = Math.round(12 * this._S);
+    [this._nameT, this._titleT].forEach((t, i) => {
+      if (t._rest === undefined) t._rest = t.y;
+      this.tweens.killTweensOf(t);
+      t.setAlpha(0).setY(t._rest + dy);
+      this.tweens.add({ targets: t, alpha: 1, y: t._rest, duration: 250, delay: 120 + i * 60, ease: 'Sine.easeOut' });
+    });
+  }
+
   // Turn the wheel to the active player's character over ~250 ms, the short way round.
   _spinTo(idx) {
     const n = CHARS.length, from = this._pos;
@@ -289,6 +317,9 @@ class CharSelectScene extends Phaser.Scene {
     const hex = '#' + ch.color.toString(16).padStart(6, '0');
     this._nameT.setText(ch.player).setColor(hex);
     this._titleT.setText(ch.title);
+    this._shiftBg(ch.color);
+    if (this._shown !== idx) this._animateIn();
+    this._shown = idx;
     this._stats.forEach((bars, si) => bars.forEach((bar, b) => bar.setFillStyle(b < ch.stats[si] ? ch.color : 0x222233)));
     this._descT.setText(ch.desc.join('\n'));
     this._spinTo(idx);
