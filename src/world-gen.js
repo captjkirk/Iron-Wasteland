@@ -866,8 +866,14 @@ Object.assign(GameScene.prototype, {
     }
 
     // ── FOG OF WAR ────────────────────────────────────────────
-    this.fogRevealed = new Set(); // persistent — tiles ever seen (drives fog overlay)
-    this.fogVisible = new Set();  // current-frame LOS — drives enemy visibility
+    // Both indexed tx + ty * MAP_W (#342).
+    this.fogRevealed = new Uint8Array(CFG.MAP_W * CFG.MAP_H); // persistent — tiles ever seen (drives fog overlay)
+    this.fogVisible = new Uint8Array(CFG.MAP_W * CFG.MAP_H);  // current-frame LOS — drives enemy visibility
+    this._fogBufs = [];
+    // Radar picture: one pixel per tile, painted once when the tile is first seen (#344).
+    if (this.textures.exists('mm_explored')) this.textures.remove('mm_explored');
+    this._mmTex = this.textures.createCanvas('mm_explored', CFG.MAP_W, CFG.MAP_H);
+    this._mmDirty = true;
     // ponytail: fog is one texel per tile, scaled up with linear filtering, so the GPU
     // blends the three zones into soft edges. Map-sized (300x300, 360 KB) and re-uploaded
     // every FOG_UPDATE_INTERVAL frames; upgrade path is a camera-sized canvas if the

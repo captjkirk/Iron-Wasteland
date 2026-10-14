@@ -12,6 +12,8 @@
 //      from 100 px out does not (#312, #317).
 //      Then jumps to boss days 5 and 10 and fails unless each brings a boss, of two types.
 //      Then lines up three 1-HP enemies in front of the knight and fails unless one swing kills all three.
+//      Then explores the whole radar area and fails if fog or radar read settings from storage, the radar
+//      redraws terrain per tile, its picture has the wrong colour, or the fog rebuilds its buffers (#342, #344).
 //      Then ends the run and types a two-word name on the game over screen (#328).
 //      Also, on an iPad-sized touch screen (1180x820), fails unless every inventory icon and number has a real position above the fog (#414).
 //   Phone menus: on five phone screens, fails on any overlap, off-canvas object or tap target under
@@ -255,6 +257,30 @@ async function bossReach(page) {
     });
     if (swing) throw new Error(swing);
     console.log('in play: one swing killed all three lined-up enemies');
+    // Fog and radar (#342, #344): neither reads settings from storage per frame; the radar's draw
+    // list stays small with its whole area explored; its picture holds each explored tile's colour;
+    // and the fog keeps its paint buffers between updates.
+    const radar = await ask(page, () => {
+      const s = _phaserGame.scene.getScene('Game'), real = window.loadSettings;
+      let reads = 0;
+      window.loadSettings = () => { reads++; return real(); };
+      try {
+        const tx = Math.floor(s.p1.spr.x / CFG.TILE), ty = Math.floor(s.p1.spr.y / CFG.TILE);
+        s.revealFog(tx, ty, 40);
+        const fog = () => { s._fogFrame = CFG.FOG_UPDATE_INTERVAL - 1; s._lastFogP1 = null; s.updateFog(); };
+        fog(); const buf = s._fogBufs[0]; fog();
+        s._fogFrame = 0; s.updateMinimap();
+        const i = tx + ty * CFG.MAP_W, c = s._mmColorMap[i];
+        const px = s._mmTex.context.getImageData(tx, ty, 1, 1).data;
+        const off = Math.max(Math.abs(px[0] - (c >> 16)), Math.abs(px[1] - ((c >> 8) & 255)), Math.abs(px[2] - (c & 255)));
+        return { reads, cmds: s.minimapDots.commandBuffer.length, off, kept: buf === s._fogBufs[0] };
+      } finally { window.loadSettings = real; }
+    });
+    console.log(`in play: radar draw list ${radar.cmds} entries with its area explored, ${radar.reads} settings reads`);
+    if (radar.reads) throw new Error(`fog and radar read settings from storage ${radar.reads} times in one update`);
+    if (radar.cmds > 5000) throw new Error(`radar draw list has ${radar.cmds} entries: explored terrain is being redrawn per tile`);
+    if (radar.off > 3) throw new Error(`radar picture colour is off by ${radar.off} from the tile's colour`);
+    if (!radar.kept) throw new Error('fog rebuilt its paint buffers with the view size unchanged');
     const mb = Math.round(px * 4 / 1e6);
     console.log(`in play: ${mb} MB of pixel memory (budget ${PIXEL_BUDGET_MB} MB)`);
     if (mb > PIXEL_BUDGET_MB) throw new Error(`pixel memory ${mb} MB is over the ${PIXEL_BUDGET_MB} MB budget`);
