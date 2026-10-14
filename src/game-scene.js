@@ -1494,7 +1494,8 @@ class GameScene extends Phaser.Scene {
     ).setOrigin(0.5).setDepth(20);
     if (this.hudCam) this.hudCam.ignore(player.downText);
 
-    this.hint(player.charData.player + ' is DOWN! Get close and hold E / Enter to revive!', 5000, { urgent: true });
+    const bedNote = player.respawnBed ? ' If not, they wake at their bed.' : '';
+    this.hint(player.charData.player + ' is DOWN! Get close and hold E / Enter to revive!' + bedNote, 5000, { urgent: true });
   }
 
   updateDowned(delta) {
@@ -1513,7 +1514,8 @@ class GameScene extends Phaser.Scene {
       statusText.setText('↓ ' + p.charData.player.toUpperCase() + ' IS DOWN');
 
       if (p.downTimer <= 0) {
-        // Time ran out — permanently dead
+        // Time ran out — back at their bed (2-player Survival, src/bed-respawn.js), else permanently dead
+        if (this._bedRespawn(p)) { statusText.setText(''); return; }
         if (p.downText) { p.downText.destroy(); p.downText = null; }
         p.isDowned = false;
         p.isPermanentlyDead = true;
@@ -2090,7 +2092,10 @@ class GameScene extends Phaser.Scene {
       );
 
       player.isSleeping = true;
-      this._log(`${player.charData.player} sleeping  hp=${player.hp}/${player.maxHp}  day=${this.dayNum}`, 'player');
+      // 2-player Survival: this bed is now where the player comes back if their down timer runs out (#294).
+      const newBed = !this.solo && !this.hardcore && player.respawnBed !== bed;
+      if (!this.solo && !this.hardcore) player.respawnBed = bed;
+      this._log(`${player.charData.player} sleeping  hp=${player.hp}/${player.maxHp}  day=${this.dayNum}${newBed ? '  respawn bed set' : ''}`, 'player');
       player.spr.setTint(0x9977cc);
       player.spr.setAlpha(0.75);
 
@@ -2114,6 +2119,7 @@ class GameScene extends Phaser.Scene {
       } else {
         this.hint(player.charData.player + ' resting\u2026 (+' + this.hc.bedHealPerTick + ' HP/tick)  Sleep at night to skip to dawn.' + vulnWarn, 3800);
       }
+      if (newBed) this.hint('Respawn bed set: if ' + player.charData.player + ' goes down and is not revived, they wake here.', 4000);
     }
   }
 

@@ -64,6 +64,8 @@
 //
 //   src/shelter.js       — System 8's Sheltered test, added to GameScene.prototype
 //
+//   src/bed-respawn.js   — System 7's bed respawn (2-player Survival), added to GameScene.prototype
+//
 //   src/world-gen.js     — System 1, added to GameScene.prototype; loads after game-scene.js
 //
 //   src/waves-bosses.js  — System 4, added to GameScene.prototype; loads after world-gen.js
@@ -145,12 +147,13 @@
 //    data: player.atkCooldown, player.ammo, player.reserveAmmo, player.carriedAmmo
 //    log:  [COMBAT], [PLAYER]
 //
-// 7. DEATH & REVIVE
+// 7. DEATH & REVIVE  (src/game-scene.js; bed respawn in src/bed-respawn.js)
 //    fns:  handleDeath, checkDeaths, updateDowned, updateRevive,
 //          revivePlayer, checkBothDead, buildReviveBar, drawReviveBar,
-//          _showSleepIndicator, _hideSleepIndicator
+//          _showSleepIndicator, _hideSleepIndicator,
+//          _bedRespawn (2P Survival: timer out + respawn bed = back at the bed, half HP and items)
 //    cfg:  DOWN_TIME, REVIVE_TIME, REVIVE_RANGE
-//    data: player.isDowned, player.downedTimer, reviving, reviveProgress
+//    data: player.isDowned, player.downTimer, player.respawnBed, reviving, reviveProgress
 //    log:  [PLAYER]
 //
 // 8. BUILDING & CRAFTING  (src/building-crafting.js; RECIPES in src/recipes.js; shelter in src/shelter.js)

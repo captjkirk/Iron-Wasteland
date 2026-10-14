@@ -44,3 +44,7 @@ Avoid: hit area, hit box, click zone.
 Issues and Pull requests read and write, pasted once per device and kept in that browser. With it the
 page can reply and change tickets; without it the page is read-only.
 Avoid: token, PAT, password, API key.
+
+**Respawn bed** — the bed a player last slept in during 2-player Survival (`player.respawnBed`, #294). If that player
+goes down and the down timer runs out, they come back at it with half health and half of each carried item.
+Avoid: spawn point, checkpoint, home bed.
