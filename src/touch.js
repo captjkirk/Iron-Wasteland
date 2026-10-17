@@ -110,13 +110,14 @@ Object.assign(GameScene.prototype, {
     const { W, H } = CFG;
     const px = pointer.x, py = pointer.y;
 
-    // Skip joystick/button activation when tapping inside the craft menu panel
-    if (this.craftMenuOpen && this._craftPanelHit(px, py)) return;
+    // A tap inside the craft menu panel never starts the stick, but still reaches a button that
+    // reaches under the panel's edge (BLD must be able to close the menu).
+    const inPanel = this.craftMenuOpen && this._craftPanelHit(px, py);
 
     const pad = this._pads.find(p => px >= p.x0 && px < p.x1 && py >= p.y0 && py < p.y1);
     if (!pad) return;
     const joy = pad.joy;
-    if (pad.stickZone(px, py) && !joy.active) {
+    if (!inPanel && pad.stickZone(px, py) && !joy.active) {
       Object.assign(joy, { active: true, pointerId: pointer.id, baseX: px, baseY: py, knobX: px, knobY: py, vec: { x: 0, y: 0 } });
       this._logTouchStick('down', pad);
       return;
