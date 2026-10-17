@@ -91,7 +91,7 @@ Object.assign(GameScene.prototype, {
     const tx = Math.floor(x / CFG.TILE), ty = Math.floor(y / CFG.TILE);
     if (this._waterMap && this._waterMap[tx + ty * CFG.MAP_W]) return "Can't build on water!";
     if (this._iceMap && this._iceMap[tx + ty * CFG.MAP_W]) return "Can't build on ice!";
-    if (this._solidTileSet && this._solidTileSet.has(tx + ',' + ty)) return "Can't build on a mountain!";
+    if (this._solidTileSet && this._tileAt(this._solidTileSet, tx, ty)) return "Can't build on a mountain!";
     if (this._toxicTileIndex && this._toxicTileIndex.has(ty * CFG.MAP_W + tx)) return "Can't build on toxic ground!";
     if (this._wallNearby(x, y, 24)) return "Too close to existing structure!";
     // Enemy overlap — an active enemy within ~24px of the placement point blocks it.
@@ -293,15 +293,37 @@ Object.assign(GameScene.prototype, {
     return w;
   },
 
+  // One craft menu per player (#289). Each player's open menu lives on the player (p.craft: sel, scroll, its
+  // drawn objects); this.craftMenuOpen is true while any is open. Face-to-face (_split) each menu is drawn in its
+  // owner's own view, turned toward them and clear of their buttons. Otherwise one menu sits centred, so opening
+  // a second closes the first.
+  _craftOf(p) { return (p && p.craft) || null; },
+
+  _craftLayout(p) {
+    const { W, H } = CFG, PH = _isMobile ? 330 : 380;
+    const pad = this._split ? this._padOf(p) : null;
+    if (!pad) return { pad: null, PW: 440, PH, PX: (W - 440) / 2, PY: H - PH - 20 };
+    return { pad, PW: Math.min(440, pad.btnLeft - 32), PH, PX: 16, PY: (pad.Lh - PH) / 2 };
+  },
+
+  // A screen point in the menu owner's own view (where the panel rectangle is), and whether it is on the panel.
+  _craftLocal(p, x, y) { const pad = this._craftLayout(p).pad; return pad ? pad.toLocal(x, y) : [x, y]; },
+  _craftPanelHit(x, y) {
+    return [this.p1, this.p2].some(p => {
+      if (!this._craftOf(p)) return false;
+      const L = this._craftLayout(p), [lx, ly] = this._craftLocal(p, x, y);
+      return lx >= L.PX && lx <= L.PX + L.PW && ly >= L.PY && ly <= L.PY + L.PH;
+    });
+  },
+
   openCraftMenu(player) {
-    if (this.craftMenuOpen) { this.closeCraftMenu(); return; }
+    if (this._craftOf(player)) { this.closeCraftMenu(player); return; }
+    if (!this._split) this.closeCraftMenu();
+    const c = player.craft = { sel: 0, scroll: 0, gfx: null, texts: [], box: null, navCd: 0 };
     this.craftMenuOpen = true;
     this._log(`${player.charData.player} opened craft menu`, 'player');
-    this.craftMenuOwner = player;
-    this.craftMenuSel = 0;
-    this.craftMenuScroll = 0;
     // Recompute in case selection was restored — no-op on a fresh open at index 0.
-    this._craftScrollToSel();
+    this._craftScrollToSel(player);
     // Contextual tip: first time opening crafting menu
     if (!this._ctx.firstCraft) {
       this._ctx.firstCraft = true;
@@ -315,138 +337,136 @@ Object.assign(GameScene.prototype, {
       this.time.delayedCall(400, () => this.hint('Craft a Craftbench to unlock character upgrades — enemies get stronger each day!', 6000));
     }
     // Nav keys (reuse attack confirm, movement for up/down)
-    this._craftNavUp   = this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.W);
-    this._craftNavUp2  = this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.UP);
-    this._craftNavDn   = this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.S);
-    this._craftNavDn2  = this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.DOWN);
+    if (!this._craftNavUp) {
+      this._craftNavUp   = this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.W);
+      this._craftNavUp2  = this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.UP);
+      this._craftNavDn   = this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.S);
+      this._craftNavDn2  = this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.DOWN);
+    }
     // Close is handled by the p1build/p2build key listeners (toggle via openCraftMenu)
 
     // Tap / click to select or craft — works for mouse and touch
-    this._craftMenuPointerFn = (ptr) => {
-      const { W, H } = CFG;
-      const PW = 440, PH = _isMobile ? 330 : 380;
+    c.pointerFn = (ptr) => {
+      const L = this._craftLayout(player), { PX, PY, PW, PH } = L;
       const ROW_H = 25, N_VISIBLE = Math.floor((PH - 94) / ROW_H);
-      const PX = (W - PW) / 2, PY = H - PH - 20;
-      const px = ptr.x, py = ptr.y;
+      const [px, py] = this._craftLocal(player, ptr.x, ptr.y);
       if (px < PX || px > PX + PW || py < PY || py > PY + PH) return;
-      const scroll = this.craftMenuScroll || 0;
       for (let visIdx = 0; visIdx < N_VISIBLE; visIdx++) {
-        const idx = visIdx + scroll;
+        const idx = visIdx + c.scroll;
         if (idx >= RECIPES.length) break;
         const rowY = PY + 34 + visIdx * ROW_H;
         if (py >= rowY - 2 && py < rowY + ROW_H) {
-          if (idx === this.craftMenuSel) {
-            this._log(`craft click confirm  sel=${idx} (${RECIPES[idx].label})  owner=${this.craftMenuOwner?.charData?.player}`, 'player');
-            this.craftSelected();
+          if (idx === c.sel) {
+            this._log(`craft click confirm  sel=${idx} (${RECIPES[idx].label})  owner=${player.charData.player}`, 'player');
+            this.craftSelected(player);
           } else {
-            this._log(`craft click select  sel=${idx} (${RECIPES[idx].label})  owner=${this.craftMenuOwner?.charData?.player}`, 'player');
-            this.craftMenuSel = idx;
-            this._craftScrollToSel();
+            this._log(`craft click select  sel=${idx} (${RECIPES[idx].label})  owner=${player.charData.player}`, 'player');
+            c.sel = idx;
+            this._craftScrollToSel(player);
           }
           return;
         }
       }
     };
-    this.input.on('pointerdown', this._craftMenuPointerFn);
+    this.input.on('pointerdown', c.pointerFn);
 
-    this._craftMenuWheelFn = (pointer, currentlyOver, deltaX, deltaY) => {
-      if (!this.craftMenuOpen) return;
+    c.wheelFn = (pointer, currentlyOver, deltaX, deltaY) => {
       const PH = _isMobile ? 330 : 380;
       const ROW_H = 25, N_VISIBLE = Math.floor((PH - 94) / ROW_H);
       const maxScroll = Math.max(0, RECIPES.length - N_VISIBLE);
-      this.craftMenuScroll = Phaser.Math.Clamp((this.craftMenuScroll || 0) + (deltaY > 0 ? 1 : -1), 0, maxScroll);
+      c.scroll = Phaser.Math.Clamp(c.scroll + (deltaY > 0 ? 1 : -1), 0, maxScroll);
     };
-    this.input.on('wheel', this._craftMenuWheelFn);
+    this.input.on('wheel', c.wheelFn);
   },
 
-  _craftScrollToSel() {
+  _craftScrollToSel(player) {
+    const c = this._craftOf(player);
     const N_VISIBLE = Math.floor(((_isMobile ? 330 : 380) - 94) / 25);
     const maxScroll = Math.max(0, RECIPES.length - N_VISIBLE);
-    let s = this.craftMenuScroll || 0;
-    if (this.craftMenuSel < s) s = this.craftMenuSel;
-    else if (this.craftMenuSel >= s + N_VISIBLE) s = this.craftMenuSel - N_VISIBLE + 1;
+    let s = c.scroll;
+    if (c.sel < s) s = c.sel;
+    else if (c.sel >= s + N_VISIBLE) s = c.sel - N_VISIBLE + 1;
     // Clamp so we never scroll past the final row — otherwise the view leaves
     // an empty gap at the bottom when the selection is near the tail of the list.
-    this.craftMenuScroll = Phaser.Math.Clamp(s, 0, maxScroll);
+    c.scroll = Phaser.Math.Clamp(s, 0, maxScroll);
   },
 
-  closeCraftMenu() {
-    this._log(`craft menu closed`, 'player');
-    this.craftMenuOpen = false;
-    this.craftMenuOwner = null;
-    if (this._craftMenuPointerFn) {
-      this.input.off('pointerdown', this._craftMenuPointerFn);
-      this._craftMenuPointerFn = null;
-    }
-    if (this._craftMenuWheelFn) {
-      this.input.off('wheel', this._craftMenuWheelFn);
-      this._craftMenuWheelFn = null;
-    }
-    if (this.craftMenuGfx) { this.craftMenuGfx.destroy(); this.craftMenuGfx = null; }
-    this._craftMenuText && this._craftMenuText.forEach(t => t.destroy());
-    this._craftMenuText = [];
+  // Close one player's menu, or every open menu when no player is given.
+  closeCraftMenu(player) {
+    if (!player) { for (const p of [this.p1, this.p2]) if (this._craftOf(p)) this.closeCraftMenu(p); return; }
+    const c = this._craftOf(player);
+    if (!c) return;
+    this._log(`craft menu closed  owner=${player.charData.player}`, 'player');
+    this.input.off('pointerdown', c.pointerFn);
+    this.input.off('wheel', c.wheelFn);
+    if (c.gfx) c.gfx.destroy();
+    if (c.box) c.box.destroy();
+    c.texts.forEach(t => t.destroy());
+    player.craft = null;
+    this.craftMenuOpen = !![this.p1, this.p2].find(p => this._craftOf(p));
   },
 
   updateCraftMenu(delta) {
     if (!this.craftMenuOpen) return;
-
-    // Keyboard navigate up / down
-    if (Phaser.Input.Keyboard.JustDown(this._craftNavUp) || Phaser.Input.Keyboard.JustDown(this._craftNavUp2)) {
-      this.craftMenuSel = (this.craftMenuSel - 1 + RECIPES.length) % RECIPES.length;
-      this._craftScrollToSel();
-      this._log(`craft nav up  sel=${this.craftMenuSel} (${RECIPES[this.craftMenuSel].label})  owner=${this.craftMenuOwner?.charData?.player}`, 'player');
-    }
-    if (Phaser.Input.Keyboard.JustDown(this._craftNavDn) || Phaser.Input.Keyboard.JustDown(this._craftNavDn2)) {
-      this.craftMenuSel = (this.craftMenuSel + 1) % RECIPES.length;
-      this._craftScrollToSel();
-      this._log(`craft nav dn  sel=${this.craftMenuSel} (${RECIPES[this.craftMenuSel].label})  owner=${this.craftMenuOwner?.charData?.player}`, 'player');
-    }
-
-    // Touch joystick navigate up / down (350ms repeat debounce)
-    if (this._touchActive && this._joy) {
-      this._craftTouchNavCd = (this._craftTouchNavCd || 0) - delta;
-      const jy = this._joy.vec.y;
-      if (this._craftTouchNavCd <= 0 && Math.abs(jy) > 0.5) {
-        this.craftMenuSel = (this.craftMenuSel + (jy > 0 ? 1 : -1) + RECIPES.length) % RECIPES.length;
-        this._craftScrollToSel();
-        this._craftTouchNavCd = 350;
-        this._log(`craft nav joy  sel=${this.craftMenuSel} (${RECIPES[this.craftMenuSel].label})  owner=${this.craftMenuOwner?.charData?.player}`, 'player');
+    const k = Phaser.Input.Keyboard.JustDown;
+    for (const p of [this.p1, this.p2]) {
+      const c = this._craftOf(p);
+      if (!c) continue;
+      // Keyboard navigate up / down. Keys are shared W/S and arrows; with one menu open they go to it.
+      const kb = !this._split;
+      let step = 0;
+      if (kb && (k(this._craftNavUp) || k(this._craftNavUp2))) step = -1;
+      if (kb && (k(this._craftNavDn) || k(this._craftNavDn2))) step = 1;
+      // Touch joystick navigate up / down: the owner's own stick (350ms repeat debounce)
+      const joy = this._stickOf(p);
+      if (joy) {
+        c.navCd -= delta;
+        if (c.navCd <= 0 && Math.abs(joy.vec.y) > 0.5) { step = joy.vec.y > 0 ? 1 : -1; c.navCd = 350; }
       }
+      if (step) {
+        c.sel = (c.sel + step + RECIPES.length) % RECIPES.length;
+        this._craftScrollToSel(p);
+        this._log(`craft nav ${step < 0 ? 'up' : 'dn'}  sel=${c.sel} (${RECIPES[c.sel].label})  owner=${p.charData.player}`, 'player');
+      }
+      this.renderCraftMenu(p);
     }
-
-    this.renderCraftMenu();
   },
 
-  renderCraftMenu() {
-    const { W, H } = CFG;
+  renderCraftMenu(player) {
+    const c = this._craftOf(player);
     const team = this.getTeamInv();
-    const PW = 440, PH = _isMobile ? 330 : 380;
+    const L = this._craftLayout(player), { PX, PY, PW, PH } = L;
     const ROW_H = 25, N_VISIBLE = Math.floor((PH - 94) / ROW_H);
-    const PX = (W - PW) / 2, PY = H - PH - 20;
-    const scroll = this.craftMenuScroll || 0;
+    const scroll = c.scroll;
 
     // Recreate graphics each frame (simple approach)
-    if (this.craftMenuGfx) this.craftMenuGfx.destroy();
-    this.craftMenuGfx = this.add.graphics().setScrollFactor(0).setDepth(96);
-    if (this.hudCam) this.hudCam.ignore(this.craftMenuGfx);
-
-    const g = this.craftMenuGfx;
+    if (c.gfx) c.gfx.destroy();
+    if (c.box) c.box.destroy();
+    c.texts.forEach(t => t.destroy());
+    c.texts = [];
+    // Face-to-face: everything goes in one container at the owner's view origin, turned toward them, drawn by
+    // the HUD camera. Otherwise screen-fixed objects drawn by the world camera.
+    let host = null;
+    if (L.pad) {
+      const [ox, oy] = L.pad.toScreen(0, 0);
+      host = c.box = this.add.container(ox, oy).setRotation(L.pad.rot).setDepth(152);
+      this._ignoreInWorldCams(host);
+    }
+    const mk = (o, depth) => {
+      if (host) host.add(o);
+      else { o.setScrollFactor(0).setDepth(depth); if (this.hudCam) this.hudCam.ignore(o); }
+      return o;
+    };
+    const g = c.gfx = mk(this.add.graphics(), 96);
     // Panel background
     g.fillStyle(0x0a1208, 0.92); g.fillRoundedRect(PX, PY, PW, PH, 8);
     g.lineStyle(2, 0x445533, 1); g.strokeRoundedRect(PX, PY, PW, PH, 8);
 
-    // Destroy old text
-    this._craftMenuText && this._craftMenuText.forEach(t => t.destroy());
-    this._craftMenuText = [];
-
     const addTxt = (x, y, str, style) => {
-      const t = this.add.text(x, y, str, Object.assign({ fontFamily:'monospace', fontSize:'11px' }, style))
-        .setScrollFactor(0).setDepth(97);
-      if (this.hudCam) this.hudCam.ignore(t);
-      this._craftMenuText.push(t);
+      const t = mk(this.add.text(x, y, str, Object.assign({ fontFamily:'monospace', fontSize:'11px' }, style)), 97);
+      c.texts.push(t);
       return t;
     };
-
     addTxt(PX + PW/2, PY + 14, '[ CRAFTING ]', { fontSize:'14px', color:'#aacc88', stroke:'#000', strokeThickness:2 }).setOrigin(0.5);
     const navHint = this._touchActive
       ? 'Tap to select  |  Tap again / ATK = craft  |  BLD = close'
@@ -466,7 +486,7 @@ Object.assign(GameScene.prototype, {
     // Hover detection for mouse (skip on touch)
     const mPtr = this._touchActive ? null : this.input.activePointer;
     let hoverIdx = -1;
-    if (mPtr) {
+    if (mPtr && !L.pad) {
       for (let visIdx = 0; visIdx < N_VISIBLE; visIdx++) {
         const idx = visIdx + scroll;
         if (idx >= RECIPES.length) break;
@@ -483,7 +503,7 @@ Object.assign(GameScene.prototype, {
       if (idx >= RECIPES.length) break;
       const rec = RECIPES[idx];
       const rowY = PY + 34 + visIdx * ROW_H;
-      const isSelected = idx === this.craftMenuSel;
+      const isSelected = idx === c.sel;
       const isHovered = idx === hoverIdx && !isSelected;
 
       // Selection highlight
@@ -495,7 +515,7 @@ Object.assign(GameScene.prototype, {
       }
 
       // Bench requirement and affordability
-      const wrongChar = rec.type === 'instant' && rec.charId && this.craftMenuOwner?.charData.id !== rec.charId;
+      const wrongChar = rec.type === 'instant' && rec.charId && player?.charData.id !== rec.charId;
       const locked = (rec.needsBench && !this.craftBenchPlaced) || wrongChar;
       const canAfford = !locked && Object.entries(rec.cost).every(([r,a]) => (team[r]||0) >= a);
 
@@ -509,7 +529,7 @@ Object.assign(GameScene.prototype, {
     }
 
     // Tooltip section — shows description for hovered item (mouse) or selected item (keyboard/touch)
-    const tooltipRec = RECIPES[hoverIdx >= 0 ? hoverIdx : this.craftMenuSel];
+    const tooltipRec = RECIPES[hoverIdx >= 0 ? hoverIdx : c.sel];
     const itemsEnd = PY + 34 + N_VISIBLE * ROW_H;
     const sepY = itemsEnd + (moreBelow > 0 ? 16 : 6);
     g.lineStyle(1, 0x334422, 0.8); g.lineBetween(PX + 12, sepY, PX + PW - 12, sepY);
@@ -520,10 +540,10 @@ Object.assign(GameScene.prototype, {
     }
   },
 
-  craftSelected() {
-    if (!this.craftMenuOpen) return;
-    const rec = RECIPES[this.craftMenuSel];
-    const player = this.craftMenuOwner;
+  craftSelected(player) {
+    const c = this._craftOf(player);
+    if (!c) return;
+    const rec = RECIPES[c.sel];
     const team = this.getTeamInv();
 
     // Bench requirement
@@ -545,7 +565,7 @@ Object.assign(GameScene.prototype, {
       }
     }
 
-    this.closeCraftMenu();
+    this.closeCraftMenu(player);
 
     if (rec.type === 'build') {
       this._log(`Craft queued: ${rec.label}  by=${player.charData.player}`, 'build');
@@ -699,6 +719,14 @@ Object.assign(GameScene.prototype, {
     this.barrackSel = wrapIndex(this.barrackSel+dir, CHARS.length);
     this._log(`barracks nav ${dir > 0 ? 'right' : 'left'}  sel=${this.barrackSel} (${CHARS[this.barrackSel].id})  owner=${this.barrackOwner?.charData?.player}`, 'player');
     this.refreshBarrackCards();
+  },
+
+  // Touch: the opener's stick steps the barracks cards left and right (350ms repeat).
+  updateBarrackStick(delta) {
+    const joy = this.barrackOpen && this._stickOf(this.barrackOwner);
+    if (!joy) return;
+    this._barrackNavCd = (this._barrackNavCd || 0) - delta;
+    if (this._barrackNavCd <= 0 && Math.abs(joy.vec.x) > 0.5) { this.barrackNav(joy.vec.x > 0 ? 1 : -1); this._barrackNavCd = 350; }
   },
 
   barrackConfirm() {
