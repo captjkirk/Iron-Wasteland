@@ -877,7 +877,7 @@ class SettingsScene extends Phaser.Scene {
 
   // Tutorial back on for the next game; the button flashes green for a moment.
   _resetTutorial(btn, color) {
-    try { localStorage.removeItem('iw_tutorial_state'); } catch (e) {}
+    try { localStorage.removeItem('iw_tutorial_state'); localStorage.removeItem('iw_coach_done'); } catch (e) {}
     saveSettings({ tutorial: true });
     this.setTutorial(true);
     btn.setColor('#aaffaa');
