@@ -42,6 +42,7 @@ h2 { font: 600 12px/1 var(--body); text-transform: uppercase; letter-spacing: .0
 button, select, input { font: inherit; color: var(--fg); background: var(--panel); border: 1px solid var(--line); border-radius: 6px; padding: 5px 10px; }
 button { cursor: pointer; }
 button:hover { border-color: var(--muted); }
+button:disabled { opacity: .55; cursor: progress; }
 .err { border: 1px solid var(--accent); border-radius: 8px; padding: 10px 14px; }
 
 .strip { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); border: 1px solid var(--line); border-radius: 8px; overflow: hidden; }
@@ -404,9 +405,10 @@ function renderChart(shown) {
 }
 
 async function refresh() {
-  $('refresh').disabled = true;
+  $('refresh').disabled = true; $('refresh').textContent = 'Refreshing…';
   try {
-    await load();
+    // A refresh often takes a fifth of a second; hold the busy look long enough to be seen.
+    await Promise.all([load(), new Promise(r => setTimeout(r, 600))]);
     $('error').hidden = true;
     fillMaps();
     render();
@@ -418,7 +420,7 @@ async function refresh() {
     $('error').textContent = e.message;
     $('error').hidden = false;
   } finally {
-    $('refresh').disabled = false;
+    $('refresh').disabled = false; $('refresh').textContent = 'Refresh now';
   }
 }
 
