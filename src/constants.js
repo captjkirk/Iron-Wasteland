@@ -74,6 +74,8 @@ const CFG = {
   SPIKE_TRAP_DMG: 35,      // one hit, then the trap is spent
   CAMPFIRE_HEAL_MS: 2000,  // a campfire heals nearby players this often; the amount is hc.campfireHeal
   CAMPFIRE_HEAL_R: 80,     // px from the campfire
+  RELIC_RANGE: 70,         // px from a player to a relic to pick it up
+  RELIC_ALTAR_MIN: 18,     // tiles: no relic this close to the altar, so the Interact key means one thing
   // Sheltered (#293, src/shelter.js): +1 HP this often anywhere in the ring; the night
   // multiplier for enemies whose target is sheltered (1 = no night boost); and how many tiles
   // past a sheltered ring are kept clear of new enemy spawns.
@@ -101,6 +103,10 @@ const CFG = {
   // Global scoreboard web app URL (tools/scoreboard/SETUP.md). Empty: no network call at all.
   SCOREBOARD_URL: 'https://script.google.com/macros/s/AKfycbw-F_cH3aDvkIVX2Wycd64OreVQAykeu656VZ4wqZBnF6rUozi2NB7Th9MAptIKS9Hh/exec',
 };
+
+// The player's physics body as the world sees it: spawnPlayer's 20×24 at the sprite's 1.5 scale,
+// its centre dy px below the sprite's position. _walkableFrom fills with it; npm run smoke checks it.
+const PLAYER_BODY = { w: 30, h: 36, dy: 15 };
 
 // Phone, 1 player layout (#388): sizes are a share of screen height (d = diameter), positions a
 // share of width (cx) and height (cy), so they hold on every phone. solid = see-through level.
