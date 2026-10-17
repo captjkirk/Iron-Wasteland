@@ -72,7 +72,7 @@ Object.assign(GameScene.prototype, {
     e.hp = 0;
     if (e._den) e._den.liveCount = Math.max(0, (e._den.liveCount || 0) - 1);
     this.kills++;
-    if (owner) owner.kills++;
+    if (owner) { owner.kills++; this._coachTick('kill'); }
     this._log('Enemy killed  type=' + e.type + '  kills=' + this.kills, 'combat');
     // Remove from this.enemies; inside _forEachEnemy the splice waits for the loop to end.
     if (this._enemyIterActive) {
