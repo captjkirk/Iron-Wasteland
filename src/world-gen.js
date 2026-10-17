@@ -246,7 +246,7 @@ Object.assign(GameScene.prototype, {
     // Typed-array terrain maps — numeric index (tx + ty*MAP_W), no string allocations
     this._waterMap = new Uint8Array(CFG.MAP_W * CFG.MAP_H); // 1=shallow water
     this._iceMap   = new Uint8Array(CFG.MAP_W * CFG.MAP_H); // 1=ice tile
-    this._wallTileSet = new Set(); // O(1) wall tile lookup for LOS raycasting (sparse)
+    this._wallTileSet = new Uint8Array(CFG.MAP_W * CFG.MAP_H); // 1=wall tile, for LOS raycasting
 
     // Trees — dense forest clusters, biome-appropriate, non-overlapping
     const treesPlaced = [];
@@ -268,19 +268,19 @@ Object.assign(GameScene.prototype, {
 
     // 55 forest clusters — each is a tight pack of 28-45 trees (scaled for 400×400 map)
     for (let f = 0; f < 55; f++) {
-      let cx, cy, attempts = 0;
+      let fx, fy, attempts = 0;
       do {
-        cx = Phaser.Math.Between(18, CFG.MAP_W-18);
-        cy = Phaser.Math.Between(18, CFG.MAP_H-18);
+        fx = Phaser.Math.Between(18, CFG.MAP_W-18);
+        fy = Phaser.Math.Between(18, CFG.MAP_H-18);
         attempts++;
-      } while (attempts < 40 && (Math.abs(cx-stx) < SAFE_R+20 && Math.abs(cy-sty) < SAFE_R+20));
-      const biome = getBiome(cx, cy);
+      } while (attempts < 40 && (Math.abs(fx-stx) < SAFE_R+20 && Math.abs(fy-sty) < SAFE_R+20));
+      const biome = getBiome(fx, fy);
       const radius = Phaser.Math.Between(6, 11); // larger radius clusters
       const count  = Phaser.Math.Between(28, 45); // denser clusters
       for (let i = 0; i < count; i++) {
         const angle = Math.random() * Math.PI * 2;
         const dist  = Math.sqrt(Math.random()) * radius; // sqrt = uniform density
-        placeTree(Math.round(cx + Math.cos(angle)*dist), Math.round(cy + Math.sin(angle)*dist), biome);
+        placeTree(Math.round(fx + Math.cos(angle)*dist), Math.round(fy + Math.sin(angle)*dist), biome);
       }
     }
 
@@ -570,12 +570,12 @@ Object.assign(GameScene.prototype, {
     }
 
     // Pre-build LOS blocker set for enemy AI — mountain tile coords → O(1) lookup
-    this._solidTileSet = new Set();
+    this._solidTileSet = new Uint8Array(CFG.MAP_W * CFG.MAP_H);
     for (const m of this.mountainTiles) {
       // Mark a small neighbourhood so the set works at diagonal query positions
       for (let dtx = -1; dtx <= 1; dtx++) {
         for (let dty = -1; dty <= 1; dty++) {
-          this._solidTileSet.add((m.tx + dtx) + ',' + (m.ty + dty));
+          this._markTile(this._solidTileSet, m.tx + dtx, m.ty + dty, 1);
         }
       }
     }
@@ -583,10 +583,10 @@ Object.assign(GameScene.prototype, {
     // Unified impassable tile set — mountains + deep water.
     // Built here (before rivers) so terrain cleanup and POI relocation can use it.
     // deepWaterTiles is already complete (_buildPonds is the only writer; _buildLakes and _buildRivers do not add to it).
-    this._impassableTileSet = new Set(this._solidTileSet);
+    this._impassableTileSet = this._solidTileSet.slice();
     for (const dt of this.deepWaterTiles) {
       const _itx = Math.floor(dt.x / TILE), _ity = Math.floor(dt.y / TILE);
-      this._impassableTileSet.add(_itx + ',' + _ity);
+      this._markTile(this._impassableTileSet, _itx, _ity, 1);
     }
 
     // Rivers — organic shallow-water channels connecting lakes and map edges.
@@ -596,7 +596,7 @@ Object.assign(GameScene.prototype, {
     this._buildRivers(stx, sty);
     this._fillWaterIslands();
 
-    // Shorelines: a land cell touching water, by a side or only by a corner, gets a bank tile (ground
+    // Shorelines and biome edges. A land cell touching water, by a side or only by a corner, gets a bank tile (ground
     // tileset rows from 4, see buildTextures and drawEdgeVariants). Ice counts as land here; tundra ice edges are deferred (#217).
     {
       const MW = CFG.MAP_W, MH = CFG.MAP_H, NG = GROUND_KEYS.length;
@@ -621,6 +621,32 @@ Object.assign(GameScene.prototype, {
         banks++;
       }
       this._log(`shoreline bank tiles: ${banks}`, 'world');
+
+      // Biome edges: where two biomes meet on dry ground, the cell of the biome earlier in GROUND_KEYS
+      // gets the other's ground fading in from the sides that touch it (overlay layer over the ground,
+      // 'biome_edge_tileset'). Where several later biomes touch one cell, the latest wins. Water, ice
+      // and bank cells take no edge, and do not count as a neighbour.
+      const edgeLayer = _layer('biome_edges', 'biome_edge_tileset').setDepth(0.52);
+      const bio = new Int8Array(MW * MH).fill(-1);
+      for (let ty = 0; ty < MH; ty++) for (let tx = 0; tx < MW; tx++) {
+        if (ground.getTileAt(tx, ty).index < 4 * NG && !kind[tx + ty * MW] && !this._waterLayer.getTileAt(tx, ty))
+          bio[tx + ty * MW] = groundTile[getBiome(tx, ty)] || 0;
+      }
+      const bAt = (x, y) => (x < 0 || y < 0 || x >= MW || y >= MH) ? -1 : bio[x + y * MW];
+      let edges = 0;
+      for (let ty = 0; ty < MH; ty++) for (let tx = 0; tx < MW; tx++) {
+        const own = bio[tx + ty * MW];
+        if (own < 0) continue;
+        const nb = [[0, -1], [1, 0], [0, 1], [-1, 0], [1, -1], [1, 1], [-1, 1], [-1, -1]].map(([dx, dy]) => bAt(tx + dx, ty + dy));
+        const top = Math.max(...nb);
+        if (top <= own) continue;
+        const [n, e, s, w, ne, se, sw, nw] = nb.map(b => b === top);
+        const m = (n && 1) | (e && 2) | (s && 4) | (w && 8) | (ne && !n && !e && 16) | (se && !s && !e && 32)
+          | (sw && !s && !w && 64) | (nw && !n && !w && 128);
+        edgeLayer.putTileAt(EDGE_MASKS.indexOf(m) * NG + top, tx, ty);
+        edges++;
+      }
+      this._log(`biome edge tiles: ${edges}`, 'world');
     }
 
     // ── TERRAIN OVERLAP CLEANUP ───────────────────────────────────────────────
@@ -634,7 +660,7 @@ Object.assign(GameScene.prototype, {
         if (k.startsWith('mountain')) return; // never cull mountains
         if (!ob.isTree && !_overlapKeys.has(k)) return;   // keep walls, ruin blocks
         const tx = Math.floor(ob.x / TILE), ty = Math.floor(ob.y / TILE);
-        if (this._waterMap[tx + ty * CFG.MAP_W] || this._impassableTileSet.has(tx + ',' + ty)) {
+        if (this._waterMap[tx + ty * CFG.MAP_W] || this._tileAt(this._impassableTileSet, tx, ty)) {
           ob.destroy();
           _overlapRemoved++;
         }
@@ -680,7 +706,7 @@ Object.assign(GameScene.prototype, {
       for (let ty = 2; ty < MH - 2; ty++) {
         for (let tx = 2; tx < MW - 2; tx++) {
           if (!dist[tx + ty * MW] || Math.random() > REED_P) continue;
-          if (this._impassableTileSet.has(tx + ',' + ty)) continue;
+          if (this._tileAt(this._impassableTileSet, tx, ty)) continue;
           if (Math.abs(tx - stx) < SAFE_R + 3 && Math.abs(ty - sty) < SAFE_R + 3) continue;
           const sc = Phaser.Math.FloatBetween(0.7, 1.3);
           const ox = Phaser.Math.Between(-10, 10), oy = Phaser.Math.Between(-8, 8);
@@ -701,7 +727,7 @@ Object.assign(GameScene.prototype, {
         const i = tx + ty * CFG.MAP_W;
         if (this._waterMap && this._waterMap[i]) return false;
         if (this._iceMap && this._iceMap[i]) return false; // ice is walkable but avoidable for POI placement
-        if (this._impassableTileSet && this._impassableTileSet.has(tx + ',' + ty)) return false;
+        if (this._impassableTileSet && this._tileAt(this._impassableTileSet, tx, ty)) return false;
         return true;
       };
       const _relocateWet = (pos) => {
@@ -764,7 +790,7 @@ Object.assign(GameScene.prototype, {
       const clear =
         getBiome(tx + 1, ty) === 'grass' && getBiome(tx - 1, ty) === 'grass' &&
         getBiome(tx, ty + 1) === 'grass' && getBiome(tx, ty - 1) === 'grass' &&
-        !(this._wallTileSet && this._wallTileSet.has(tx + ',' + ty));
+        !(this._wallTileSet && this._tileAt(this._wallTileSet, tx, ty));
       if (!clear) continue;
       bTX = tx; bTY = ty;
       break;
@@ -843,8 +869,14 @@ Object.assign(GameScene.prototype, {
     }
 
     // ── FOG OF WAR ────────────────────────────────────────────
-    this.fogRevealed = new Set(); // persistent — tiles ever seen (drives fog overlay)
-    this.fogVisible = new Set();  // current-frame LOS — drives enemy visibility
+    // Both indexed tx + ty * MAP_W (#342).
+    this.fogRevealed = new Uint8Array(CFG.MAP_W * CFG.MAP_H); // persistent — tiles ever seen (drives fog overlay)
+    this.fogVisible = new Uint8Array(CFG.MAP_W * CFG.MAP_H);  // current-frame LOS — drives enemy visibility
+    this._fogBufs = [];
+    // Radar picture: one pixel per tile, painted once when the tile is first seen (#344).
+    if (this.textures.exists('mm_explored')) this.textures.remove('mm_explored');
+    this._mmTex = this.textures.createCanvas('mm_explored', CFG.MAP_W, CFG.MAP_H);
+    this._mmDirty = true;
     // ponytail: fog is one texel per tile, scaled up with linear filtering, so the GPU
     // blends the three zones into soft edges. Map-sized (300x300, 360 KB) and re-uploaded
     // every FOG_UPDATE_INTERVAL frames; upgrade path is a camera-sized canvas if the
@@ -865,7 +897,7 @@ Object.assign(GameScene.prototype, {
     // player physically can't reach and the interaction never fires.
     const _isImpassable = (tx, ty) => {
       if (this._waterMap && this._waterMap[tx + ty * MAP_W]) return true;
-      if (this._impassableTileSet && this._impassableTileSet.has(tx + ',' + ty)) return true;
+      if (this._impassableTileSet && this._tileAt(this._impassableTileSet, tx, ty)) return true;
       return false;
     };
 
@@ -925,7 +957,7 @@ Object.assign(GameScene.prototype, {
       // Pre-computed den tiles are picked BEFORE mountains are placed; validate now.
       // If the tile ended up inside a mountain or deep water, find a fresh clear spot.
       let actualPos = pos;
-      if (this._impassableTileSet && this._impassableTileSet.has(pos.tx + ',' + pos.ty)) {
+      if (this._impassableTileSet && this._tileAt(this._impassableTileSet, pos.tx, pos.ty)) {
         const fb = findInBiome(getBiome(pos.tx, pos.ty), 60);
         if (fb) actualPos = fb;
         this._log(`den relocated from (${pos.tx},${pos.ty}) to (${actualPos.tx},${actualPos.ty}) — was inside mountain`, 'world');
@@ -1216,7 +1248,7 @@ Object.assign(GameScene.prototype, {
       w.setDepth(5 + ty*0.01).setImmovable(true);
       staticHitbox(w, 28, 28, 2, 2); // slightly smaller than full tile for passability at seams
       w.hp = 200; w.maxHp = 200;
-      this._wallTileSet.add(tx + ',' + ty);
+      this._markTile(this._wallTileSet, tx, ty, 1);
     };
 
     for (let col = 0; col < cols; col++) {
@@ -1416,7 +1448,7 @@ Object.assign(GameScene.prototype, {
           const w = this.obstacles.create(tx * TILE + 16, ty * TILE + 16, wallKey);
           w.setDepth(5 + ty * 0.01).setImmovable(true);
           w.body.setSize(32, 32); w.refreshBody();
-          this._wallTileSet.add(tx + ',' + ty);
+          this._markTile(this._wallTileSet, tx, ty, 1);
         };
 
         // North wall (solid)
@@ -1463,7 +1495,7 @@ Object.assign(GameScene.prototype, {
       const w = this.obstacles.create(tx * TILE + 16, ty * TILE + 16, key);
       w.setDepth(5 + ty * 0.01).setImmovable(true);
       w.body.setSize(32, 32); w.refreshBody();
-      this._wallTileSet.add(tx + ',' + ty);
+      this._markTile(this._wallTileSet, tx, ty, 1);
     };
     layout.rows.forEach((row, dy) => {
       for (let dx = 0; dx < row.length; dx++) {
@@ -1513,6 +1545,9 @@ Object.assign(GameScene.prototype, {
     const bw = o.displayWidth * 0.75, bh = o.displayHeight * 0.5;
     o.body.setSize(bw, bh, false);
     o.body.setOffset((o.displayWidth - bw) / 2, o.displayHeight - bh);
+    // World gen runs before the HUD camera exists (it ignores everything at once then); a tree
+    // regrown later must be ignored here or it is drawn a second time on the HUD (#346).
+    if (this.hudCam) this.hudCam.ignore(o);
     return o;
   },
 
@@ -1641,7 +1676,7 @@ Object.assign(GameScene.prototype, {
     };
     let filled = 0, more = true;
     while (more) { more = false; for (let ty = 1; ty < MAP_H - 1; ty++) for (let tx = 1; tx < MAP_W - 1; tx++) {
-      if (kindAt(tx, ty) || (this._solidTileSet && this._solidTileSet.has(tx + ',' + ty))) continue;
+      if (kindAt(tx, ty) || (this._solidTileSet && this._tileAt(this._solidTileSet, tx, ty))) continue;
       const k = [kindAt(tx, ty - 1), kindAt(tx + 1, ty), kindAt(tx, ty + 1), kindAt(tx - 1, ty)].filter(Boolean);
       if (k.length < 3) continue;
       more = true;
@@ -1945,7 +1980,7 @@ Object.assign(GameScene.prototype, {
         let safety = 0;
         while ((cx !== nx || cy !== ny) && ++safety < 1200) {
           const key = cx + ',' + cy;
-          if ((!this._solidTileSet || !this._solidTileSet.has(key)) && !_inExcl(cx, cy)) centerline.add(key);
+          if ((!this._solidTileSet || !this._tileAt(this._solidTileSet, cx, cy)) && !_inExcl(cx, cy)) centerline.add(key);
           const remX = nx - cx, remY = ny - cy;
           let stepX = 0, stepY = 0;
           if (Math.abs(remX) >= Math.abs(remY)) {
@@ -1979,7 +2014,7 @@ Object.assign(GameScene.prototype, {
             if (nx < 1 || ny < 1 || nx >= MAP_W - 1 || ny >= MAP_H - 1) continue;
             const nk = nx + ',' + ny;
             if (riverTiles.has(nk)) continue;
-            if (this._solidTileSet && this._solidTileSet.has(nk)) continue;
+            if (this._solidTileSet && this._tileAt(this._solidTileSet, nx, ny)) continue;
             if (_inExcl(nx, ny)) continue;
             riverTiles.add(nk);
           }

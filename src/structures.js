@@ -2,7 +2,8 @@
 // ── src/structures.js — authored biome structures (data only) ────────────────────────────
 // buildBiomeStructures (src/world-gen.js) builds the first valid slot of a biome from the layout
 // here; the other slot and every biome without a layout keep the generic 7×5 box. The door of a
-// layout faces south. Every row is exactly W characters, and H rows make the footprint.
+// layout faces south and is at least 2 tiles wide (scripts/check-structures.js; the player's body is
+// 30 px). Every row is exactly W characters, and H rows make the footprint.
 //
 // Legend (one character = one tile):
 //   .  open ground          ,  floor (the biome's floor tile)
@@ -22,7 +23,7 @@ const STRUCTURE_LAYOUTS = {
       '.T.#####.TA',   // garage back wall, a torch each side, one hidden ammo behind it
       '...#mmm#...',   // garage: 3 metal, 2 ammo, 1 food, always
       '...#aaf#...',
-      '...##.##...',   // garage door, south
+      '...#..##...',   // garage door, south: 2 tiles, the player's body is 30 px wide (#309)
       'P.R.....R.P',   // canopy posts, and a wreck each side as cover
       '.....C.....',   // the pump row's cache
       'P.........P',

@@ -9,16 +9,18 @@ const assert = require('assert');
 const OLD = ['name', 'date', 'chars', 'mode', 'difficulty', 'days', 'kills', 'score', 'version', 'seed', 'device'];
 const rows = [OLD.slice(), ['Old', new Date(), 'knight', 1, 'survival', 1, 0, 50, 'v', '', 'olddevice01']];
 const cache = new Map();
+let lockBusy = false;
 const ctx = {
   SpreadsheetApp: { getActiveSpreadsheet: () => ({ getSheetByName: () => ({
     getLastRow: () => rows.length,
     getLastColumn: () => rows[0].length,
     getRange: (r, c, nr, nc) => ({ setValues: v => v.forEach((line, i) => rows[r - 1 + i].splice(c - 1, nc, ...line)) }),
     appendRow: r => rows.push(r),
+    deleteRow: i => rows.splice(i - 1, 1),
     getDataRange: () => ({ getValues: () => rows.map(r => r.slice()) }),
   }) }) },
-  CacheService: { getScriptCache: () => ({ get: k => cache.get(k) || null, put: k => cache.set(k, '1') }) },
-  LockService: { getScriptLock: () => ({ waitLock() {}, releaseLock() {} }) },
+  CacheService: { getScriptCache: () => ({ get: k => cache.get(k) || null, put: (k, v) => cache.set(k, String(v)), remove: k => cache.delete(k) }) },
+  LockService: { getScriptLock: () => ({ waitLock() { if (lockBusy) throw new Error('timeout'); }, releaseLock() {} }) },
   ContentService: { MimeType: { JSON: 'json' }, createTextOutput: s => ({ setMimeType: () => JSON.parse(s) }) },
   Utilities: { formatDate: d => d.toISOString().slice(0, 10) },
 };
@@ -31,11 +33,11 @@ const post = d => ctx.doPost({ postData: { contents: typeof d === 'string' ? d :
 
 assert.deepStrictEqual(post(good), { ok: true });
 assert.strictEqual(rows.length, 3, 'header row, the old row, and one score');
-assert.deepStrictEqual([...rows[0]], [...OLD, 'runId', 'log'], 'the old header gained the new columns');
+assert.deepStrictEqual([...rows[0]], [...OLD, 'runId', 'log', 'feedback', 'platform'], 'the old header gained the new columns');
 assert.strictEqual(rows[1][0], 'Old', 'the old row stayed');
-assert.deepStrictEqual([...rows[2].slice(11)], ['', ''], 'a post without runId or log still lands');
+assert.deepStrictEqual([...rows[2].slice(11)], ['', '', '', ''], 'a post without runId or log still lands');
 assert.deepStrictEqual(post({ ...good, device: 'withlog0001', runId: '1759000000000:abc123', log: 'IRON WASTELAND SESSION LOG\nx' }), { ok: true });
-assert.deepStrictEqual([...rows[3].slice(11)], ['1759000000000:abc123', 'IRON WASTELAND SESSION LOG\nx']);
+assert.deepStrictEqual([...rows[3].slice(11)], ['1759000000000:abc123', 'IRON WASTELAND SESSION LOG\nx', '', '']);
 rows.splice(3, 1);
 assert.strictEqual(post(good).error, 'too soon');
 assert.strictEqual(post('not json').ok, false);
@@ -54,10 +56,61 @@ assert.strictEqual(rows.length, 3, 'no bad score was written');
 post({ ...good, name: '=HYPERLINK("x")', log: '=1+1', device: 'formula0001' });
 assert.strictEqual(rows[3][0], '\'=HYPERLINK("x")', 'a formula name is stored as text');
 assert.strictEqual(rows[3][12], '\'=1+1', 'a formula log is stored as text');
+// Feedback: lands in the run's own row; creates the row when the score is not there yet; capped, limited, validated.
+const saved = rows.map(r => r.slice()); // the feedback cases add rows; put the sheet back after
+rows.splice(3, 1);
+const fb = (o) => post({ ...good, kind: 'feedback', platform: 'touch 1024x768', ...o });
+assert.deepStrictEqual(post({ ...good, device: 'fbdevice001', runId: 'run:1' }), { ok: true });
+assert.deepStrictEqual(fb({ device: 'fbdevice001', runId: 'run:1', comment: 'too hard' }), { ok: true });
+assert.strictEqual(rows.length, 4, 'feedback for a saved run adds no row');
+assert.deepStrictEqual([...rows[3].slice(11)], ['run:1', '', 'too hard', 'touch 1024x768']);
+assert.deepStrictEqual(fb({ device: 'fbdevice002', runId: 'run:2', comment: '=1+1' }), { ok: true });
+assert.strictEqual(rows.length, 5, 'feedback before its score creates the row');
+assert.strictEqual(rows[4][13], "'=1+1", 'a formula comment is stored as text');
+assert.deepStrictEqual(post({ ...good, device: 'fbdevice002', runId: 'run:2', log: 'L' }), { ok: true });
+assert.strictEqual(rows.length, 5, 'the late score fills the feedback row, no second row');
+assert.deepStrictEqual([rows[4][7], rows[4][12], rows[4][13]], [900, 'L', "'=1+1"], 'score filled in, feedback kept');
+assert.deepStrictEqual(fb({ device: 'fbdevice003', runId: 'run:3', comment: 'x'.repeat(2500) }), { ok: true });
+assert.strictEqual(rows[5][13].length, 2000, 'the comment is capped at 2,000 characters');
+for (let i = 0; i < 2; i++) assert.strictEqual(fb({ device: 'fbdevice003', runId: 'run:3', comment: 'again' + i }).ok, true);
+assert.strictEqual(fb({ device: 'fbdevice003', runId: 'run:3', comment: 'fourth' }).error, 'too many');
+const before = rows.length;
+for (const b of [{ comment: '' }, { comment: 5 }, { runId: '' }, { name: '' }]) {
+  assert.strictEqual(fb({ device: 'fbdevice004', runId: 'run:4', comment: 'ok', ...b }).ok, false, JSON.stringify(b));
+}
+assert.strictEqual(rows.length, before, 'no bad feedback was written');
+fb({ device: 'fbdevice004', runId: 'run:4', comment: 'ok', platform: '<b>' });
+assert.strictEqual(rows[rows.length - 1][14], '', 'a bad platform is dropped, the comment still lands');
+rows.length = 0;
+rows.push(...saved);
 for (let i = 0; i < 12; i++) post({ ...good, name: 'P' + i, score: i * 100, device: 'dev0000' + String(i).padStart(4, '0') });
 const top = ctx.doGet();
 assert.strictEqual(top.length, 10);
 assert.deepStrictEqual(top.map(r => r.score), [1100, 1000, 900, 900, 900, 800, 700, 600, 500, 400]);
+// Hardening: an implausible run, a rude or empty name, a held lock, the row cap, and the cached top 10.
+const fresh2 = () => 'plaus' + String(n++).padStart(6, '0');
+const refused = (o, why) => assert.strictEqual(post({ ...good, device: fresh2(), ...o }).ok, false, why);
+refused({ score: 99999999, days: 1 }, 'a 100-million score on day 1');
+refused({ score: 40000, days: 1, kills: 0 }, 'a score no run can reach');
+refused({ kills: 500, days: 1 }, 'more kills than a day holds');
+for (const name of ['!!!', '...', 'Fuck', 'xXfUcKXx', 'big dick', 'SH1T'.toLowerCase().replace('1', 'i')]) refused({ name }, 'name ' + name);
+assert.strictEqual(post({ ...good, name: '  Dad   and  Kids ', device: fresh2() }).ok, true, 'spaces collapse, name is fine');
+assert.strictEqual(rows[rows.length - 1][0], 'Dad and Kids', 'whitespace collapsed');
+for (const name of ['Dickens', 'Hancock', 'Cassidy', 'Skyler']) assert.strictEqual(post({ ...good, name, device: fresh2() }).ok, true, 'name ' + name);
+assert.strictEqual(post({ ...good, score: 30000, days: 10, kills: 100, difficulty: 'hardcore', device: fresh2() }).ok, true, 'a long hardcore run is plausible');
+lockBusy = true;
+assert.deepStrictEqual(post({ ...good, device: fresh2() }), { ok: false, error: 'busy' }, 'a held lock answers JSON');
+lockBusy = false;
+const cachedTop = ctx.doGet();
+post({ ...good, name: 'Newtop', score: 31000, days: 5, device: fresh2() });
+assert.strictEqual(ctx.doGet()[0].name, 'Newtop', 'a new score clears the cached top 10');
+assert.deepStrictEqual(ctx.doGet(), ctx.doGet(), 'the second read is the cached one');
+assert.notDeepStrictEqual(cachedTop, ctx.doGet());
+ctx.MAX_ROWS = rows.length - 1; // as many rows as there are now; the next post must push the lowest out
+const lowest = Math.min(...rows.slice(1).map(r => r[7]));
+assert.ok(post({ ...good, name: 'Fits', score: lowest + 5, device: fresh2() }).ok);
+assert.strictEqual(rows.length - 1, ctx.MAX_ROWS, 'the sheet is held at its cap');
+assert.ok(!rows.slice(1).some(r => r[7] === lowest) && rows.some(r => r[0] === 'Fits'), 'the lowest went, the new row stayed');
 // GameOverScene._logForSheet: a log too long for a cell keeps its header and newest entries.
 const go = fs.readFileSync('src/game-over.js', 'utf8');
 const fn = vm.runInNewContext('(' + go.match(/\n  (_logForSheet\([\s\S]*?\n  \})\n/)[1].replace(/^_logForSheet/, 'function') + ')');

@@ -17,29 +17,27 @@ Object.assign(GameScene.prototype, {
 
     // Pick boss type based on biome spread — random for now
     const bossTypes = [
-      { key: 'boss_golem',  name: 'Iron Golem',   biome: 'waste',  hp: 600, speed: 55,  dmg: 22, armor: 4, specialType: 'slam',   specialInterval: 5000 },
-      // hitbox: texture px, facing right (x mirrors when the boss faces left); it covers the
-      // drawn body, head and legs but not the tail. shadowY/shadowW: below the paws, world px.
+      // hitbox: texture px, facing right (x mirrors when the boss faces left); it covers the drawn
+      // body and head, not the thin bits (the wolf's tail, the spider's outer legs, the troll's horn
+      // and spike tips). Redraw a boss texture, refit its box: `node tools/render-texture.js <key>`.
+      // shadowY/shadowW: centre below the sprite centre and width of the shadow, world px; it sits
+      // under the feet.
+      { key: 'boss_golem',  name: 'Iron Golem',   biome: 'waste',  hp: 600, speed: 55,  dmg: 22, armor: 4, specialType: 'slam',   specialInterval: 5000,
+        hitbox: { x: 2, y: 4, w: 112, h: 118 }, shadowY: 86, shadowW: 160 },
       { key: 'boss_wolf',   name: 'Alpha Wolf',    biome: 'grass',  hp: 420, speed: 100, dmg: 16, armor: 1, specialType: 'charge', specialInterval: 3500,
         hitbox: { x: 30, y: 42, w: 150, h: 88 }, shadowY: 92, shadowW: 230 },
-      { key: 'boss_spider', name: 'Spider Queen',  biome: 'ruins',  hp: 480, speed: 85,  dmg: 18, armor: 2, specialType: 'spray',  specialInterval: 4200 },
-      { key: 'boss_troll',  name: 'Frost Troll',   biome: 'tundra', hp: 700, speed: 65,  dmg: 28, armor: 5, specialType: 'slam',   specialInterval: 5800 },
-      { key: 'boss_hydra',  name: 'Bog Hydra',     biome: 'swamp',  hp: 540, speed: 65,  dmg: 20, armor: 2, specialType: 'spray',  specialInterval: 4800 },
+      { key: 'boss_spider', name: 'Spider Queen',  biome: 'ruins',  hp: 480, speed: 85,  dmg: 18, armor: 2, specialType: 'spray',  specialInterval: 4200,
+        hitbox: { x: 20, y: 18, w: 74, h: 85 }, shadowY: 66, shadowW: 150 },
+      { key: 'boss_troll',  name: 'Frost Troll',   biome: 'tundra', hp: 700, speed: 65,  dmg: 28, armor: 5, specialType: 'slam',   specialInterval: 5800,
+        hitbox: { x: 1, y: 10, w: 113, h: 112 }, shadowY: 86, shadowW: 160 },
+      { key: 'boss_hydra',  name: 'Bog Hydra',     biome: 'swamp',  hp: 540, speed: 65,  dmg: 20, armor: 2, specialType: 'spray',  specialInterval: 4800,
+        hitbox: { x: 5, y: 2, w: 104, h: 118 }, shadowY: 83, shadowW: 150 },
     ];
     // Biome-anchored pick — prefer a boss whose biome matches where the
-    // players currently are, so the boss reads as something emerging from
-    // the surrounding world instead of a random spawn. Falls back to random
-    // if the current biome has no matching boss type.
-    let bt = forceKey && bossTypes.find(b => b.key === forceKey);
-    if (!bt) try {
-      const anchor = (this.p1 && this.p1.spr) ? this.p1 : (this.p2 && this.p2.spr ? this.p2 : null);
-      const pbiome = anchor ? getBiome(Math.floor(anchor.spr.x / TILE), Math.floor(anchor.spr.y / TILE)) : null;
-      const matches = pbiome ? bossTypes.filter(b => b.biome === pbiome) : [];
-      bt = matches.length ? matches[Phaser.Math.Between(0, matches.length - 1)]
-                          : bossTypes[Phaser.Math.Between(0, bossTypes.length - 1)];
-    } catch(e) {
-      bt = bossTypes[Phaser.Math.Between(0, bossTypes.length - 1)];
-    }
+    // players currently are, among the bosses this run has not met yet (#329).
+    const bt = (forceKey && bossTypes.find(b => b.key === forceKey)) || this._pickBossType(bossTypes);
+    this._bossesSeen.push(bt.key);
+    this._log(`boss #${this._bossesSeen.length} spawned key=${bt.key}${forceKey ? ' (forced)' : ''}  day=${this.dayNum}`, 'world');
 
     // Spawn at a random map edge
     let bx, by;
@@ -52,13 +50,13 @@ Object.assign(GameScene.prototype, {
     this._log(`spawnBoss: picked ${bt.name} at (${bx|0},${by|0})`, 'world');
     // Boss sprite: 1.5× on 112×120 textures ≈ 168×180 in-game (same pixel density as the players).
     const BOSS_SCALE = 1.5;
-    // The 'boss_shadow' texture was not redrawn, so it keeps the old 3× base.
-    const BOSS_SHADOW_SCALE_X = 2.7, BOSS_SHADOW_SCALE_Y = 2.4;
+    // The 'boss_shadow' texture (56 px wide) was not redrawn: height keeps the old 3× base,
+    // width comes from each boss's shadowW.
+    const BOSS_SHADOW_SCALE_Y = 2.4;
     const spr = this.physics.add.image(bx, by, bt.key).setScale(BOSS_SCALE).setDepth(12);
     spr.setCollideWorldBounds(true);
     const hb = bt.hitbox;
-    if (hb) spr.body.setSize(hb.w, hb.h, false).setOffset(hb.x, hb.y);
-    else spr.body.setSize(56, 56);
+    spr.body.setSize(hb.w, hb.h, false).setOffset(hb.x, hb.y);
     if (this.hudCam) this.hudCam.ignore(spr);
     this._log('spawnBoss: sprite created; adding collider', 'world');
     this.physics.add.collider(spr, this.obstacles, (bSpr, obstacle) => {
@@ -81,9 +79,9 @@ Object.assign(GameScene.prototype, {
     this._log('spawnBoss: collider added', 'world');
 
     // Shadow — tracks boss every frame, sits below the sprite so terrain still reads.
-    const shadowY = bt.shadowY || 36;
+    const shadowY = bt.shadowY;
     const shadow = this.add.image(bx, by + shadowY, 'boss_shadow')
-      .setScale(bt.shadowW ? bt.shadowW / 56 : BOSS_SHADOW_SCALE_X, BOSS_SHADOW_SCALE_Y)
+      .setScale(bt.shadowW / 56, BOSS_SHADOW_SCALE_Y)
       .setDepth(3).setAlpha(0.75);
     if (this.hudCam) this.hudCam.ignore(shadow);
 
@@ -114,7 +112,7 @@ Object.assign(GameScene.prototype, {
       attackTimer: 0, atkInterval: 1900,
       aggroRange: 99999, attackRange: 70, wanderTimer: 0, sizeMult: 1,
       hpBg, hpBar,
-      shadow, shadowY, hitbox: hb || null, baseScale: BOSS_SCALE, _hitTweenUntil: 0,
+      shadow, shadowY, hitbox: hb, baseScale: BOSS_SCALE, _hitTweenUntil: 0,
       specialType: bt.specialType, specialInterval: bt.specialInterval,
       specialTimer: bt.specialInterval * 0.6, // first special fires sooner
       _bossState: 'chase', _telegraphTimer: 0, _telegraphGfx: null,
@@ -124,7 +122,7 @@ Object.assign(GameScene.prototype, {
 
     // Screen-edge indicator \u2014 pulsing arrow visible on HUD when boss is off-screen
     const _bossInd = this.add.graphics().setDepth(200);
-    this.cameras.main.ignore(_bossInd); // HUD-only: main camera skips it, hudCam renders it
+    this._ignoreInWorldCams(_bossInd); // HUD-only: main camera skips it, hudCam renders it
     this.boss._indicator = _bossInd;
 
     // Announce arrival
@@ -144,7 +142,7 @@ Object.assign(GameScene.prototype, {
     this._log('spawnBoss: music scheduled', 'world');
 
     // Camera shake
-    this.cameras.main.shake(800, 0.012);
+    this._camFx('shake', [800, 0.012]);
     this._log('spawnBoss: shake scheduled', 'world');
 
     // Schedule entourage — 4-8 regular enemies nearby, spaced across frames so the
@@ -193,6 +191,25 @@ Object.assign(GameScene.prototype, {
     }
   },
 
+  // Next boss type: every boss once before any repeats (_bossesSeen, oldest first), and within
+  // that the one whose biome the players stand in, else a random one. A new round never opens
+  // with the boss that just left.
+  _pickBossType(bossTypes) {
+    const seen = this._bossesSeen;
+    const roundSeen = seen.slice(seen.length - (seen.length % bossTypes.length));
+    let pool = bossTypes.filter(b => !roundSeen.includes(b.key));
+    const last = seen[seen.length - 1];
+    if (pool.length > 1) pool = pool.filter(b => b.key !== last);
+    let matches = [];
+    try {
+      const anchor = (this.p1 && this.p1.spr) ? this.p1 : (this.p2 && this.p2.spr ? this.p2 : null);
+      const pbiome = anchor ? getBiome(Math.floor(anchor.spr.x / CFG.TILE), Math.floor(anchor.spr.y / CFG.TILE)) : null;
+      matches = pool.filter(b => b.biome === pbiome);
+    } catch (e) { /* no biome: random from the pool */ }
+    const from = matches.length ? matches : pool;
+    return from[Phaser.Math.Between(0, from.length - 1)];
+  },
+
   // Boss barrels through obstacles instead of getting stuck. Removes the tile from
   // the solid set, repaints the minimap, plays a flash + debris + shake, destroys it.
   _bossSmash(obstacle) {
@@ -200,7 +217,7 @@ Object.assign(GameScene.prototype, {
       const ox = obstacle.x, oy = obstacle.y;
       const tx = Math.floor(ox / CFG.TILE), ty = Math.floor(oy / CFG.TILE);
       // Free the tile so pathfinding/placement no longer treats it as solid.
-      if (this._solidTileSet) this._solidTileSet.delete(tx + ',' + ty);
+      if (this._solidTileSet) this._markTile(this._solidTileSet, tx, ty, 0);
       // Repaint the minimap cell back to its underlying terrain (takes world coords).
       if (this._unpaintMinimapTile) this._unpaintMinimapTile(ox, oy);
 
@@ -230,7 +247,7 @@ Object.assign(GameScene.prototype, {
         });
       }
 
-      this.cameras.main.shake(180, 0.009);
+      this._camFx('shake', [180, 0.009]);
       this._log('boss smash  type=' + (this.boss?.type || '?') + '  tile=(' + tx + ',' + ty + ')', 'world');
       obstacle.destroy();
     } catch (e) {
@@ -239,9 +256,9 @@ Object.assign(GameScene.prototype, {
   },
 
   // Reach distance from a boss to (x, y). Every boss once had the same 84 px square body, and
-  // the bite, charge, slam and player-melee ranges were tuned as centre distances for it. A boss
-  // with a drawn-to-fit hitbox measures to the edge of that hitbox plus the old half-width (42),
-  // so the same ranges reach from its whole body, nose to rump.
+  // the bite, charge, slam and player-melee ranges were tuned as centre distances for it. Each
+  // boss now has a drawn-to-fit hitbox (#312, #317) and measures to the edge of that hitbox plus
+  // the old half-width (42), so the same ranges reach from its whole body, not just its middle.
   _bossDist(b, x, y) {
     const body = b.hitbox && b.spr.body;
     if (!body) return Phaser.Math.Distance.Between(b.spr.x, b.spr.y, x, y);
@@ -269,6 +286,7 @@ Object.assign(GameScene.prototype, {
       if (b.hpBar && b.hpBar.active) b.hpBar.destroy();
       if (b.shadow && b.shadow.active) b.shadow.destroy();
       this.boss = null;
+      this.bossSpawned = false; // the next boss day may spawn again (#329)
       return;
     }
 
@@ -286,7 +304,7 @@ Object.assign(GameScene.prototype, {
     // ── Animation: shadow, idle breathing, walk bob ─────────────
     // Shadow tracks the boss's true world position (not the bobbed sprite y).
     if (b.shadow && b.shadow.active) {
-      b.shadow.setPosition(b.spr.x, b.spr.y + (b.shadowY || 36));
+      b.shadow.setPosition(b.spr.x, b.spr.y + b.shadowY);
     }
     // Idle breath — gentle scale pulse. Walk bob — vertical sprite offset when moving.
     // Skipped while hit-squash tween is overriding scale (b._hitTweenUntil > now).
@@ -489,12 +507,13 @@ Object.assign(GameScene.prototype, {
           b._howlTimer = 12000;
           this.hint('\u2620 Alpha Wolf HOWLS! Wolves incoming!', 2000, { urgent: true });
           SFX._play(180, 'sawtooth', 0.2, 0.65, 'drop');
-          this.cameras.main.shake(400, 0.007);
+          this._camFx('shake', [400, 0.007]);
           const wW = CFG.MAP_W * CFG.TILE, wH = CFG.MAP_H * CFG.TILE;
           for (let i = 0; i < 2; i++) {
             const ang = Math.random() * Math.PI * 2;
             const ex = Phaser.Math.Clamp(b.spr.x + Math.cos(ang) * 90, CFG.TILE*2, wW-CFG.TILE*2);
             const ey = Phaser.Math.Clamp(b.spr.y + Math.sin(ang) * 90, CFG.TILE*2, wH-CFG.TILE*2);
+            if (this._inShelter(ex, ey)) continue;
             const sizeMult = Phaser.Math.FloatBetween(0.9, 1.15);
             const sc = 0.95 * sizeMult;
             const eSpr = this.physics.add.image(ex, ey, 'wolf').setScale(sc).setDepth(9);
@@ -526,7 +545,7 @@ Object.assign(GameScene.prototype, {
             SFX.playerHurt();
             this._floatDamage(nearest.spr.x, nearest.spr.y - 18, b.dmg);
             nearest.spr.setTint(0xff0000);
-            this.cameras.main.shake(300, 0.008);
+            this._camFx('shake', [300, 0.008]);
             this.time.delayedCall(200, () => {
               if (!nearest.spr?.active) return;
               if (nearest._frostSlowed) nearest.spr.setTint(0x88ccff);
@@ -647,7 +666,7 @@ Object.assign(GameScene.prototype, {
 
     if (b.specialType === 'slam') {
       // ── Ground Slam: AoE damage within 130px, big shake ──────
-      this.cameras.main.shake(500, 0.02);
+      this._camFx('shake', [500, 0.02]);
       SFX._play(55, 'sawtooth', 0.45, 0.55, 'drop');
       // Impact ring flash
       const ring = this.add.graphics().setDepth(20);
@@ -689,7 +708,7 @@ Object.assign(GameScene.prototype, {
             SFX.playerHurt();
             this._floatDamage(p.spr.x, p.spr.y - 18, chargeDmg);
             p.spr.setTint(0xff8800);
-            this.cameras.main.shake(250, 0.01);
+            this._camFx('shake', [250, 0.01]);
             this.time.delayedCall(200, () => {
               if (!p.spr?.active) return;
               if (p._frostSlowed) p.spr.setTint(0x88ccff);
@@ -756,6 +775,24 @@ Object.assign(GameScene.prototype, {
     }
   },
 
+  // Night 1 comes in three small groups, 12 s apart, each strung out over a wide arc and distance, never more than 10 of the wave on the
+  // field at once, so a first-time player is met rather than swarmed (Hudson, Oct 2026: all 21
+  // animals reached him together). Day 1 only; every later wave spawns whole.
+  _spawnFirstWave(counts) {
+    const GROUPS = 3, GAP_MS = 12000, MAX_AT_ONCE = 10, GIVE_UP_MS = 60000, FIRST_WAVE_SPREAD = 1000; // px: the ring runs 900-2300 out, not 900-1300
+    const left = { ...counts }, wn = this.waveNum, t0 = this.time.now;
+    const send = () => {
+      if (this.isOver || !this.enemies) return;
+      let room = MAX_AT_ONCE - this.enemies.filter(e => e._waveNum === wn && e.spr?.active && !e.dying).length;
+      const g = {};
+      for (const k in left) { g[k] = Math.max(0, Math.min(left[k], Math.ceil(counts[k] / GROUPS), room)); room -= g[k]; left[k] -= g[k]; }
+      if (Object.values(g).some(n => n > 0)) this._spawnGroup(this.enemyWorldW, this.enemyWorldH, this.enemyCX, this.enemyCY, g, true, FIRST_WAVE_SPREAD);
+      // ponytail: a group sent while no player is up is lost, as a whole wave already was.
+      if (Object.values(left).some(n => n > 0) && this.time.now - t0 < GIVE_UP_MS) this._firstWaveTimer = this.time.delayedCall(GAP_MS, send);
+    };
+    send();
+  },
+
   updateWaves(delta) {
     this.waveTimer += delta;
     if (this.waveTimer >= this.WAVE_INTERVAL) {
@@ -774,7 +811,8 @@ Object.assign(GameScene.prototype, {
       const w = _take(Math.min(6 + this.waveNum * 2, 20));
       const r = _take(Math.min(8 + this.waveNum * 3, 30));
       const b = _take(Math.min(1 + this.waveNum, 8));
-      this._spawnGroup(this.enemyWorldW, this.enemyWorldH, this.enemyCX, this.enemyCY, { wolf:w, rat:r, bear:b }, true);
+      if (this.dayNum === 1) this._spawnFirstWave({ wolf:w, rat:r, bear:b });
+      else this._spawnGroup(this.enemyWorldW, this.enemyWorldH, this.enemyCX, this.enemyCY, { wolf:w, rat:r, bear:b }, true);
       if (this.dayNum >= 2) {
         const wn = this.waveNum;
         this._spawnBiomeEnemy('ice_crawler',  'tundra', _take(Math.min(2 + wn, 6)),  1);

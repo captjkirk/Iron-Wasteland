@@ -1,8 +1,8 @@
 'use strict';
 // ── src/game-scene.js — GameScene: gameplay systems 3, 5-7 and 9-22 ──────────
-// Globals exported: GameScene, GameScene.RECIPES
+// Globals exported: GameScene
 // Systems: dens, player movement, player combat,
-//          death/revive, craft recipes, walls/spikes, day/night, relics,
+//          death/revive, walls/spikes, day/night, relics,
 //          raiders, harvesting, cameras, HUD/minimap, fog-of-war, audio hooks,
 //          input, debug log, tutorial, game-over/victory, settings/save
 // grep: "// ── SYSTEM:"  "updateDayNight"  "_log("
@@ -30,7 +30,11 @@ class GameScene extends Phaser.Scene {
     this.fogRevealed = null;
     this.fogVisible = null;
     this._fogVisibleBuilding = false;
+    // Fog and radar read their on/off settings from here, not from storage every frame (#342).
+    // Refreshed on 'resume', which is how the Settings overlay hands control back.
+    this._settings = loadSettings();
     this._activePlayers = null;
+    this.tracks = null;
     this._sleepIndicator = null;
     this._fireGlows = [];
     this._glowFlicker = { t: 0 };
@@ -43,6 +47,7 @@ class GameScene extends Phaser.Scene {
     // if scene restarts mid-session) and kill any leftover scene-owned tweens.
     if (!this._shutdownRegistered) {
       this._shutdownRegistered = true;
+      this.events.on('resume', () => { this._settings = loadSettings(); });
       this.events.on('shutdown', () => {
         if (this.input) {
           this.input.off('pointerdown',      this._onTouchDown, this);
@@ -110,6 +115,9 @@ class GameScene extends Phaser.Scene {
       resourceDropMult: 1.0, rareDropsBossOnly: false, fogRevealMult: 1.0, minimapDefaultOff: false,
     };
     this.isOver      = false;
+    // Face-to-face iPad: 2 players on touch, tablet-sized screen (#387). _isMobile is read once at load.
+    this._split = !this.solo && !_isMobile && activeInputMode() === 'touch';
+    this.cam2 = null;
     this.timeAlive   = 0;
     this.barrackOpen = false;
     this.barrackOwner = null;
@@ -123,7 +131,7 @@ class GameScene extends Phaser.Scene {
     // Two-camera tracking lists
     this._wo = []; this._ho = [];
     this._w = o => { this._wo.push(o); return o; };
-    this._h = o => { this._ho.push(o); return o; };
+    this._h = o => { this._ho.push(o); if (this.hudCam) this._ignoreInWorldCams(o); return o; };
 
     // Ambient grass sway — 3 staggered phase groups, updated only when frame changes
     this._grassGroups = [[], [], []];
@@ -154,6 +162,7 @@ class GameScene extends Phaser.Scene {
     this.kills = 0;
     this.resourcesGathered = 0;
     this.bossSpawned = false;
+    this._bossesSeen = []; // boss keys in spawn order; spawnBoss picks an unseen one (#329)
     this.bossDefeated = false;
     this.boss = null;
 
@@ -184,7 +193,7 @@ class GameScene extends Phaser.Scene {
     this.buildMode = false;
     this.buildGhost = null;
     this.builtWalls = [];
-    // Spatial bucket: tile-coord key -> array of walls. Keeps LOS/steering/placement
+    // Spatial bucket: tile index (tx + ty*MAP_W) -> array of walls. Keeps LOS/steering/placement
     // checks O(1) per sample instead of O(walls).
     this._wallBuckets = new Map();
     this.craftBenchPlaced = false;
@@ -194,9 +203,6 @@ class GameScene extends Phaser.Scene {
 
     // D1 — Craft menu state
     this.craftMenuOpen = false;
-    this.craftMenuOwner = null;
-    this.craftMenuSel = 0;
-    this.craftMenuGfx = null;
 
     // Show loading progress bar on the black screen.
     // iOS PWA needs at least one yielded frame before heavy synchronous work.
@@ -394,7 +400,7 @@ class GameScene extends Phaser.Scene {
             });
             this.atkKeys.p1atk.on('down', () => {
               if (!this.barrackOpen && !this.isOver && !this.p1.isDowned && !this.p1.isSleeping) {
-                if (this.craftMenuOpen && this.craftMenuOwner === this.p1) { this.craftSelected(); return; }
+                if (this._craftOf(this.p1)) { this.craftSelected(this.p1); return; }
                 if (this.buildMode && this.buildOwner === this.p1) this.placeBuild();
                 else this.doAttack(this.p1);
               }
@@ -404,7 +410,7 @@ class GameScene extends Phaser.Scene {
             if (this.p2) {
               this.atkKeys.p2atk.on('down', () => {
                 if (!this.barrackOpen && !this.isOver && !this.p2.isDowned && !this.p2.isSleeping) {
-                  if (this.craftMenuOpen && this.craftMenuOwner === this.p2) { this.craftSelected(); return; }
+                  if (this._craftOf(this.p2)) { this.craftSelected(this.p2); return; }
                   if (this.buildMode && this.buildOwner === this.p2) this.placeBuild();
                   else this.doAttack(this.p2);
                 }
@@ -437,6 +443,8 @@ class GameScene extends Phaser.Scene {
             if (this.solo) {
               this.cameras.main.startFollow(this.p1.spr, true, 0.1, 0.1);
               this.cameras.main.setZoom(CFG.CAM_ZOOM_MAX);
+            } else if (this._split) {
+              this._initSplitCams();
             } else {
               this.cameras.main.setZoom(0.8);
               this.cameras.main.centerOn(cx, cy);
@@ -456,7 +464,7 @@ class GameScene extends Phaser.Scene {
 
               // Set up HUD camera (fixed zoom=1, no scroll)
               this.hudCam = this.cameras.add(0, 0, CFG.W, CFG.H).setZoom(1).setName('hud');
-              this.cameras.main.ignore(this._ho);
+              this._worldCams().forEach(c => c.ignore(this._ho));
               this.hudCam.ignore(this._wo);
               this.hudCam.ignore(this.obstacles.getChildren());
 
@@ -475,8 +483,8 @@ class GameScene extends Phaser.Scene {
                 this.placeRaiderCamp(worldW, worldH);
                 this._log(`World init: enemies spawned  total=${(this.enemies||[]).length}  dens=${(this.enemyDens||[]).length}+${(this.waterDens||[]).length}w`, 'world');
 
-                // Touch controls (1P only — 2P touch is out of scope)
-                if (this.solo && activeInputMode() === 'touch') {
+                // Touch controls (src/touch.js): one pad in 1P, one per half of the screen in 2P
+                if (activeInputMode() === 'touch') {
                   this.initTouchControls();
                 }
 
@@ -486,16 +494,18 @@ class GameScene extends Phaser.Scene {
               // ── Stage 5 (t≈144 ms): finalize ─────────────
               this.time.delayedCall(16, () => {
                 _destroyBar();
-                this.cameras.main.fadeIn(600, 0, 0, 0);
+                this._camFx('fadeIn', [600, 0, 0, 0]);
 
                 // Opening hints (delayed to appear after the startup controls popup fades)
                 const modeNote = this.hardcore ? '\u2620 HARDCORE \u2014 death is permanent!' : '\u2665 SURVIVAL mode';
                 this.time.delayedCall(10000, () => this.hint(modeNote + ' Explore the biomes! Watch your minimap.', 5000));
-                this.time.delayedCall(16500, () => this.hint('TAB for controls  |  Beware toxic swamps and frozen tundra!', 3500));
+                // Touch has no TAB key, and no startup controls popup (below), so the hint goes too.
+                if (activeInputMode() !== 'touch') this.time.delayedCall(16500, () => this.hint('TAB for controls  |  Beware toxic swamps and frozen tundra!', 3500));
 
-                // Tutorial sequence — starts after startup controls dismiss (~9 s)
-                this.time.delayedCall(9200, () => this.startTutorial());
+                // Tutorial sequence — starts after startup controls dismiss (~9 s); at once on touch
+                this.time.delayedCall(activeInputMode() === 'touch' ? 1500 : 9200, () => this.startTutorial());
 
+                this.tracks = new Tracks(this); // boot prints (src/tracks.js)
                 this._worldReady = true;
                 this._debugBossFromUrl();
                 this._log('World init: READY  display objects=' + this.children.length, 'world');
@@ -510,7 +520,11 @@ class GameScene extends Phaser.Scene {
     }); // end deferred world init
   }
 
+  // The key list over the whole screen at the start of a game. Touch players get no popup: it lists
+  // keys and mouse buttons they do not have, dimmed the screen for 8 s, and only a key press closed
+  // it. Their controls are on screen and the first tips name them.
   showStartupControls() {
+    if (activeInputMode() === 'touch') return;
     const { W, H } = CFG;
     const objs = [];
     const push = o => { objs.push(o); this._h(o); return o; };
@@ -597,36 +611,45 @@ class GameScene extends Phaser.Scene {
     };
     this.time.delayedCall(8000, dismiss);
     this.input.keyboard.once('keydown', dismiss);
+    this.input.once('pointerdown', dismiss); // a click or tap closes it too
   }
 
   // ── FOG OF WAR ────────────────────────────────────────────────
 
   // Returns true if a wall tile lies on the strictly-intermediate steps of the
   // Bresenham line from (x0,y0) to (x1,y1) — i.e. the target itself is NOT checked.
+  // Takes whole tile coordinates. The line reaches its target in at most dx + dy steps; the
+  // step cap turns any other input (a fractional tile froze Hardcore, #327) into "not blocked".
   _losBlocked(x0, y0, x1, y1) {
     let dx = Math.abs(x1 - x0), dy = Math.abs(y1 - y0);
     let x = x0, y = y0;
     const sx = x0 < x1 ? 1 : -1, sy = y0 < y1 ? 1 : -1;
     let err = dx - dy;
-    while (true) {
+    for (let steps = dx + dy + 2; steps > 0; steps--) {
       if (x === x1 && y === y1) return false; // reached target without hitting a wall
       const e2 = 2 * err;
       if (e2 > -dy) { err -= dy; x += sx; }
       if (e2 <  dx) { err += dx; y += sy; }
       if (x === x1 && y === y1) return false; // about to step onto target — still clear
-      if (this._wallTileSet && this._wallTileSet.has(x + ',' + y)) return true;
+      if (this._wallTileSet && this._tileAt(this._wallTileSet, x, y)) return true;
     }
+    if (!this._losCapLogged) {
+      this._losCapLogged = true;
+      this._log(`fog: line of sight gave up on non-tile input (${x0},${y0})->(${x1},${y1})`, 'error');
+    }
+    return false;
   }
 
   revealFog(centerTX, centerTY, radius) {
-    const r = radius || (CFG.FOG_REVEAL_R * (this.fogRevealMult || 1) * this.hc.fogRevealMult);
+    // Whole tiles only: Hardcore's 0.8 multiplier makes 6.4, and fractional offsets never meet
+    // _losBlocked's integer steps (#327).
+    const r = Math.round(radius || (CFG.FOG_REVEAL_R * (this.fogRevealMult || 1) * this.hc.fogRevealMult));
     const cx = Math.floor(centerTX), cy = Math.floor(centerTY);
     // Clear and rebuild current-frame visible set for this reveal call
     // (updateFog calls this once per player per tick, so we reset before p1 and union p2).
     // Reuse the existing Set to avoid a fresh allocation every fog update.
     if (!this._fogVisibleBuilding) {
-      if (this.fogVisible) this.fogVisible.clear();
-      else this.fogVisible = new Set();
+      this.fogVisible.fill(0);
       this._fogVisibleBuilding = true;
     }
     for (let dx = -r; dx <= r; dx++) {
@@ -635,26 +658,21 @@ class GameScene extends Phaser.Scene {
         const tx = cx + dx, ty = cy + dy;
         if (tx < 0 || ty < 0 || tx >= CFG.MAP_W || ty >= CFG.MAP_H) continue;
         // Always reveal adjacent tiles so walls at edge of radius are visible
-        if (Math.abs(dx) <= 1 && Math.abs(dy) <= 1) {
-          this.fogRevealed.add(tx + ',' + ty);
-          this.fogVisible.add(tx + ',' + ty);
-          continue;
-        }
-        if (this._losBlocked(cx, cy, tx, ty)) continue;
-        this.fogRevealed.add(tx + ',' + ty);
-        this.fogVisible.add(tx + ',' + ty);
+        if ((Math.abs(dx) > 1 || Math.abs(dy) > 1) && this._losBlocked(cx, cy, tx, ty)) continue;
+        const i = tx + ty * CFG.MAP_W;
+        if (!this.fogRevealed[i]) { this.fogRevealed[i] = 1; this._mmPaint(tx, ty); }
+        this.fogVisible[i] = 1;
       }
     }
   }
 
   updateFog() {
     if (!this.fogGfx) return;
-    if (loadSettings().fogEnabled === false) { this.fogGfx.setVisible(false); return; }
+    if (this._settings.fogEnabled === false) { this.fogGfx.setVisible(false); return; }
     this._fogFrame++;
     if (this._fogFrame % CFG.FOG_UPDATE_INTERVAL !== 0) return;
 
     const TILE = CFG.TILE;
-    const cam = this.cameras.main;
 
     // Reveal around players (radius-bounded, wall-blocked) — skip the reveal pass
     // entirely if neither player has moved tiles since the last update. This is
@@ -686,20 +704,27 @@ class GameScene extends Phaser.Scene {
 
     // Paint the viewport's tiles into the fog texture: unexplored = dark,
     // explored-but-not-in-LOS = dim, in-LOS = clear.
-    const vx = cam.worldView.x, vy = cam.worldView.y;
-    const vw = cam.worldView.width, vh = cam.worldView.height;
+    for (const [ci, wc] of this._worldCams().entries()) {
+    const wr = this._worldRect(wc);
+    const vx = wr.x, vy = wr.y, vw = wr.width, vh = wr.height;
     const startTX = Math.max(0, Math.floor(vx / TILE) - 3);
     const startTY = Math.max(0, Math.floor(vy / TILE) - 3);
     const endTX = Math.min(CFG.MAP_W - 1, Math.ceil((vx + vw) / TILE) + 3);
     const endTY = Math.min(CFG.MAP_H - 1, Math.ceil((vy + vh) / TILE) + 3);
     const w = endTX - startTX + 1, h = endTY - startTY + 1;
     const DARK = 217, DIM = 89; // 0.85 and 0.35 alpha
-    const a = new Uint8Array(w * h), b = new Uint8Array(w * h);
+    // Each camera keeps its buffers; they are rebuilt only when its tile window changes size (#342).
+    let buf = this._fogBufs[ci];
+    if (!buf || buf.w !== w || buf.h !== h) {
+      buf = this._fogBufs[ci] = { w, h, a: new Uint8Array(w * h), b: new Uint8Array(w * h),
+        img: this._fogTex.context.createImageData(w, h) };
+    }
+    const { a, b } = buf;
     for (let ty = startTY; ty <= endTY; ty++) {
       for (let tx = startTX; tx <= endTX; tx++) {
-        const key = tx + ',' + ty;
+        const i = tx + ty * CFG.MAP_W;
         a[(ty - startTY) * w + (tx - startTX)] =
-          !this.fogRevealed.has(key) ? DARK : (this.fogVisible.has(key) ? 0 : DIM);
+          !this.fogRevealed[i] ? DARK : (this.fogVisible[i] ? 0 : DIM);
       }
     }
     // 5-tap box blur across then down, so zone edges fade over ~3 tiles instead of one;
@@ -710,13 +735,14 @@ class GameScene extends Phaser.Scene {
       b[y * w + x] = sum / 5;
     }
     const ctx = this._fogTex.context;
-    const img = ctx.createImageData(w, h), d = img.data;
+    const img = buf.img, d = img.data;
     for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
       let sum = 0;
       for (let k = -2; k <= 2; k++) sum += b[Math.min(h - 1, Math.max(0, y + k)) * w + x];
       d[(y * w + x) * 4 + 3] = sum / 5;
     }
     ctx.putImageData(img, startTX, startTY);
+    }
     this._fogTex.refresh();
     // pixelArt mode re-uploads canvases with NEAREST filtering; set LINEAR after every refresh.
     this._fogTex.setFilter(Phaser.Textures.FilterMode.LINEAR);
@@ -766,10 +792,20 @@ class GameScene extends Phaser.Scene {
     return player;
   }
 
+  // The touch 1-player layout (#388, iPad #406) or null. Reads the saved input mode, because
+  // _touchActive is only set after the HUD is built.
+  _layout1p() { return this.solo && activeInputMode() === 'touch' ? PHONE1P : null; }
+
   // ── HUD ─────────────────────────────────────────────────────
   buildHUD() {
     const { W, H } = CFG;
     this._hudDirty = true;
+    const P = this._layout1p(); // phone, 1 player (#388)
+    // Shrink a HUD object about (ax, ay) and make it see-through, as the phone layout asks.
+    const hudSize = (o, ax, ay) => {
+      if (!P) return o;
+      return o.setScale(P.hudScale).setPosition(ax + (o.x - ax) * P.hudScale, ay + (o.y - ay) * P.hudScale).setAlpha(P.hudSolid);
+    };
 
     this.ammoIcons = { p1:null, p2:null };
     if (STATE.p1CharId==='gunslinger') this.ammoIcons.p1 = this.makeAmmoRow(14, 52, 0x6699ff);
@@ -791,9 +827,12 @@ class GameScene extends Phaser.Scene {
     }
 
     const dayBg = this._h(this.add.graphics().setDepth(100));
-    dayBg.fillStyle(0x000000, 0.6); dayBg.fillRoundedRect(W/2-95, 5, 190, 66, 8);
+    dayBg.fillStyle(0x000000, P ? 1 : 0.6); dayBg.fillRoundedRect(W/2-95, 5, 190, 66, 8);
     this.dayText = this._h(this.add.text(W/2, 10, 'DAY 1', { fontFamily:'monospace', fontSize:'13px', color:'#ffee44' }).setOrigin(0.5,0).setDepth(101));
     this.clockGfx = this._h(this.add.graphics().setDepth(102));
+    [dayBg, this.dayText, this.clockGfx].forEach(o => hudSize(o, W/2, 5));
+    const dk = P ? P.hudScale : 1;
+    this._hudRects = { day: { x: W/2 - 95 * dk, y: 5, w: 190 * dk, h: 66 * dk } }; // read by the smoke run (#388)
 
     // Off-screen threat indicators — issue #81. Drawn in HUD space; redrawn each frame
     // by _drawThreatIndicators() so the arrows track the camera as it pans.
@@ -801,13 +840,16 @@ class GameScene extends Phaser.Scene {
 
     const diffColor = this.hardcore ? '#ff4444' : '#44cc66';
     const diffLabel = this.hardcore ? '\u2620 HARDCORE' : '\u2665 SURVIVAL';
-    this._h(this.add.text(W/2, 52, diffLabel, { fontFamily:'monospace', fontSize:'12px', color:diffColor }).setOrigin(0.5,0).setDepth(101));
+    hudSize(this._h(this.add.text(W/2, 52, diffLabel, { fontFamily:'monospace', fontSize:'12px', color:diffColor }).setOrigin(0.5,0).setDepth(101)), W/2, 5);
 
     // Persistent MENU button — bottom-right, works for both keyboard and touch
-    const menuBtn = this._h(this.add.text(W - 14, H - 12, '\u2630  MENU', {
+    const menuBtn = this._h(this.add.text(P ? P.menuText.cx * W : W - 14, P ? P.menuText.cy * H : H - 12, '\u2630  MENU', {
       fontFamily:'monospace', fontSize:'12px', color:'#557755',
       backgroundColor:'#00000088', padding:{ x:8, y:4 },
-    }).setOrigin(1, 1).setDepth(104).setInteractive({ useHandCursor: true }));
+    }).setOrigin(P ? 0.5 : 1, P ? 0.5 : 1).setDepth(104).setInteractive({ useHandCursor: true }));
+    if (P) menuBtn.setScale(P.hudScale).setAlpha(P.hudSolid);
+    const mb = menuBtn.getBounds();
+    this._hudRects.menu = { x: mb.x, y: mb.y, w: mb.width, h: mb.height };
     menuBtn.on('pointerover', () => menuBtn.setColor('#aaffaa'));
     menuBtn.on('pointerout',  () => menuBtn.setColor('#557755'));
     menuBtn.on('pointerdown', () => { if (!this.isOver) this.toggleControls(); });
@@ -818,8 +860,16 @@ class GameScene extends Phaser.Scene {
 
     // Resource panel: item icon + count, always visible. Bottom-left for P1, bottom-right for P2
     // (above the MENU button). Below the joystick hint ring, clear of the touch buttons (1P only).
-    this.p1InvText = this._makeResPanel(12, H - 46, false);
-    if (this.p2) this.p2InvText = this._makeResPanel(W - 12, H - 80, true);
+    // Face-to-face: each player's bar sits on their own near edge, turned toward them (the origin and turn
+    // of each player's view, as in initTouchControls).
+    const resPanel = i => {
+      if (!this._split) return this._makeResPanel(i ? W - 12 : 12, i ? H - 80 : H - 46, !!i);
+      const halfW = (W - CFG.SPLIT_STRIP) / 2;
+      const host = this._h(this.add.container(i ? W - halfW : halfW, i ? H : 0).setRotation(i ? -Math.PI / 2 : Math.PI / 2).setDepth(100));
+      return this._makeResPanel(12, halfW - 46, false, host);
+    };
+    this.p1InvText = resPanel(0);
+    if (this.p2) this.p2InvText = resPanel(1);
 
     // Relic progress tracker — hidden until first relic activity
     this.hudRelicText = this._h(this.add.text(W/2, 76, '', {
@@ -842,27 +892,32 @@ class GameScene extends Phaser.Scene {
     if (this.p2) this.p2StatusGfx = this._h(this.add.graphics().setDepth(102));
 
     // ── MINIMAP ─────────────────────────────────────────────────
-    const mmW = 160, mmH = 160;
-    const mmX = W - mmW - 10, mmY = 96; // top-right so it doesn't overlap P2 inventory
+    const mmW = P ? P.radar.d * H : 160, mmH = mmW;
+    const mmX = P ? P.radar.cx * W - mmW / 2 : W - mmW - 10, mmY = P ? P.radar.cy * H - mmH / 2 : 96; // top-right so it doesn't overlap P2 inventory
     const mmCX = mmX + mmW / 2, mmCY = mmY + mmH / 2, mmR = mmW / 2;
     // Circular background
     const mmBg = this._h(this.add.graphics().setDepth(110));
     mmBg.fillStyle(0x000000, 0.75); mmBg.fillCircle(mmCX, mmCY, mmR + 3);
     mmBg.lineStyle(1.5, 0x445566, 0.9); mmBg.strokeCircle(mmCX, mmCY, mmR + 3);
     this.minimapGfx = this._h(this.add.graphics().setDepth(111));
+    // Explored terrain: the map-sized radar picture, scaled and moved by updateMinimap (#344).
+    this.minimapImg = this._h(this.add.image(0, 0, 'mm_explored').setOrigin(0).setDepth(111));
     this.minimapDots = this._h(this.add.graphics().setDepth(112));
+    if (P) [mmBg, this.minimapGfx, this.minimapImg, this.minimapDots].forEach(o => o.setAlpha(P.radar.solid));
     this.mmBounds = { x: mmX, y: mmY, w: mmW, h: mmH };
     // Store radar geometry for boss indicator positioning
     this.radarCenter = { x: mmCX, y: mmCY, r: mmR };
-    this._h(this.add.text(mmCX, mmY - 11, 'RADAR', {
+    this._h(this.add.text(mmCX, P ? mmY + mmH + 8 : mmY - 11, 'RADAR', {
       fontFamily:'monospace', fontSize:'12px', color:'#667788',
-    }).setOrigin(0.5).setDepth(111));
+    }).setOrigin(0.5).setDepth(111).setAlpha(P ? P.radar.solid : 1));
 
     // Circular clip mask — tiles drawn outside the circle are hidden
     const _mmMaskGfx = this._h(this.add.graphics());
     _mmMaskGfx.fillStyle(0xffffff, 1);
     _mmMaskGfx.fillCircle(mmCX, mmCY, mmR);
-    this.minimapDots.setMask(_mmMaskGfx.createGeometryMask());
+    const _mmMask = _mmMaskGfx.createGeometryMask();
+    this.minimapImg.setMask(_mmMask);
+    this.minimapDots.setMask(_mmMask);
 
     // Pre-render biome colors on minimap (static, done once)
     this._renderMinimapBase();
@@ -891,6 +946,7 @@ class GameScene extends Phaser.Scene {
     const tx = Math.floor(worldX / TILE), ty = Math.floor(worldY / TILE);
     if (tx < 0 || tx >= MAP_W || ty < 0 || ty >= MAP_H) return;
     this._mmColorMap[tx + ty * MAP_W] = color;
+    if (this.fogRevealed && this.fogRevealed[tx + ty * MAP_W]) this._mmPaint(tx, ty);
   }
 
   // Reset a minimap tile to its biome color. Used when a player-built structure
@@ -903,9 +959,23 @@ class GameScene extends Phaser.Scene {
     const i = tx + ty * MAP_W;
     // Prefer water/ice colors if the tile was water — walls can't be placed on
     // water, so in practice this falls through to the biome color.
-    if (this._waterMap && this._waterMap[i]) { this._mmColorMap[i] = 0x2255aa; return; }
-    if (this._iceMap && this._iceMap[i])     { this._mmColorMap[i] = 0x88aadd; return; }
-    this._mmColorMap[i] = BIOME_COLORS[getBiome(tx, ty)] || 0x333333;
+    this._mmColorMap[i] = (this._waterMap && this._waterMap[i]) ? 0x2255aa
+      : (this._iceMap && this._iceMap[i]) ? 0x88aadd
+      : (BIOME_COLORS[getBiome(tx, ty)] || 0x333333);
+    if (this.fogRevealed && this.fogRevealed[i]) this._mmPaint(tx, ty);
+  }
+
+  // Paint one explored tile into the radar picture (#344): when the tile is first revealed,
+  // and when a structure repaints a tile that is already explored.
+  _mmPaint(tx, ty) {
+    if (!this._mmTex) return;
+    const c = this._mmColorMap ? this._mmColorMap[tx + ty * CFG.MAP_W]
+                               : (BIOME_COLORS[getBiome(tx, ty)] || 0x333333);
+    const ctx = this._mmTex.context;
+    ctx.clearRect(tx, ty, 1, 1);
+    ctx.fillStyle = `rgba(${c >> 16},${(c >> 8) & 255},${c & 255},0.9)`;
+    ctx.fillRect(tx, ty, 1, 1);
+    this._mmDirty = true;
   }
 
   // Build a full-map color lookup (Uint32Array, one entry per tile).
@@ -993,11 +1063,8 @@ class GameScene extends Phaser.Scene {
 
     // Ruins + biome structure walls — bright white outline so structures are clearly legible
     if (this._wallTileSet) {
-      for (const key of this._wallTileSet) {
-        const sep = key.indexOf(',');
-        const tx = parseInt(key, 10), ty = parseInt(key.slice(sep + 1), 10);
-        if (tx >= 0 && tx < MAP_W && ty >= 0 && ty < MAP_H)
-          this._mmColorMap[tx + ty * MAP_W] = 0xeeeeff; // near-white wall outline
+      for (let i = 0; i < this._wallTileSet.length; i++) {
+        if (this._wallTileSet[i]) this._mmColorMap[i] = 0xeeeeff; // near-white wall outline
       }
     }
 
@@ -1012,10 +1079,11 @@ class GameScene extends Phaser.Scene {
 
   updateMinimap() {
     if (!this.minimapDots || !this.mmBounds) return;
-    const _mmSet = loadSettings().minimapEnabled;
+    const _mmSet = this._settings.minimapEnabled;
     const _mmOn  = (_mmSet === undefined) ? !this.hc.minimapDefaultOff : (_mmSet !== false);
     if (!_mmOn) {
       this.minimapGfx.setVisible(false);
+      this.minimapImg.setVisible(false);
       this.minimapDots.setVisible(false);
       return;
     }
@@ -1031,6 +1099,7 @@ class GameScene extends Phaser.Scene {
     // Reference player for centering: P1 if active, else P2
     const refP = (this.p1?.spr?.active && !this.p1.isDowned) ? this.p1
                : (this.p2?.spr?.active && !this.p2.isDowned) ? this.p2 : null;
+    this.minimapImg.setVisible(!!refP);
     if (!refP) return;
 
     // Radar shows a 40-tile radius (1280px world) around the reference player.
@@ -1043,30 +1112,16 @@ class GameScene extends Phaser.Scene {
     const minTY = centerTY - VIEW, maxTY = centerTY + VIEW;
     const tileSize = Math.max(1, scale);
 
-    // Single unified terrain pass — color map encodes biome, water, ice, trees,
-    // rocks, ruins/structure walls, and mountains all at O(1) per tile.
-    // Falls back to live getBiome lookup if color map wasn't built yet.
-    for (let tx = minTX; tx <= maxTX; tx++) {
-      for (let ty = minTY; ty <= maxTY; ty++) {
-        if (tx < 0 || ty < 0 || tx >= CFG.MAP_W || ty >= CFG.MAP_H) continue;
-        if (!this.fogRevealed.has(tx + ',' + ty)) continue;
-        const color = this._mmColorMap
-          ? this._mmColorMap[tx + ty * CFG.MAP_W]
-          : (BIOME_COLORS[getBiome(tx, ty)] || 0x333333);
-        this.minimapDots.fillStyle(color, 0.9);
-        this.minimapDots.fillRect(
-          mm.x + (tx - minTX) * scale,
-          mm.y + (ty - minTY) * scale,
-          tileSize + 0.5, tileSize + 0.5
-        );
-      }
-    }
+    // Explored terrain is one picture, painted a tile at a time by _mmPaint as tiles are
+    // revealed; here it is only re-uploaded if it changed, and moved under the radar (#344).
+    if (this._mmDirty) { this._mmTex.refresh(); this._mmDirty = false; }
+    this.minimapImg.setScale(scale).setPosition(mm.x - minTX * scale, mm.y - minTY * scale);
 
     // POI dots — revealed and within radar range
     if (this.pois) {
       this.pois.forEach(poi => {
         if (poi.tx < minTX || poi.tx > maxTX || poi.ty < minTY || poi.ty > maxTY) return;
-        if (!this.fogRevealed.has(poi.tx + ',' + poi.ty)) return;
+        if (!this.fogRevealed[poi.tx + poi.ty * CFG.MAP_W]) return;
         let col = 0xffffff;
         if      (poi.type === 'cache')      col = 0xccaa00;
         else if (poi.type === 'den')        col = 0xcc4444;
@@ -1150,7 +1205,7 @@ class GameScene extends Phaser.Scene {
       this._h(ic);
       // If hudCam already exists (late creation after barrack swap), update ignore lists
       if (this.hudCam) {
-        this.cameras.main.ignore(ic);
+        this._ignoreInWorldCams(ic);
       }
       icons.push(ic);
     }
@@ -1164,6 +1219,7 @@ class GameScene extends Phaser.Scene {
     const g = this.threatGfx;
     if (!g || !g.active) return;
     g.clear();
+    if (this._split) return; // ponytail: arrows are drawn for one camera; slice 2 (#389) does one per half
     if (this.isOver || !this.enemies || this.enemies.length === 0) return;
 
     const cam = this.cameras.main;
@@ -1241,6 +1297,7 @@ class GameScene extends Phaser.Scene {
     if (p._toxicUntil > now) s.push('toxic');
     if (p._rallyUntil > now) s.push('rally');
     if (p['_' + p.charData.id + 'Upgraded']) s.push('upgrade');
+    if (p._sheltered) s.push('shelter');
     return s;
   }
 
@@ -1262,6 +1319,9 @@ class GameScene extends Phaser.Scene {
         gfx.fillStyle(0x44ff22, 1).fillCircle(cx, cy + 2, r - 2).fillTriangle(cx, y, cx - r + 2, cy + 1, cx + r - 2, cy + 1);
       } else if (name === 'rally') {   // yellow up arrow
         gfx.fillStyle(0xffdd44, 1).fillTriangle(cx, y, x, cy + 1, x + SZ, cy + 1).fillRect(cx - 2, cy, 4, r);
+      } else if (name === 'shelter') { // warm house: roof over a wall with a lit door
+        gfx.fillStyle(0xe8b060, 1).fillTriangle(cx, y, x, cy, x + SZ, cy).fillRect(x + 2, cy, SZ - 4, r);
+        gfx.fillStyle(0xff7722, 1).fillRect(cx - 1.5, cy + 2, 3, r - 2);
       } else {                         // upgrade: orange square star
         gfx.fillStyle(0xffaa22, 1).fillRect(x + 2, y + 2, SZ - 4, SZ - 4).fillTriangle(cx, y - 1, x + 1, cy, x + SZ - 1, cy).fillTriangle(cx, y + SZ + 1, x + 1, cy, x + SZ - 1, cy);
       }
@@ -1270,31 +1330,34 @@ class GameScene extends Phaser.Scene {
 
   // A row of item icon + count for wood, metal, fiber and food, plus carried ammo when a
   // non-Gunslinger holds some. A zero count is dimmed, not hidden, so the panel never jumps.
-  _makeResPanel(x, y, right) {
+  _makeResPanel(x, y, right, host) {
     const SLOTS = [['wood', 'item_wood'], ['metal', 'item_metal'], ['fiber', 'item_fiber'], ['food', 'item_food'], ['carriedAmmo', 'item_ammo']];
-    const SLOT_W = 52, PAD = 8, H = 28;
-    const bg = this._h(this.add.graphics().setDepth(100));
+    const P = this._layout1p(); // phone, 1 player: 90% size, 45% solid (#388)
+    const k = P ? P.hudScale : 1, sol = P ? P.hudSolid : 1;
+    const SLOT_W = 52 * k, PAD = 8 * k, H = 28 * k;
+    const bg = this._h(this.add.graphics().setDepth(100).setAlpha(sol));
     const slots = SLOTS.map(([key, tex]) => ({
       key,
-      icon: this._h(this.add.image(0, 0, tex).setScale(2).setDepth(101)),
-      txt: this._h(this.add.text(0, 0, '0', { fontFamily:'monospace', fontSize:'12px', color:'#ddeecc', stroke:'#000', strokeThickness:2 }).setOrigin(0, 0.5).setDepth(101)),
+      icon: this._h(this.add.image(0, 0, tex).setScale(2 * k).setDepth(101)),
+      txt: this._h(this.add.text(0, 0, '0', { fontFamily:'monospace', fontSize:(12 * k) + 'px', color:'#ddeecc', stroke:'#000', strokeThickness:2 }).setOrigin(0, 0.5).setDepth(101)),
     }));
+    if (host) host.add([bg, ...slots.flatMap(sl => [sl.icon, sl.txt])]); // positions are then in the host's own view
     let lastKey = '', shown = true;
     return {
       setVisible(v) { shown = v; bg.setVisible(v); lastKey = ''; slots.forEach(sl => { sl.icon.setVisible(false); sl.txt.setVisible(false); }); },
       update(p) {
         if (!shown || !p) return;
         const vals = SLOTS.map(([key]) => (key === 'carriedAmmo' ? p.carriedAmmo : p.inv[key]) || 0);
-        const k = vals.join(',');
-        if (k === lastKey) return;
-        lastKey = k;
+        const sig = vals.join(',');
+        if (sig === lastKey) return;
+        lastKey = sig;
         const n = vals[4] > 0 ? 5 : 4;
         const w = n * SLOT_W + PAD, x0 = right ? x - w : x;
-        bg.clear().fillStyle(0x000000, 0.5).fillRoundedRect(x0, y, w, H, 6);
+        bg.clear().fillStyle(0x000000, P ? 1 : 0.5).fillRoundedRect(x0, y, w, H, 6);
         slots.forEach((sl, i) => {
           const on = i < n, dim = vals[i] > 0 ? 1 : 0.4;
-          sl.icon.setVisible(on).setPosition(x0 + PAD + i * SLOT_W + 12, y + H / 2).setAlpha(dim);
-          sl.txt.setVisible(on).setPosition(x0 + PAD + i * SLOT_W + 26, y + H / 2).setText(String(vals[i])).setAlpha(dim);
+          sl.icon.setVisible(on).setPosition(x0 + PAD + i * SLOT_W + 12 * k, y + H / 2).setAlpha(dim * sol);
+          sl.txt.setVisible(on).setPosition(x0 + PAD + i * SLOT_W + 26 * k, y + H / 2).setText(String(vals[i])).setAlpha(dim * sol);
         });
       },
     };
@@ -1423,7 +1486,7 @@ class GameScene extends Phaser.Scene {
     player.atkAnimUntil = 0;
     // If this player owned the craft menu, close it so input routing doesn't
     // reference a downed player and strand the menu on screen.
-    if (this.craftMenuOpen && this.craftMenuOwner === player) this.closeCraftMenu();
+    this.closeCraftMenu(player);
     this._log(`${player.charData.player} (${player.charData.id}) DOWNED  day=${this.dayNum}`, 'player');
     // Audible + visual cue — partners need to register the down even if they
     // aren't looking at the HUD hint.
@@ -1432,8 +1495,8 @@ class GameScene extends Phaser.Scene {
         SFX._play(200, 'sawtooth', 0.25, 0.35, 'drop');
         SFX._play(140, 'triangle', 0.20, 0.50, 'drop');
       }
-      this.cameras.main.flash(260, 90, 10, 10, true);
-      this.cameras.main.shake(200, 0.004);
+      this._camFx('flash', [260, 90, 10, 10, true]);
+      this._camFx('shake', [200, 0.004]);
     } catch(e) {}
     player.downTimer = CFG.DOWN_TIME;
     player.spr.setTint(0xaa0000);
@@ -1446,7 +1509,8 @@ class GameScene extends Phaser.Scene {
     ).setOrigin(0.5).setDepth(20);
     if (this.hudCam) this.hudCam.ignore(player.downText);
 
-    this.hint(player.charData.player + ' is DOWN! Get close and hold E / Enter to revive!', 5000, { urgent: true });
+    const bedNote = player.respawnBed ? ' If not, they wake at their bed.' : '';
+    this.hint(player.charData.player + ' is DOWN! Get close and hold E / Enter to revive!' + bedNote, 5000, { urgent: true });
   }
 
   updateDowned(delta) {
@@ -1465,7 +1529,8 @@ class GameScene extends Phaser.Scene {
       statusText.setText('↓ ' + p.charData.player.toUpperCase() + ' IS DOWN');
 
       if (p.downTimer <= 0) {
-        // Time ran out — permanently dead
+        // Time ran out — back at their bed (2-player Survival, src/bed-respawn.js), else permanently dead
+        if (this._bedRespawn(p)) { statusText.setText(''); return; }
         if (p.downText) { p.downText.destroy(); p.downText = null; }
         p.isDowned = false;
         p.isPermanentlyDead = true;
@@ -1528,9 +1593,7 @@ class GameScene extends Phaser.Scene {
         }
 
         // Check if rescue key is held
-        const keyHeld = rescuer === this.p1
-          ? this.hotkeys.p1use.isDown
-          : this.hotkeys.p2use.isDown;
+        const keyHeld = this._useHeld(rescuer);
 
         if (keyHeld) {
           anyReviving = true;
@@ -1597,7 +1660,7 @@ class GameScene extends Phaser.Scene {
     if (this.p2 && this.p2.spr && this.p2.spr.body) this.p2.spr.setVelocity(0, 0);
 
     Music.stop();
-    this.cameras.main.fadeOut(800, 0, 0, 0);
+    this._camFx('fadeOut', [800, 0, 0, 0]);
     this.time.delayedCall(900, () => {
       this.scene.start('GameOver', {
         reason,
@@ -1631,7 +1694,7 @@ class GameScene extends Phaser.Scene {
     if (this.p1 && this.p1.spr && this.p1.spr.body) this.p1.spr.setVelocity(0, 0);
     if (this.p2 && this.p2.spr && this.p2.spr.body) this.p2.spr.setVelocity(0, 0);
     Music.stop();
-    this.cameras.main.fadeOut(800, 0, 0, 0);
+    this._camFx('fadeOut', [800, 0, 0, 0]);
     this.time.delayedCall(900, () => {
       this.scene.start('GameOver', {
         won: true,
@@ -1718,7 +1781,7 @@ class GameScene extends Phaser.Scene {
       this._log('controls: SETTINGS button pressed – launching Settings scene', 'player');
       this.ctrlObjs.forEach(o => o.setVisible(false));
       this.controlsVis = false;
-      this.cameras.main.fadeOut(200, 0, 0, 0);
+      this._camFx('fadeOut', [200, 0, 0, 0]);
       this.time.delayedCall(200, () => {
         this.scene.pause();
         this.scene.launch('Settings', { returnTo: 'Game' });
@@ -1782,10 +1845,10 @@ class GameScene extends Phaser.Scene {
     // and refunds 50% of its cost. Lets the player undo misclicks without a
     // separate keybind.
     if (this.buildMode && this.buildOwner === player) {
-      if (this._tryTeardownBuild(player)) return;
+      if (this._tryTeardownBuild(player)) return true;
     }
     const dist = Phaser.Math.Distance.Between(player.spr.x, player.spr.y, this.bPos.x, this.bPos.y);
-    if (dist < 110) { this.openBarrack(player); return; }
+    if (dist < 110) { this.openBarrack(player); return true; }
 
     // Radio tower interaction — starts 10-second activation (handled in checkRadioTowerRange)
     if (this.radioTower && !this.radioTower.used) {
@@ -1794,7 +1857,7 @@ class GameScene extends Phaser.Scene {
         this.radioTower.activating = true;
         this.radioTower.activateProgress = 0;
         this._log(`${player.charData.player} began activating Radio Tower  day=${this.dayNum}`, 'world');
-        return;
+        return true;
       }
     }
 
@@ -1802,7 +1865,7 @@ class GameScene extends Phaser.Scene {
     if (this.raidCamp && this.raidCamp.cache && !this.raidCamp.cache.locked && !this.raidCamp.cache.opened) {
       const cache = this.raidCamp.cache;
       const cd = Phaser.Math.Distance.Between(player.spr.x, player.spr.y, cache.x, cache.y);
-      if (cd < 70) { this.openRaidCache(cache); return; }
+      if (cd < 70) { this.openRaidCache(cache); return true; }
     }
 
     // Bed interaction — toggle sleep
@@ -1810,7 +1873,7 @@ class GameScene extends Phaser.Scene {
       const bd = Phaser.Math.Distance.Between(player.spr.x, player.spr.y, bed.x, bed.y);
       if (bd < 70) {
         this.toggleSleep(player, bed);
-        return;
+        return true;
       }
     }
 
@@ -1824,7 +1887,7 @@ class GameScene extends Phaser.Scene {
         const _rd = Phaser.Math.Distance.Between(player.spr.x, player.spr.y, _rel.x, _rel.y);
         if (_rd < CFG.RELIC_RANGE) {
           this.hint('Hold Interact for 3s to retrieve relic', 1800);
-          return;
+          return true;
         }
       }
     }
@@ -1834,17 +1897,27 @@ class GameScene extends Phaser.Scene {
       const _ad = Phaser.Math.Distance.Between(player.spr.x, player.spr.y, this.altarPos.x, this.altarPos.y);
       if (_ad < 90) {
         this._depositRelic();
-        return;
+        return true;
       }
     }
 
     // Nothing interactable in range — log so we can diagnose "E key not working" reports
     this._log(`${player.charData.player} interact: nothing in range  pos=(${Math.floor(player.spr.x/CFG.TILE)},${Math.floor(player.spr.y/CFG.TILE)})`, 'player');
+    return false;
   }
 
   // Per-frame relic pickup channel. Mirrors checkRadioTowerRange — requires
   // Interact key held for 3s, cancels on out-of-range / release / downed /
   // damage taken mid-channel. Completes into _pickupRelic.
+  // Is this player holding USE? The keyboard key, or for player 1 the touch USE button (the
+  // keyboard key is never pressed on a phone). One answer for harvest, the relic hold and revive (#397).
+  _useHeld(p) {
+    const key = this.hotkeys && this.hotkeys[p === this.p1 ? 'p1use' : 'p2use'];
+    if (key && key.isDown) return true;
+    const b = this._padOf(p)?.btns;
+    return !!(b && (b.context || b.interact).down);
+  }
+
   updateRelicChannels(delta) {
     const RANGE2 = CFG.RELIC_RANGE * CFG.RELIC_RANGE;
     const HOLD_DUR = 3000;
@@ -1855,9 +1928,8 @@ class GameScene extends Phaser.Scene {
     ];
     for (const { p, keyName } of list) {
       if (!p || !p.spr || !p.spr.active) { this._cancelRelicChannel(p); continue; }
-      const key = this.hotkeys && this.hotkeys[keyName];
-      const keyDown = !!(key && key.isDown);
-      const blocked = p.isDowned || p.isSleeping || this.barrackOpen || this.craftMenuOpen || this.isOver;
+      const keyDown = this._useHeld(p);
+      const blocked = p.isDowned || p.isSleeping || this.barrackOpen || !!this._craftOf(p) || this.isOver;
       if (blocked || !keyDown) { this._cancelRelicChannel(p); continue; }
 
       let nearest = null, bestD2 = RANGE2;
@@ -1964,7 +2036,7 @@ class GameScene extends Phaser.Scene {
         }
         if (carrier) _e.target = carrier;
       }
-      this.cameras.main.shake(700, 0.015);
+      this._camFx('shake', [700, 0.015]);
       this._showRelicHint('Every living thing\nknows where you are.\nRun.');
     }
   }
@@ -1985,7 +2057,7 @@ class GameScene extends Phaser.Scene {
     const tints = [0xffffff, 0xddaaff, 0xbb66ff, 0x9944dd, 0x7722cc, 0x5500aa];
     if (this.altarPos?.spr?.active) this.altarPos.spr.setTint(tints[Math.min(dep, 5)]);
 
-    this.cameras.main.shake(200 + dep * 40, 0.006 + dep * 0.002);
+    this._camFx('shake', [200 + dep * 40, 0.006 + dep * 0.002]);
     this._floatPickup(this.altarPos.x, this.altarPos.y - 10, dep + '/5 Relics Deposited!');
     this._log(`Relic deposited  deposited=${dep}/5  diffMult=${this._diffMult().toFixed(2)}x`, 'world');
     this._hudDirty = true;
@@ -2037,7 +2109,10 @@ class GameScene extends Phaser.Scene {
       );
 
       player.isSleeping = true;
-      this._log(`${player.charData.player} sleeping  hp=${player.hp}/${player.maxHp}  day=${this.dayNum}`, 'player');
+      // 2-player Survival: this bed is now where the player comes back if their down timer runs out (#294).
+      const newBed = !this.solo && !this.hardcore && player.respawnBed !== bed;
+      if (!this.solo && !this.hardcore) player.respawnBed = bed;
+      this._log(`${player.charData.player} sleeping  hp=${player.hp}/${player.maxHp}  day=${this.dayNum}${newBed ? '  respawn bed set' : ''}`, 'player');
       player.spr.setTint(0x9977cc);
       player.spr.setAlpha(0.75);
 
@@ -2061,6 +2136,7 @@ class GameScene extends Phaser.Scene {
       } else {
         this.hint(player.charData.player + ' resting\u2026 (+' + this.hc.bedHealPerTick + ' HP/tick)  Sleep at night to skip to dawn.' + vulnWarn, 3800);
       }
+      if (newBed) this.hint('Respawn bed set: if ' + player.charData.player + ' goes down and is not revived, they wake here.', 4000);
     }
   }
 
@@ -2187,32 +2263,48 @@ class GameScene extends Phaser.Scene {
     if (this._activeHint && this._activeHint.active) return;
     if (!this._hintQueue || this._hintQueue.length === 0) return;
     const { text, duration, title } = this._hintQueue.shift();
-    const { W } = CFG;
-    const PW = 560, PH = title ? 88 : 46, PX = (W - PW) / 2, PY = 108;
+    const { W, H } = CFG;
+    const ph = PHONE_LAYOUT;
+    const P = ph ? null : this._layout1p(); // iPad, 1 player touch: 80% size, 75% solid (#388)
+    const k = P ? P.tipScale : 1, sol = P ? P.tipSolid : 1;
+    // Phone layout: a small banner clear of the player and of every control (the old one sat 108 px
+    // down, on top of the player). 1 player: bottom centre, between the stick and the buttons, growing
+    // upward. 2 players: top left, where nothing sits but the name; the bottom is all controls.
+    // The body is created first so its wrapped height can size the box.
+    const corner = ph && !this.solo;
+    // Widths: 1 player, the gap between the stick and the buttons (220 at W 640); 2 players, the room left of the day panel.
+    const PW = corner ? Math.min(250, W / 2 - 115) : ph ? Math.max(220, Math.min(360, W - 420)) : 560 * k;
+    const body = this.add.text(W / 2, 0, text, {
+      fontFamily:'monospace', fontSize:(ph ? 11 : 15 * k) + 'px', color:'#ccdfc8',
+      stroke:'#000', strokeThickness: ph ? 1 : 2,
+      wordWrap:{ width: PW - (ph ? 20 : 32 * k) }, align: ph ? 'center' : 'left',
+    });
+    const head = title ? this.add.text(W / 2, 0, title, {
+      fontFamily:'monospace', fontSize:(ph ? 12 : 18 * k) + 'px', color:'#aadd88',
+      stroke:'#000', strokeThickness: ph ? 2 : 3,
+    }) : null;
+    const PH = ph ? 8 + (head ? head.height + 2 : 0) + body.height + 8 : (title ? 88 : 46) * k;
+    const PX = corner ? 10 : (W - PW) / 2, PY = corner ? 40 : ph ? H - 10 - PH : 108, cx = PX + PW / 2;
+    this._hintRect = { x: PX, y: PY, w: PW, h: PH }; // read by the smoke run (phone tips stay clear of the player)
 
     const bg = this.add.graphics().setDepth(160).setAlpha(0);
-    bg.fillStyle(0x050d05, 0.88);
+    bg.fillStyle(0x050d05, P ? 1 : ph ? 0.8 : 0.88);
     bg.fillRoundedRect(PX, PY, PW, PH, 8);
     bg.lineStyle(2, 0x4a7a38, 0.80);
     bg.strokeRoundedRect(PX, PY, PW, PH, 8);
-    this.cameras.main.ignore(bg);
+    this._ignoreInWorldCams(bg);
 
-    const h = this.add.text(W / 2, title ? PY + 56 : PY + PH / 2, text, {
-      fontFamily:'monospace', fontSize:'15px', color:'#ccdfc8',
-      stroke:'#000', strokeThickness:2,
-      wordWrap:{ width: PW - 32 },
-    }).setOrigin(0.5).setDepth(161).setAlpha(0);
-    this.cameras.main.ignore(h);
+    const h = body.setOrigin(0.5, ph ? 1 : 0.5).setDepth(161).setAlpha(0).setX(cx);
+    if (ph) h.setY(PY + PH - 8);
+    else h.setY(title ? PY + 56 * k : PY + PH / 2);
+    this._ignoreInWorldCams(h);
     h._hintText = text;
     h._isTip = !!title;
     const parts = [bg, h];
-    if (title) {
-      const t = this.add.text(W / 2, PY + 16, title, {
-        fontFamily:'monospace', fontSize:'18px', color:'#aadd88',
-        stroke:'#000', strokeThickness:3,
-      }).setOrigin(0.5).setDepth(161).setAlpha(0);
-      this.cameras.main.ignore(t);
-      parts.push(t);
+    if (head) {
+      head.setOrigin(0.5, ph ? 0 : 0.5).setDepth(161).setAlpha(0).setX(cx).setY(ph ? PY + 8 : PY + 16 * k);
+      this._ignoreInWorldCams(head);
+      parts.push(head);
     }
     this._activeHint = h;
     this._activeHintBg = bg;
@@ -2230,7 +2322,7 @@ class GameScene extends Phaser.Scene {
       });
     };
     this._hintHide = hide;
-    this.tweens.add({ targets:parts, alpha:1, duration:280,
+    this.tweens.add({ targets:parts, alpha:sol, duration:280,
       onComplete:() => {
         this._hintTimer = this.time.delayedCall(duration, () => { this._hintTimer = null; hide(); });
       }
@@ -2247,11 +2339,13 @@ class GameScene extends Phaser.Scene {
       this.tweens.killTweensOf(this._statusTxt);
       this._statusTxt.setText(text).setAlpha(1);
     } else {
-      this._statusTxt = this.add.text(CFG.W / 2, 162, text, {
-        fontFamily:'monospace', fontSize:'15px', color:'#ffffff',
-        stroke:'#000', strokeThickness:3, backgroundColor:'#000000bb', padding:{x:14,y:7},
+      // Phone layout: just under the day panel, not on the player's head (y 162 of 360).
+      const ph = PHONE_LAYOUT;
+      this._statusTxt = this.add.text(CFG.W / 2, ph ? 84 : 162, text, {
+        fontFamily:'monospace', fontSize: ph ? '12px' : '15px', color:'#ffffff',
+        stroke:'#000', strokeThickness: ph ? 2 : 3, backgroundColor:'#000000bb', padding: ph ? {x:10,y:4} : {x:14,y:7},
       }).setOrigin(0.5).setDepth(158).setAlpha(1);
-      this.cameras.main.ignore(this._statusTxt);
+      this._ignoreInWorldCams(this._statusTxt);
     }
     this._statusTimer = this.time.delayedCall(duration || 1500, () => {
       this._statusTimer = null;
@@ -2294,25 +2388,27 @@ class GameScene extends Phaser.Scene {
     const B = Object.assign({}, DEFAULT_BINDINGS, loadSettings().bindings || {});
     const k = a => keyDisplayName(B[a]);
     const touch = !!this._touchActive;
+    // `phone` is the shorter text for the phone layout's small banner (touch controls only).
     const TIPS = {
-      move:     { title: 'MOVE',          text: touch
+      move:     { title: 'MOVE',          phone: touch && 'Drag the left side of the screen to move.', text: touch
         ? 'Drag the left side of the screen to move.  Explore each biome — grassland, wasteland, swamp, tundra, ruins.'
         : `P1: ${k('p1up')}${k('p1left')}${k('p1down')}${k('p1right')} · P2: ${k('p2up')}${k('p2left')}${k('p2down')}${k('p2right')}.  Explore each biome — grassland, wasteland, swamp, tundra, ruins.` },
-      attack:   { title: 'ATTACK',        text: touch
+      attack:   { title: 'ATTACK',        phone: touch && 'Tap ATK to attack the way you face.', text: touch
         ? 'Tap the ATK button to attack in the direction you are facing.'
         : `P1: ${k('p1attack')} to attack · P2: ${k('p2attack')}.  In 1-player mode: aim with the mouse and left-click to shoot.` },
-      gather:   { title: 'GATHER RESOURCES', text: touch
+      gather:   { title: 'GATHER RESOURCES', phone: touch && 'Hold USE by a tree to chop wood. Crates hold metal, fiber, ammo, food.', text: touch
         ? 'Hold the USE button near a tree to harvest wood.  Open crates for metal, fiber, ammo, and food.'
         : `Hold ${k('p1interact')} (P1) or ${k('p2interact')} (P2) near a tree to harvest wood.  Open crates for metal, fiber, ammo, and food.` },
-      craft:    { title: 'CRAFT & BUILD', text: touch
+      craft:    { title: 'CRAFT & BUILD', phone: touch && 'Tap BLD to open Crafting: walls, campfires, traps and more.', text: touch
         ? 'Tap the BLD button to open the Crafting Menu.  Build walls, campfires, spike traps, and more.'
         : `Press ${k('p1build')} (P1) or ${k('p2build')} (P2) to open the Crafting Menu.  Build walls, campfires, spike traps, and more.` },
-      nightfall:{ title: 'SURVIVE THE NIGHT', text: 'Enemies are stronger after dark.  Build a Bed (needs Craftbench) and sleep to fast-forward the night.' },
-      caches:   { title: 'SUPPLY CACHES', text: 'Each biome hides a Supply Cache — rare loot but guarded by enemies.  Find them before the boss arrives!' },
-      minimap:  { title: 'MINIMAP',       text: 'Top-right minimap shows biome edges, enemies (red dots), and points of interest.  Stay aware!' },
+      nightfall:{ title: 'SURVIVE THE NIGHT', phone: 'Enemies are stronger after dark. Build a Bed and sleep to skip the night.', text: 'Enemies are stronger after dark.  Build a Bed (needs Craftbench) and sleep to fast-forward the night.' },
+      caches:   { title: 'SUPPLY CACHES', phone: 'Each biome hides a guarded Supply Cache with rare loot.', text: 'Each biome hides a Supply Cache — rare loot but guarded by enemies.  Find them before the boss arrives!' },
+      sheltered:{ title: 'SHELTERED', phone: 'Walls all round, a campfire, bench or bed inside: you heal and nothing spawns here.', text: 'Walls all round with a campfire, craftbench or bed inside: you heal faster, night does not make enemies stronger against you, and nothing spawns inside.' },
+      minimap:  { title: 'MINIMAP',       phone: 'The radar shows biome edges and enemies (red dots). Stay aware!', text: 'Top-right minimap shows biome edges, enemies (red dots), and points of interest.  Stay aware!' },
     };
     const step = TIPS[key];
-    if (step) this.hint(step.text, CFG.TUT_AUTO_ADVANCE_MS, { title: step.title });
+    if (step) this.hint(PHONE_LAYOUT && step.phone || step.text, CFG.TUT_AUTO_ADVANCE_MS, { title: step.title });
   }
 
   _endTutorial() {
@@ -2410,7 +2506,7 @@ class GameScene extends Phaser.Scene {
     }
 
     // Movement — skip if downed, sleeping, or owns the open craft menu
-    const p1CraftHalt = this.craftMenuOpen && this.craftMenuOwner === this.p1;
+    const p1CraftHalt = !!this._craftOf(this.p1);
     if (!this.p1.isDowned && !this.p1.isSleeping && !p1CraftHalt) {
       if (this._touchActive) {
         this.applyTouchInput();  // touch: joystick drives movement + facing
@@ -2422,8 +2518,12 @@ class GameScene extends Phaser.Scene {
     else this.p1.spr.setVelocity(0,0);
 
     if (this.p2 && this.p2.spr) {
-      const p2CraftHalt = this.craftMenuOpen && this.craftMenuOwner === this.p2;
-      if (!this.p2.isDowned && !this.p2.isSleeping && !p2CraftHalt && this.p2keys) this.movePlayer(this.p2, this.p2keys.left, this.p2keys.right, this.p2keys.up, this.p2keys.down);
+      const p2CraftHalt = !!this._craftOf(this.p2);
+      const p2pad = this._touchActive && this._pads[1];
+      if (!this.p2.isDowned && !this.p2.isSleeping && !p2CraftHalt) {
+        if (p2pad) this.applyTouchInput(this.p2, p2pad.joy);
+        else if (this.p2keys) this.movePlayer(this.p2, this.p2keys.left, this.p2keys.right, this.p2keys.up, this.p2keys.down);
+      }
       else if (this.p2.spr.body) this.p2.spr.setVelocity(0,0);
     }
 
@@ -2437,6 +2537,7 @@ class GameScene extends Phaser.Scene {
 
     // Tundra slowdown effect
     { const _t = performance.now(); this.applyTerrainEffects(this.p1, delta); if (this.p2) this.applyTerrainEffects(this.p2, delta); this._perfBudget.terrain += performance.now() - _t; }
+    this.tracks?.update(this.time.now);
 
     // Ambient grass sway — pivot from origin (0.5,1) so blades rotate at their base.
     // 3 phase groups cycle out-of-sync for a natural, non-mechanical look.
@@ -2537,6 +2638,7 @@ class GameScene extends Phaser.Scene {
     const _safe = (name, fn) => { _stageLog(name); try { fn(); } catch (e) { this._log(`${name} ERR: ${e && e.message || e}`, 'error'); } };
     _safe('updateBuildMode',  () => this.updateBuildMode());
     _safe('updateCraftMenu',  () => this.updateCraftMenu(delta));
+    _safe('updateBarrackStick', () => this.updateBarrackStick(delta));
     _safe('updateHarvest',    () => this.updateHarvest(delta));
     _safe('updateSpikeTraps', () => this.updateSpikeTraps());
     { const _t0 = performance.now(); _safe('updateFog',        () => this.updateFog());               this._perfBudget.fog     += performance.now() - _t0; }
@@ -2545,227 +2647,8 @@ class GameScene extends Phaser.Scene {
     { const _t0 = performance.now(); if (this._hudDirty) { _safe('redrawHUD', () => { this.redrawHUD(); this._hudDirty = false; }); } this._perfBudget.hud += performance.now() - _t0; }
     { const _t0 = performance.now(); _safe('threatIndicators', () => this._drawThreatIndicators());   this._perfBudget.threats += performance.now() - _t0; }
     _safe('_updateScoutPanel', () => this._updateScoutPanel());
+    _safe('_updateShelter', () => this._updateShelter());
     if (this._touchActive) _safe('_drawTouchHUD', () => this._drawTouchHUD());
-  }
-
-  // ── TOUCH CONTROLS ────────────────────────────────────────────
-  initTouchControls() {
-    const { W, H } = CFG;
-    this._touchActive = true;
-
-    // Support up to 4 simultaneous touches
-    this.input.addPointer(4);
-
-    // Joystick state — dynamic base: appears where finger lands
-    this._joy = {
-      active: false, pointerId: -1,
-      baseX: 0, baseY: 0,
-      knobX: 0, knobY: 0,
-      radius: 72,
-      vec: { x: 0, y: 0 },
-    };
-
-    // Buttons (HUD-space coordinates, radius for hit detection)
-    // Layout: ATK bottom-right, ALT above ATK, USE left of ATK, BLD left of ALT, MENU top-right
-    this._tcBtns = {
-      attack:   { hx: W - 100, hy: H - 100, r: 52, down: false, pid: -1, col: 0xff6644, label: '\u2694 ATK' },
-      alt:      { hx: W - 185, hy: H - 195, r: 44, down: false, pid: -1, col: 0x6699ff, label: '\u2605 ALT' },
-      interact: { hx: W - 195, hy: H - 95,  r: 40, down: false, pid: -1, col: 0x44cc66, label: 'E USE' },
-      build:    { hx: W - 282, hy: H - 195, r: 40, down: false, pid: -1, col: 0xccaa33, label: '\u25a0 BLD' },
-      menu:     { hx: W - 32,  hy: 32,      r: 28, down: false, pid: -1, col: 0x888888, label: '\u2630' },
-    };
-
-    // Graphics layer on HUD (single object, redrawn each frame)
-    this._tcGfx = this.add.graphics().setDepth(150);
-    this._h(this._tcGfx);
-
-    // Text labels for buttons (created once, positioned at button centers)
-    this._tcLabels = {};
-    for (const [name, btn] of Object.entries(this._tcBtns)) {
-      const t = this.add.text(btn.hx, btn.hy, btn.label, {
-        fontFamily: 'monospace', fontSize: name === 'attack' ? '11px' : '9px',
-        color: '#ffffff', stroke: '#000', strokeThickness: 2,
-      }).setOrigin(0.5).setDepth(151);
-      this._h(t);
-      this._tcLabels[name] = t;
-    }
-
-    // Remove before re-adding to prevent listener accumulation on scene restart
-    this.input.off('pointerdown',       this._onTouchDown, this);
-    this.input.off('pointermove',       this._onTouchMove, this);
-    this.input.off('pointerup',         this._onTouchUp,   this);
-    this.input.off('pointerupoutside',  this._onTouchUp,   this);
-    this.input.on('pointerdown',        this._onTouchDown, this);
-    this.input.on('pointermove',        this._onTouchMove, this);
-    this.input.on('pointerup',          this._onTouchUp,   this);
-    this.input.on('pointerupoutside',   this._onTouchUp,   this);
-  }
-
-  _onTouchDown(pointer) {
-    if (!this._touchActive) return;
-    const { W, H } = CFG;
-    const px = pointer.x, py = pointer.y;
-
-    // Skip joystick/button activation when tapping inside the craft menu panel
-    if (this.craftMenuOpen) {
-      const PW = 440, PH = 330, PX = (W - PW) / 2, PY = H - PH - 20;
-      if (px >= PX && px <= PX + PW && py >= PY && py <= PY + PH) return;
-    }
-
-    // Left 45% of screen and bottom 55% → joystick
-    if (px < W * 0.45 && py > H * 0.35 && !this._joy.active) {
-      this._joy.active = true;
-      this._joy.pointerId = pointer.id;
-      this._joy.baseX = px;
-      this._joy.baseY = py;
-      this._joy.knobX = px;
-      this._joy.knobY = py;
-      this._joy.vec = { x: 0, y: 0 };
-      return;
-    }
-
-    // Check action buttons
-    for (const [name, btn] of Object.entries(this._tcBtns)) {
-      if (btn.down) continue;
-      const dx = px - btn.hx, dy = py - btn.hy;
-      if (dx*dx + dy*dy <= btn.r * btn.r) {
-        btn.down = true;
-        btn.pid = pointer.id;
-        this._onBtnPress(name);
-        return;
-      }
-    }
-  }
-
-  _onTouchMove(pointer) {
-    if (!this._touchActive || !this._joy.active) return;
-    if (pointer.id !== this._joy.pointerId) return;
-    const dx = pointer.x - this._joy.baseX;
-    const dy = pointer.y - this._joy.baseY;
-    const dist = Math.sqrt(dx*dx + dy*dy);
-    const r = this._joy.radius;
-    if (dist > r) {
-      this._joy.knobX = this._joy.baseX + (dx/dist)*r;
-      this._joy.knobY = this._joy.baseY + (dy/dist)*r;
-    } else {
-      this._joy.knobX = pointer.x;
-      this._joy.knobY = pointer.y;
-    }
-    const clamped = Math.min(dist, r);
-    this._joy.vec.x = (dx/Math.max(dist,1)) * (clamped/r);
-    this._joy.vec.y = (dy/Math.max(dist,1)) * (clamped/r);
-  }
-
-  _onTouchUp(pointer) {
-    if (!this._touchActive) return;
-    if (this._joy.active && pointer.id === this._joy.pointerId) {
-      this._joy.active = false;
-      this._joy.pointerId = -1;
-      this._joy.vec = { x: 0, y: 0 };
-      if (this.p1) this.p1.spr.setVelocity(0, 0);
-    }
-    for (const btn of Object.values(this._tcBtns)) {
-      if (btn.pid === pointer.id) { btn.down = false; btn.pid = -1; }
-    }
-  }
-
-  _onBtnPress(name) {
-    if (this.isOver || !this.p1) return;
-    if (name === 'attack') {
-      if (this.barrackOpen || this.p1.isDowned || this.p1.isSleeping) return;
-      if (this.craftMenuOpen && this.craftMenuOwner === this.p1) { this.craftSelected(); return; }
-      if (this.buildMode && this.buildOwner === this.p1) this.placeBuild();
-      else this.doAttack(this.p1);
-    } else if (name === 'alt') {
-      if (!this.p1.isDowned && !this.p1.isSleeping) this.doAlt(this.p1);
-    } else if (name === 'interact') {
-      if (!this.barrackOpen) this.tryInteract(this.p1);
-    } else if (name === 'build') {
-      if (!this.p1.isDowned && !this.p1.isSleeping) this.openCraftMenu(this.p1);
-    } else if (name === 'menu') {
-      this.toggleControls();
-    }
-  }
-
-  applyTouchInput() {
-    const p = this.p1;
-    if (!p || p.isDowned || p.isSleeping) return;
-    const jv = this._joy.vec;
-    const spd = p.charData.speed * (p._speedMult !== undefined ? p._speedMult : 1);
-    const vx = jv.x * spd, vy = jv.y * spd;
-    p.spr.setVelocity(vx, vy);
-
-    const moving = Math.abs(vx) > 8 || Math.abs(vy) > 8;
-    const isDiag = Math.abs(vx) > 8 && Math.abs(vy) > 8;
-    const id = p.charData.id;
-    if (moving) {
-      // 8-directional facing from joystick vector
-      if (isDiag) {
-        p.dir = vy > 0 ? 'fside' : 'bside';
-      } else if (Math.abs(vy) > Math.abs(vx)) {
-        p.dir = vy > 0 ? 'front' : 'back';
-      } else {
-        p.dir = 'side';
-      }
-      p.walkTimer = (p.walkTimer + 1) % 40;
-      const step = _walkStep(p.walkTimer);
-      const dirSuffix = p.dir === 'side' ? '' : ('_' + p.dir);
-      p.spr.setTexture('player_atlas', id + dirSuffix + step);
-      if (p.dir === 'side' || p.dir === 'fside' || p.dir === 'bside') {
-        p.spr.setFlipX(vx < 0);
-      } else {
-        p.spr.setFlipX(false);
-      }
-      p.aimAngle = Math.atan2(vy, vx);
-    } else {
-      p.walkTimer = 0;
-      const dirSuffix = p.dir === 'side' ? '' : ('_' + p.dir);
-      p.spr.setTexture('player_atlas', id + dirSuffix);
-    }
-  }
-
-  _drawTouchHUD() {
-    const gfx = this._tcGfx;
-    if (!gfx || !gfx.active) return;
-    // Build a fast state hash — if nothing visibly changed since last frame, skip
-    // clear/fill entirely. Knob position is rounded so sub-pixel moves don't spam.
-    const joy = this._joy;
-    let hash = joy.active ? ('J' + (joy.knobX|0) + ',' + (joy.knobY|0)) : 'J-';
-    for (const [name, btn] of Object.entries(this._tcBtns)) {
-      hash += '|' + name + (btn.down ? '1' : '0');
-    }
-    if (this._tcHudHash === hash) return;
-    this._tcHudHash = hash;
-    gfx.clear();
-
-    if (joy.active) {
-      // Base ring
-      gfx.lineStyle(2, 0xffffff, 0.35);
-      gfx.strokeCircle(joy.baseX, joy.baseY, joy.radius);
-      gfx.fillStyle(0xffffff, 0.07);
-      gfx.fillCircle(joy.baseX, joy.baseY, joy.radius);
-      // Knob
-      gfx.fillStyle(0xffffff, 0.55);
-      gfx.fillCircle(joy.knobX, joy.knobY, 30);
-      gfx.lineStyle(2, 0xffffff, 0.7);
-      gfx.strokeCircle(joy.knobX, joy.knobY, 30);
-    } else {
-      // Hint ring — very faint, shows where joystick zone is
-      const { W, H } = CFG;
-      gfx.lineStyle(1, 0xffffff, 0.1);
-      gfx.strokeCircle(W * 0.12, H * 0.82, 55);
-      gfx.fillStyle(0xffffff, 0.03);
-      gfx.fillCircle(W * 0.12, H * 0.82, 55);
-    }
-
-    // Action buttons
-    for (const [name, btn] of Object.entries(this._tcBtns)) {
-      const alpha = btn.down ? 0.75 : 0.4;
-      gfx.fillStyle(btn.col, alpha * 0.38);
-      gfx.fillCircle(btn.hx, btn.hy, btn.r);
-      gfx.lineStyle(2, btn.col, alpha);
-      gfx.strokeCircle(btn.hx, btn.hy, btn.r);
-    }
   }
 
   // Terrain effects for any actor. kind: 'player' (all four effects), 'raider' (all four) or
@@ -3038,7 +2921,7 @@ class GameScene extends Phaser.Scene {
       const stats = RAIDER_STATS[rtype];
 
       const raider = {
-        spr, type: rtype, isRaider: true,
+        spr, type: rtype, isRaider: true, isCampRaider: true, // only these hold the camp's lock
         hp: Math.floor(stats.hp * diffScale), maxHp: Math.floor(stats.hp * diffScale),
         speed: stats.speed * Math.min(1.6, diffScale),
         dmg: Math.floor(stats.dmg * diffScale),
@@ -3050,6 +2933,7 @@ class GameScene extends Phaser.Scene {
       this.raiders.push(raider);
       this.enemies.push(raider); // raiders participate in the normal enemy array so updateEnemies handles them
     }
+    this._refreshCampLock();
   }
 
   // Periodic hunting party — spawns at a random map edge and actively seeks the
@@ -3274,6 +3158,7 @@ class GameScene extends Phaser.Scene {
         const sc = t.baseScale * sizeMult;
         const ex = den.x + Phaser.Math.Between(-60, 60);
         const ey = den.y + Phaser.Math.Between(-60, 60);
+        if (this._inShelter(ex, ey)) return;
         const spr = this.physics.add.image(ex, ey, type).setScale(sc).setDepth(8);
         spr.setCollideWorldBounds(true);
         spr.body.setSize(t.w, t.h);
@@ -3458,8 +3343,33 @@ class GameScene extends Phaser.Scene {
     if (this.p2) sync(this.p2);
   }
 
+  // World cameras: just the main one, or P1's and P2's in the face-to-face split (#387).
+  _worldCams() { return this.cam2 ? [this.cameras.main, this.cam2] : [this.cameras.main]; }
+  _ignoreInWorldCams(o) { for (const c of this._worldCams()) c.ignore(o); }
+  _camFx(fn, args) { for (const c of this._worldCams()) c[fn](...args); }
+
+  // Face-to-face split: the iPad lies flat with a player at each short end. P1 is the left half,
+  // P2 the right half, a strip between for the shared items (slice 2). Each half is turned a quarter
+  // turn so its world reads upright from its player's end: P1's view clockwise, P2's anticlockwise.
+  _initSplitCams() {
+    const { W, H } = CFG, halfW = (W - CFG.SPLIT_STRIP) / 2;
+    const p1 = this.cameras.main.setViewport(0, 0, halfW, H).setZoom(CFG.SPLIT_ZOOM).setRotation(Math.PI / 2);
+    p1.startFollow(this.p1.spr, true, 0.1, 0.1);
+    this.cam2 = this.cameras.add(W - halfW, 0, halfW, H).setName('p2').setZoom(CFG.SPLIT_ZOOM).setRotation(-Math.PI / 2);
+    this.cam2.startFollow(this.p2.spr, true, 0.1, 0.1);
+  }
+
+  // The world rectangle a camera shows. Phaser's worldView ignores rotation, so in the split
+  // (quarter-turned cameras) its width and height are swapped.
+  _worldRect(c) {
+    const v = c.worldView;
+    if (!this._split) return v;
+    const x = v.centerX - v.height / 2, y = v.centerY - v.width / 2;
+    return { x, y, width: v.height, height: v.width, right: x + v.height, bottom: y + v.width };
+  }
+
   updateCamera() {
-    if (this.solo) return;
+    if (this.solo || this._split) return;
     const cam = this.cameras.main;
     const a = this.p1.spr, b = this.p2.spr;
     const midX=(a.x+b.x)/2, midY=(a.y+b.y)/2;
@@ -3531,7 +3441,7 @@ class GameScene extends Phaser.Scene {
       pfx.strokeCircle(0, 0, 34);
       this.tweens.add({ targets: pfx, alpha: 0, scaleX: 1.4, scaleY: 1.4, duration: 400, onComplete: () => pfx.destroy() });
       const px = player.spr.x, py = player.spr.y;
-      this.enemies.forEach(e => {
+      this._forEachEnemy(e => {
         if (e.dying) return;
         const d = Phaser.Math.Distance.Between(px, py, e.spr.x, e.spr.y);
         if (d < PIRO_R) {
@@ -3584,7 +3494,7 @@ class GameScene extends Phaser.Scene {
           if (player._rangerUpgraded) {
             // Explosive arrow: splash damage to nearby enemies
             const ax = arrow.x, ay = arrow.y;
-            this.enemies.forEach(ne => {
+            this._forEachEnemy(ne => {
               if (ne === e || ne.dying) return;
               if (Phaser.Math.Distance.Between(ax, ay, ne.spr.x, ne.spr.y) < 60) {
                 this._hurtEnemy(ne, 20, ax, ay, 0xff8833, player);
@@ -3867,7 +3777,7 @@ class GameScene extends Phaser.Scene {
     fx.arc(cx, cy, range+6, startA+0.2, endA-0.2);
     fx.strokePath();
     if (this.enemies) {
-      this.enemies.forEach(e => {
+      this._forEachEnemy(e => {
         if (e.dying) return;
         const d = e.isBoss ? this._bossDist(e, player.spr.x, player.spr.y)
                            : Phaser.Math.Distance.Between(player.spr.x, player.spr.y, e.spr.x, e.spr.y);
@@ -4431,7 +4341,7 @@ class GameScene extends Phaser.Scene {
       onComplete: () => { if (cache.spr.active) cache.spr.destroy(); if (cache.lbl.active) cache.lbl.destroy(); }
     });
     SFX._play(440, 'triangle', 0.15, 0.35);
-    this.cameras.main.shake(160, 0.006);
+    this._camFx('shake', [160, 0.006]);
     this.dropResource(cache.x, cache.y, 'raid_cache');
     this.hint('Raider cache opened! Supplies recovered.', 3000);
   }
@@ -4568,11 +4478,7 @@ class GameScene extends Phaser.Scene {
     const players = [this.p1, this.p2].filter(p => p && !p.isDowned && !p.isSleeping && p.hp > 0);
 
     for (const player of players) {
-      // On mobile the keyboard key is never held; use the touch USE button's tracked down state instead
-      const touchHeld = this._touchActive && this._tcBtns && this._tcBtns.interact.down;
-      const keyHeld = player === this.p1
-        ? (this.hotkeys.p1use.isDown || touchHeld)
-        : (this.hotkeys.p2use ? this.hotkeys.p2use.isDown : false);
+      const keyHeld = this._useHeld(player);
 
       // Find nearest tree within range. Throttled: full scan at most every
       // 200ms per player, otherwise re-validate the cached tree. This avoids
@@ -4696,7 +4602,12 @@ class GameScene extends Phaser.Scene {
   // ── Wall spatial hash ────────────────────────────────────────
   // Bucket walls by tile coord so LOS/steering/placement probes check only
   // the 3×3 tiles around a sample, not the entire builtWalls array.
-  _wallBucketKey(tx, ty) { return tx + ',' + ty; }
+  // Off-map coords wrap to another tile's key; callers' distance checks reject those walls.
+  _wallBucketKey(tx, ty) { return tx + ty * CFG.MAP_W; }
+  // Tile flag maps (_solidTileSet, _impassableTileSet, _wallTileSet): Uint8Array(MAP_W*MAP_H).
+  // Off-map tiles read as clear and ignore writes.
+  _tileAt(a, tx, ty) { return tx >= 0 && tx < CFG.MAP_W && ty >= 0 && ty < CFG.MAP_H && a[tx + ty * CFG.MAP_W] === 1; }
+  _markTile(a, tx, ty, v) { if (tx >= 0 && tx < CFG.MAP_W && ty >= 0 && ty < CFG.MAP_H) a[tx + ty * CFG.MAP_W] = v; }
   _addWallToBuckets(w) {
     const T = CFG.TILE;
     const tx = Math.floor(w.x / T), ty = Math.floor(w.y / T);
@@ -4707,7 +4618,7 @@ class GameScene extends Phaser.Scene {
     w._bucketKey = k;
   }
   _removeWallFromBuckets(w) {
-    if (!w._bucketKey) return;
+    if (w._bucketKey == null) return;
     const arr = this._wallBuckets.get(w._bucketKey);
     if (!arr) return;
     const i = arr.indexOf(w);
@@ -4771,6 +4682,7 @@ class GameScene extends Phaser.Scene {
       const wx = wall.x, wy = wall.y;
       this._removeWallFromBuckets(wall);
       this.builtWalls = this.builtWalls.filter(w => w !== wall);
+      this._shelterDirty = true;
       this._refreshWallClustersNear(wx, wy);
       this._unpaintMinimapTile(wx, wy);
       if (wall._hpBg && wall._hpBg.active) wall._hpBg.destroy();
@@ -5017,28 +4929,6 @@ class GameScene extends Phaser.Scene {
       this.physics.add.overlap(this.p1.spr, crate, () => { if(crate.active) pickupCrate(this.p1); });
       if (this.p2) this.physics.add.overlap(this.p2.spr, crate, () => { if(crate.active) pickupCrate(this.p2); });
     });
-  }
-
-  // ── CRAFT MENU ─────────────────────────────────────────────────
-  static get RECIPES() {
-    return [
-      { label: 'Wall',               key: 'wall',              cost: {wood:3},                  needsBench: false, type: 'build',   tooltip: 'Blocks enemies and absorbs damage before collapsing.' },
-      { label: 'Gate',               key: 'gate',              cost: {wood:4, metal:2},         needsBench: false, type: 'build',   tooltip: 'Players pass through freely; blocks all enemies. Toggle with interact.' },
-      { label: 'Campfire',           key: 'campfire',          cost: {wood:5},                  needsBench: false, type: 'build',   tooltip: 'Slowly restores HP for nearby players. Provides light at night.' },
-      { label: 'Torch',              key: 'torch',             cost: {wood:2, fiber:1},         needsBench: false, type: 'build',   tooltip: 'Lights a small area at night. Cheap — place liberally around your base.' },
-      { label: 'Spike Trap',         key: 'spike_trap',        cost: {wood:2, metal:1},         needsBench: false, type: 'build',   tooltip: 'Damages any enemy that steps on it. Stays active indefinitely.' },
-      { label: 'Craftbench',         key: 'craftbench',        cost: {wood:5, metal:3},         needsBench: false, type: 'build',   tooltip: 'Required to unlock advanced recipes, upgrades, and the Bed.' },
-      { label: 'Bed',                key: 'bed',               cost: {wood:8, fiber:6, metal:2},needsBench: true,  type: 'build',   tooltip: 'Sleep in it to heal over time. When everyone sleeps, the night skips ahead.' },
-      { label: 'Reinforced Wall',    key: 'reinforced_wall',   cost: {wood:4, metal:3},         needsBench: true,  type: 'build',   tooltip: 'Twice as durable as a standard wall. Holds the line against heavy raids.' },
-      { label: 'Med Kit (+40 HP)',   key: 'med_kit',           cost: {fiber:3, food:2},         needsBench: true,  type: 'instant', tooltip: 'Instantly restores 40 HP to the crafter. Use when critically wounded.' },
-      { label: 'Ammo Pack (+8)',     key: 'ammo_pack',         cost: {metal:2},                 needsBench: false, type: 'instant', charId: 'gunslinger', tooltip: 'Gunslinger only: adds 8 rounds to the Gunslinger\'s reserve immediately.' },
-      { label: 'Knight Upgrade',     key: 'knight_upgrade',    cost: {metal:3, fiber:2},        needsBench: true,  type: 'upgrade', charId: 'knight',     tooltip: 'Knight: unlocks Shield Throw ability + passive 70% damage block.' },
-      { label: 'Architect Upgrade',  key: 'architect_upgrade', cost: {metal:3, wood:2},         needsBench: true,  type: 'upgrade', charId: 'architect',  tooltip: 'Architect: unlocks Nail Gun secondary attack.' },
-      { label: 'Gunslinger Upgrade', key: 'gunslinger_upgrade',cost: {metal:2, fiber:1},        needsBench: true,  type: 'upgrade', charId: 'gunslinger', tooltip: 'Gunslinger: increases clip size by 4 rounds (8 → 12).' },
-      { label: 'Flower Bouquet (+8)',key: 'flower_bouquet',    cost: {wood:1, fiber:1},         needsBench: false, type: 'instant', charId: 'charmer',    tooltip: 'Lauren only: gives her 8 flower tosses immediately.' },
-      { label: 'Lauren Upgrade',     key: 'charmer_upgrade',   cost: {metal:2, fiber:2},        needsBench: true,  type: 'upgrade', charId: 'charmer',    tooltip: 'Lauren: daytime charm aura 200→280px; night aura 0→140px.' },
-      { label: 'Abigail Upgrade',    key: 'ranger_upgrade',    cost: {metal:3, wood:2},         needsBench: true,  type: 'upgrade', charId: 'ranger',     tooltip: 'Abigail: unlocks Ranger passive buff and special ability.' },
-    ];
   }
 }
 

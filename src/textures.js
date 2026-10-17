@@ -2,7 +2,7 @@
 // ── src/textures.js — Procedural texture generation (no image files) ─────────
 // Globals exported: drawWolf, drawRat, drawBear, drawIceCrawler,
 //                   drawSpiderRuins, drawBogLurker, drawDustHound, drawWaterLurker,
-//                   drawRiverFrame, drawEdgeVariants, buildTextures, buildAtlases, makeScaleProxy
+//                   drawRiverFrame, drawEdgeVariants, buildBootPrints, buildTextures, buildAtlases, makeScaleProxy
 // All draw* fns take (g: Phaser.GameObjects.Graphics).
 // buildTextures(scene) is called from BootScene.preload().
 // buildAtlases(scene) is called internally by buildTextures after all frames generated.
@@ -49,10 +49,11 @@ function drawRiverFrame(ctx, off) {
 // diagonally (16=NE, 32=SE, 64=SW, 128=NW; a corner counts only when both its sides are clear,
 // which leaves 47 masks). The neighbour `fill` reaches R px in along each such side and in a
 // radius-R quarter circle round each lone corner, so tiles join and convex corners come out round;
-// a light line of `fill` and a band of `rim` follow it. Shorelines use it (water, mud); biome edges next.
+// a line of `fill` (lightened by `line`, 0 for none) and a band of `rim` follow it. Shorelines use it
+// (water, mud), and biome edges use only its alpha, recoloured with the neighbour's ground.
 const EDGE_MASKS = [...Array(256).keys()].filter(m =>
   [[16, 1, 2], [32, 4, 2], [64, 4, 8], [128, 1, 8]].every(([c, a, b]) => !(m & c) || !(m & (a | b))));
-function drawEdgeVariants(fill, rim) {
+function drawEdgeVariants(fill, rim, line = 0.45) {
   const R = 6, N = EDGE_MASKS.length, cv = document.createElement('canvas');
   cv.width = N * 32; cv.height = 32;
   const c2 = cv.getContext('2d'), img = c2.createImageData(N * 32, 32), px = img.data;
@@ -71,7 +72,7 @@ function drawEdgeVariants(fill, rim) {
     for (const [bit, ax, ay] of corners) if (m & bit) d = Math.min(d, Math.hypot(cx - ax, cy - ay));
     const i = (y * N * 32 + v * 32 + x) * 4;
     if (d < R) put(i, fill, 0.92);
-    else if (d < R + 1.5) put(i, fill, 0.7, 0.45); // light line at the edge
+    else if (d < R + 1.5) put(i, fill, 0.7, line); // light line at the edge
     else if (d < R + 5) put(i, rim, 0.45);
   } });
   c2.putImageData(img, 0, 0);
@@ -454,6 +455,50 @@ function makeScaleProxy(g, s) {
   };
 }
 
+// Boot prints for tracks (src/tracks.js): one right-foot print each, toe up; the left foot is
+// the same texture flipped. 'print_player' is a slim boot with bar lugs (l); 'print_raider' is a
+// wider, heavier boot with a cleated chevron tread. They differ by shape, not colour, so both
+// read on every ground. Gaps and faint pixels in a sole are the tread; the sprite's alpha sets the strength.
+function buildBootPrints(scene) {
+  const pal = { d: '#1a120b', l: 'rgba(26,18,11,0.4)' };
+  const prints = {
+    print_player: [
+      '.ddd..',
+      'ddddd.',
+      'dddddd',
+      'dlllld',
+      'dddddd',
+      'dlllld',
+      '.dddd.',
+      '..ddd.',
+      '......',
+      '.dddd.',
+      '.dlld.',
+      '.dddd.',
+    ],
+    print_raider: [
+      '.dddddd.',
+      'dddddddd',
+      'ddd..ddd',
+      'dd.dd.dd',
+      'd.dddd.d',
+      'ddd..ddd',
+      'dd.dd.dd',
+      'd.dddd.d',
+      'dddddddd',
+      '........',
+      '.dddddd.',
+      'ddd..ddd',
+      'dd.dd.dd',
+      '.dddddd.',
+    ],
+  };
+  for (const [key, rows] of Object.entries(prints)) {
+    if (scene.textures.exists(key)) continue;
+    scene.textures.addCanvas(key, paintGrid([{ at: [0, 0], rows }], pal, rows[0].length, rows.length));
+  }
+}
+
 // ── TEXTURE GENERATION ────────────────────────────────────────
 // Ground texture per biome; the index in this list is the tile index in 'ground_tileset'.
 const GROUND_KEYS = ['grass', 'ground_waste', 'ground_swamp', 'ground_tundra', 'ground_ruins', 'ground_fungal', 'ground_desert'];
@@ -549,6 +594,8 @@ function buildTextures(scene) {
   buildPixelActors(scene);
   // Trees, rocks, bushes and built walls: painted pixel by pixel in src/sprites.js
   buildScenery(scene);
+  // Boot prints for tracks (src/tracks.js)
+  buildBootPrints(scene);
 
   // Bullet
   g.clear();
@@ -813,6 +860,19 @@ function buildTextures(scene) {
     });
   });
   tileset.refresh();
+  // Biome edges: an overlay tileset of its own (rows on the ground tileset would make it 15k px tall,
+  // past what an iPhone's WebGL takes). Column = the neighbouring biome, row = the mask's index in
+  // EDGE_MASKS: that biome's own ground fading in from the sides that touch it. Row 0 stays unused.
+  const edgeSet = scene.textures.createCanvas('biome_edge_tileset', N * 32, EDGE_MASKS.length * 32);
+  GROUND_KEYS.forEach((key, b) => {
+    const edges = drawEdgeVariants(0, 0, 0), e2 = edges.getContext('2d');
+    // Keep the fade, take the colours from the ground. One fill: source-in clears whatever a draw misses.
+    e2.globalCompositeOperation = 'source-in';
+    e2.fillStyle = e2.createPattern(scene.textures.get(key).getSourceImage(), 'repeat');
+    e2.fillRect(0, 0, edges.width, 32);
+    for (let v = 1; v < EDGE_MASKS.length; v++) edgeSet.context.drawImage(edges, v * 32, 0, 32, 32, b * 32, v * 32, 32, 32);
+  });
+  edgeSet.refresh();
 
   // Broken stone pillar — for ruins biome
   g.clear();
@@ -1250,8 +1310,9 @@ function buildTextures(scene) {
 
   // Boss sprites — one per biome boss type, drawn at 112×120-ish (twice the
   // old 56×60) so their pixels match the player sprites. BOSS_SCALE in
-  // game-scene.js is 1.5 (was 3), so the in-game footprint is unchanged.
-  // No silhouette outline here: shading ramps carry the form.
+  // spawnBoss is 1.5 (was 3), so the in-game footprint is unchanged.
+  // No silhouette outline here: shading ramps carry the form. Each boss's hitbox in
+  // spawnBoss is fitted to its drawing: refit it when a boss is redrawn.
 
   // Iron Golem (wasteland) — hulking, cracked, battle-damaged colossus
   g.clear();

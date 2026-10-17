@@ -38,6 +38,8 @@
       align-items: center;
       justify-content: center;
       background: #0a0a0a;
+      /* Keep the picture inside the notch and rounded corners of a phone (#385). */
+      padding: env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left);
     }
 
     canvas {
@@ -60,12 +62,19 @@
   <script src="src/sprites.js"></script>
   <script src="src/textures.js"></script>
   <script src="src/scenes.js"></script>
+  <script src="src/settings-phone.js"></script>
+  <script src="src/char-select.js"></script>
   <script src="src/game-scene.js"></script>
+  <script src="src/touch.js"></script>
+  <script src="src/shelter.js"></script>
+  <script src="src/bed-respawn.js"></script>
   <script src="src/structures.js"></script>
+  <script src="src/recipes.js"></script>
   <script src="src/world-gen.js"></script>
   <script src="src/waves-bosses.js"></script>
   <script src="src/building-crafting.js"></script>
   <script src="src/enemy-ai.js"></script>
+  <script src="src/tracks.js"></script>
   <script src="src/game-over.js"></script>
   <script src="game.js"></script>
 </body>

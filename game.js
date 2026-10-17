@@ -40,15 +40,31 @@
 //                          drawSpiderRuins, drawBogLurker, drawDustHound, drawWaterLurker
 //                          buildTextures, buildAtlases, drawEdgeVariants,
 //                          drawMountains, polishActors, polishActor,
-//                          makeScaleProxy, getControls (the controls help text)
+//                          makeScaleProxy, getControls (the controls help text),
+//                          buildBootPrints (print_player, print_raider for tracks)
 //
 //   src/scenes.js        — All non-gameplay scenes + input helpers
 //                          DEFAULT_BINDINGS, keyDisplayName,
 //                          ControlsScene, BootScene, ModeSelectScene,
-//                          SettingsScene, CharSelectScene
+//                          SettingsScene
+//
+//   src/settings-phone.js — SettingsScene in the phone layout (PHONE_LAYOUT, canvas 360 high):
+//                          _createPhone, _phoneControlsList. The menus' other phone coordinates
+//                          sit beside the desktop ones in their scenes (the L tables).
+//
+//   src/char-select.js   — CharSelectScene: the character carousel (selected character large in
+//                          the centre, the others dimmed on an arc; keys, drag, scroll or tap turn it)
+//                          _buildWheel, _layoutWheel, _spinTo, _settle, nav, confirm, refresh, _turn
 //
 //   src/game-scene.js    — GameScene: gameplay systems 3, 5-7, 9-16 and 19-23 (see list below)
-//                          Also: GameScene.RECIPES static property (system 8's recipe list)
+//
+//   src/recipes.js       — The craft menu's recipes (data only): RECIPES, the one table of costs
+//
+//   src/touch.js         — System 19's touch pads (one per player), added to GameScene.prototype
+//
+//   src/shelter.js       — System 8's Sheltered test, added to GameScene.prototype
+//
+//   src/bed-respawn.js   — System 7's bed respawn (2-player Survival), added to GameScene.prototype
 //
 //   src/world-gen.js     — System 1, added to GameScene.prototype; loads after game-scene.js
 //
@@ -58,6 +74,8 @@
 //
 //   src/enemy-ai.js      — System 2, added to GameScene.prototype; loads after building-crafting.js
 //
+//   src/tracks.js        — System 24, class Tracks (boot prints); scene.tracks, made at world ready
+//
 //   src/game-over.js     — GameOverScene (death + stats screen)
 //
 // ── GAMEPLAY SYSTEMS (in src/game-scene.js unless noted) ─────
@@ -66,6 +84,7 @@
 //
 // 1. WORLD / TERRAIN GENERATION  (src/world-gen.js; biome fns in src/constants.js; the ambient anim stays in update())
 //    ground: one Tilemap layer (32 px steps between biomes) from the 'ground_tileset' texture, tile index = row * GROUND_KEYS.length + biome (row 0 base, rows 1-3 variants picked by _biomeHash, rows from 4 shoreline banks from drawEdgeVariants by side and lone-corner bits (EDGE_MASKS); src/textures.js).
+//            biome_edges: an overlay layer over it from 'biome_edge_tileset' (index = EDGE_MASKS index * GROUND_KEYS.length + the neighbour biome), drawEdgeVariants' fade filled with the neighbour's ground.
 //            No full-world grass TileSprite exists any more (removed in #238).
 //    fns:  buildWorld, _buildPonds, _buildLakes, _buildRivers, _fillWaterIslands,
 //          buildPOIs, buildRuinsCity, buildBiomeStructures, _buildAuthoredStructure,
@@ -78,7 +97,8 @@
 //          RIVER_COUNT, RIVER_WANDER, RIVER_WIDTH_MIN, RIVER_WIDTH_MAX,
 //          PLACEMENT, ROCKS
 //    data: _biomeSeeds, _waterMap, _iceMap, waterTiles, iceTiles,
-//          deepWaterTiles, mountainTiles, obstacles
+//          deepWaterTiles, mountainTiles, obstacles,
+//          _solidTileSet, _impassableTileSet, _wallTileSet (enemy line of sight, steering, placement)
 //    ambient anim: _grassGroups, _grassPhase (grass sway);
 //          _riverTex, _riverScroll, _riverOffLast + drawRiverFrame (shared scrolling
 //          river canvas); _pondWaterTiles, _shimmerTable (pond/lake alpha shimmer)
@@ -88,10 +108,13 @@
 //    fns:  updateEnemies, _steerToward, _hasLOS,
 //          _findWallOnPath, _hurtEnemy,
 //          killEnemy, _startDormantIfFar,
+//          _forEachEnemy (any loop over enemies that can kill; splices wait for the loop end)
 //          applyTerrainEffects (also runs for raiders and animals)
 //    spawn: spawnEnemies, _spawnGroup, _spawnBiomeEnemy,
-//           _spawnWaterLurker
-//    cfg:  MAX_ENEMIES, MAX_ACTIVE_ENEMIES, DORMANT_RADIUS, WAKE_RADIUS
+//           _spawnWaterLurker,
+//           _waveRing, _waveSpawnPoint, _waveLineClear, _unstickMarcher (wave marchers, #330)
+//    cfg:  MAX_ENEMIES, MAX_ACTIVE_ENEMIES, DORMANT_RADIUS, WAKE_RADIUS,
+//          WAVE_RING_MIN, WAVE_RING_MAX, WAVE_MARCH_MS
 //    data: enemies[], ENEMY_STATS, RAIDER_STATS, ENEMY_LOOT
 //    log:  [COMBAT], [WORLD ]
 //
@@ -100,19 +123,20 @@
 //    data: enemyDens[], waterDens[]   (each: liveCount, type, pos, timer)
 //
 // 4. WAVES & BOSSES  (src/waves-bosses.js)
-//    fns:  updateWaves, updateBoss, spawnBoss, _bossExecuteSpecial,
+//    fns:  updateWaves, _spawnFirstWave, updateBoss, spawnBoss, _bossExecuteSpecial,
 //          _bossSmash, _bossTelegraph, _bossDist (reach to a drawn-to-fit hitbox),
-//          _debugBossFromUrl (?boss=wolf spawns a boss for testing)
-//    data: waveNum, waveTimer, boss, _bossChance, huntNextDay
+//          _debugBossFromUrl (?boss=wolf spawns a boss for testing),
+//          _pickBossType (every boss once per round, biome match first)
+//    data: waveNum, waveTimer, boss, bossSpawned (false again once the boss dies),
+//          _bossesSeen, _bossChance, huntNextDay
 //    log:  [WORLD ], [COMBAT]
 //
 // 5. PLAYER MOVEMENT & INPUT  (src/game-scene.js; getControls in src/textures.js)
 //    fns:  movePlayer, aimAtMouse (faces the cursor while _mouseAt is recent), _faceAngle,
-//          applyTouchInput, applyTerrainEffects, _makeResPanel,
-//          getControls, initTouchControls, _onTouchDown/Move/Up,
+//          applyTerrainEffects, _makeResPanel, getControls,
 //          openPauseSettings, _walkStep,
 //          tryInteract (the Interact key: build teardown, barracks, radio tower, raid cache, bed, relics, altar)
-//    data: p1, p2 (spr, hp, maxHp, charData, inv), _joy, _tcBtns, wasd, p2keys
+//    data: p1, p2 (spr, hp, maxHp, charData, inv), wasd, p2keys (touch: system 19)
 //    cfg:  CAM_PAD, CAM_ZOOM_MIN, CAM_ZOOM_MAX
 //
 // 6. PLAYER COMBAT (per-character abilities)
@@ -125,30 +149,38 @@
 //    data: player.atkCooldown, player.ammo, player.reserveAmmo, player.carriedAmmo
 //    log:  [COMBAT], [PLAYER]
 //
-// 7. DEATH & REVIVE
+// 7. DEATH & REVIVE  (src/game-scene.js; bed respawn in src/bed-respawn.js)
 //    fns:  handleDeath, checkDeaths, updateDowned, updateRevive,
 //          revivePlayer, checkBothDead, buildReviveBar, drawReviveBar,
-//          _showSleepIndicator, _hideSleepIndicator
+//          _showSleepIndicator, _hideSleepIndicator,
+//          _bedRespawn (2P Survival: timer out + respawn bed = back at the bed, half HP and items)
 //    cfg:  DOWN_TIME, REVIVE_TIME, REVIVE_RANGE
-//    data: player.isDowned, player.downedTimer, reviving, reviveProgress
+//    data: player.isDowned, player.downTimer, player.respawnBed, reviving, reviveProgress
 //    log:  [PLAYER]
 //
-// 8. BUILDING & CRAFTING  (src/building-crafting.js; GameScene.RECIPES stays in src/game-scene.js)
+// 8. BUILDING & CRAFTING  (src/building-crafting.js; RECIPES in src/recipes.js; shelter in src/shelter.js)
 //    build: updateBuildMode, placeBuild, _buildSpotError, exitBuildMode, _placeWallSprite,
 //           _tryTeardownBuild, openGate, getBuildCost, getTeamInv
 //    craft: openCraftMenu, closeCraftMenu, updateCraftMenu, craftSelected,
-//           renderCraftMenu, _craftScrollToSel
+//           renderCraftMenu, _craftScrollToSel, _craftOf/_craftLayout/_craftPanelHit (one menu per player, kept on p.craft;
+//           face-to-face each is drawn in its owner's view, clear of their buttons)
 //    barracks: openBarrack, closeBarrack, barrackNav, barrackConfirm,
 //              refreshBarrackCards, buildBarrackOverlay, checkBarrackRange
-//    data: buildType, buildRotation, buildOwner, RECIPES,
+//    shelter: isShelteredAt (a closed ring of built walls, gates count, holding a campfire, craftbench
+//             or bed; 8-way flood fill, so a corner-only join is a gap), _updateShelter (rechecks
+//             on a new tile or when _shelterDirty after a build or a destroyed wall; sets p._sheltered,
+//             shown as the 'shelter' status icon, and p._shelterTiles; heals 1 HP per SHELTER_HEAL_MS),
+//             _inShelter (spawners skip points in a sheltered ring + SHELTER_SPAWN_PAD), nearShelterTiles.
+//             Enemies whose target is sheltered use SHELTER_NIGHT_MULT, not hc.nightMult.
+//    data: buildType, buildRotation, buildOwner, RECIPES, RECIPE_COSTS (getBuildCost's lookup),
 //          structures, player.carriedAmmo
 //    log:  [BUILD ], [PLAYER]
 //
 // 9. WALLS / SPIKES / STRUCTURE DAMAGE
 //    fns:  updateSpikeTraps, damageStructure, _addWallToBuckets,
-//          _removeWallFromBuckets, _wallBucketKey, _wallNearby,
+//          _removeWallFromBuckets, _wallBucketKey, _wallNearby, _tileAt, _markTile,
 //          _refreshWallClustersNear, _addFireGlow
-//    data: structures, spikes, _wallBuckets, _wallTileSet
+//    data: structures, spikes, _wallBuckets (Map keyed tx + ty*MAP_W), _wallTileSet
 //    cfg:  SPIKE_TRAP_DMG, CAMPFIRE_HEAL_MS, CAMPFIRE_HEAL_R (campfire heal lives in building-crafting.js)
 //    log:  [COMBAT], [BUILD ]
 //
@@ -157,16 +189,18 @@
 //     data: dayNum, dayTimer, isNight, timeAlive, hardcore, hc
 //
 // 11. RELICS / RADIO TOWERS / ALTAR / CAMPFIRES
-//     fns:  updateRelicChannels, checkRadioTowerRange, _relicCarrier,
+//     fns:  updateRelicChannels, _useHeld (USE held: key or touch button; relic, revive, harvest), checkRadioTowerRange, _relicCarrier,
 //           _relicPressure, _cancelRelicChannel, _depositRelic,
 //           _pickupRelic, _showRelicHint, _processHintQueue,
 //           _spawnTorch, _addFireGlow, _updateFireGlows
 //     cfg:  FOG_REVEAL_R, FOG_UPDATE_INTERVAL, RELIC_RANGE, RELIC_ALTAR_MIN
 //     data: _relicPOIs, relicsHeld, altarPos, altarDiscovered, _fireGlows
 //
-// 12. RAIDERS (camps + raid events)  (src/game-scene.js)
+// 12. RAIDERS (camps + raid events)  (src/game-scene.js; the camp lock in src/enemy-ai.js)
 //     fns:  updateRaiders, placeRaiderCamp, spawnRaiders, spawnHuntingParty,
 //           checkRaidCacheRange, openRaidCache, _fireRaiderShot,
+//           _campRaidersLeft, _refreshCampLock (only isCampRaider raiders lock the cache;
+//           hunt-party raiders share raiders[] but not the lock),
 //           applyTerrainEffects (raiders slide on ice, slow on tundra)
 //     data: raidCamp, raidRespawnDay, raiders
 //
@@ -184,30 +218,40 @@
 //     fns:  _showStatus, _hideScoutPanel, _updateScoutPanel,
 //           _drawThreatIndicators, hint, _activeStatuses, _drawStatusStrip
 //     minimap: _renderMinimapBase, _paintMinimapTile, _unpaintMinimapTile,
-//              _buildMinimapColorMap
-//     data: hudCam, hudRelicText, minimapGfx, minimapDots, mmBounds, _scoutPanel, _hudDirty,
+//              _buildMinimapColorMap, _mmPaint (explored tile -> radar picture)
+//     data: hudCam, hudRelicText, minimapGfx, minimapImg (radar picture, _mmTex),
+//           minimapDots (moving dots only), mmBounds, _scoutPanel, _hudDirty,
 //           _toxicUntil, _rallyUntil (status-strip timestamps)
 //
 // 16. FOG OF WAR
 //     fns:  revealFog, updateFog, _losBlocked
 //     cfg:  FOG_REVEAL_R, FOG_UPDATE_INTERVAL
-//     data: fogRevealed (Uint8Array), fogVisible, _fogVisibleBuilding
+//     data: fogRevealed, fogVisible (Uint8Array, index tx + ty*MAP_W), _fogVisibleBuilding,
+//           _fogBufs (per-camera paint buffers); fog/radar on-off read from _settings
 //
 // 17. AUDIO (Web Audio API)  (src/audio.js)
 //     class: Music         (background + boss switch via Music.switchToBoss)
 //     SFX wired into combat/pickup/build callsites.
 //
 // 18. PROCEDURAL TEXTURES (no image files)  (src/textures.js; character draws in src/sprites.js)
-//     fns:  buildTextures, makeScaleProxy, drawMountains, polishActors, polishActor
+//     fns:  buildTextures, makeScaleProxy, drawMountains, polishActors, polishActor,
+//           buildBootPrints
 //     enemy draws: drawWolf, drawRat, drawBear, drawIceCrawler,
 //                  drawSpiderRuins, drawBogLurker, drawDustHound, drawWaterLurker
 //     character draws: paintGrid, pixelActorFrames, buildPixelActors
 //                      art in SPRITE_ART[id][front|back|side|fside|bside]; step2 = step legs mirrored
 //
-// 19. INPUT MODES (kbd / gamepad / touch)  (src/scenes.js; getControls in src/textures.js; _onBtnPress in src/game-scene.js)
+// 19. INPUT MODES (kbd / gamepad / touch)  (src/scenes.js; getControls in src/textures.js; touch pads in src/touch.js; split cameras in src/game-scene.js)
 //     fns:  getControls, activeInputMode, isTouchDevice,
-//           _onBtnPress, keyDisplayName
-//     data: wasd, p2keys, _joy, _tcBtns
+//           initTouchControls, applyTouchInput, _onTouchDown/Move/Up, _logTouchStick, _onBtnPress, _drawTouchHUD,
+//           keyDisplayName
+//     data: wasd, p2keys, _pads (one touch pad per player: stick, buttons, the screen area its fingers
+//           land in; 2P touch is the face-to-face tablet only, a phone plays 1P), _joy and _tcBtns (P1's pad),
+//           _split (face-to-face iPad: 2P touch, short side >= 600), cam2 (P2's camera, right half, quarter-turned; P1's is the left half)
+//     fns:  _worldCams, _ignoreInWorldCams, _camFx (shake/flash/fade on every world camera), _initSplitCams, _worldRect (true visible
+//           rectangle of a camera: use it, not worldView, when the cameras are turned), _padOf/_stickOf (a player's own touch pad and
+//           stick: menus and USE read these, never _joy), _useTargetNear (tree or downed ally in reach), updateBarrackStick
+//     cfg:  SPLIT_STRIP, SPLIT_ZOOM
 //
 // 20. DEBUG LOG & PERF  (src/game-scene.js; _qlog in src/constants.js)
 //     fns:  _log, _qlog, _dbgRefresh, _downloadLog, hint
@@ -222,6 +266,10 @@
 //     cfg:  TUT_AUTO_ADVANCE_MS
 //     data: _tutShown
 //     tips are hint() calls with a title; hint(text, dur, {urgent}) jumps the queue
+//     touch: no startup controls popup (showStartupControls), no TAB hint, tutorial starts at 1.5 s.
+//     phone layout: the banner is small, at the bottom centre (1P) or top left (2P), clear of the
+//             player and the controls; each tip has a shorter `phone` text (_tutTrigger). smoke.js
+//             ("phone tips") fails when a banner covers a player, button, radar or the day panel.
 //
 // 22. GAME OVER / VICTORY  (src/game-scene.js; GameOverScene in src/game-over.js)
 //     fns:  triggerGameOver, _triggerVictory, checkBothDead, handleDeath
@@ -229,19 +277,45 @@
 //     scores: _saveScore is the one save path (localStorage 'iw_scores', plus _postScore to the
 //             global scoreboard, tools/scoreboard/Code.gs, with runId and the session log trimmed
 //             to one cell by _logForSheet; _logLines is the log header); _showGlobalTop reads its top 10.
+//     net:  _fetchJson wraps every scoreboard call with an 8 s timeout; a refused score post shows
+//             "Score not accepted" on the global list header (_showGlobalTop).
+//     feedback: _sendFeedback posts the comment to the run's row (_scoreBody is the shared message);
+//             a send without {ok:true} is queued by _queueFeedback in localStorage 'iw_pending_feedback'
+//             and resent by flushPendingFeedback at the next start.
 //     cfg:  SCOREBOARD_URL (empty: no network call)
 //     win condition: relicsDeposited === 5 (deposited at altar)
 //
 // 23. SETTINGS / SAVE  (src/scenes.js; toggleSleep in src/game-scene.js)
 //     fns:  loadSettings, saveSettings, toggleSleep
 //     data: STATE (mode/difficulty), persisted via localStorage
+//     phone menus: PHONE_LAYOUT (src/constants.js) picks the phone coordinates in ModeSelect,
+//             Controls, CharSelect, GameOver (its P table) and Settings (_createPhone, src/settings-phone.js).
+//             scripts/phone-menus.js (run by smoke.js) fails on overlap, off-canvas and tap
+//             targets under 32 px at five phone sizes. A new menu scene or control goes in its MENUS.
+//
+// 24. TRACKS (boot prints)  (src/tracks.js; table in CFG.TRACKS in src/constants.js)
+//     Players and raiders leave alternating left/right boot prints; animals do not. The ground
+//     under a print sets its life and strength; no print on water (_waterMap, plus deep water).
+//     Pooled sprites at depth 1: the cap, not the number of walkers, bounds the cost.
+//     class: Tracks
+//     fns:  newestNear (per-tile index of live prints, for raiders following tracks, #310),
+//           _step, _place, _take, _release
+//     cfg:  TRACKS
+//     data: tracks, byTile, live
+//     log:  [WORLD ] at ready, [PERF  ] every 30 s while walking
 //
 // ── COMMON GOTCHAS ───────────────────────────────────────────
 // • Two cameras: new world objects must call hudCam.ignore(obj).
+// • Face-to-face split (_split): there are TWO world cameras (main = P1, cam2 = P2). New HUD objects go
+//   through _h() or _ignoreInWorldCams(); camera shake/flash/fade go through _camFx(); any code that reads
+//   cameras.main.worldView to cull or paint must also look at cam2 (see updateFog, dormant enemies).
 // • Draw order: trees, rocks, mountains, players and enemies are Y-sorted in depth band 9..9.9 via _sortDepth(feetY); keep ground items/structures <= 8 and bullets/bars >= 10.
-// • Water detection uses the _waterMap Uint8Array (index tx + ty*MAP_W), NOT physics overlap.
+// • Water detection uses the _waterMap Uint8Array (index tx + ty*MAP_W), NOT physics overlap. The tile
+//   flags _solidTileSet, _impassableTileSet and _wallTileSet are Uint8Arrays too: read them through
+//   _tileAt, which treats off-map tiles as clear (a raw index past a row's end wraps to the next row).
 // • Enemy dormancy: enemies > DORMANT_RADIUS are physics-disabled and hidden;
-//   they re-enable inside WAKE_RADIUS (hysteresis).
+//   they re-enable inside WAKE_RADIUS (hysteresis). Raiders, boss escorts and wave
+//   marchers (_waveMarch, until first contact) never sleep; nothing else wakes a den.
 // • Relic reach: _keepRelicsInReach runs once, at the end of buildWorld. A static body added after it
 //   (world gen or a new system) can box a relic in again; add bodies before that call.
 // ============================================================

@@ -37,6 +37,7 @@ module.exports = FILES.map(f => {
       'no-dupe-keys': 'error',
       'no-dupe-args': 'error',
       'no-unreachable': 'error',
+      'no-shadow': 'error', // a shadowed `k` once put every inventory icon at NaN
     },
   };
 });

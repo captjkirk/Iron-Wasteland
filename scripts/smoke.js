@@ -3,20 +3,70 @@
 //   2. In play: loads ?seed=1&renderer=canvas (headless WebKit loses the WebGL context in the
 //      Game scene, so the canvas renderer stands in), starts a solo game, waits for the world,
 //      plays PLAY_MS and fails on any console or page error. WebGL-only bugs stay invisible.
+//      Walks east for the first WALK_MS and fails unless that leaves boot prints, none on water.
+//      Fires wave 1 at the start and fails unless it is awake and closing on the player, and its
+//      first group is small (night 1 comes in groups, not all at once).
 //      Also fails when textures and object canvases hold more than PIXEL_BUDGET_MB of pixels,
 //      when PLAYER_BODY no longer matches the player's body, or when a relic has no reachable
 //      ground within a tile of it.
-//   3. Relic reach: builds ?seed=12, a world whose fungal and ruins relics were boxed in by
+//      Then spawns each boss beside the knight and fails unless its hitbox fits the drawing and
+//      mirrors, and a knight swing from 20 px outside it, left and right, deals damage and one
+//      from 100 px out does not (#312, #317).
+//      Then jumps to boss days 5 and 10 and fails unless each brings a boss, of two types.
+//      Then lines up three 1-HP enemies in front of the knight and fails unless one swing kills all three.
+//      Then explores the whole radar area and fails if fog or radar read settings from storage, the radar
+//      redraws terrain per tile, its picture has the wrong colour, or the fog rebuilds its buffers (#342, #344).
+//      Then ends the run and types a two-word name on the game over screen (#328).
+//      Also, on an iPad-sized touch screen (1180x820), fails unless every inventory icon and number has a real position above the fog (#414).
+//   Phone menus: on five phone screens, fails on any overlap, off-canvas object or tap target under
+//      32 px in the title screen, settings, rebind and character screens (scripts/phone-menus.js).
+//   Phone tips: on a phone, fails when a tutorial tip's banner runs off the screen, is over 90 px tall or
+//      covers a player, the radar, a button or the day panel, in 1 and 2 player games, or when the full-screen
+//      startup controls popup shows on a touch phone.
+//   Relic reach: builds ?seed=12, a world whose fungal and ruins relics were boxed in by
 //      mountains and trees before #314, and fails if any relic has no reachable ground within a tile.
+//   3. Hardcore: the same start with STATE.difficulty = 'hardcore'; fails unless timeAlive
+//      advances over HARDCORE_MS of play. Hardcore's own multipliers once froze the tab (#327).
+// Every in-game page call goes through `ask`, so a hung main thread fails the run, not stalls it.
 const { webkit } = require('playwright');
 process.env.PORT = '0'; // any free port, so a running `npm run serve` is no obstacle
 const server = require('../server.js');
+const { checkPhoneMenus, PHONE_SIZES } = require('./phone-menus.js');
 const PLAY_MS = 10000;
+const WALK_MS = 3000; // spent walking east before the wave check
 const PIXEL_BUDGET_MB = 64; // RGBA bytes; an iPhone tab dies well short of 1 GB in total
+const HARDCORE_MS = 5000;
+const FIRST_WAVE_MAX = 10; // night 1's first group; matches _spawnFirstWave's cap
+const ASK_MS = 10000; // a page call that takes longer means the game's main thread is stuck
 
-async function pass(browser, name, url, run) {
-  const page = await browser.newPage();
+// page.evaluate with a deadline: Playwright waits forever on a page whose script never yields.
+function ask(page, fn, arg) {
+  let timer;
+  return Promise.race([
+    page.evaluate(fn, arg),
+    new Promise((_, reject) => { timer = setTimeout(() => reject(new Error(`page did not answer in ${ASK_MS / 1000} s (main thread stuck?)`)), ASK_MS); }),
+  ]).finally(() => clearTimeout(timer));
+}
+
+// Starts a solo knight game at the given difficulty, waits for the world and plays ms of it.
+// Returns how many seconds of timeAlive passed during that play.
+async function play(page, difficulty, ms) {
+  await ask(page, d => { STATE.mode = 1; STATE.p1CharId = 'knight'; STATE.difficulty = d; _phaserGame.scene.start('Game'); }, difficulty);
+  await page.waitForFunction(() => _phaserGame.scene.getScene('Game')._worldReady === true,
+    null, { timeout: 60000 });
+  const t0 = await ask(page, () => _phaserGame.scene.getScene('Game').timeAlive);
+  await page.waitForTimeout(ms);
+  return (await ask(page, () => _phaserGame.scene.getScene('Game').timeAlive)) - t0;
+}
+
+async function pass(browser, name, url, run, opts = {}) {
+  const page = await browser.newPage(opts);
   const errors = [];
+  const posts = []; // the global scoreboard is stubbed: no smoke run posts a real score
+  await page.route('https://script.google.com/**', route => {
+    if (route.request().method() === 'POST') posts.push(JSON.parse(route.request().postData()));
+    route.fulfill({ contentType: 'application/json', body: route.request().method() === 'POST' ? '{"ok":true}' : '[]' });
+  });
   page.on('console', m => { if (m.type() === 'error') errors.push('console error: ' + m.text()); });
   page.on('pageerror', e => errors.push('page error: ' + e.message));
   try {
@@ -25,14 +75,70 @@ async function pass(browser, name, url, run) {
       () => typeof _phaserGame !== 'undefined' && _phaserGame.scene.isActive('ModeSelect'),
       null, { timeout: 30000 });
     await page.waitForTimeout(1000); // let ModeSelect run a few frames
-    await run(page);
+    await run(page, posts);
   } catch (e) {
     errors.push(`${name}: ${e.message.split('\n')[0]}`);
   }
-  await page.close();
+  await Promise.race([page.close(), new Promise(r => setTimeout(r, ASK_MS))]);
   for (const e of errors) console.error(`::error::${name}: ${e}`);
   if (!errors.length) console.log(`Smoke ${name} OK.`);
   return errors.length;
+}
+
+// Boss hitboxes fit the drawing (#312, #317): each box spans at least 60% of the drawn width and
+// height (the old 84 px square was under half), mirrors when the boss turns, and the knight's
+// sword (range 55, as doAttack swings it) reaches it from 20 px outside, not from 100 px.
+async function bossReach(page) {
+  const keys = ['boss_golem', 'boss_wolf', 'boss_spider', 'boss_troll', 'boss_hydra'];
+  const misses = [];
+  for (const key of keys) {
+    misses.push(...await page.evaluate(key => {
+      const g = _phaserGame.scene.getScene('Game');
+      g.bossSpawned = false; g.spawnBoss(key);
+      const b = g.boss; // stands still and holds its attacks
+      b.speed = 0; b.specialTimer = b.specialInterval = b.attackTimer = b.atkInterval = 1e9;
+      g.p1.hp = g.p1.maxHp = 1e6;
+      g._reachHome = g._reachHome || { x: g.p1.spr.x, y: g.p1.spr.y };
+      const img = g.textures.get(key).getSourceImage(), c = document.createElement('canvas');
+      c.width = img.width; c.height = img.height;
+      const ctx = c.getContext('2d'); ctx.drawImage(img, 0, 0);
+      const a = ctx.getImageData(0, 0, c.width, c.height).data;
+      let x0 = c.width, x1 = -1, y0 = c.height, y1 = -1;
+      for (let y = 0; y < c.height; y++) for (let x = 0; x < c.width; x++) {
+        if (a[(y * c.width + x) * 4 + 3] > 40) { x0 = Math.min(x0, x); x1 = Math.max(x1, x); y0 = Math.min(y0, y); y1 = y; }
+      }
+      const hb = b.hitbox, fit = Math.min(hb.w / (x1 - x0 + 1), hb.h / (y1 - y0 + 1));
+      return fit < 0.6 ? [`${key}: hitbox ${hb.w}x${hb.h} covers only ${Math.round(fit * 100)}% of the ${x1 - x0 + 1}x${y1 - y0 + 1} drawing`] : [];
+    }, key));
+    const offsets = [];
+    for (const side of [-1, 1]) {
+      await page.evaluate(side => { // the boss turns toward the knight and mirrors its box
+        const g = _phaserGame.scene.getScene('Game'), h = g._reachHome;
+        g.boss.spr.body.reset(h.x, h.y);
+        g.p1.spr.body.reset(h.x + side * 300, h.y);
+      }, side);
+      await page.waitForTimeout(300);
+      const r = await page.evaluate(({ key, side }) => {
+        const g = _phaserGame.scene.getScene('Game'), b = g.boss, body = b.spr.body, p = g.p1;
+        // The box's centre from its offset, in texture px off the frame centre. body.center - spr.x
+        // drifts while the big body is pushed off scenery or a hit tween rescales it (#317).
+        const out = [], offset = body.offset.x + b.hitbox.w / 2 - b.spr.width / 2;
+        for (const gap of [100, 20]) {
+          p.spr.setPosition(side < 0 ? body.left - gap : body.right + gap, body.center.y);
+          p.aimAngle = side < 0 ? 0 : Math.PI;
+          const hp = b.hp;
+          g.meleeSwing(p, 55, 0xdddddd, 0.18, 0);
+          if ((b.hp < hp) !== (gap === 20)) out.push(`${key}: swing ${gap} px ${side < 0 ? 'left' : 'right'} of the hitbox ${b.hp < hp ? 'hit' : 'missed'}`);
+        }
+        return { out, offset };
+      }, { key, side });
+      misses.push(...r.out); offsets.push(r.offset);
+    }
+    if (Math.abs(offsets[0] + offsets[1]) > 1) misses.push(`${key}: hitbox does not mirror (centre ${offsets.map(o => o.toFixed(1)).join(' vs ')} texture px off the sprite centre)`);
+    await page.evaluate(() => { const g = _phaserGame.scene.getScene('Game'); g.killEnemy(g.boss); });
+  }
+  if (misses.length) throw new Error(misses.join('; '));
+  console.log(`in play: ${keys.length} boss hitboxes fit, mirror, and the knight reaches them from 20 px out, not 100 px`);
 }
 
 // Every relic needs ground a player can reach within a tile of it (#314). The fill starts from the
@@ -48,12 +154,6 @@ async function checkRelicReach(page) {
   if (far.length) throw new Error(`relic out of reach: ${far.join('; ')}`);
 }
 
-async function startSolo(page) {
-  await page.evaluate(() => { STATE.mode = 1; STATE.p1CharId = 'knight'; _phaserGame.scene.start('Game'); });
-  await page.waitForFunction(() => _phaserGame.scene.getScene('Game')._worldReady === true,
-    null, { timeout: 60000 });
-}
-
 (async () => {
   if (!server.listening) await new Promise(r => server.once('listening', r));
   const base = `http://localhost:${server.address().port}/`;
@@ -62,15 +162,76 @@ async function startSolo(page) {
 
   failures += await pass(browser, 'title screen', base, async () => {});
 
-  failures += await pass(browser, 'in play', base + '?seed=1&renderer=canvas', async page => {
-    await startSolo(page);
+  // Every menu on a phone: nothing overlaps or leaves the canvas, every tap target is big enough.
+  for (const [w, h] of PHONE_SIZES) {
+    failures += await pass(browser, `phone menus ${w}x${h}`, base, page => checkPhoneMenus(page, `${w}x${h}`),
+      { viewport: { width: w, height: h }, hasTouch: true, isMobile: true, deviceScaleFactor: 2 });
+  }
+
+  // Character screen at both layouts: 1280x720, and the 640x360 phone layout (a touch device
+  // whose short side is under 600 px). Turns the wheel both ways and fails on any page error.
+  for (const [name, opts] of [['character screen 1280x720', {}],
+    ['character screen 640x360', { viewport: { width: 640, height: 360 }, hasTouch: true }]]) {
+    failures += await pass(browser, name, base, async page => {
+      await page.evaluate(() => { STATE.mode = 1; _phaserGame.scene.start('CharSelect'); });
+      await page.waitForFunction(() => _phaserGame.scene.isActive('CharSelect'), null, { timeout: 10000 });
+      for (const k of ['d', 'd', 'a', 'ArrowLeft']) { await page.keyboard.press(k); await page.waitForTimeout(300); }
+      const w = await page.evaluate(() => CFG.W);
+      if (w !== (opts.hasTouch ? 640 : 1280)) throw new Error(`canvas is ${w} wide`);
+    }, opts);
+  }
+
+  failures += await pass(browser, 'in play', base + '?seed=1&renderer=canvas', async (page, posts) => {
+    await play(page, 'survival', 0);
+    // Walk east for WALK_MS: the player must leave tracks, and none on water (#308).
+    await page.keyboard.down('d');
+    await page.waitForTimeout(WALK_MS);
+    await page.keyboard.up('d');
+    const tracks = await ask(page, () => {
+      const s = _phaserGame.scene.getScene('Game');
+      return { n: s.tracks.live.length, wet: s.tracks.live.filter(r => s._waterMap[r.tile]).length };
+    });
+    console.log(`in play: walked ${WALK_MS / 1000} s and left ${tracks.n} boot prints, ${tracks.wet} on water`);
+    if (!tracks.n) throw new Error('walking left no boot prints');
+    if (tracks.wet) throw new Error(`${tracks.wet} boot prints sit on water`);
+    // Fire wave 1 now, and play through its march. Waves used to spawn at the map edge
+    // and go dormant on their first frame, so nothing ever arrived (#330).
+    const march0 = await page.evaluate(() => {
+      const s = _phaserGame.scene.getScene('Game');
+      const before = new Set(s.enemies);
+      s.waveTimer = s.WAVE_INTERVAL;
+      s.updateWaves(0);
+      const near = e => Math.min(...[s.p1, s.p2].filter(p => p && p.spr && p.spr.active)
+        .map(p => Math.hypot(e.spr.x - p.spr.x, e.spr.y - p.spr.y)));
+      window._smokeWave = s.enemies.filter(e => !before.has(e) && e._waveMarch && !e._dormant)
+        .map(e => ({ e, d0: near(e) }));
+      window._smokeNear = near;
+      return { spawned: s.enemies.length - before.size, marching: window._smokeWave.length };
+    });
     await page.waitForTimeout(PLAY_MS);
-    const fps = await page.evaluate(() => Math.round(_phaserGame.loop.actualFps));
+    const closed = await page.evaluate(() => window._smokeWave
+      .filter(w => w.e.spr && w.e.spr.active && w.d0 - window._smokeNear(w.e) > 100).length);
+    console.log(`in play: wave 1 spawned ${march0.spawned}, ${march0.marching} awake and marching, ` +
+      `${closed} closed in by 100+ px in ${PLAY_MS / 1000} s`);
+    if (!march0.marching || !closed) throw new Error('wave 1 did not march on the players (#330)');
+    // Night 1 arrives in small groups: no more than FIRST_WAVE_MAX of wave 1 awake in its first group
+    // (all 21 at once swarmed a young player). The later groups would reach the knight during the
+    // checks below, so the pacing timer is stopped.
+    await ask(page, () => { _phaserGame.scene.getScene('Game')._firstWaveTimer?.remove(); });
+    if (march0.spawned > FIRST_WAVE_MAX) throw new Error(`wave 1 sent ${march0.spawned} animals at once, over ${FIRST_WAVE_MAX}`);
+    // The wave would kill a knight who stands still in about 20 s; clear it so the checks
+    // below run on a living player.
+    await ask(page, () => {
+      const s = _phaserGame.scene.getScene('Game');
+      window._smokeWave.forEach(w => { if (!w.e.dying && w.e.spr?.active) s._hurtEnemy(w.e, 1e6); });
+      s.p1.hp = s.p1.maxHp;
+    });
+    const fps = await ask(page, () => Math.round(_phaserGame.loop.actualFps));
     console.log(`in play: world built, ${PLAY_MS / 1000} s played at ${fps} fps`);
     // Pixel memory: every texture plus every canvas a game object owns (TileSprite, Text).
     // A world-sized TileSprite and 10k patch TileSprites once came to ~735 MB here and got
     // the tab killed on iPhone (#238).
-    const px = await page.evaluate(() => {
+    const px = await ask(page, () => {
       let n = 0;
       for (const t of Object.values(_phaserGame.textures.list)) for (const s of t.source) n += s.width * s.height;
       for (const o of _phaserGame.scene.getScene('Game').children.list) if (o.canvas) n += o.canvas.width * o.canvas.height;
@@ -78,11 +239,65 @@ async function startSolo(page) {
     });
     // Scenery hitboxes cover the base, not the whole sprite (#268: refreshBody() after setSize
     // silently reset them to the full picture, blocking open ground beside every mountain).
-    const fat = await page.evaluate(() => _phaserGame.scene.getScene('Game').obstacles.getChildren()
+    const fat = await ask(page, () => _phaserGame.scene.getScene('Game').obstacles.getChildren()
       .filter(o => /^(mountain|ice_spire|rock_spire|mangrove_roots|pillar)/.test(o.texture.key))
       .filter(o => o.body.height > o.displayHeight * 0.75)
       .map(o => o.texture.key));
     if (fat.length) throw new Error(`${fat.length} scenery hitboxes are nearly the whole sprite (first: ${fat[0]})`);
+    // Every obstacle, including one placed after world build the way a regrown tree is, is hidden
+    // from the HUD camera; otherwise it is drawn twice, once fixed on the HUD (#346).
+    const onHud = await page.evaluate(() => {
+      const s = _phaserGame.scene.getScene('Game');
+      const p = s.p1.spr, t = s._placeScenery(Math.floor(p.x / CFG.TILE) + 3, Math.floor(p.y / CFG.TILE), 'tree', 0);
+      const bad = s.obstacles.getChildren().filter(o => !(o.cameraFilter & s.hudCam.id)).map(o => o.texture.key);
+      t.destroy();
+      return bad;
+    });
+    if (onHud.length) throw new Error(`${onHud.length} obstacles are drawn by the HUD camera too (first: ${onHud[0]})`);
+    // One swing kills every 1-HP enemy in its arc (#341: a kill spliced this.enemies mid-loop,
+    // so the enemy after it in the array was skipped).
+    const swing = await page.evaluate(() => {
+      const s = _phaserGame.scene.getScene('Game'), p = s.p1, en = s.enemies;
+      const ok = e => e && !e.dying && !e.isBoss && !e.isRaider && e.spr?.active;
+      const i = en.findIndex((e, k) => ok(e) && ok(en[k + 1]) && ok(en[k + 2]));
+      if (i < 0) return 'no three live enemies in a row';
+      const three = en.slice(i, i + 3), a = s.getAimAngle(p);
+      three.forEach((e, k) => {
+        const off = (k - 1) * 8; // side by side, 30 px ahead of the knight
+        e.spr.setPosition(p.spr.x + Math.cos(a) * 30 - Math.sin(a) * off,
+                          p.spr.y + Math.sin(a) * 30 + Math.cos(a) * off);
+        e.hp = 1;
+      });
+      s.meleeSwing(p, 55, 0xdddddd, 0.18, 0);
+      const dead = three.filter(e => e.dying).length;
+      return dead === 3 ? '' : `a swing killed ${dead} of 3 lined-up 1-HP enemies`;
+    });
+    if (swing) throw new Error(swing);
+    console.log('in play: one swing killed all three lined-up enemies');
+    // Fog and radar (#342, #344): neither reads settings from storage per frame; the radar's draw
+    // list stays small with its whole area explored; its picture holds each explored tile's colour;
+    // and the fog keeps its paint buffers between updates.
+    const radar = await ask(page, () => {
+      const s = _phaserGame.scene.getScene('Game'), real = window.loadSettings;
+      let reads = 0;
+      window.loadSettings = () => { reads++; return real(); };
+      try {
+        const tx = Math.floor(s.p1.spr.x / CFG.TILE), ty = Math.floor(s.p1.spr.y / CFG.TILE);
+        s.revealFog(tx, ty, 40);
+        const fog = () => { s._fogFrame = CFG.FOG_UPDATE_INTERVAL - 1; s._lastFogP1 = null; s.updateFog(); };
+        fog(); const buf = s._fogBufs[0]; fog();
+        s._fogFrame = 0; s.updateMinimap();
+        const i = tx + ty * CFG.MAP_W, c = s._mmColorMap[i];
+        const px = s._mmTex.context.getImageData(tx, ty, 1, 1).data;
+        const off = Math.max(Math.abs(px[0] - (c >> 16)), Math.abs(px[1] - ((c >> 8) & 255)), Math.abs(px[2] - (c & 255)));
+        return { reads, cmds: s.minimapDots.commandBuffer.length, off, kept: buf === s._fogBufs[0] };
+      } finally { window.loadSettings = real; }
+    });
+    console.log(`in play: radar draw list ${radar.cmds} entries with its area explored, ${radar.reads} settings reads`);
+    if (radar.reads) throw new Error(`fog and radar read settings from storage ${radar.reads} times in one update`);
+    if (radar.cmds > 5000) throw new Error(`radar draw list has ${radar.cmds} entries: explored terrain is being redrawn per tile`);
+    if (radar.off > 3) throw new Error(`radar picture colour is off by ${radar.off} from the tile's colour`);
+    if (!radar.kept) throw new Error('fog rebuilt its paint buffers with the view size unchanged');
     const mb = Math.round(px * 4 / 1e6);
     console.log(`in play: ${mb} MB of pixel memory (budget ${PIXEL_BUDGET_MB} MB)`);
     if (mb > PIXEL_BUDGET_MB) throw new Error(`pixel memory ${mb} MB is over the ${PIXEL_BUDGET_MB} MB budget`);
@@ -92,14 +307,314 @@ async function startSolo(page) {
     if (body.w !== body.want.w || body.h !== body.want.h || Math.abs(body.dy - body.want.dy) > 0.5)
       throw new Error(`PLAYER_BODY ${JSON.stringify(body.want)} does not match the player's body ${JSON.stringify(body)}`);
     await checkRelicReach(page);
+    await bossReach(page);
+    // Boss days (#329): the day-5 boss spawns, dies, and day 10 brings a second boss of
+    // another type. The day is set directly; the day-10 roll is forced to 100%.
+    const bosses = [];
+    for (const day of [5, 10]) {
+      await page.evaluate(day => {
+        const s = _phaserGame.scene.getScene('Game');
+        s._bossChance = 1;
+        s.dayTimer = (day - 1) * s.DAY_DUR + 1000;
+        s.p1.hp = s.p1.maxHp;
+      }, day);
+      await page.waitForFunction(() => _phaserGame.scene.getScene('Game').boss, null, { timeout: 30000 })
+        .catch(() => { throw new Error(`no boss spawned on day ${day} (bosses so far: ${bosses.join(', ') || 'none'})`); });
+      bosses.push(await page.evaluate(() => {
+        const s = _phaserGame.scene.getScene('Game'), b = s.boss;
+        s._hurtEnemy(b, 1e6);
+        return b.type;
+      }));
+    }
+    console.log(`in play: boss days 5 and 10 brought ${bosses.join(', ')}`);
+    if (bosses[0] === bosses[1]) throw new Error(`day 10 brought the same boss again (${bosses[1]})`);
+    // Game over name field: Phaser preventDefaults every key any scene ever captured (WASD,
+    // Space, F…) unless the field keeps its keys; a name once came out as "nKi" (#328).
+    await page.evaluate(() => _phaserGame.scene.getScene('Game').triggerGameOver('Smoke run over.'));
+    await page.waitForFunction(() => _phaserGame.scene.isActive('GameOver') &&
+      document.activeElement && document.activeElement.tagName === 'INPUT', null, { timeout: 10000 });
+    await page.keyboard.type('Dad and Kids');
+    const typed = await page.evaluate(() => document.activeElement.value);
+    if (typed !== 'Dad and Kids' || await page.evaluate(() => _phaserGame.scene.isActive('CharSelect')))
+      throw new Error(`name field holds "${typed}" after typing "Dad and Kids", or the game restarted`);
+    await page.keyboard.press('Enter');
+    await page.waitForFunction(() => (localStorage.getItem('iw_scores') || '').includes('"Dad and Kids"'), null, { timeout: 5000 });
+    if (!posts.some(p => p.name === 'Dad and Kids')) throw new Error('the score was not posted to the (stubbed) scoreboard');
+    console.log('game over: typed name kept and saved');
   });
 
   failures += await pass(browser, 'relic reach', base + '?seed=12&renderer=canvas', async page => {
-    await startSolo(page);
+    await page.evaluate(() => { STATE.mode = 1; STATE.p1CharId = 'knight'; _phaserGame.scene.start('Game'); });
+    await page.waitForFunction(() => _phaserGame.scene.getScene('Game')._worldReady === true, null, { timeout: 60000 });
     await checkRelicReach(page);
     const log = await page.evaluate(() => _phaserGame.scene.getScene('Game')._dbgEntries.filter(e => /relic (reach|moved)/.test(e)));
     console.log('relic reach: ' + log.map(e => e.replace(/^.*\] /, '')).join('; '));
   });
+
+  failures += await pass(browser, 'hardcore', base + '?seed=1&renderer=canvas', async page => {
+    const ran = await play(page, 'hardcore', HARDCORE_MS);
+    console.log(`hardcore: world built, timeAlive advanced ${ran.toFixed(1)} s in ${HARDCORE_MS / 1000} s of play`);
+    if (!(ran >= 1)) throw new Error(`timeAlive advanced only ${ran} s in ${HARDCORE_MS / 1000} s of Hardcore play`);
+  });
+
+  // 2-player on touch is the face-to-face tablet only; a phone plays 1 player (#463). Fingers on each
+  // player's stick move only that player; fails on any page error or when a player does not move the way
+  // their stick was dragged.
+  //  - tablet (1280x720): face-to-face split, a player at each short end: P1 left half turned a quarter
+  //    turn clockwise, P2 right half turned anticlockwise (#387).
+  const twoPlayer = async (page, split) => {
+    await page.evaluate(() => {
+      saveSettings({ inputMode: 'touch', tutorial: false });
+      STATE.mode = 2; STATE.p1CharId = 'knight'; STATE.p2CharId = 'gunslinger'; _phaserGame.scene.start('Game');
+    });
+    await page.waitForFunction(() => _phaserGame.scene.getScene('Game')._worldReady === true, null, { timeout: 60000 });
+    await page.waitForTimeout(1500);
+    const r = await page.evaluate(async (split) => {
+      const g = _phaserGame.scene.getScene('Game'), { W, H } = CFG;
+      if (!g._pads || g._pads.length !== 2) throw new Error('no split touch pads');
+      if (g._split !== split) throw new Error(`_split is ${g._split}, expected ${split}`);
+      const at = () => [g.p1.spr.x, g.p1.spr.y, g.p2.spr.x, g.p2.spr.y];
+      const before = at();
+      // Phone: P1 drags right on the left half, P2 drags left on the right half. Split: both drag screen-down
+      // in their own stick zone (P1 near the left edge, top; P2 near the right edge, bottom); with the
+      // views turned, that is world-right for P1 and world-left for P2.
+      const p1s = split ? [100, 100] : [W * 0.15, H * 0.8], p2s = split ? [W - 100, H - 100 - 60] : [W * 0.65, H * 0.8];
+      const d1 = split ? [0, 60] : [60, 0], d2 = split ? [0, 60] : [-60, 0];
+      g._onTouchDown({ id: 1, x: p1s[0], y: p1s[1] }); g._onTouchDown({ id: 2, x: p2s[0], y: p2s[1] });
+      g._onTouchMove({ id: 1, x: p1s[0] + d1[0], y: p1s[1] + d1[1] });
+      g._onTouchMove({ id: 2, x: p2s[0] + d2[0], y: p2s[1] + d2[1] });
+      await new Promise(r => setTimeout(r, 700));
+      g._onTouchUp({ id: 1 }); g._onTouchUp({ id: 2 });
+      const after = at();
+      const cams = split && {
+        count: g._worldCams().length, W, rot1: g.cameras.main.rotation, rot2: g.cam2.rotation,
+        w1: g.cameras.main.width, x1: g.cameras.main.x, w2: g.cam2.width, x2: g.cam2.x,
+        d1: Math.hypot(g.cameras.main.midPoint.x - g.p1.spr.x, g.cameras.main.midPoint.y - g.p1.spr.y),
+        d2: Math.hypot(g.cam2.midPoint.x - g.p2.spr.x, g.cam2.midPoint.y - g.p2.spr.y),
+      };
+      // Every pad matches the #388 sizes (shares of its own view's height) within 2%.
+      const Lh = split ? (W - CFG.SPLIT_STRIP) / 2 : H;
+      const sizes = g._pads.map(p => [p.joy.radius * 2 / Lh - PHONE1P.stick.d, p.btns.attack.r * 2 / Lh - PHONE1P.btn.d]);
+      // Each half has its own USE (context) and BLD (menu) button, and its own craft menu: both can be open at
+      // once, each stepped only by its owner's stick (#289). In the split, a menu is clear of its owner's buttons.
+      const [pa, pb] = g._pads, tap = (pad, name) => { const b = pad.btns[name]; g._onTouchDown({ id: 9, x: b.hx, y: b.hy }); g._onTouchUp({ id: 9 }); };
+      const pause = ms => new Promise(r => setTimeout(r, ms));
+      const menu = {};
+      tap(pb, 'build'); menu.p2First = !!g._craftOf(g.p2) && !g._craftOf(g.p1);
+      tap(pa, 'build'); menu.both = !!g._craftOf(g.p2) && !!g._craftOf(g.p1);
+      const sels = () => [g._craftOf(g.p1)?.sel, g._craftOf(g.p2)?.sel];
+      pa.joy.vec = { x: 0, y: 1 }; await pause(150); menu.afterP1 = sels(); pa.joy.vec = { x: 0, y: 0 };
+      pb.joy.vec = { x: 0, y: 1 }; await pause(150); menu.afterP2 = sels(); pb.joy.vec = { x: 0, y: 0 };
+      menu.overlap = split ? [g.p1, g.p2].flatMap((p, i) => {
+        const L = g._craftLayout(p);
+        return Object.values(g._pads[i].btns).filter(b => {
+          const [lx, ly] = L.pad.toLocal(b.hx, b.hy), nx = Math.max(L.PX, Math.min(lx, L.PX + L.PW)), ny = Math.max(L.PY, Math.min(ly, L.PY + L.PH));
+          return Math.hypot(lx - nx, ly - ny) < b.r;
+        }).map(b => b.label);
+      }) : [];
+      g.closeCraftMenu();
+      menu.closed = !g.craftMenuOpen && !g._craftOf(g.p1) && !g._craftOf(g.p2);
+      pb.btns.context.down = true; menu.held = [g._useHeld(g.p1), g._useHeld(g.p2)]; pb.btns.context.down = false;
+      return { p1: after[0] - before[0], p2: after[2] - before[2], cams, sizes, menu };
+    }, split);
+    console.log(`2-player touch (${split ? 'split' : 'phone'}): P1 moved ${Math.round(r.p1)} px, P2 moved ${Math.round(r.p2)} px`);
+    // Phone: P2's finger dragged left. Split: P2's finger dragged screen-right, but P2's view is turned
+    // around, so P2 walks world-left. Either way P1 goes right and P2 goes left.
+    if (!(r.p1 > 5 && r.p2 < -5)) throw new Error('a player did not move the way their half was dragged');
+    const m = r.menu;
+    if (!m.p2First) throw new Error("P2's BLD button did not open P2's craft menu alone");
+    if (split && !m.both) throw new Error("both players' craft menus could not be open at once");
+    if (split && (m.afterP1[0] === 0 || m.afterP1[1] !== 0 || m.afterP2[1] === 0)) throw new Error(`craft menu selections after P1's then P2's stick: ${m.afterP1} then ${m.afterP2}; each stick may move only its own menu`);
+    if (m.overlap.length) throw new Error(`a craft menu is behind its owner's buttons: ${m.overlap}`);
+    if (!m.closed) throw new Error('closing the craft menus left one open');
+    if (m.held[0] || !m.held[1]) throw new Error(`P2's USE button reads held for P1/P2 as ${m.held}, wanted false/true`);
+    if (r.sizes.flat().some(d => Math.abs(d) > 0.02)) throw new Error(`a stick or button is not the #388 size (off by ${r.sizes.flat().map(d => d.toFixed(3))})`);
+    if (split) {
+      const c = r.cams;
+      if (c.count !== 2 || Math.abs(c.rot1 - Math.PI / 2) > 1e-6 || Math.abs(c.rot2 + Math.PI / 2) > 1e-6) throw new Error('the two cameras are not turned a quarter turn each way');
+      if (!(c.x2 > c.x1 && c.w1 === c.w2 && c.w1 < c.W / 2)) throw new Error('the halves are not left and right with a strip between');
+      if (c.d1 > 60 || c.d2 > 60) throw new Error(`a half is not centred on its player (off by ${Math.round(c.d1)}, ${Math.round(c.d2)} px)`);
+    }
+  };
+  failures += await pass(browser, '2-player touch, tablet split', base + '?seed=1&renderer=canvas',
+    page => twoPlayer(page, true));
+
+  // Phone layout, 1 player (#388): at 640x360 and at 874x402 (the canvas stays 640x360) reads the real
+  // controls and panels and fails when the radar, the four buttons or the stick differ from the
+  // agreed sizes by more than 2% of the screen height, or when any circle or box overlaps another
+  // or runs off the screen. The stick ring is left out: it only appears where the thumb lands.
+  for (const [name, vp] of [['phone layout 640x360', { width: 640, height: 360 }], ['phone layout 874x402', { width: 874, height: 402 }], ['iPad layout 1180x820', { width: 1180, height: 820 }]]) {
+    failures += await pass(browser, name, base + '?seed=1&renderer=canvas', async page => {
+      await page.evaluate(() => {
+        saveSettings({ inputMode: 'touch', tutorial: false });
+        STATE.mode = 1; STATE.p1CharId = 'knight'; _phaserGame.scene.start('Game');
+      });
+      await page.waitForFunction(() => _phaserGame.scene.getScene('Game')._worldReady === true, null, { timeout: 60000 });
+      await page.waitForTimeout(1500);
+      const err = await page.evaluate(() => {
+        const g = _phaserGame.scene.getScene('Game'), { W, H } = CFG, tol = 0.02 * H;
+        if (_isMobile && Math.abs(W / H - innerWidth / innerHeight) > 0.01) return `canvas is ${W}x${H}, not the shape of the screen`;
+        const b = g._pads[0].btns, items = [], bad = [];
+        const diam = (what, got, share) => { if (Math.abs(got - share * H) > tol) bad.push(`${what} is ${Math.round(got)} px across, wanted ${Math.round(share * H)}`); };
+        const circle = (n, c) => items.push({ n, circle: true, ...c });
+        const rd = g.radarCenter; diam('radar', rd.r * 2, PHONE1P.radar.d); circle('radar', { x: rd.x, y: rd.y, r: rd.r });
+        for (const k of ['attack', 'alt', 'interact', 'build']) { diam(k + ' button', b[k].r * 2, PHONE1P.btn.d); circle(k, { x: b[k].hx, y: b[k].hy, r: b[k].r }); }
+        circle('menu button', { x: b.menu.hx, y: b.menu.hy, r: b.menu.r });
+        diam('stick', g._pads[0].joy.radius * 2, PHONE1P.stick.d);
+        for (const [n, r] of Object.entries(g._hudRects)) items.push({ n: n + ' panel', ...r });
+        const box = i => i.circle ? { x: i.x - i.r, y: i.y - i.r, w: i.r * 2, h: i.r * 2 } : i;
+        const hit = (a, c) => {
+          if (a.circle && c.circle) return Math.hypot(a.x - c.x, a.y - c.y) < a.r + c.r;
+          if (!a.circle && !c.circle) return a.x < c.x + c.w && c.x < a.x + a.w && a.y < c.y + c.h && c.y < a.y + a.h;
+          const [ci, re] = a.circle ? [a, c] : [c, a];
+          const nx = Math.max(re.x, Math.min(ci.x, re.x + re.w)), ny = Math.max(re.y, Math.min(ci.y, re.y + re.h));
+          return Math.hypot(ci.x - nx, ci.y - ny) < ci.r;
+        };
+        for (const i of items) { const q = box(i); if (q.x < 0 || q.y < 0 || q.x + q.w > W || q.y + q.h > H) bad.push(`${i.n} runs off the screen`); }
+        for (let i = 0; i < items.length; i++) for (let j = i + 1; j < items.length; j++) if (hit(items[i], items[j])) bad.push(`${items[i].n} overlaps ${items[j].n}`);
+        return bad.join('; ');
+      });
+      if (err) throw new Error(err);
+    }, { viewport: vp, hasTouch: true });
+  }
+
+  // A phone plays 1 player (#463): the mode screen has no 2 PLAYERS card, and asking for 2 players stays at 1.
+  failures += await pass(browser, 'phone mode screen, 1 player only', base, async page => {
+    await page.evaluate(() => saveSettings({ inputMode: 'touch', tutorial: false }));
+    await page.evaluate(() => _phaserGame.scene.start('ModeSelect'));
+    await page.waitForFunction(() => _phaserGame.scene.isActive('ModeSelect') && _phaserGame.scene.getScene('ModeSelect').pBoxes, null, { timeout: 30000 });
+    const r = await page.evaluate(() => { const s = _phaserGame.scene.getScene('ModeSelect'); s.setMode(2); return { cards: s.pBoxes.length, mode: s.selMode }; });
+    if (r.cards !== 1 || r.mode !== 1) throw new Error(`phone mode screen has ${r.cards} player card(s) and mode ${r.mode} after asking for 2; wanted 1 and 1`);
+    console.log('phone mode screen: 1 PLAYER only');
+  }, { viewport: { width: 640, height: 360 }, hasTouch: true });
+
+  // Tips on a phone: every tutorial tip's banner stays small and clear of the players, the radar, the
+  // buttons and the day panel, in 1 and 2 player games. The tip used to sit 108 px down, on the player.
+  for (const [w, h, mode] of [[640, 360, 1], [844, 390, 1]]) {
+    failures += await pass(browser, `phone tips ${w}x${h} ${mode}P`, base + '?seed=1&renderer=canvas', async page => {
+      await page.evaluate(m => {
+        saveSettings({ inputMode: 'touch', tutorial: false }); // no automatic tips; each is fired below
+        STATE.mode = m; STATE.p1CharId = 'knight'; STATE.p2CharId = 'gunslinger'; _phaserGame.scene.start('Game');
+      }, mode);
+      await page.waitForFunction(() => _phaserGame.scene.getScene('Game')._worldReady === true, null, { timeout: 60000 });
+      await page.waitForTimeout(1500);
+      const bad = [];
+      // No full-screen key list at the start of a touch game: it lists keys a phone does not have and dims the screen.
+      const popup = await ask(page, () => _phaserGame.scene.getScene('Game').children.list.filter(o => o.depth === 200 && o.visible && o.alpha > 0).length);
+      if (popup) bad.push(`the startup controls popup is up on a touch phone (${popup} objects)`);
+      for (const key of ['move', 'attack', 'gather', 'craft', 'nightfall', 'caches', 'minimap']) {
+        await ask(page, k => { const g = _phaserGame.scene.getScene('Game'); g._tutActive = true; g._tutShown = new Set(); g._tutTrigger(k); }, key);
+        await page.waitForFunction(() => !!_phaserGame.scene.getScene('Game')._activeHint, null, { timeout: 5000 });
+        const err = await ask(page, k => {
+          const g = _phaserGame.scene.getScene('Game'), { W, H } = CFG, r = g._hintRect, bad = [];
+          const cam = g.cameras.main, wv = cam.worldView, z = cam.width / wv.width;
+          const items = [];
+          const circle = (n, c) => items.push({ n, circle: true, ...c });
+          const rd = g.radarCenter; circle('radar', { x: rd.x, y: rd.y, r: rd.r });
+          for (const pad of g._pads) for (const b of Object.values(pad.btns)) if (b.r) circle('a button', { x: b.hx, y: b.hy, r: b.r });
+          for (const [n, q] of Object.entries(g._hudRects)) items.push({ n: n + ' panel', ...q });
+          for (const [n, p] of [['P1', g.p1], ['P2', g.p2]]) {
+            if (!p || !p.spr) continue;
+            const b = p.spr.getBounds();
+            items.push({ n, x: (b.x - wv.x) * z, y: (b.y - wv.y) * z, w: b.width * z, h: b.height * z });
+          }
+          if (r.x < 0 || r.y < 0 || r.x + r.w > W || r.y + r.h > H) bad.push('runs off the screen');
+          if (r.h > 90) bad.push(`is ${Math.round(r.h)} px tall (over 90)`);
+          for (const i of items) {
+            const hit = i.circle
+              ? Math.hypot(i.x - Math.max(r.x, Math.min(i.x, r.x + r.w)), i.y - Math.max(r.y, Math.min(i.y, r.y + r.h))) < i.r
+              : r.x < i.x + i.w && i.x < r.x + r.w && r.y < i.y + i.h && i.y < r.y + r.h;
+            if (hit) bad.push(`covers ${i.n}`);
+          }
+          g._hintTimer?.remove(); g._hintTimer = null; if (g._hintHide) g._hintHide();
+          return bad.length ? `${k} tip ${bad.join(', ')} (box ${Math.round(r.x)},${Math.round(r.y)} ${Math.round(r.w)}x${Math.round(r.h)})` : '';
+        }, key);
+        if (err) bad.push(err);
+        await page.waitForFunction(() => !_phaserGame.scene.getScene('Game')._activeHint, null, { timeout: 5000 });
+      }
+      if (bad.length) throw new Error(bad.join('; '));
+    }, { viewport: { width: w, height: h }, hasTouch: true, isMobile: true });
+  }
+
+  // iPad inventory (#414): the bottom-left resource panel must sit above the fog and night layers, and
+  // every icon and number must have a real position on the screen. A scale named like the panel's
+  // change-detection string once put them all at NaN, so the strip drew empty.
+  failures += await pass(browser, 'iPad inventory panel', base + '?seed=1&renderer=canvas', async page => {
+    await page.evaluate(() => {
+      saveSettings({ inputMode: 'touch', tutorial: false });
+      STATE.mode = 1; STATE.p1CharId = 'knight'; _phaserGame.scene.start('Game');
+    });
+    await page.waitForFunction(() => _phaserGame.scene.getScene('Game')._worldReady === true, null, { timeout: 60000 });
+    await page.waitForTimeout(1500);
+    const err = await page.evaluate(() => {
+      const g = _phaserGame.scene.getScene('Game'), { W, H } = CFG;
+      if (W !== 1280) return `canvas is ${W} wide, wanted the iPad's 1280`;
+      const parts = g._ho.filter(o => o.depth >= 100 && o.visible && ((o.type === 'Image' && /^item_/.test(o.texture.key)) || (o.type === 'Text' && /^\d+$/.test(o.text))));
+      if (parts.length < 8) return `found ${parts.length} inventory icons and numbers, wanted 8`;
+      const bad = [];
+      for (const o of parts) {
+        if (!(o.x >= 0 && o.x <= W && o.y >= 0 && o.y <= H)) bad.push(`${o.type} at ${o.x},${o.y}`);
+        if (o.depth <= g.fogGfx.depth || o.depth <= g.nightOverlay.depth) bad.push(`${o.type} is not above the fog`);
+        if (o.alpha < 0.1) bad.push(`${o.type} alpha ${o.alpha}`);
+      }
+      return bad.join('; ');
+    });
+    if (err) throw new Error(err);
+  }, { viewport: { width: 1180, height: 820 }, hasTouch: true });
+
+
+  // Canvas shape (#385): the canvas widens to the screen shape between 16:9 and 2.4:1 and keeps its
+  // height; 16:9 and narrower screens stay exactly as before. At 874x402 (a phone) it fills the
+  // viewport with no bars, and every text on the mode, character and settings screens lies inside it.
+  for (const [vw, vh, touch, wantW, wantH] of [[874, 402, true, 0, 360], [640, 360, true, 640, 360], [1280, 720, false, 1280, 720],
+    [1000, 700, false, 1280, 720], [2400, 720, false, 1728, 720]]) {
+    failures += await pass(browser, `canvas shape ${vw}x${vh}`, base, async page => {
+      const got = await page.evaluate(() => { const c = _phaserGame.canvas.getBoundingClientRect(); return { W: CFG.W, H: CFG.H, cw: c.width, ch: c.height }; });
+      if (got.H !== wantH || (wantW && got.W !== wantW)) throw new Error(`canvas is ${got.W}x${got.H}, wanted ${wantW || 'any'}x${wantH}`);
+      if (!wantW) {
+        if (Math.abs(got.W / got.H - vw / vh) > 0.01) throw new Error(`canvas shape ${got.W}x${got.H} does not match the ${vw}x${vh} screen`);
+        if (Math.abs(got.cw - vw) > 1 || Math.abs(got.ch - vh) > 1) throw new Error(`canvas fills ${Math.round(got.cw)}x${Math.round(got.ch)} of the ${vw}x${vh} screen: black bars`);
+        for (const key of ['ModeSelect', 'CharSelect', 'Settings']) {
+          const off = await page.evaluate(async key => {
+            STATE.mode = 1; _phaserGame.scene.start(key);
+            await new Promise(r => setTimeout(r, 800));
+            const sc = _phaserGame.scene.getScene(key), { W, H } = CFG, bad = [];
+            for (const o of sc.children.list) if (o.type === 'Text' && o.visible && o.text) {
+              const b = o.getBounds(); if (b.x < -1 || b.y < -1 || b.right > W + 1 || b.bottom > H + 1) bad.push(o.text.slice(0, 24));
+            }
+            return bad;
+          }, key);
+          if (off.length) throw new Error(`${key}: text outside the canvas: ${off.join(' | ')}`);
+        }
+      }
+    }, { viewport: { width: vw, height: vh }, hasTouch: touch });
+  }
+  // Touch USE button (#397): on a phone the keyboard key is never pressed, so the relic hold must
+  // read the USE button. Player 1 stands next to a relic and holds it; fails unless the hold starts
+  // and, 3.5 s later, the relic is picked up.
+  failures += await pass(browser, 'touch relic pickup', base + '?seed=1&renderer=canvas', async page => {
+    await page.evaluate(() => {
+      saveSettings({ inputMode: 'touch', tutorial: false });
+      STATE.mode = 1; STATE.p1CharId = 'knight'; _phaserGame.scene.start('Game');
+    });
+    await page.waitForFunction(() => _phaserGame.scene.getScene('Game')._worldReady === true, null, { timeout: 60000 });
+    await page.waitForTimeout(1500);
+    const started = await page.evaluate(async () => {
+      const g = _phaserGame.scene.getScene('Game'), r = g._relicPOIs[0];
+      if (!r) throw new Error('no relic in this seed');
+      g.p1.spr.setPosition(r.x + 10, r.y); g.p1.spr.setVelocity(0, 0);
+      // Enemies guard relics and a hit cancels the hold, so keep the area clear for the test.
+      window._clearRelicArea = setInterval(() => { for (const e of g.enemies.slice()) if (Math.hypot(e.spr.x - r.x, e.spr.y - r.y) < 500) g._hurtEnemy(e, 1e6); }, 150);
+      g._tcBtns.interact.down = true;
+      await new Promise(res => setTimeout(res, 600));
+      return g._relicChannels.size;
+    });
+    if (started !== 1) throw new Error(`holding touch USE next to a relic started ${started} holds, wanted 1`);
+    await page.waitForTimeout(3500);
+    const after = await page.evaluate(() => { const g = _phaserGame.scene.getScene('Game'); clearInterval(window._clearRelicArea); g._tcBtns.interact.down = false; return g.relicsHeld; });
+    if (after !== 1) throw new Error(`relicsHeld is ${after} after a 3.5 s touch USE hold, wanted 1`);
+    console.log('touch relic pickup: hold started and the relic was picked up');
+  }, { viewport: { width: 874, height: 402 }, hasTouch: true });
 
   await browser.close();
   process.exit(failures ? 1 : 0);

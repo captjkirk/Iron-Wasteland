@@ -22,7 +22,11 @@ MANIFEST, an index of every gameplay system: read it first to find where a syste
 The pre-commit hook refuses a commit on `main`, and any commit from the main checkout (every
 session works in its own worktree; see `CLAUDE.md`, "Working directory"), then runs
 `npm run check`: a syntax check of `game.js` and every `src/*.js`, a check that every `src/*.js`
-has a `<script>` tag in `index.html`, the manifest check, and ESLint. A failure aborts the commit.
+has a `<script>` tag in `index.html`, the manifest check, the scoreboard check, a check that every
+doorway in `STRUCTURE_LAYOUTS` is at least 2 tiles wide, the recipe check
+(`scripts/check-recipes.js`: every cost in `src/recipes.js` names a real resource and is what
+`getBuildCost` charges), the wrap check (`scripts/check-wrap.js`: lists cycle with `wrapIndex`, never
+`Phaser.Math.Wrap` from 0, and character select reaches every character both ways), and ESLint. A failure aborts the commit.
 
 `VERSION` in `src/constants.js` stays `'dev build'` in git. `npm run serve` stamps it with the
 commit time of `HEAD` on every request, and the deploy stamps it with the publish time, so the
@@ -42,15 +46,52 @@ the MANIFEST lists, update the MANIFEST in the same commit.
 
 - **`check`** runs `npm run check`, the same as the hook.
 - **`smoke`** runs `npm run smoke`: it fetches Playwright's WebKit (pinned in `package.json`,
-  never installed into the repo) and makes two passes. The first loads the game and fails
+  never installed into the repo) and makes three passes. The first loads the game and fails
   unless `ModeSelect` comes up with no console error; it catches a file using a name from a
   file that loads after it, which ESLint passes. The second loads `?seed=1&renderer=canvas`
   (headless WebKit loses the WebGL context in play, so the canvas renderer stands in), starts
   a solo game, waits for the world, plays ten seconds and fails on any console or page error.
-  Shader and WebGL-only bugs stay invisible to it. Run it locally before moving code between
-  `src/` files or touching a system that runs every frame.
+  It walks east for the first three seconds and fails unless that leaves boot prints (tracks),
+  none on water.
+  Then it spawns each boss beside the knight and fails unless a sword swing reaches the boss's
+  hitbox from 20 px outside it, on both sides, and not from 100 px out.
+  It then jumps to days 5 and 10 and fails unless each brings a boss, of two different types.
+  Then it ends the run, types a two-word name on the game over screen and presses Enter; the
+  global scoreboard is stubbed, so no smoke run posts a real score. The third starts the same
+  game in Hardcore and fails unless the clock runs for five seconds; a page that stops answering
+  fails the run instead of stalling it. Shader and WebGL-only bugs stay invisible to it. Run it
+  locally before moving code between `src/` files or touching a system that runs every frame.
 
 On deploy, `.github/workflows/pages.yml` stamps `VERSION` with the publish time.
+
+## Screenshots on visual and ux PRs
+
+When a PR, or a ticket it closes, has the `visual` or `ux` label, `.github/workflows/shots.yml`
+photographs a fixed set of screens on `main` (before) and on the PR (after): every menu state
+`scripts/phone-menus.js` reaches at its five phone sizes, and one in-play frame (seed 1, 1280x720).
+It pushes only the pairs that changed to the `evidence` branch (images only,
+`pr-<n>/<sha>/before|after/`) and posts one comment, a before | after table per changed screen, on
+the PR and on each ticket it closes; a later push updates the same comment. The tracker panel shows
+the ticket's copy. Labelling the PR starts a run at once; labelling only the ticket takes effect at
+the next push. Every other PR stops after the label lookup.
+
+The shots are deterministic (a paused clock stepped in fixed steps, fixed random seeds, animations
+settled before each shot), so a screen nobody changed comes out the same and drops out. On the CI
+runner a pulsing button can still be a frame apart, so pairs are compared pixel by pixel and a
+difference of a few brightness levels is ignored (`TOLERANCE` in `scripts/evidence.js`). To take
+them locally: `npm install --no-save playwright@1.63.0`, then `node scripts/shots.js <out-dir>`.
+
+**Screens the fixed set cannot reach** (a boss sprite, a night scene, a new building): take your own
+pair and post it the same way.
+
+1. Shoot the same screens, under the same file names, into two folders: `before/` from `main` (in a
+   scratch `git worktree add <dir> origin/main`) and `after/` from your branch. For a sprite,
+   `node tools/render-texture.js --out before boss_wolf`, then `--out after` on your branch; for a
+   scene, a short Playwright script that sets it up and calls `page.screenshot`.
+2. Run `node scripts/evidence.js <pr> $(git rev-parse HEAD) before after extra`.
+
+That pushes the changed pairs to `evidence` and posts them as their own `extra` comment on the PR and
+its ticket, which the fixed set's run never overwrites; run it again to update it.
 
 ## The ticket loop
 
@@ -65,7 +106,7 @@ session is no longer fresh: start a new one and run the loop again.
 
 - `node tools/render-texture.js boss_wolf wolf` writes each named texture to
   `texture-renders/<key>.png` at 4× (needs Playwright: `npm install --no-save playwright`).
-  Put before/after images of any sprite change in its PR.
+  Post before and after renders of a sprite change as in "Screenshots on visual and ux PRs".
 - Add `?boss=wolf` to the game URL (or `golem`, `spider`, `troll`, `hydra`) to have that boss
   spawn 3 s after the world is built. Works on iPad too.
 

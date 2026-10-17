@@ -28,12 +28,30 @@ const _isMobile = typeof navigator !== 'undefined' &&
   (navigator.maxTouchPoints > 0 || 'ontouchstart' in window) &&
   typeof window !== 'undefined' && Math.min(window.innerWidth, window.innerHeight) < 600;
 
+// Widen the canvas to the screen shape (#385): the height stays 360 (phone) or 720, the width follows
+// the screen between 16:9 and 2.4:1, so a phone shows more ground at the sides instead of black bars.
+// Measured once at load, from the game container inside the safe area (notch, rounded corners).
+const _screenAspect = (() => {
+  try {
+    const el = document.getElementById('game-container'), cs = window.getComputedStyle(el);
+    const w = el.clientWidth - parseFloat(cs.paddingLeft) - parseFloat(cs.paddingRight);
+    const h = el.clientHeight - parseFloat(cs.paddingTop) - parseFloat(cs.paddingBottom);
+    const a = Math.max(w, h) / Math.min(w, h); // landscape shape, whichever way the phone was held at load
+    return Math.min(2.4, Math.max(16 / 9, a)) || 16 / 9;
+  } catch (e) { return 16 / 9; }
+})();
+
+// The phone layout: the menus and the HUD use their own coordinates on a canvas 360 high (GLOSSARY.md).
+const PHONE_LAYOUT = _isMobile;
+
 const CFG = {
-  W: _isMobile ? 640 : 1280, H: _isMobile ? 360 : 720,
+  H: _isMobile ? 360 : 720, W: Math.round((_isMobile ? 360 : 720) * _screenAspect),
   TILE: 32,
   MAP_W: 300, MAP_H: 300,
   SAFE_R: 10,
   CAM_ZOOM_MAX: 1.0,
+  SPLIT_STRIP: 48,  // face-to-face iPad: shared strip between the two halves (#387)
+  SPLIT_ZOOM: 0.8,  // each half's camera zoom
   CAM_ZOOM_MIN: _isMobile ? 0.15 : 0.25, // mobile: show more world at min zoom
   CAM_PAD: _isMobile ? 115 : 230,        // mobile: tighter 2-player framing
   TREES: 400,
@@ -45,6 +63,9 @@ const CFG = {
   FOG_UPDATE_INTERVAL: 4, // update fog every N frames
   DORMANT_RADIUS: 800,  // px — wildlife enemy goes dormant beyond this from all players
   WAKE_RADIUS:    700,  // px — hysteresis: dormant enemy wakes when closer than this
+  WAVE_RING_MIN: 900,   // px — a wave's wildlife spawns this far from a player (off-screen) ...
+  WAVE_RING_MAX: 1300,  // px — ... out to this, and marches in, never dormant until it reaches someone
+  WAVE_MARCH_MS: 60000, // a wave marcher that has reached nobody by then becomes ordinary wildlife
   MAX_ACTIVE_ENEMIES: 180, // hard cap on simultaneously active (non-dormant) enemies
   MAX_ENEMIES: 280, // hard cap on this.enemies.length across all spawners (den/wave)
   ITEM_DESPAWN_MS: 20000, // harvested / dropped item pickups auto-expire after this long
@@ -55,6 +76,30 @@ const CFG = {
   CAMPFIRE_HEAL_R: 80,     // px from the campfire
   RELIC_RANGE: 70,         // px from a player to a relic to pick it up
   RELIC_ALTAR_MIN: 18,     // tiles: no relic this close to the altar, so the Interact key means one thing
+  // Sheltered (#293, src/shelter.js): +1 HP this often anywhere in the ring; the night
+  // multiplier for enemies whose target is sheltered (1 = no night boost); and how many tiles
+  // past a sheltered ring are kept clear of new enemy spawns.
+  SHELTER_HEAL_MS: 1000,
+  SHELTER_NIGHT_MULT: 1,
+  SHELTER_SPAWN_PAD: 1,
+  // Tracks (#308, src/tracks.js): how long a boot print lasts (ms) and how dark it starts
+  // (alpha), by the ground under it. Water takes no print. Starting values, tuned by eye.
+  TRACKS: {
+    GROUND: {
+      tundra: { life: 60000, alpha: 0.55 }, // snow
+      swamp:  { life: 45000, alpha: 0.5  }, // mud
+      desert: { life: 30000, alpha: 0.45 }, // sand
+      fungal: { life: 30000, alpha: 0.4  },
+      waste:  { life: 25000, alpha: 0.35 }, // dust, cracked earth
+      grass:  { life: 20000, alpha: 0.3  },
+      ruins:  { life: 15000, alpha: 0.15 }, // stone, rubble
+      ice:    { life: 15000, alpha: 0.15 },
+    },
+    FADE: 0.25,   // a print fades out over this last fraction of its life
+    STRIDE: 30,   // px between one print and the next (they alternate feet)
+    GAIT: 4,      // px each print sits left or right of the walking line
+    CAP: 320,     // live prints; when full, the oldest is recycled early
+  },
   // Global scoreboard web app URL (tools/scoreboard/SETUP.md). Empty: no network call at all.
   SCOREBOARD_URL: 'https://script.google.com/macros/s/AKfycbw-F_cH3aDvkIVX2Wycd64OreVQAykeu656VZ4wqZBnF6rUozi2NB7Th9MAptIKS9Hh/exec',
 };
@@ -62,6 +107,16 @@ const CFG = {
 // The player's physics body as the world sees it: spawnPlayer's 20×24 at the sprite's 1.5 scale,
 // its centre dy px below the sprite's position. _walkableFrom fills with it; npm run smoke checks it.
 const PLAYER_BODY = { w: 30, h: 36, dy: 15 };
+
+// Phone, 1 player layout (#388): sizes are a share of screen height (d = diameter), positions a
+// share of width (cx) and height (cy), so they hold on every phone. solid = see-through level.
+const PHONE1P = {
+  radar: { d: 0.39, cx: 0.88, cy: 0.21, solid: 0.60 },
+  stick: { d: 0.40, cx: 0.14, cy: 0.78 },
+  btn: { d: 0.18, cx: 0.87, cy: 0.77, gap: 1.5 }, // gap: centre distance from the diamond middle, in radii
+  menuBtn: { cx: 0.04, cy: 0.18 }, menuText: { cx: 0.07, cy: 0.09 },
+  hudScale: 0.9, hudSolid: 0.45, tipScale: 0.8, tipSolid: 0.75,
+};
 
 // ── ENEMY LOOT TABLES ─────────────────────────────────────────
 // Format: [item_key, base_chance, flags]  flags: 0=plain, 1=multiply by foodMult, 2=rare (skip if hc.rareDropsBossOnly)
@@ -283,6 +338,10 @@ const BIOME_COLORS = {
   fungal: 0x4a1a5a,
   desert: 0xc8a060,
 };
+
+// Index i wrapped into 0..n-1. Phaser's Math.Wrap includes its top, so a wrap from 0 can return n,
+// not 0; never use it to cycle through a list.
+const wrapIndex = (i, n) => ((i % n) + n) % n;
 
 // ── CHARACTER DEFINITIONS ─────────────────────────────────────
 const CHARS = [
