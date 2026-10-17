@@ -20,23 +20,15 @@ const MENUS = [
   { name: 'title', scene: 'ModeSelect' },
   { name: 'settings', scene: 'Settings' },
   { name: 'settings paused 1P', scene: 'Settings', data: { returnTo: 'Game', p1CharId: 'knight', solo: true } },
-  { name: 'settings paused 2P', scene: 'Settings', data: { returnTo: 'Game', p1CharId: 'knight', p2CharId: 'ranger', solo: false } },
   // With a keyboard in use the pause screen lists the keys; the longest lists are the charmer's and the ranger's.
   { name: 'settings paused 1P, keyboard', scene: 'Settings', input: 'keyboard', data: { returnTo: 'Game', p1CharId: 'charmer', solo: true } },
-  { name: 'settings paused 2P, keyboard', scene: 'Settings', input: 'keyboard', data: { returnTo: 'Game', p1CharId: 'charmer', p2CharId: 'ranger', solo: false } },
   { name: 'rebind controls', scene: 'Controls' },
-  // The game over screen at its fullest (a won 2-player run) and as a plain 1-player loss, before
+  // The game over screen as a 1-player loss, before
   // saving, with the feedback box up, and with the score lists (the global list is stubbed to 10 rows).
-  { name: 'game over, won 2P', scene: 'GameOver', stages: [null, 'save', 'skip'],
-    data: { reason: 'Run abandoned — better luck next time.', timeAlive: 3725, mode: 2, difficulty: 'hardcore', kills: 540, days: 12,
-      resources: 311, bossDefeated: true, p1Name: 'Hudson', p2Name: 'Zachary', p1Kills: 300, p2Kills: 240, won: true,
-      relicsDeposited: 5, dbgEntries: ['a log line'], seed: 1, version: 'dev build' } },
   { name: 'game over, lost 1P', scene: 'GameOver', stages: [null, 'save', 'skip'],
     data: { reason: 'Hudson has fallen.', timeAlive: 95, mode: 1, difficulty: 'survival', kills: 4, days: 1, resources: 3,
       p1Name: 'Hudson', p1Kills: 4, dbgEntries: ['a log line'], seed: 1, version: 'dev build' } },
   { name: 'characters 1P', scene: 'CharSelect', mode: 1, turns: 'all' },
-  { name: 'characters 2P', scene: 'CharSelect', mode: 2, turns: 'all' },
-  { name: 'characters 2P, P2 turn', scene: 'CharSelect', mode: 2, p1Done: true },
 ];
 
 // Runs in the page: brings the scene up, steps it through m.stages and returns the bounds of
@@ -79,6 +71,7 @@ async function readScene(m) {
       sc.p1Idx = i; sc.refresh();
       if (m.mode === 2) { sc.p1Done = true; sc.p2Idx = (i + 1) % CHARS.length; sc.refresh(); sc.p1Done = false; }
       sc._pos = i; sc._layoutWheel(); out.push(snap(`character ${i}`));
+      if (window.__shot) await window.__shot(`character ${i}`); // scripts/shots.js photographs each state
     }
   } else {
     if (m.p1Done) { sc.confirm(1); sc.statusText.setText('Now Player 2 — Arrows to pick, / to confirm'); }
@@ -86,6 +79,7 @@ async function readScene(m) {
       if (st === 'save') { sc._onNameSubmit(); await wait(1100); }
       if (st === 'skip') { sc.children.list.find(o => o.text === 'SKIP \u2192').emit('pointerdown'); await wait(900); }
       out.push(snap(st || 'as shown'));
+      if (window.__shot) await window.__shot(st || 'as shown');
     }
   }
   saveSettings({ inputMode: before.input });
@@ -145,4 +139,4 @@ async function checkPhoneMenus(page, size) {
   if (found.length) throw new Error(`${found.length} menu layout problems at ${size} (listed above)`);
 }
 
-module.exports = { checkPhoneMenus, findProblems, PHONE_SIZES, MENUS };
+module.exports = { checkPhoneMenus, findProblems, readScene, PHONE_SIZES, MENUS };

@@ -12,6 +12,8 @@
 //      from 100 px out does not (#312, #317).
 //      Then jumps to boss days 5 and 10 and fails unless each brings a boss, of two types.
 //      Then lines up three 1-HP enemies in front of the knight and fails unless one swing kills all three.
+//      Then explores the whole radar area and fails if fog or radar read settings from storage, the radar
+//      redraws terrain per tile, its picture has the wrong colour, or the fog rebuilds its buffers (#342, #344).
 //      Then ends the run and types a two-word name on the game over screen (#328).
 //      Also, on an iPad-sized touch screen (1180x820), fails unless every inventory icon and number has a real position above the fog (#414).
 //   Phone menus: on five phone screens, fails on any overlap, off-canvas object or tap target under
@@ -255,6 +257,30 @@ async function bossReach(page) {
     });
     if (swing) throw new Error(swing);
     console.log('in play: one swing killed all three lined-up enemies');
+    // Fog and radar (#342, #344): neither reads settings from storage per frame; the radar's draw
+    // list stays small with its whole area explored; its picture holds each explored tile's colour;
+    // and the fog keeps its paint buffers between updates.
+    const radar = await ask(page, () => {
+      const s = _phaserGame.scene.getScene('Game'), real = window.loadSettings;
+      let reads = 0;
+      window.loadSettings = () => { reads++; return real(); };
+      try {
+        const tx = Math.floor(s.p1.spr.x / CFG.TILE), ty = Math.floor(s.p1.spr.y / CFG.TILE);
+        s.revealFog(tx, ty, 40);
+        const fog = () => { s._fogFrame = CFG.FOG_UPDATE_INTERVAL - 1; s._lastFogP1 = null; s.updateFog(); };
+        fog(); const buf = s._fogBufs[0]; fog();
+        s._fogFrame = 0; s.updateMinimap();
+        const i = tx + ty * CFG.MAP_W, c = s._mmColorMap[i];
+        const px = s._mmTex.context.getImageData(tx, ty, 1, 1).data;
+        const off = Math.max(Math.abs(px[0] - (c >> 16)), Math.abs(px[1] - ((c >> 8) & 255)), Math.abs(px[2] - (c & 255)));
+        return { reads, cmds: s.minimapDots.commandBuffer.length, off, kept: buf === s._fogBufs[0] };
+      } finally { window.loadSettings = real; }
+    });
+    console.log(`in play: radar draw list ${radar.cmds} entries with its area explored, ${radar.reads} settings reads`);
+    if (radar.reads) throw new Error(`fog and radar read settings from storage ${radar.reads} times in one update`);
+    if (radar.cmds > 5000) throw new Error(`radar draw list has ${radar.cmds} entries: explored terrain is being redrawn per tile`);
+    if (radar.off > 3) throw new Error(`radar picture colour is off by ${radar.off} from the tile's colour`);
+    if (!radar.kept) throw new Error('fog rebuilt its paint buffers with the view size unchanged');
     const mb = Math.round(px * 4 / 1e6);
     console.log(`in play: ${mb} MB of pixel memory (budget ${PIXEL_BUDGET_MB} MB)`);
     if (mb > PIXEL_BUDGET_MB) throw new Error(`pixel memory ${mb} MB is over the ${PIXEL_BUDGET_MB} MB budget`);
@@ -300,9 +326,9 @@ async function bossReach(page) {
     if (!(ran >= 1)) throw new Error(`timeAlive advanced only ${ran} s in ${HARDCORE_MS / 1000} s of Hardcore play`);
   });
 
-  // 2-player on touch. Fingers on each player's stick move only that player; fails on any page error
-  // or when a player does not move the way their stick was dragged.
-  //  - phone (740x390, touch): left/right halves, P1 left and P2 right (#288).
+  // 2-player on touch is the face-to-face tablet only; a phone plays 1 player (#463). Fingers on each
+  // player's stick move only that player; fails on any page error or when a player does not move the way
+  // their stick was dragged.
   //  - tablet (1280x720): face-to-face split, a player at each short end: P1 left half turned a quarter
   //    turn clockwise, P2 right half turned anticlockwise (#387).
   const twoPlayer = async (page, split) => {
@@ -338,12 +364,39 @@ async function bossReach(page) {
       // Every pad matches the #388 sizes (shares of its own view's height) within 2%.
       const Lh = split ? (W - CFG.SPLIT_STRIP) / 2 : H;
       const sizes = g._pads.map(p => [p.joy.radius * 2 / Lh - PHONE1P.stick.d, p.btns.attack.r * 2 / Lh - PHONE1P.btn.d]);
-      return { p1: after[0] - before[0], p2: after[2] - before[2], cams, sizes };
+      // Each half has its own USE (context) and BLD (menu) button, and its own craft menu: both can be open at
+      // once, each stepped only by its owner's stick (#289). In the split, a menu is clear of its owner's buttons.
+      const [pa, pb] = g._pads, tap = (pad, name) => { const b = pad.btns[name]; g._onTouchDown({ id: 9, x: b.hx, y: b.hy }); g._onTouchUp({ id: 9 }); };
+      const pause = ms => new Promise(r => setTimeout(r, ms));
+      const menu = {};
+      tap(pb, 'build'); menu.p2First = !!g._craftOf(g.p2) && !g._craftOf(g.p1);
+      tap(pa, 'build'); menu.both = !!g._craftOf(g.p2) && !!g._craftOf(g.p1);
+      const sels = () => [g._craftOf(g.p1)?.sel, g._craftOf(g.p2)?.sel];
+      pa.joy.vec = { x: 0, y: 1 }; await pause(150); menu.afterP1 = sels(); pa.joy.vec = { x: 0, y: 0 };
+      pb.joy.vec = { x: 0, y: 1 }; await pause(150); menu.afterP2 = sels(); pb.joy.vec = { x: 0, y: 0 };
+      menu.overlap = split ? [g.p1, g.p2].flatMap((p, i) => {
+        const L = g._craftLayout(p);
+        return Object.values(g._pads[i].btns).filter(b => {
+          const [lx, ly] = L.pad.toLocal(b.hx, b.hy), nx = Math.max(L.PX, Math.min(lx, L.PX + L.PW)), ny = Math.max(L.PY, Math.min(ly, L.PY + L.PH));
+          return Math.hypot(lx - nx, ly - ny) < b.r;
+        }).map(b => b.label);
+      }) : [];
+      g.closeCraftMenu();
+      menu.closed = !g.craftMenuOpen && !g._craftOf(g.p1) && !g._craftOf(g.p2);
+      pb.btns.context.down = true; menu.held = [g._useHeld(g.p1), g._useHeld(g.p2)]; pb.btns.context.down = false;
+      return { p1: after[0] - before[0], p2: after[2] - before[2], cams, sizes, menu };
     }, split);
     console.log(`2-player touch (${split ? 'split' : 'phone'}): P1 moved ${Math.round(r.p1)} px, P2 moved ${Math.round(r.p2)} px`);
     // Phone: P2's finger dragged left. Split: P2's finger dragged screen-right, but P2's view is turned
     // around, so P2 walks world-left. Either way P1 goes right and P2 goes left.
     if (!(r.p1 > 5 && r.p2 < -5)) throw new Error('a player did not move the way their half was dragged');
+    const m = r.menu;
+    if (!m.p2First) throw new Error("P2's BLD button did not open P2's craft menu alone");
+    if (split && !m.both) throw new Error("both players' craft menus could not be open at once");
+    if (split && (m.afterP1[0] === 0 || m.afterP1[1] !== 0 || m.afterP2[1] === 0)) throw new Error(`craft menu selections after P1's then P2's stick: ${m.afterP1} then ${m.afterP2}; each stick may move only its own menu`);
+    if (m.overlap.length) throw new Error(`a craft menu is behind its owner's buttons: ${m.overlap}`);
+    if (!m.closed) throw new Error('closing the craft menus left one open');
+    if (m.held[0] || !m.held[1]) throw new Error(`P2's USE button reads held for P1/P2 as ${m.held}, wanted false/true`);
     if (r.sizes.flat().some(d => Math.abs(d) > 0.02)) throw new Error(`a stick or button is not the #388 size (off by ${r.sizes.flat().map(d => d.toFixed(3))})`);
     if (split) {
       const c = r.cams;
@@ -352,8 +405,6 @@ async function bossReach(page) {
       if (c.d1 > 60 || c.d2 > 60) throw new Error(`a half is not centred on its player (off by ${Math.round(c.d1)}, ${Math.round(c.d2)} px)`);
     }
   };
-  failures += await pass(browser, '2-player touch, phone', base + '?seed=1&renderer=canvas',
-    page => twoPlayer(page, false), { viewport: { width: 740, height: 390 }, hasTouch: true });
   failures += await pass(browser, '2-player touch, tablet split', base + '?seed=1&renderer=canvas',
     page => twoPlayer(page, true));
 
@@ -396,9 +447,19 @@ async function bossReach(page) {
     }, { viewport: vp, hasTouch: true });
   }
 
+  // A phone plays 1 player (#463): the mode screen has no 2 PLAYERS card, and asking for 2 players stays at 1.
+  failures += await pass(browser, 'phone mode screen, 1 player only', base, async page => {
+    await page.evaluate(() => saveSettings({ inputMode: 'touch', tutorial: false }));
+    await page.evaluate(() => _phaserGame.scene.start('ModeSelect'));
+    await page.waitForFunction(() => _phaserGame.scene.isActive('ModeSelect') && _phaserGame.scene.getScene('ModeSelect').pBoxes, null, { timeout: 30000 });
+    const r = await page.evaluate(() => { const s = _phaserGame.scene.getScene('ModeSelect'); s.setMode(2); return { cards: s.pBoxes.length, mode: s.selMode }; });
+    if (r.cards !== 1 || r.mode !== 1) throw new Error(`phone mode screen has ${r.cards} player card(s) and mode ${r.mode} after asking for 2; wanted 1 and 1`);
+    console.log('phone mode screen: 1 PLAYER only');
+  }, { viewport: { width: 640, height: 360 }, hasTouch: true });
+
   // Tips on a phone: every tutorial tip's banner stays small and clear of the players, the radar, the
   // buttons and the day panel, in 1 and 2 player games. The tip used to sit 108 px down, on the player.
-  for (const [w, h, mode] of [[640, 360, 1], [844, 390, 1], [640, 360, 2], [844, 390, 2]]) {
+  for (const [w, h, mode] of [[640, 360, 1], [844, 390, 1]]) {
     failures += await pass(browser, `phone tips ${w}x${h} ${mode}P`, base + '?seed=1&renderer=canvas', async page => {
       await page.evaluate(m => {
         saveSettings({ inputMode: 'touch', tutorial: false }); // no automatic tips; each is fired below

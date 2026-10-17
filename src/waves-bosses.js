@@ -217,7 +217,7 @@ Object.assign(GameScene.prototype, {
       const ox = obstacle.x, oy = obstacle.y;
       const tx = Math.floor(ox / CFG.TILE), ty = Math.floor(oy / CFG.TILE);
       // Free the tile so pathfinding/placement no longer treats it as solid.
-      if (this._solidTileSet) this._solidTileSet.delete(tx + ',' + ty);
+      if (this._solidTileSet) this._markTile(this._solidTileSet, tx, ty, 0);
       // Repaint the minimap cell back to its underlying terrain (takes world coords).
       if (this._unpaintMinimapTile) this._unpaintMinimapTile(ox, oy);
 
@@ -513,6 +513,7 @@ Object.assign(GameScene.prototype, {
             const ang = Math.random() * Math.PI * 2;
             const ex = Phaser.Math.Clamp(b.spr.x + Math.cos(ang) * 90, CFG.TILE*2, wW-CFG.TILE*2);
             const ey = Phaser.Math.Clamp(b.spr.y + Math.sin(ang) * 90, CFG.TILE*2, wH-CFG.TILE*2);
+            if (this._inShelter(ex, ey)) continue;
             const sizeMult = Phaser.Math.FloatBetween(0.9, 1.15);
             const sc = 0.95 * sizeMult;
             const eSpr = this.physics.add.image(ex, ey, 'wolf').setScale(sc).setDepth(9);

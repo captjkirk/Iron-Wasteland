@@ -64,6 +64,8 @@
 //
 //   src/shelter.js       — System 8's Sheltered test, added to GameScene.prototype
 //
+//   src/bed-respawn.js   — System 7's bed respawn (2-player Survival), added to GameScene.prototype
+//
 //   src/world-gen.js     — System 1, added to GameScene.prototype; loads after game-scene.js
 //
 //   src/waves-bosses.js  — System 4, added to GameScene.prototype; loads after world-gen.js
@@ -94,7 +96,8 @@
 //          RIVER_COUNT, RIVER_WANDER, RIVER_WIDTH_MIN, RIVER_WIDTH_MAX,
 //          PLACEMENT, ROCKS
 //    data: _biomeSeeds, _waterMap, _iceMap, waterTiles, iceTiles,
-//          deepWaterTiles, mountainTiles, obstacles
+//          deepWaterTiles, mountainTiles, obstacles,
+//          _solidTileSet, _impassableTileSet, _wallTileSet (enemy line of sight, steering, placement)
 //    ambient anim: _grassGroups, _grassPhase (grass sway);
 //          _riverTex, _riverScroll, _riverOffLast + drawRiverFrame (shared scrolling
 //          river canvas); _pondWaterTiles, _shimmerTable (pond/lake alpha shimmer)
@@ -145,34 +148,38 @@
 //    data: player.atkCooldown, player.ammo, player.reserveAmmo, player.carriedAmmo
 //    log:  [COMBAT], [PLAYER]
 //
-// 7. DEATH & REVIVE
+// 7. DEATH & REVIVE  (src/game-scene.js; bed respawn in src/bed-respawn.js)
 //    fns:  handleDeath, checkDeaths, updateDowned, updateRevive,
 //          revivePlayer, checkBothDead, buildReviveBar, drawReviveBar,
-//          _showSleepIndicator, _hideSleepIndicator
+//          _showSleepIndicator, _hideSleepIndicator,
+//          _bedRespawn (2P Survival: timer out + respawn bed = back at the bed, half HP and items)
 //    cfg:  DOWN_TIME, REVIVE_TIME, REVIVE_RANGE
-//    data: player.isDowned, player.downedTimer, reviving, reviveProgress
+//    data: player.isDowned, player.downTimer, player.respawnBed, reviving, reviveProgress
 //    log:  [PLAYER]
 //
 // 8. BUILDING & CRAFTING  (src/building-crafting.js; RECIPES in src/recipes.js; shelter in src/shelter.js)
 //    build: updateBuildMode, placeBuild, _buildSpotError, exitBuildMode, _placeWallSprite,
 //           _tryTeardownBuild, openGate, getBuildCost, getTeamInv
 //    craft: openCraftMenu, closeCraftMenu, updateCraftMenu, craftSelected,
-//           renderCraftMenu, _craftScrollToSel
+//           renderCraftMenu, _craftScrollToSel, _craftOf/_craftLayout/_craftPanelHit (one menu per player, kept on p.craft;
+//           face-to-face each is drawn in its owner's view, clear of their buttons)
 //    barracks: openBarrack, closeBarrack, barrackNav, barrackConfirm,
 //              refreshBarrackCards, buildBarrackOverlay, checkBarrackRange
 //    shelter: isShelteredAt (a closed ring of built walls, gates count, holding a campfire, craftbench
 //             or bed; 8-way flood fill, so a corner-only join is a gap), _updateShelter (rechecks
 //             on a new tile or when _shelterDirty after a build or a destroyed wall; sets p._sheltered,
-//             shown as the 'shelter' status icon)
+//             shown as the 'shelter' status icon, and p._shelterTiles; heals 1 HP per SHELTER_HEAL_MS),
+//             _inShelter (spawners skip points in a sheltered ring + SHELTER_SPAWN_PAD), nearShelterTiles.
+//             Enemies whose target is sheltered use SHELTER_NIGHT_MULT, not hc.nightMult.
 //    data: buildType, buildRotation, buildOwner, RECIPES, RECIPE_COSTS (getBuildCost's lookup),
 //          structures, player.carriedAmmo
 //    log:  [BUILD ], [PLAYER]
 //
 // 9. WALLS / SPIKES / STRUCTURE DAMAGE
 //    fns:  updateSpikeTraps, damageStructure, _addWallToBuckets,
-//          _removeWallFromBuckets, _wallBucketKey, _wallNearby,
+//          _removeWallFromBuckets, _wallBucketKey, _wallNearby, _tileAt, _markTile,
 //          _refreshWallClustersNear, _addFireGlow
-//    data: structures, spikes, _wallBuckets, _wallTileSet
+//    data: structures, spikes, _wallBuckets (Map keyed tx + ty*MAP_W), _wallTileSet
 //    cfg:  SPIKE_TRAP_DMG, CAMPFIRE_HEAL_MS, CAMPFIRE_HEAL_R (campfire heal lives in building-crafting.js)
 //    log:  [COMBAT], [BUILD ]
 //
@@ -210,14 +217,16 @@
 //     fns:  _showStatus, _hideScoutPanel, _updateScoutPanel,
 //           _drawThreatIndicators, hint, _activeStatuses, _drawStatusStrip
 //     minimap: _renderMinimapBase, _paintMinimapTile, _unpaintMinimapTile,
-//              _buildMinimapColorMap
-//     data: hudCam, hudRelicText, minimapGfx, minimapDots, mmBounds, _scoutPanel, _hudDirty,
+//              _buildMinimapColorMap, _mmPaint (explored tile -> radar picture)
+//     data: hudCam, hudRelicText, minimapGfx, minimapImg (radar picture, _mmTex),
+//           minimapDots (moving dots only), mmBounds, _scoutPanel, _hudDirty,
 //           _toxicUntil, _rallyUntil (status-strip timestamps)
 //
 // 16. FOG OF WAR
 //     fns:  revealFog, updateFog, _losBlocked
 //     cfg:  FOG_REVEAL_R, FOG_UPDATE_INTERVAL
-//     data: fogRevealed (Uint8Array), fogVisible, _fogVisibleBuilding
+//     data: fogRevealed, fogVisible (Uint8Array, index tx + ty*MAP_W), _fogVisibleBuilding,
+//           _fogBufs (per-camera paint buffers); fog/radar on-off read from _settings
 //
 // 17. AUDIO (Web Audio API)  (src/audio.js)
 //     class: Music         (background + boss switch via Music.switchToBoss)
@@ -236,10 +245,11 @@
 //           initTouchControls, applyTouchInput, _onTouchDown/Move/Up, _logTouchStick, _onBtnPress, _drawTouchHUD,
 //           keyDisplayName
 //     data: wasd, p2keys, _pads (one touch pad per player: stick, buttons, the screen area its fingers
-//           land in; 2P touch on a phone splits the screen left/right), _joy and _tcBtns (P1's pad),
+//           land in; 2P touch is the face-to-face tablet only, a phone plays 1P), _joy and _tcBtns (P1's pad),
 //           _split (face-to-face iPad: 2P touch, short side >= 600), cam2 (P2's camera, right half, quarter-turned; P1's is the left half)
 //     fns:  _worldCams, _ignoreInWorldCams, _camFx (shake/flash/fade on every world camera), _initSplitCams, _worldRect (true visible
-//           rectangle of a camera: use it, not worldView, when the cameras are turned)
+//           rectangle of a camera: use it, not worldView, when the cameras are turned), _padOf/_stickOf (a player's own touch pad and
+//           stick: menus and USE read these, never _joy), _useTargetNear (tree or downed ally in reach), updateBarrackStick
 //     cfg:  SPLIT_STRIP, SPLIT_ZOOM
 //
 // 20. DEBUG LOG & PERF  (src/game-scene.js; _qlog in src/constants.js)
@@ -299,7 +309,9 @@
 //   through _h() or _ignoreInWorldCams(); camera shake/flash/fade go through _camFx(); any code that reads
 //   cameras.main.worldView to cull or paint must also look at cam2 (see updateFog, dormant enemies).
 // • Draw order: trees, rocks, mountains, players and enemies are Y-sorted in depth band 9..9.9 via _sortDepth(feetY); keep ground items/structures <= 8 and bullets/bars >= 10.
-// • Water detection uses the _waterMap Uint8Array (index tx + ty*MAP_W), NOT physics overlap.
+// • Water detection uses the _waterMap Uint8Array (index tx + ty*MAP_W), NOT physics overlap. The tile
+//   flags _solidTileSet, _impassableTileSet and _wallTileSet are Uint8Arrays too: read them through
+//   _tileAt, which treats off-map tiles as clear (a raw index past a row's end wraps to the next row).
 // • Enemy dormancy: enemies > DORMANT_RADIUS are physics-disabled and hidden;
 //   they re-enable inside WAKE_RADIUS (hysteresis). Raiders, boss escorts and wave
 //   marchers (_waveMarch, until first contact) never sleep; nothing else wakes a den.

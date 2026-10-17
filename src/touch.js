@@ -3,11 +3,11 @@
 // Loads after src/game-scene.js and adds these methods to GameScene (ADR 0002).
 // One touch pad per player: a stick that appears where the finger lands, plus buttons. A finger
 // belongs to the pad whose area it landed in. 1 player: one pad over the whole screen (stick on
-// the left, five buttons on the right). 2 players on a touch device: each half of the screen is
-// one player's pad, P1 left and P2 right, each with a stick and a big attack button.
-// Face-to-face (this._split, #387): the iPad lies flat with a player at each short end. P1's pad is the
+// the left, five buttons on the right). 2 players on touch is only the face-to-face tablet (this._split,
+// #387); a phone plays 1 player (#463). The iPad lies flat with a player at each short end. P1's pad is the
 // left half, P2's the right half, each turned a quarter turn (pad.rot) toward its player: the stick
-// zone and attack button sit at the player's near edge, and the stick vector is turned back into world axes.
+// zone and the ATK, USE and BLD buttons sit at the player's near edge, and the stick vector is turned back
+// into world axes.
 // this._joy and this._tcBtns stay P1's stick and buttons (the craft menu and harvesting read them).
 
 Object.assign(GameScene.prototype, {
@@ -48,30 +48,34 @@ Object.assign(GameScene.prototype, {
       }];
       if (P) this._pads[0].joy.radius = P.stick.d * H / 2; // scales with the screen height (#406)
     } else {
-      // 2 players (#403): each pad mirrors the 1-player layout (PHONE1P) in its own view; sizes are shares
-      // of that view's height. Phone: the view is a half of the screen. Face-to-face (#387): the view is a
-      // half turned a quarter turn, so it is H wide and halfW tall. lx, ly are points in the player's own
-      // view (ly grows toward the near edge); toScreen and toLocal convert.
-      const P = PHONE1P, split = this._split;
-      const halfW = split ? (W - CFG.SPLIT_STRIP) / 2 : W / 2, Lw = split ? H : halfW, Lh = split ? halfW : H;
+      // 2 players, face-to-face on a tablet (#387, #403): each pad mirrors the 1-player layout (PHONE1P) in its
+      // own view, a half of the screen turned a quarter turn, so it is H wide and halfW tall. Sizes are shares
+      // of that view's height. lx, ly are points in the player's own view (ly grows toward the near edge);
+      // toScreen and toLocal convert.
+      const P = PHONE1P;
+      const halfW = (W - CFG.SPLIT_STRIP) / 2, Lw = H, Lh = halfW;
       const sr = P.stick.d * Lh / 2, br = P.btn.d * Lh / 2, pad2 = 0.02 * Lh;
       this._pads = [0, 1].map(i => {
         const x0 = i ? W - halfW : 0, x1 = x0 + halfW;
         // P1 (left end, view turned +90): near edge is screen-left; their left is screen-top.
         // P2 (right end, view turned -90): near edge is screen-right; their left is screen-bottom.
-        const toScreen = !split ? (lx, ly) => [x0 + lx, ly]
-          : i ? (lx, ly) => [x1 - (Lh - ly), H - lx] : (lx, ly) => [x0 + (Lh - ly), lx];
-        const toLocal = !split ? (px, py) => [px - x0, py]
-          : i ? (px, py) => [H - py, Lh - (x1 - px)] : (px, py) => [py, Lh - (px - x0)];
+        const toScreen = i ? (lx, ly) => [x1 - (Lh - ly), H - lx] : (lx, ly) => [x0 + (Lh - ly), lx];
+        const toLocal = i ? (px, py) => [H - py, Lh - (x1 - px)] : (px, py) => [py, Lh - (px - x0)];
         const [hintX, hintY] = toScreen(Math.max(P.stick.cx * Lw, sr + pad2), P.stick.cy * Lh);
-        const [ax, ay] = toScreen(Lw - Math.max((1 - P.btn.cx) * Lw, br + pad2), P.btn.cy * Lh + P.btn.gap * br);
+        // The 1-player diamond without ALT: ATK bottom, USE (context) left, BLD (menu) top.
+        const bx = Lw - Math.max((1 - P.btn.cx) * Lw, br + pad2), by = P.btn.cy * Lh, g = P.btn.gap * br;
+        const [ax, ay] = toScreen(bx, by + g), [cx, cy] = toScreen(bx - g, by), [mx, my] = toScreen(bx, by - g);
         const pad = {
           who: i ? 'p2' : 'p1', x0, x1, y0: 0, y1: H, joy: stick(), hintX, hintY, hintR: sr,
           stickZone: (px, py) => { const [lx, ly] = toLocal(px, py); return lx < Lw * 0.6 && ly > Lh * 0.35; },
-          btns: { attack: btn(ax, ay, br, i ? 0xff8844 : 0x4488ff, '⚔ ATK') },
+          btns: {
+            attack: btn(ax, ay, br, i ? 0xff8844 : 0x4488ff, '⚔ ATK'),
+            context: btn(cx, cy, br, 0x44cc66, 'E USE'), // interact when near something, else the alt ability
+            build: btn(mx, my, br, 0xccaa33, '■ BLD'), // opens this player's craft menu
+          },
         };
         pad.joy.radius = sr;
-        if (split) pad.rot = i ? -Math.PI / 2 : Math.PI / 2;
+        Object.assign(pad, { rot: i ? -Math.PI / 2 : Math.PI / 2, toScreen, toLocal, Lw, Lh, btnLeft: bx - g - br }); // the player's own view (craft menu)
         return pad;
       });
     }
@@ -107,10 +111,7 @@ Object.assign(GameScene.prototype, {
     const px = pointer.x, py = pointer.y;
 
     // Skip joystick/button activation when tapping inside the craft menu panel
-    if (this.craftMenuOpen) {
-      const PW = 440, PH = 330, PX = (W - PW) / 2, PY = H - PH - 20;
-      if (px >= PX && px <= PX + PW && py >= PY && py <= PY + PH) return;
-    }
+    if (this.craftMenuOpen && this._craftPanelHit(px, py)) return;
 
     const pad = this._pads.find(p => px >= p.x0 && px < p.x1 && py >= p.y0 && py < p.y1);
     if (!pad) return;
@@ -184,18 +185,35 @@ Object.assign(GameScene.prototype, {
     if (this.isOver || !p) return;
     if (name === 'attack') {
       if (this.barrackOpen || p.isDowned || p.isSleeping) return;
-      if (this.craftMenuOpen && this.craftMenuOwner === p) { this.craftSelected(); return; }
+      if (this._craftOf(p)) { this.craftSelected(p); return; }
       if (this.buildMode && this.buildOwner === p) this.placeBuild();
       else this.doAttack(p);
     } else if (name === 'alt') {
       if (!p.isDowned && !p.isSleeping) this.doAlt(p);
     } else if (name === 'interact') {
       if (!this.barrackOpen) this.tryInteract(p);
+    } else if (name === 'context') {
+      if (this.barrackOpen || p.isDowned || p.isSleeping) return;
+      if (!this.tryInteract(p) && !this._useTargetNear(p)) this.doAlt(p);
     } else if (name === 'build') {
       if (!p.isDowned && !p.isSleeping) this.openCraftMenu(p);
     } else if (name === 'menu') {
       this.toggleControls();
     }
+  },
+
+  // The player's own pad (null without touch), their stick and their held USE/context button. The craft
+  // menu, the barracks, harvesting, revive and the relic hold read these so each player acts alone (#289).
+  _padOf(p) { return this._touchActive && this._pads ? this._pads.find(x => this[x.who] === p) || null : null; },
+  _stickOf(p) { const pad = this._padOf(p); return pad ? pad.joy : null; },
+
+  // A tree to harvest or a downed ally to revive within reach: held USE does those, so context must not fire ALT.
+  _useTargetNear(p) {
+    const near = (x, y, r) => Phaser.Math.Distance.Between(p.spr.x, p.spr.y, x, y) < r;
+    const ally = p === this.p1 ? this.p2 : this.p1;
+    if (ally && ally.isDowned && ally.spr && near(ally.spr.x, ally.spr.y, CFG.REVIVE_RANGE)) return true;
+    // 72 = HARVEST_RANGE in updateHarvest, measured to the trunk box
+    return this.obstacles.getChildren().some(o => o.isTree && o.active && near(o.body.center.x, o.body.center.y, 72));
   },
 
   // Drive one player from their pad's stick: movement and facing. GameScene.update calls it per

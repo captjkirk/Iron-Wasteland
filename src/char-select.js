@@ -3,8 +3,14 @@
 // The selected character stands large in the centre with its stats and ability; the others sit
 // smaller and dimmed on an arc behind it. Left/right (keys, a swipe or mouse drag, the trackpad
 // or mouse wheel, or a tap on a side character) turns the wheel; F, Enter or a tap on the centre confirms. In 2-player games P2
-// turns the same wheel after P1 confirms, and P1's pick is skipped.
+// turns the same wheel after P1 confirms, under a "P2 SELECT" heading; P1's pick is tagged and skipped,
+// and Back or Esc during P2's turn returns to P1's turn.
 // Sized from S = min(W/1280, H/720): 1280x720 gives S=1, the 640x360 phone layout S=0.5.
+
+// Each player's colour, as on the controls screen.
+const P_COLOR = { 1: '#88cc44', 2: '#4488cc' };
+// The background is this dark blue with 16% of the selected character's colour mixed in.
+const BG_BASE = 0x0a0a14, BG_TINT = 0.16;
 
 class CharSelectScene extends Phaser.Scene {
   constructor() { super('CharSelect'); }
@@ -30,13 +36,14 @@ class CharSelectScene extends Phaser.Scene {
     this.p1Done = false; this.p2Done = false;
     this.solo = STATE.mode === 1;
 
-    this.add.graphics().fillStyle(0x0a0a14).fillRect(0, 0, W, H);
+    this._bg = this.add.rectangle(0, 0, W, H, BG_BASE).setOrigin(0, 0);
 
     const S = this._S = Math.min(W / 1280, H / 720);
     // On a touch phone the prompts name swipes and taps, not keys (the phone layout, GLOSSARY.md).
     const touchUI = this._touchUI = PHONE_LAYOUT && activeInputMode() === 'touch';
     const modeLabel = STATE.difficulty === 'hardcore' ? '  ☠ HARDCORE' : '  ♥ SURVIVAL';
-    this.add.text(W/2, 34, 'SELECT YOUR SURVIVOR' + (this.solo ? '' : 'S') + modeLabel, {
+    this._modeLabel = modeLabel;
+    this._head = this.add.text(W/2, 34, 'SELECT YOUR SURVIVOR' + modeLabel, {
       fontFamily:'monospace', fontSize: Math.max(14, Math.round(24*S)) + 'px',
       color: STATE.difficulty === 'hardcore' ? '#ff6644' : '#cc8833',
       stroke:'#000', strokeThickness:3,
@@ -150,6 +157,8 @@ class CharSelectScene extends Phaser.Scene {
     backZone.on('pointerout',  () => { backBtn.setColor('#cc8833'); drawBackBg(false); });
     backZone.on('pointerdown', () => goBack());
     const goBack = () => {
+      // During P2's turn, Back undoes P1's pick instead of leaving.
+      if (!this.solo && this.p1Done && !this.p2Done) { this.p1Done = false; this.refresh(); return; }
       this.cameras.main.fadeOut(200, 0, 0, 0);
       this.time.delayedCall(200, () => this.scene.start('ModeSelect'));
     };
@@ -179,6 +188,10 @@ class CharSelectScene extends Phaser.Scene {
     this._big = Math.min(3.2 * S, (this._feetY - 80) / 66);
     this._portraits = CHARS.map(ch =>
       this.add.image(W/2, this._feetY, 'player_atlas', ch.id).setOrigin(0.5, 1));
+    // P1's pick wears a "P1" tag during P2's turn (placed by _layoutWheel).
+    this._p1Tag = this.add.text(0, 0, 'P1', {
+      fontFamily:'monospace', fontSize: Math.max(12, sc(18)) + 'px', color: P_COLOR[1], stroke:'#000', strokeThickness:3,
+    }).setOrigin(0.5, 1).setDepth(11);
     this._pos = this.p1Idx;
     this._layoutWheel();
 
@@ -213,6 +226,35 @@ class CharSelectScene extends Phaser.Scene {
         .setAlpha(Math.max(0, Math.min(1, (2.5 - a) * 2)) * (1 - 0.5 * Math.min(1, a)))
         .setDepth(10 - a);
     });
+    const p1 = this._portraits[this.p1Idx];
+    this._p1Tag.setVisible(this._turn() === 2)
+      .setPosition(p1.x, p1.y - 66 * p1.scaleY - 4).setAlpha(Math.max(p1.alpha, 0.6));
+  }
+
+  // Ease the background toward the selected character's colour over the wheel's turn.
+  _shiftBg(color) {
+    const from = Phaser.Display.Color.IntegerToColor(this._bg.fillColor);
+    const to = Phaser.Display.Color.IntegerToColor(BG_BASE), c = Phaser.Display.Color.IntegerToColor(color);
+    const goal = Phaser.Display.Color.Interpolate.ColorWithColor(to, c, 100, BG_TINT * 100);
+    if (this._bgTween) this._bgTween.stop();
+    this._bgTween = this.tweens.addCounter({
+      from: 0, to: 100, duration: 250,
+      onUpdate: t => {
+        const m = Phaser.Display.Color.Interpolate.ColorWithColor(from, goal, 100, t.getValue());
+        this._bg.setFillStyle(Phaser.Display.Color.GetColor(m.r, m.g, m.b));
+      },
+    });
+  }
+
+  // The name and tagline slide up into place and fade in as a character reaches the centre.
+  _animateIn() {
+    const dy = Math.round(12 * this._S);
+    [this._nameT, this._titleT].forEach((t, i) => {
+      if (t._rest === undefined) t._rest = t.y;
+      this.tweens.killTweensOf(t);
+      t.setAlpha(0).setY(t._rest + dy);
+      this.tweens.add({ targets: t, alpha: 1, y: t._rest, duration: 250, delay: 120 + i * 60, ease: 'Sine.easeOut' });
+    });
   }
 
   // Turn the wheel to the active player's character over ~250 ms, the short way round.
@@ -236,12 +278,12 @@ class CharSelectScene extends Phaser.Scene {
 
   nav(player, dir) {
     if (player===1 && !this.p1Done) {
-      this.p1Idx = Phaser.Math.Wrap(this.p1Idx+dir, 0, CHARS.length);
+      this.p1Idx = wrapIndex(this.p1Idx+dir, CHARS.length);
       this.refresh();
     }
     if (player===2 && this.p1Done && !this.p2Done && !this.solo) {
-      let n = Phaser.Math.Wrap(this.p2Idx+dir, 0, CHARS.length);
-      if (n===this.p1Idx) n = Phaser.Math.Wrap(n+Math.sign(dir), 0, CHARS.length);
+      let n = wrapIndex(this.p2Idx+dir, CHARS.length);
+      if (n===this.p1Idx) n = wrapIndex(n+Math.sign(dir), CHARS.length);
       this.p2Idx = n; this.refresh();
     }
   }
@@ -250,7 +292,7 @@ class CharSelectScene extends Phaser.Scene {
     if (player===1 && !this.p1Done) {
       this.p1Done = true; STATE.p1CharId = CHARS[this.p1Idx].id;
       if (this.solo) { this.statusText.setText('Get ready…'); this.go(); return; }
-      if (this.p2Idx===this.p1Idx) this.p2Idx = Phaser.Math.Wrap(this.p1Idx+1, 0, CHARS.length);
+      if (this.p2Idx===this.p1Idx) this.p2Idx = wrapIndex(this.p1Idx+1, CHARS.length);
       this.statusText.setText(this._touchUI ? 'Now Player 2 — swipe, then tap the centre' : 'Now Player 2 — Arrows to pick, / to confirm');
     }
     if (player===2 && this.p1Done && !this.p2Done && !this.solo) {
@@ -275,9 +317,16 @@ class CharSelectScene extends Phaser.Scene {
     const hex = '#' + ch.color.toString(16).padStart(6, '0');
     this._nameT.setText(ch.player).setColor(hex);
     this._titleT.setText(ch.title);
+    this._shiftBg(ch.color);
+    if (this._shown !== idx) this._animateIn();
+    this._shown = idx;
     this._stats.forEach((bars, si) => bars.forEach((bar, b) => bar.setFillStyle(b < ch.stats[si] ? ch.color : 0x222233)));
     this._descT.setText(ch.desc.join('\n'));
     this._spinTo(idx);
+    if (!this.solo) {
+      const t = this._turn();
+      this._head.setText(`P${t} SELECT` + this._modeLabel).setColor(P_COLOR[t]);
+    }
     if (!this.p1Done) this.statusText.setText(this.solo ? '' : this._touchUI ? 'Player 1 — swipe, then tap the centre' : 'Player 1 — A/D to choose, F to confirm');
   }
 }
