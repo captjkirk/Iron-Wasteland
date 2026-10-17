@@ -1,5 +1,7 @@
 Judge each open PR once, then stop. You did not write these PRs and you change no code: you merge, hold, or wait. The owner has authorized the merges this file describes, and no others.
 
+An open draft PR on a `ticket-*` branch is finished work (the loop opens its PR last): mark it ready with `gh pr ready <n>` and judge it with the rest.
+
 For each open, non-draft PR without the `needs-owner-look` label, lowest number first:
 
 1. **Wait** (no comment) if a required check is pending or the PR is CONFLICTING. If it failed a check, comment the failing job once and move on. If GitHub reports it BEHIND `main`, run `gh pr update-branch <n>` and leave it for the next run.

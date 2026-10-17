@@ -70,7 +70,8 @@ const marker = (pr, set) => `<!-- evidence:pr-${pr}:${set} -->`;
 // The comment: a before | after table per changed screen. url(side, name) is an image's address.
 function commentBody({ pr, sha, set, pairs, total, url, folder }) {
   const head = `${marker(pr, set)}\n**Before and after** (${set === 'fixed' ? 'the fixed set of screens' : set}) for #${pr} at ${sha.slice(0, 7)}: `;
-  if (!pairs.length) return head + `no screen changed (${total} compared).\n`;
+  if (!pairs.length) return head + `no screen changed (${total} compared).\n` + (set === 'fixed'
+    ? '\nThe fixed set is the menus and one in-play frame, with tips off. A change that shows only in play needs an `extra` set: CONTRIBUTING.md, "Screens the fixed set cannot reach".\n' : '');
   const cell = (on, side, name) => on ? `![${side}](${url(side, name)})` : `_${side === 'before' ? 'new screen' : 'gone'}_`;
   const shown = pairs.slice(0, MAX_SCREENS).map(p => `**${p.name.replace(/\.png$/, '').replace(/-/g, ' ')}**\n\n` +
     `| Before | After |\n|---|---|\n| ${cell(p.before, 'before', p.name)} | ${cell(p.after, 'after', p.name)} |\n`);
