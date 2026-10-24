@@ -5,7 +5,7 @@ For each open, non-draft PR without the `needs-owner-look` label, lowest number 
 1. **Wait** (no comment) if a required check is pending or the PR is CONFLICTING. If it failed a check, comment the failing job once and move on. If GitHub reports it BEHIND `main`, run `gh pr update-branch <n>` and leave it for the next run.
 2. **Find its ticket** from `Closes #<n>`. No ticket: hold.
 3. **Hold for the owner** when any of these is true:
-   - the ticket is labelled `visual`, `ux`, `world-gen` or `performance` (the headless checks cannot see how it looks or how fast it runs on an iPad);
+   - the ticket is labelled `visual`, `ux`, `world-gen` or `performance` (the headless checks cannot see how it looks or how fast it runs on an iPad). This hold names the open issue for the check that is missing: #352 for `visual` or `ux` (a WebGL smoke pass), #399 for `performance`, #400 for `world-gen`. If that issue is closed and no open issue proposes the check, create one (title `Check: ...`, with a Check section) and name it instead;
    - the diff changes what is drawn on screen (textures, sprites, colours, layout, HUD) even if the labels say otherwise;
    - the diff touches the checks or the loop: `package.json`, `scripts/`, `.github/`, `.githooks/`, `eslint.config.js`, `.claude/` (the merge script refuses these on its own);
    - the diff is irreversible on its own: a payment or credential, `tools/scoreboard/` or `server.js` (they write or serve live data), a new dependency, the deploy workflow (the merge script refuses these too).
