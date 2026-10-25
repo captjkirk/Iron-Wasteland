@@ -6,13 +6,16 @@
 var SHEET = 'Scores';
 // doGet reads columns by position, so new columns go on the end; scoresSheet_ adds them to a live sheet.
 var HEADER = ['name', 'date', 'chars', 'mode', 'difficulty', 'days', 'kills', 'score', 'version', 'seed', 'device',
-  'runId', 'log', 'feedback', 'platform'];
+  'runId', 'log', 'feedback', 'platform', 'issue'];
 var LOG_MAX = 50000; // a Sheets cell holds at most 50,000 characters; the game trims to fit
 var CHARS = ['knight', 'gunslinger', 'architect', 'charmer', 'ranger'];
 var DIFFICULTIES = ['survival', 'hardcore'];
 var RATE_LIMIT_S = 30;
 var FEEDBACK_MAX = 2000; // characters of comment kept
 var FEEDBACK_PER_HOUR = 3; // per device
+var GITHUB_REPO = 'captjkirk/iron-wasteland';
+var ISSUE_LOG_EVENTS = 30; // the issue gets the newest events only; the full log stays in the private sheet
+var ISSUES_PER_RUN = 5; // rows tried per post or retry, so a GitHub outage cannot hold the lock for long
 var MAX_ROWS = 500; // the lowest scores beyond this are removed
 var TOP_CACHE_S = 60;
 // Names are shown to every player. The first list is matched anywhere in the name (spaces and symbols
@@ -72,7 +75,7 @@ function validate_(d) {
   if (typeof log !== 'string' || log.length > LOG_MAX - 1) return 'log';
   if (/^[=+\-@]/.test(log)) log = "'" + log;
   return [name, new Date(), d.chars, d.mode, d.difficulty, d.days, d.kills, d.score, d.version, d.seed, d.device,
-    runId, log, '', ''];
+    runId, log, '', '', ''];
 }
 
 // The 0-based index in rows of the score row for this run, or -1.
@@ -118,6 +121,7 @@ function doPost(e) {
     if (isFeedback) {
       var problem = feedback_(d, sh);
       if (problem) return json_({ ok: false, error: problem });
+      fileIssues_(sh);
     } else {
       if (cache.get('dev:' + d.device)) return json_({ ok: false, error: 'too soon' });
       cache.put('dev:' + d.device, '1', RATE_LIMIT_S);
@@ -125,7 +129,7 @@ function doPost(e) {
       var rows = row[11] ? sh.getDataRange().getValues() : [];
       var at = row[11] ? findRun_(rows, row[11]) : -1;
       if (at < 0) sh.appendRow(row);
-      else { row[13] = rows[at][13]; row[14] = rows[at][14]; sh.getRange(at + 1, 1, 1, row.length).setValues([row]); }
+      else { row[13] = rows[at][13]; row[14] = rows[at][14]; row[15] = rows[at][15]; sh.getRange(at + 1, 1, 1, row.length).setValues([row]); }
     }
     trim_(sh);
     cache.remove('top');
@@ -133,6 +137,73 @@ function doPost(e) {
     lock.releaseLock();
   }
   return json_({ ok: true });
+}
+
+// A leading apostrophe was added to keep a value from running as a formula; the issue shows the original.
+function plain_(v) {
+  return String(v).replace(/^'(?=[=+\-@])/, '');
+}
+
+function issueFor_(r) {
+  var comment = plain_(r[13]);
+  var date = r[1] instanceof Date ? Utilities.formatDate(r[1], 'UTC', 'yyyy-MM-dd') : String(r[1]);
+  var events = String(r[12]).split('\n').filter(function (l) { return l; }).slice(-ISSUE_LOG_EVENTS);
+  var body = [
+    '**From:** ' + plain_(r[0]) + ' on ' + date,
+    '**Game version:** ' + r[8],
+    '**Device:** ' + (r[14] || 'unknown'),
+    '**Run:** ' + (r[3] === 2 ? '2 players' : '1 player') + ', ' + r[2] + ', ' + r[4] + ', day ' + r[5] +
+      ', ' + r[6] + ' kills, score ' + r[7] + ', seed ' + (r[9] || 'none') + ', runId ' + r[11],
+    '',
+    comment.split('\n').map(function (l) { return '> ' + l; }).join('\n'),
+    '',
+    events.length ? 'Last ' + events.length + ' log events:\n\n```\n' + events.join('\n').replace(/`/g, "'") + '\n```' : '(no log sent)',
+  ].join('\n');
+  // A zero-width space after @ so a comment cannot mention (notify) anyone.
+  body = body.replace(/@/g, '@\u200b');
+  return {
+    title: 'Feedback: ' + comment.replace(/\s+/g, ' ').slice(0, 60).replace(/@/g, '@\u200b'),
+    body: body,
+    labels: ['feedback', 'needs-triage'],
+  };
+}
+
+// Returns the new issue number, or 0 when GitHub (or the token) is not there; the caller leaves the column empty.
+function createIssue_(r, token) {
+  try {
+    var res = UrlFetchApp.fetch('https://api.github.com/repos/' + GITHUB_REPO + '/issues', {
+      method: 'post',
+      contentType: 'application/json',
+      headers: { Authorization: 'Bearer ' + token, Accept: 'application/vnd.github+json', 'X-GitHub-Api-Version': '2022-11-28' },
+      payload: JSON.stringify(issueFor_(r)),
+      muteHttpExceptions: true,
+    });
+    return res.getResponseCode() === 201 ? Number(JSON.parse(res.getContentText()).number) || 0 : 0;
+  } catch (err) {
+    return 0;
+  }
+}
+
+// File an issue for each row that has feedback and no issue yet (the oldest first, a few at a time).
+// The caller holds the script lock.
+function fileIssues_(sh) {
+  var token = PropertiesService.getScriptProperties().getProperty('GITHUB_TOKEN');
+  if (!token) return;
+  var rows = sh.getDataRange().getValues();
+  var tried = 0;
+  for (var i = 1; i < rows.length && tried < ISSUES_PER_RUN; i++) {
+    if (!rows[i][13] || rows[i][15]) continue;
+    tried++;
+    var n = createIssue_(rows[i], token);
+    if (n) sh.getRange(i + 1, 16, 1, 1).setValues([[n]]);
+  }
+}
+
+// Run by a time-driven trigger every 15 minutes (SETUP.md): files the issues GitHub refused earlier.
+function retryIssues() {
+  var lock = LockService.getScriptLock();
+  try { lock.waitLock(10000); } catch (err) { return; }
+  try { fileIssues_(scoresSheet_()); } finally { lock.releaseLock(); }
 }
 
 // Keep the sheet to MAX_ROWS scores: remove the lowest beyond that.
