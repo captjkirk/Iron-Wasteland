@@ -168,6 +168,7 @@ Object.assign(GameScene.prototype, {
       this.physics.add.collider(this.p1.spr, gate, () => this.openGate(gate));
       if (this.p2) this.physics.add.collider(this.p2.spr, gate, () => this.openGate(gate));
     } else if (this.buildType === 'campfire') {
+      this._coachTick('campfire');
       this._addFireGlow(x, y);
       const cf = this.add.image(x, y, 'campfire').setScale(2).setDepth(5);
       if (this.hudCam) this.hudCam.ignore(cf);

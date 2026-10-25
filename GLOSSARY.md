@@ -45,6 +45,11 @@ Issues and Pull requests read and write, pasted once per device and kept in that
 page can reply and change tickets; without it the page is read-only.
 Avoid: token, PAT, password, API key.
 
+**First-day checklist** — the small panel of five goals a new player sees in their first game (move, gather wood,
+open a crate, build a campfire, defeat an enemy; `src/coach.js`, map #295). Each line is a **goal**; it ticks when either
+player does it. It is not the tips: those are the **tutorial**.
+Avoid: quest, objective, task list, step.
+
 **Respawn bed** — the bed a player last slept in during 2-player Survival (`player.respawnBed`, #294). If that player
 goes down and the down timer runs out, they come back at it with half health and half of each carried item.
 Avoid: spawn point, checkpoint, home bed.

@@ -156,6 +156,7 @@ class GameScene extends Phaser.Scene {
       nearTree: false, firstHarvest: false, firstCraft: false,
       firstNight: false, firstUpgradeHint: false,
     };
+    this._coach = null; // first-day checklist (src/coach.js), started by startTutorial
 
     // Day/night state
     this.dayNum = 1; this.dayTimer = 0; this.DAY_DUR = 150000; this.isNight = false;
@@ -2373,6 +2374,7 @@ class GameScene extends Phaser.Scene {
     this._tutTrigger('attack');
     // Minimap tip fires after 20 s — player should have oriented by then
     this.time.delayedCall(CFG.MINIMAP_HINT_DELAY_MS, () => this._tutTrigger('minimap'));
+    this._coachStart();
   }
 
   _tutTrigger(key) {
@@ -2458,6 +2460,7 @@ class GameScene extends Phaser.Scene {
 
     this.timeAlive += delta / 1000;
     if (this._dbgVisible) this._dbgRefresh(); // throttled live stats refresh
+    this._coachUpdate();
 
     // ── Relic proximity hints (cheap squared-distance check, runs every frame) ──
     if (!this.isOver) {
@@ -4924,6 +4927,7 @@ class GameScene extends Phaser.Scene {
           this._log(`${player.charData.player} crate ${crate.itemType}  inv=${JSON.stringify(player.inv)}`, 'player');
         }
         SFX._play(720, 'sine', 0.1, 0.08);
+        this._coachTick('crate');
         crate.destroy();
       };
       this.physics.add.overlap(this.p1.spr, crate, () => { if(crate.active) pickupCrate(this.p1); });
