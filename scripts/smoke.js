@@ -6,7 +6,9 @@
 //      Walks east for the first WALK_MS and fails unless that leaves boot prints, none on water.
 //      Fires wave 1 at the start and fails unless it is awake and closing on the player, and its
 //      first group is small (night 1 comes in groups, not all at once).
-//      Also fails when textures and object canvases hold more than PIXEL_BUDGET_MB of pixels.
+//      Also fails when textures and object canvases hold more than PIXEL_BUDGET_MB of pixels,
+//      when PLAYER_BODY no longer matches the player's body, or when a relic has no reachable
+//      ground within a tile of it.
 //      Then spawns each boss beside the knight and fails unless its hitbox fits the drawing and
 //      mirrors, and a knight swing from 20 px outside it, left and right, deals damage and one
 //      from 100 px out does not (#312, #317).
@@ -21,6 +23,8 @@
 //   Phone tips: on a phone, fails when a tutorial tip's banner runs off the screen, is over 90 px tall or
 //      covers a player, the radar, a button or the day panel, in 1 and 2 player games, or when the full-screen
 //      startup controls popup shows on a touch phone.
+//   Relic reach: builds ?seed=12, a world whose fungal and ruins relics were boxed in by
+//      mountains and trees before #314, and fails if any relic has no reachable ground within a tile.
 //   3. Hardcore: the same start with STATE.difficulty = 'hardcore'; fails unless timeAlive
 //      advances over HARDCORE_MS of play. Hardcore's own multipliers once froze the tab (#327).
 // Every in-game page call goes through `ask`, so a hung main thread fails the run, not stalls it.
@@ -135,6 +139,19 @@ async function bossReach(page) {
   }
   if (misses.length) throw new Error(misses.join('; '));
   console.log(`in play: ${keys.length} boss hitboxes fit, mirror, and the knight reaches them from 20 px out, not 100 px`);
+}
+
+// Every relic needs ground a player can reach within a tile of it (#314). The fill starts from the
+// player's real body, so a world body added after _keepRelicsInReach shows up here.
+async function checkRelicReach(page) {
+  const far = await page.evaluate(() => {
+    const g = _phaserGame.scene.getScene('Game'), b = g.p1.spr.body;
+    const reach = g._walkableFrom(b.center.x, b.center.y);
+    return g._relicPOIs.filter(r => !g._nearestStandPoint(reach, r.x, r.y, () => true, CFG.TILE))
+      .map(r => ({ r, s: g._nearestStandPoint(reach, r.x, r.y, () => true) }))
+      .map(({ r, s }) => `${r.biome} relic at (${r.tx},${r.ty}): nearest ground ${s ? Math.round(s.d) + ' px' : 'none'}`);
+  });
+  if (far.length) throw new Error(`relic out of reach: ${far.join('; ')}`);
 }
 
 (async () => {
@@ -284,6 +301,12 @@ async function bossReach(page) {
     const mb = Math.round(px * 4 / 1e6);
     console.log(`in play: ${mb} MB of pixel memory (budget ${PIXEL_BUDGET_MB} MB)`);
     if (mb > PIXEL_BUDGET_MB) throw new Error(`pixel memory ${mb} MB is over the ${PIXEL_BUDGET_MB} MB budget`);
+    // PLAYER_BODY is what _walkableFrom fills with; it must be the body spawnPlayer really makes.
+    const body = await page.evaluate(() => { const s = _phaserGame.scene.getScene('Game').p1.spr;
+      return { w: s.body.width, h: s.body.height, dy: s.body.center.y - s.y, want: PLAYER_BODY }; });
+    if (body.w !== body.want.w || body.h !== body.want.h || Math.abs(body.dy - body.want.dy) > 0.5)
+      throw new Error(`PLAYER_BODY ${JSON.stringify(body.want)} does not match the player's body ${JSON.stringify(body)}`);
+    await checkRelicReach(page);
     await bossReach(page);
     // Boss days (#329): the day-5 boss spawns, dies, and day 10 brings a second boss of
     // another type. The day is set directly; the day-10 roll is forced to 100%.
@@ -318,6 +341,14 @@ async function bossReach(page) {
     await page.waitForFunction(() => (localStorage.getItem('iw_scores') || '').includes('"Dad and Kids"'), null, { timeout: 5000 });
     if (!posts.some(p => p.name === 'Dad and Kids')) throw new Error('the score was not posted to the (stubbed) scoreboard');
     console.log('game over: typed name kept and saved');
+  });
+
+  failures += await pass(browser, 'relic reach', base + '?seed=12&renderer=canvas', async page => {
+    await page.evaluate(() => { STATE.mode = 1; STATE.p1CharId = 'knight'; _phaserGame.scene.start('Game'); });
+    await page.waitForFunction(() => _phaserGame.scene.getScene('Game')._worldReady === true, null, { timeout: 60000 });
+    await checkRelicReach(page);
+    const log = await page.evaluate(() => _phaserGame.scene.getScene('Game')._dbgEntries.filter(e => /relic (reach|moved)/.test(e)));
+    console.log('relic reach: ' + log.map(e => e.replace(/^.*\] /, '')).join('; '));
   });
 
   failures += await pass(browser, 'hardcore', base + '?seed=1&renderer=canvas', async page => {
