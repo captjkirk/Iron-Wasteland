@@ -20,7 +20,9 @@ jobs:
 
   smoke:
     name: Browser smoke run (WebKit, up to ModeSelect)
-    runs-on: ubuntu-latest
+    # Pinned (#482): ubuntu-latest moved to 26.04, whose fonts draw the game's monospace text taller,
+    # and the phone-menu overlap check failed on every PR with no change to the game.
+    runs-on: ubuntu-24.04
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@v4
