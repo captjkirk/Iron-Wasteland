@@ -34,6 +34,25 @@ game code, and that is fine.
 
 15. In `src/constants.js`, set `SCOREBOARD_URL: '<the URL>'` and open a one-line PR.
 
+## Turn feedback into GitHub issues
+
+Each comment a player sends from the game over screen becomes an issue in the game's repo, labelled
+`feedback` and `needs-triage`, with the run summary and the last 30 log events. The full log stays in
+the private sheet. The script needs a GitHub token. The token never goes in the repo.
+
+16. On GitHub: **Settings → Developer settings → Personal access tokens → Fine-grained tokens →
+    Generate new token**. Name it `Iron Wasteland scoreboard`.
+17. Under **Repository access**, choose **Only select repositories** and pick `iron-wasteland`.
+18. Under **Permissions → Repository permissions**, set **Issues** to **Read and write**. Leave
+    every other permission at "No access". Generate the token and copy it.
+19. In the Apps Script editor, open **Project Settings** (the gear), scroll to **Script Properties**,
+    click **Add script property**, name it `GITHUB_TOKEN`, paste the token as the value, and save.
+20. Open **Triggers** (the clock icon), click **Add Trigger**, and choose: function `retryIssues`,
+    event source **Time-driven**, type **Minutes timer**, **Every 15 minutes**. Save. (If GitHub is
+    down when a comment arrives, this files the issue later.)
+21. Redeploy as in "Later changes to Code.gs" below, then send a comment from the game. Within a
+    minute an issue appears in the repo and its number is in the `issue` column of the row.
+
 ## Later changes to Code.gs
 
 Paste the new code, then **Deploy → Manage deployments → (pencil) → Version: New version →

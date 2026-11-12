@@ -10,6 +10,9 @@ const OLD = ['name', 'date', 'chars', 'mode', 'difficulty', 'days', 'kills', 'sc
 const rows = [OLD.slice(), ['Old', new Date(), 'knight', 1, 'survival', 1, 0, 50, 'v', '', 'olddevice01']];
 const cache = new Map();
 let lockBusy = false;
+let token = null; // the GITHUB_TOKEN script property
+let githubStatus = 201;
+const fetched = []; // each request made to the (fake) GitHub API
 const ctx = {
   SpreadsheetApp: { getActiveSpreadsheet: () => ({ getSheetByName: () => ({
     getLastRow: () => rows.length,
@@ -22,6 +25,11 @@ const ctx = {
   CacheService: { getScriptCache: () => ({ get: k => cache.get(k) || null, put: (k, v) => cache.set(k, String(v)), remove: k => cache.delete(k) }) },
   LockService: { getScriptLock: () => ({ waitLock() { if (lockBusy) throw new Error('timeout'); }, releaseLock() {} }) },
   ContentService: { MimeType: { JSON: 'json' }, createTextOutput: s => ({ setMimeType: () => JSON.parse(s) }) },
+  PropertiesService: { getScriptProperties: () => ({ getProperty: k => (k === 'GITHUB_TOKEN' ? token : null) }) },
+  UrlFetchApp: { fetch: (url, opt) => {
+    fetched.push({ url, opt, payload: JSON.parse(opt.payload) });
+    return { getResponseCode: () => githubStatus, getContentText: () => JSON.stringify({ number: 500 + fetched.length }) };
+  } },
   Utilities: { formatDate: d => d.toISOString().slice(0, 10) },
 };
 vm.createContext(ctx);
@@ -33,11 +41,11 @@ const post = d => ctx.doPost({ postData: { contents: typeof d === 'string' ? d :
 
 assert.deepStrictEqual(post(good), { ok: true });
 assert.strictEqual(rows.length, 3, 'header row, the old row, and one score');
-assert.deepStrictEqual([...rows[0]], [...OLD, 'runId', 'log', 'feedback', 'platform'], 'the old header gained the new columns');
+assert.deepStrictEqual([...rows[0]], [...OLD, 'runId', 'log', 'feedback', 'platform', 'issue'], 'the old header gained the new columns');
 assert.strictEqual(rows[1][0], 'Old', 'the old row stayed');
-assert.deepStrictEqual([...rows[2].slice(11)], ['', '', '', ''], 'a post without runId or log still lands');
+assert.deepStrictEqual([...rows[2].slice(11)], ['', '', '', '', ''], 'a post without runId or log still lands');
 assert.deepStrictEqual(post({ ...good, device: 'withlog0001', runId: '1759000000000:abc123', log: 'IRON WASTELAND SESSION LOG\nx' }), { ok: true });
-assert.deepStrictEqual([...rows[3].slice(11)], ['1759000000000:abc123', 'IRON WASTELAND SESSION LOG\nx', '', '']);
+assert.deepStrictEqual([...rows[3].slice(11)], ['1759000000000:abc123', 'IRON WASTELAND SESSION LOG\nx', '', '', '']);
 rows.splice(3, 1);
 assert.strictEqual(post(good).error, 'too soon');
 assert.strictEqual(post('not json').ok, false);
@@ -63,7 +71,8 @@ const fb = (o) => post({ ...good, kind: 'feedback', platform: 'touch 1024x768', 
 assert.deepStrictEqual(post({ ...good, device: 'fbdevice001', runId: 'run:1' }), { ok: true });
 assert.deepStrictEqual(fb({ device: 'fbdevice001', runId: 'run:1', comment: 'too hard' }), { ok: true });
 assert.strictEqual(rows.length, 4, 'feedback for a saved run adds no row');
-assert.deepStrictEqual([...rows[3].slice(11)], ['run:1', '', 'too hard', 'touch 1024x768']);
+assert.deepStrictEqual([...rows[3].slice(11)], ['run:1', '', 'too hard', 'touch 1024x768', '']);
+assert.strictEqual(fetched.length, 0, 'no token, no GitHub call');
 assert.deepStrictEqual(fb({ device: 'fbdevice002', runId: 'run:2', comment: '=1+1' }), { ok: true });
 assert.strictEqual(rows.length, 5, 'feedback before its score creates the row');
 assert.strictEqual(rows[4][13], "'=1+1", 'a formula comment is stored as text');
@@ -81,6 +90,32 @@ for (const b of [{ comment: '' }, { comment: 5 }, { runId: '' }, { name: '' }]) 
 assert.strictEqual(rows.length, before, 'no bad feedback was written');
 fb({ device: 'fbdevice004', runId: 'run:4', comment: 'ok', platform: '<b>' });
 assert.strictEqual(rows[rows.length - 1][14], '', 'a bad platform is dropped, the comment still lands');
+// Issues: a token makes each feedback row an issue; a GitHub failure leaves the column empty for the retry.
+token = 'ghp_test';
+const log40 = Array.from({ length: 40 }, (_, i) => 'event ' + i).join('\n');
+assert.deepStrictEqual(post({ ...good, name: 'Hud', device: 'issdevice01', runId: 'run:5', log: log40 }), { ok: true });
+githubStatus = 500;
+assert.deepStrictEqual(fb({ name: 'Hud', device: 'issdevice01', runId: 'run:5', comment: '@octocat the wolf is\nunfair '.padEnd(90, 'x') }), { ok: true });
+const row5 = () => rows.find(r => r[11] === 'run:5');
+assert.ok(fetched.length >= 1 && row5()[15] === '', 'GitHub failed: the issue column stays empty');
+githubStatus = 201;
+fetched.length = 0;
+ctx.retryIssues();
+assert.ok(fetched.length <= 5, 'at most 5 issues filed per run');
+const made = fetched.find(f => f.payload.body.includes('runId run:5'));
+assert.ok(made && row5()[15] > 500, 'the retry filed the issue and wrote its number in the row');
+assert.strictEqual(made.url, 'https://api.github.com/repos/captjkirk/iron-wasteland/issues');
+assert.strictEqual(made.opt.headers.Authorization, 'Bearer ghp_test');
+assert.deepStrictEqual(made.payload.labels, ['feedback', 'needs-triage']);
+assert.ok(made.payload.title.replace(/\u200b/g, '').length <= 'Feedback: '.length + 60, 'title is at most 60 characters of the comment');
+assert.ok(!made.payload.title.includes('\n') && !/@(?!\u200b)/.test(made.payload.body + made.payload.title), 'no raw @ mention, no newline in the title');
+assert.ok(made.payload.body.includes('> ') && made.payload.body.includes('Hud') && made.payload.body.includes('run:5') && made.payload.body.includes('touch 1024x768'));
+assert.ok(made.payload.body.includes('event 39') && made.payload.body.includes('event 10') && !made.payload.body.includes('event 9\n'), 'the newest 30 events only');
+const filed = fetched.length;
+ctx.retryIssues();
+assert.strictEqual(fetched.length, filed, 'a row with an issue is not filed again');
+assert.deepStrictEqual(post({ ...good, name: 'Hud', device: 'issdevice01', runId: 'run:5', log: log40, score: 901 }), { ok: false, error: 'too soon' });
+token = null;
 rows.length = 0;
 rows.push(...saved);
 for (let i = 0; i < 12; i++) post({ ...good, name: 'P' + i, score: i * 100, device: 'dev0000' + String(i).padStart(4, '0') });
