@@ -66,6 +66,8 @@
 //
 //   src/bed-respawn.js   — System 7's bed respawn (2-player Survival), added to GameScene.prototype
 //
+//   src/coach.js         — System 21's first-day checklist, added to GameScene.prototype
+//
 //   src/world-gen.js     — System 1, added to GameScene.prototype; loads after game-scene.js
 //
 //   src/waves-bosses.js  — System 4, added to GameScene.prototype; loads after world-gen.js
@@ -260,10 +262,15 @@
 //             the log goes with the score (_logForSheet) and, on home play, to code/logs/ via /save-log.
 //     CLAUDE.md: ALWAYS ASK FOR THE LOG when investigating bugs.
 //
-// 21. TUTORIAL
+// 21. TUTORIAL  (src/game-scene.js; first-day checklist in src/coach.js)
 //     fns:  startTutorial, _tutTrigger, _endTutorial
 //     cfg:  TUT_AUTO_ADVANCE_MS
 //     data: _tutShown
+//     first-day checklist (#296): COACH_GOALS lists the five goals; once all are ticked, localStorage
+//             'iw_coach_done' hides it for good (RESET TUTORIAL clears it).
+//     fns:  _coachStart (from startTutorial), _coachUpdate (each frame: move, wood),
+//           _coachTick (crate: setupCratePickups; campfire: placeBuild; kill: killEnemy), _coachDraw, _coachLine
+//     data: _coach, COACH_GOALS
 //     tips are hint() calls with a title; hint(text, dur, {urgent}) jumps the queue
 //     touch: no startup controls popup (showStartupControls), no TAB hint, tutorial starts at 1.5 s.
 //     phone layout: the banner is small, at the bottom centre (1P) or top left (2P), clear of the
