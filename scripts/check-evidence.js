@@ -32,7 +32,8 @@ assert.ok(body.includes('**settings**\n\n| Before | After |\n|---|---|\n| ![befo
 assert.ok(body.includes('| _new screen_ | ![after](https://x/after/new-screen.png) |'), body);
 assert.ok(body.includes('| ![before](https://x/before/old.png) | _gone_ |'), body);
 assert.ok(!body.includes('title'), 'an unchanged screen is not in the comment');
-assert.ok(commentBody({ pr: 7, sha: 'abcdef0', set: 'fixed', pairs: [], total: 4, url }).includes('no screen changed (4 compared)'));
+const none = commentBody({ pr: 7, sha: 'abcdef0', set: 'fixed', pairs: [], total: 4, url });
+assert.ok(none.includes('no screen changed (4 compared)') && none.includes('`extra` set'), 'an empty fixed set points to the extra set: ' + none);
 assert.notStrictEqual(marker(7, 'fixed'), marker(7, 'extra'), 'a session\'s own shots get their own comment');
 
 const many = Array.from({ length: 45 }, (_, i) => ({ name: `s${i}.png`, before: true, after: true }));

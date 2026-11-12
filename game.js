@@ -25,7 +25,7 @@
 //                          VERSION, CFG, ENEMY_STATS, RAIDER_STATS, ENEMY_LOOT,
 //                          _makeMulberry32, _worldRng, _pendingLogMsgs, _qlog,
 //                          biome fns (getBiome, _buildBiomeMap, _biomeSeeds …),
-//                          CHARS, STATE
+//                          PLAYER_BODY, CHARS, STATE
 //
 //   src/audio.js         — Web Audio chiptune engine
 //                          Music  (Music.play, Music.stop, Music.switchToBoss …)
@@ -66,6 +66,8 @@
 //
 //   src/bed-respawn.js   — System 7's bed respawn (2-player Survival), added to GameScene.prototype
 //
+//   src/coach.js         — System 21's first-day checklist, added to GameScene.prototype
+//
 //   src/world-gen.js     — System 1, added to GameScene.prototype; loads after game-scene.js
 //
 //   src/waves-bosses.js  — System 4, added to GameScene.prototype; loads after world-gen.js
@@ -92,6 +94,7 @@
 //    biome: getBiome, _biomeHash, _biomeNoise, _computeBiomeRaw,
 //           _initBiomeSeeds, _buildBiomeMap, _buildBiomeMapChunked
 //    placement: _isBlockedForPlacement, _footprintOnWaterOrIce
+//    relic placement: _keepRelicsInReach (end of buildWorld), _walkableFrom, _nearestStandPoint
 //    cfg:  MAP_W, MAP_H, TILE, SAFE_R, POND_SPECS, LAKE_SPECS,
 //          RIVER_COUNT, RIVER_WANDER, RIVER_WIDTH_MIN, RIVER_WIDTH_MAX,
 //          PLACEMENT, ROCKS
@@ -192,7 +195,7 @@
 //           _relicPressure, _cancelRelicChannel, _depositRelic,
 //           _pickupRelic, _showRelicHint, _processHintQueue,
 //           _spawnTorch, _addFireGlow, _updateFireGlows
-//     cfg:  FOG_REVEAL_R, FOG_UPDATE_INTERVAL
+//     cfg:  FOG_REVEAL_R, FOG_UPDATE_INTERVAL, RELIC_RANGE, RELIC_ALTAR_MIN
 //     data: _relicPOIs, relicsHeld, altarPos, altarDiscovered, _fireGlows
 //
 // 12. RAIDERS (camps + raid events)  (src/game-scene.js; the camp lock in src/enemy-ai.js)
@@ -260,10 +263,15 @@
 //             the log goes with the score (_logForSheet) and, on home play, to code/logs/ via /save-log.
 //     CLAUDE.md: ALWAYS ASK FOR THE LOG when investigating bugs.
 //
-// 21. TUTORIAL
+// 21. TUTORIAL  (src/game-scene.js; first-day checklist in src/coach.js)
 //     fns:  startTutorial, _tutTrigger, _endTutorial
 //     cfg:  TUT_AUTO_ADVANCE_MS
 //     data: _tutShown
+//     first-day checklist (#296): COACH_GOALS lists the five goals; once all are ticked, localStorage
+//             'iw_coach_done' hides it for good (RESET TUTORIAL clears it).
+//     fns:  _coachStart (from startTutorial), _coachUpdate (each frame: move, wood),
+//           _coachTick (crate: setupCratePickups; campfire: placeBuild; kill: killEnemy), _coachDraw, _coachLine
+//     data: _coach, COACH_GOALS
 //     tips are hint() calls with a title; hint(text, dur, {urgent}) jumps the queue
 //     touch: no startup controls popup (showStartupControls), no TAB hint, tutorial starts at 1.5 s.
 //     phone layout: the banner is small, at the bottom centre (1P) or top left (2P), clear of the
@@ -315,6 +323,8 @@
 // • Enemy dormancy: enemies > DORMANT_RADIUS are physics-disabled and hidden;
 //   they re-enable inside WAKE_RADIUS (hysteresis). Raiders, boss escorts and wave
 //   marchers (_waveMarch, until first contact) never sleep; nothing else wakes a den.
+// • Relic reach: _keepRelicsInReach runs once, at the end of buildWorld. A static body added after it
+//   (world gen or a new system) can box a relic in again; add bodies before that call.
 // ============================================================
 
 // ── PHASER GAME INIT ─────────────────────────────────────

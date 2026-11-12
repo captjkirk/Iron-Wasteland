@@ -156,6 +156,7 @@ class GameScene extends Phaser.Scene {
       nearTree: false, firstHarvest: false, firstCraft: false,
       firstNight: false, firstUpgradeHint: false,
     };
+    this._coach = null; // first-day checklist (src/coach.js), started by startTutorial
 
     // Day/night state
     this.dayNum = 1; this.dayTimer = 0; this.DAY_DUR = 150000; this.isNight = false;
@@ -182,8 +183,6 @@ class GameScene extends Phaser.Scene {
     this.raidRespawnDay = null;
     // Per-player relic pickup channel — 3s hold of Interact key to acquire.
     this._relicChannels = new Map();
-    // First hunting party arrives on day 2-3; every 2-3 days after.
-    this.huntNextDay = 2 + Phaser.Math.Between(0, 1);
     this.enemies = [];
     // Lazily created elsewhere; reset so Play Again doesn't carry them over.
     this._toxicPoolsData = [];
@@ -479,8 +478,16 @@ class GameScene extends Phaser.Scene {
               try {
                 // Spawn enemies after camera setup
                 this._log('World init: spawning enemies', 'world');
-                this.spawnEnemies(worldW, worldH, cx, cy);
-                this.placeRaiderCamp(worldW, worldH);
+                // ?seed=N: enemies, the raider camp and the first hunt day draw from their own stream
+                // of the seed, so they repeat too without shifting the terrain's _worldRng draws.
+                const _realRandom = Math.random;
+                Math.random = _makeMulberry32(this._worldSeed ^ 0x5eed);
+                try {
+                  this.spawnEnemies(worldW, worldH, cx, cy);
+                  this.placeRaiderCamp(worldW, worldH);
+                  // First hunting party arrives on day 2-3; every 2-3 days after.
+                  this.huntNextDay = 2 + Phaser.Math.Between(0, 1);
+                } finally { Math.random = _realRandom; }
                 this._log(`World init: enemies spawned  total=${(this.enemies||[]).length}  dens=${(this.enemyDens||[]).length}+${(this.waterDens||[]).length}w`, 'world');
 
                 // Touch controls (src/touch.js): one pad in 1P, one per half of the screen in 2P
@@ -1885,7 +1892,7 @@ class GameScene extends Phaser.Scene {
       for (const _rel of this._relicPOIs) {
         if (!_rel.spr || !_rel.spr.active) continue;
         const _rd = Phaser.Math.Distance.Between(player.spr.x, player.spr.y, _rel.x, _rel.y);
-        if (_rd < 70) {
+        if (_rd < CFG.RELIC_RANGE) {
           this.hint('Hold Interact for 3s to retrieve relic', 1800);
           return true;
         }
@@ -1919,7 +1926,7 @@ class GameScene extends Phaser.Scene {
   }
 
   updateRelicChannels(delta) {
-    const RANGE = 70, RANGE2 = RANGE * RANGE;
+    const RANGE2 = CFG.RELIC_RANGE * CFG.RELIC_RANGE;
     const HOLD_DUR = 3000;
     const BAR_W = 70, BAR_H = 6;
     const list = [
@@ -2373,6 +2380,7 @@ class GameScene extends Phaser.Scene {
     this._tutTrigger('attack');
     // Minimap tip fires after 20 s — player should have oriented by then
     this.time.delayedCall(CFG.MINIMAP_HINT_DELAY_MS, () => this._tutTrigger('minimap'));
+    this._coachStart();
   }
 
   _tutTrigger(key) {
@@ -2458,6 +2466,7 @@ class GameScene extends Phaser.Scene {
 
     this.timeAlive += delta / 1000;
     if (this._dbgVisible) this._dbgRefresh(); // throttled live stats refresh
+    this._coachUpdate();
 
     // ── Relic proximity hints (cheap squared-distance check, runs every frame) ──
     if (!this.isOver) {
@@ -4924,6 +4933,7 @@ class GameScene extends Phaser.Scene {
           this._log(`${player.charData.player} crate ${crate.itemType}  inv=${JSON.stringify(player.inv)}`, 'player');
         }
         SFX._play(720, 'sine', 0.1, 0.08);
+        this._coachTick('crate');
         crate.destroy();
       };
       this.physics.add.overlap(this.p1.spr, crate, () => { if(crate.active) pickupCrate(this.p1); });

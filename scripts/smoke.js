@@ -6,7 +6,9 @@
 //      Walks east for the first WALK_MS and fails unless that leaves boot prints, none on water.
 //      Fires wave 1 at the start and fails unless it is awake and closing on the player, and its
 //      first group is small (night 1 comes in groups, not all at once).
-//      Also fails when textures and object canvases hold more than PIXEL_BUDGET_MB of pixels.
+//      Also fails when textures and object canvases hold more than PIXEL_BUDGET_MB of pixels,
+//      when PLAYER_BODY no longer matches the player's body, or when a relic has no reachable
+//      ground within a tile of it.
 //      Then spawns each boss beside the knight and fails unless its hitbox fits the drawing and
 //      mirrors, and a knight swing from 20 px outside it, left and right, deals damage and one
 //      from 100 px out does not (#312, #317).
@@ -21,6 +23,12 @@
 //   Phone tips: on a phone, fails when a tutorial tip's banner runs off the screen, is over 90 px tall or
 //      covers a player, the radar, a button or the day panel, in 1 and 2 player games, or when the full-screen
 //      startup controls popup shows on a touch phone.
+//   Relic reach: builds ?seed=12, a world whose fungal and ruins relics were boxed in by
+//      mountains and trees before #314, and fails if any relic has no reachable ground within a tile.
+//   First-day checklist: on a phone (1P) and a face-to-face tablet (2P), fails unless the checklist comes up
+//      with tips on, clear of the controls, ticks all five goals from the game's own paths, and stays gone next game.
+//   Seed repeat: loads ?seed=1 twice and fails unless water, ice, ground, structures, obstacles, the raider
+//      camp, every enemy's spawn spot and the first hunt day match between the loads (#299).
 //   3. Hardcore: the same start with STATE.difficulty = 'hardcore'; fails unless timeAlive
 //      advances over HARDCORE_MS of play. Hardcore's own multipliers once froze the tab (#327).
 // Every in-game page call goes through `ask`, so a hung main thread fails the run, not stalls it.
@@ -53,6 +61,30 @@ async function play(page, difficulty, ms) {
   const t0 = await ask(page, () => _phaserGame.scene.getScene('Game').timeAlive);
   await page.waitForTimeout(ms);
   return (await ask(page, () => _phaserGame.scene.getScene('Game').timeAlive)) - t0;
+}
+
+// Fingerprints the world a solo knight game builds: one hash or value per part, so a mismatch names the part.
+async function worldPrint(page) {
+  await ask(page, () => { // the enemies as spawned, before any of them moves
+    const g = _phaserGame.scene.getScene('Game'), place = g.placeRaiderCamp;
+    g.placeRaiderCamp = function (...a) {
+      place.apply(this, a);
+      window._spawnPrint = this.enemies.map(e => `${e.type}@${Math.round(e.spr.x)},${Math.round(e.spr.y)}`).join(' ');
+    };
+  });
+  await play(page, 'survival', 0);
+  return ask(page, () => {
+    const g = _phaserGame.scene.getScene('Game');
+    const hash = a => { let h = 2166136261; for (const v of a) h = Math.imul(h ^ v, 16777619); return h >>> 0; };
+    const str = s => hash(Array.from(s, c => c.charCodeAt(0)));
+    return {
+      water: hash(g._waterMap), ice: hash(g._iceMap), ground: hash(_biomeMap),
+      structures: str(g._structureLocs.map(l => `${l.x},${l.y}`).join(' ')),
+      obstacles: str(g.obstacles.getChildren().map(o => `${o.texture.key}@${o.x},${o.y}`).join(' ')),
+      camp: `${Math.round(g.raidCamp.x)},${Math.round(g.raidCamp.y)}`,
+      enemies: str(window._spawnPrint), huntDay: g.huntNextDay,
+    };
+  });
 }
 
 async function pass(browser, name, url, run, opts = {}) {
@@ -137,6 +169,19 @@ async function bossReach(page) {
   console.log(`in play: ${keys.length} boss hitboxes fit, mirror, and the knight reaches them from 20 px out, not 100 px`);
 }
 
+// Every relic needs ground a player can reach within a tile of it (#314). The fill starts from the
+// player's real body, so a world body added after _keepRelicsInReach shows up here.
+async function checkRelicReach(page) {
+  const far = await page.evaluate(() => {
+    const g = _phaserGame.scene.getScene('Game'), b = g.p1.spr.body;
+    const reach = g._walkableFrom(b.center.x, b.center.y);
+    return g._relicPOIs.filter(r => !g._nearestStandPoint(reach, r.x, r.y, () => true, CFG.TILE))
+      .map(r => ({ r, s: g._nearestStandPoint(reach, r.x, r.y, () => true) }))
+      .map(({ r, s }) => `${r.biome} relic at (${r.tx},${r.ty}): nearest ground ${s ? Math.round(s.d) + ' px' : 'none'}`);
+  });
+  if (far.length) throw new Error(`relic out of reach: ${far.join('; ')}`);
+}
+
 (async () => {
   if (!server.listening) await new Promise(r => server.once('listening', r));
   const base = `http://localhost:${server.address().port}/`;
@@ -162,6 +207,17 @@ async function bossReach(page) {
       const w = await page.evaluate(() => CFG.W);
       if (w !== (opts.hasTouch ? 640 : 1280)) throw new Error(`canvas is ${w} wide`);
     }, opts);
+  }
+
+  // The same seed builds the same world, camp and enemies on every load (#299).
+  const prints = [];
+  for (const n of [1, 2]) {
+    failures += await pass(browser, `seed repeat ${n}`, base + '?seed=1&renderer=canvas', async page => { prints.push(await worldPrint(page)); });
+  }
+  if (prints.length === 2) {
+    const diff = Object.keys(prints[0]).filter(k => prints[0][k] !== prints[1][k]);
+    if (diff.length) { console.error(`::error::seed repeat: ?seed=1 differs between loads in ${diff.join(', ')}`); failures++; }
+    else console.log(`Smoke seed repeat OK (camp ${prints[0].camp}, hunt day ${prints[0].huntDay}).`);
   }
 
   failures += await pass(browser, 'in play', base + '?seed=1&renderer=canvas', async (page, posts) => {
@@ -284,6 +340,12 @@ async function bossReach(page) {
     const mb = Math.round(px * 4 / 1e6);
     console.log(`in play: ${mb} MB of pixel memory (budget ${PIXEL_BUDGET_MB} MB)`);
     if (mb > PIXEL_BUDGET_MB) throw new Error(`pixel memory ${mb} MB is over the ${PIXEL_BUDGET_MB} MB budget`);
+    // PLAYER_BODY is what _walkableFrom fills with; it must be the body spawnPlayer really makes.
+    const body = await page.evaluate(() => { const s = _phaserGame.scene.getScene('Game').p1.spr;
+      return { w: s.body.width, h: s.body.height, dy: s.body.center.y - s.y, want: PLAYER_BODY }; });
+    if (body.w !== body.want.w || body.h !== body.want.h || Math.abs(body.dy - body.want.dy) > 0.5)
+      throw new Error(`PLAYER_BODY ${JSON.stringify(body.want)} does not match the player's body ${JSON.stringify(body)}`);
+    await checkRelicReach(page);
     await bossReach(page);
     // Boss days (#329): the day-5 boss spawns, dies, and day 10 brings a second boss of
     // another type. The day is set directly; the day-10 roll is forced to 100%.
@@ -318,6 +380,14 @@ async function bossReach(page) {
     await page.waitForFunction(() => (localStorage.getItem('iw_scores') || '').includes('"Dad and Kids"'), null, { timeout: 5000 });
     if (!posts.some(p => p.name === 'Dad and Kids')) throw new Error('the score was not posted to the (stubbed) scoreboard');
     console.log('game over: typed name kept and saved');
+  });
+
+  failures += await pass(browser, 'relic reach', base + '?seed=12&renderer=canvas', async page => {
+    await page.evaluate(() => { STATE.mode = 1; STATE.p1CharId = 'knight'; _phaserGame.scene.start('Game'); });
+    await page.waitForFunction(() => _phaserGame.scene.getScene('Game')._worldReady === true, null, { timeout: 60000 });
+    await checkRelicReach(page);
+    const log = await page.evaluate(() => _phaserGame.scene.getScene('Game')._dbgEntries.filter(e => /relic (reach|moved)/.test(e)));
+    console.log('relic reach: ' + log.map(e => e.replace(/^.*\] /, '')).join('; '));
   });
 
   failures += await pass(browser, 'hardcore', base + '?seed=1&renderer=canvas', async page => {
@@ -444,6 +514,17 @@ async function bossReach(page) {
         return bad.join('; ');
       });
       if (err) throw new Error(err);
+      // Tapping BLD, even where the open craft menu overlaps it, must close the menu (Jared's phone, Oct 8).
+      const menu = await page.evaluate(() => {
+        const g = _phaserGame.scene.getScene('Game'), b = g._pads[0].btns.build;
+        g.openCraftMenu(g.p1);
+        const { PW, PX } = g._craftLayout(g.p1);
+        // Tap the part of BLD that lies under the panel's edge, the case that failed on a phone.
+        const x = Math.max(b.hx - b.r * 0.8, PX + PW - 2);
+        g._onTouchDown({ x: Math.min(x, b.hx), y: b.hy, id: 7 });
+        return g.craftMenuOpen ? 'tapping BLD left the craft menu open' : '';
+      });
+      if (menu) throw new Error(menu);
     }, { viewport: vp, hasTouch: true });
   }
 
@@ -558,6 +639,71 @@ async function bossReach(page) {
       }
     }, { viewport: { width: vw, height: vh }, hasTouch: touch });
   }
+
+  // First-day checklist (#296): with tips on and a fresh device, the checklist comes up on its own, on the
+  // screen and clear of the radar, the buttons, the HUD panels and the tip banner (in both halves when face-to-face).
+  // Then each goal is done through the game's own paths (a walk, wood in hand, a crate walked into, a campfire
+  // placed, an enemy killed); fails unless all five tick, the list goes away and stays away in the next game.
+  for (const [name, mode, opts] of [['phone 640x360 1P', 1, { viewport: { width: 640, height: 360 }, hasTouch: true }], ['tablet split 2P', 2, {}]]) {
+    failures += await pass(browser, `first-day checklist, ${name}`, base + '?seed=1&renderer=canvas', async page => {
+      await ask(page, m => {
+        localStorage.removeItem('iw_coach_done'); localStorage.removeItem('iw_tutorial_state');
+        saveSettings({ inputMode: 'touch', tutorial: true });
+        STATE.mode = m; STATE.p1CharId = 'knight'; STATE.p2CharId = 'gunslinger'; _phaserGame.scene.start('Game');
+      }, mode);
+      await page.waitForFunction(() => _phaserGame.scene.getScene('Game')._coach?.hosts, null, { timeout: 60000 });
+      const layout = await ask(page, () => {
+        const g = _phaserGame.scene.getScene('Game'), { W, H } = CFG, bad = [], items = [];
+        const rd = g.radarCenter; items.push({ n: 'radar', circle: true, x: rd.x, y: rd.y, r: rd.r });
+        for (const pad of g._pads) for (const [k, b] of Object.entries(pad.btns)) if (b.r) items.push({ n: k + ' button', circle: true, x: b.hx, y: b.hy, r: b.r });
+        for (const [n, q] of Object.entries(g._hudRects)) items.push({ n: n + ' panel', ...q });
+        if (g._activeHint && g._hintRect) items.push({ n: 'tip banner', ...g._hintRect });
+        const boxes = g._coach.hosts.map(h => h.getBounds());
+        for (const r of boxes) {
+          if (r.x < 0 || r.y < 0 || r.x + r.width > W || r.y + r.height > H) bad.push('runs off the screen');
+          for (const i of items) {
+            const hit = i.circle
+              ? Math.hypot(i.x - Math.max(r.x, Math.min(i.x, r.x + r.width)), i.y - Math.max(r.y, Math.min(i.y, r.y + r.height))) < i.r
+              : r.x < i.x + i.w && i.x < r.x + r.width && r.y < i.y + i.h && i.y < r.y + r.height;
+            if (hit) bad.push(`covers the ${i.n}`);
+          }
+        }
+        return { bad, n: boxes.length };
+      });
+      if (layout.bad.length) throw new Error('the checklist ' + layout.bad.join(', '));
+      if (layout.n !== mode) throw new Error(`${layout.n} checklist panel(s), wanted ${mode}`);
+      const done = await ask(page, async () => {
+        const g = _phaserGame.scene.getScene('Game'), p = g.p1, frame = () => new Promise(r => setTimeout(r, 150));
+        for (const e of g.enemies.slice()) if (Math.hypot(e.spr.x - p.spr.x, e.spr.y - p.spr.y) < 600) g._hurtEnemy(e, 1e6); // no hits mid-test
+        g._coach.done.clear(); // each goal below must tick from its own action
+        const got = [];
+        const step = async (key, act) => { act(); await frame(); await frame(); if (g._coach?.done.has(key)) got.push(key); };
+        await step('move', () => p.spr.body.reset(p.spr.x + 100, p.spr.y));
+        await step('wood', () => { p.inv.wood = 5; });
+        await step('crate', () => { const c = g.worldCrates.find(c => c.active); p.spr.body.reset(c.x, c.y); });
+        await step('campfire', () => {
+          g.buildMode = true; g.buildOwner = p; g.buildType = 'campfire'; g.buildRotation = 0;
+          g.buildGhost = g.add.image(p.spr.x, p.spr.y, 'build_ghost'); g.hudCam.ignore(g.buildGhost);
+          for (const [dx, dy] of [[64, 0], [-64, 0], [0, 64], [0, -64], [96, 96], [-96, -96]]) {
+            const x = Math.round((p.spr.x + dx) / CFG.TILE) * CFG.TILE, y = Math.round((p.spr.y + dy) / CFG.TILE) * CFG.TILE;
+            if (!g._buildSpotError(x, y)) { g.buildGhost.setPosition(x, y); break; }
+          }
+          g.placeBuild();
+        });
+        await step('kill', () => g.killEnemy(g.enemies.find(e => !e.dying && e.spr.active), p));
+        return { got, saved: localStorage.getItem('iw_coach_done') };
+      });
+      if (done.got.length !== 5) throw new Error(`goals ticked: ${done.got.join(', ') || 'none'}; wanted all five`);
+      if (done.saved !== '1') throw new Error('finishing the checklist did not save it as done');
+      await page.waitForFunction(() => _phaserGame.scene.getScene('Game')._coach === null, null, { timeout: 5000 });
+      await ask(page, () => { const g = _phaserGame.scene.getScene('Game'); g._worldReady = false; g.scene.start('Game'); });
+      await page.waitForFunction(() => _phaserGame.scene.getScene('Game')._worldReady === true, null, { timeout: 60000 });
+      await page.waitForTimeout(2500);
+      if (await ask(page, () => !!_phaserGame.scene.getScene('Game')._coach)) throw new Error('the checklist came back in the next game');
+      console.log(`first-day checklist, ${name}: up clear of the controls, all five ticked, gone and stays gone`);
+    }, opts);
+  }
+
   // Touch USE button (#397): on a phone the keyboard key is never pressed, so the relic hold must
   // read the USE button. Player 1 stands next to a relic and holds it; fails unless the hold starts
   // and, 3.5 s later, the relic is picked up.
