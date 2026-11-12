@@ -20,7 +20,9 @@ jobs:
 
   smoke:
     name: Browser smoke run (WebKit, up to ModeSelect)
-    runs-on: ubuntu-latest
+    # Pinned: ubuntu-26.04's fonts draw menu text taller and trip the phone-menu overlap checks.
+    # Move up only together with a fix that passes those checks on the new image.
+    runs-on: ubuntu-24.04
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@v4

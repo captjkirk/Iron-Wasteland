@@ -182,8 +182,6 @@ class GameScene extends Phaser.Scene {
     this.raidRespawnDay = null;
     // Per-player relic pickup channel — 3s hold of Interact key to acquire.
     this._relicChannels = new Map();
-    // First hunting party arrives on day 2-3; every 2-3 days after.
-    this.huntNextDay = 2 + Phaser.Math.Between(0, 1);
     this.enemies = [];
     // Lazily created elsewhere; reset so Play Again doesn't carry them over.
     this._toxicPoolsData = [];
@@ -479,8 +477,16 @@ class GameScene extends Phaser.Scene {
               try {
                 // Spawn enemies after camera setup
                 this._log('World init: spawning enemies', 'world');
-                this.spawnEnemies(worldW, worldH, cx, cy);
-                this.placeRaiderCamp(worldW, worldH);
+                // ?seed=N: enemies, the raider camp and the first hunt day draw from their own stream
+                // of the seed, so they repeat too without shifting the terrain's _worldRng draws.
+                const _realRandom = Math.random;
+                Math.random = _makeMulberry32(this._worldSeed ^ 0x5eed);
+                try {
+                  this.spawnEnemies(worldW, worldH, cx, cy);
+                  this.placeRaiderCamp(worldW, worldH);
+                  // First hunting party arrives on day 2-3; every 2-3 days after.
+                  this.huntNextDay = 2 + Phaser.Math.Between(0, 1);
+                } finally { Math.random = _realRandom; }
                 this._log(`World init: enemies spawned  total=${(this.enemies||[]).length}  dens=${(this.enemyDens||[]).length}+${(this.waterDens||[]).length}w`, 'world');
 
                 // Touch controls (src/touch.js): one pad in 1P, one per half of the screen in 2P
