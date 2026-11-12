@@ -21,6 +21,8 @@
 //   Phone tips: on a phone, fails when a tutorial tip's banner runs off the screen, is over 90 px tall or
 //      covers a player, the radar, a button or the day panel, in 1 and 2 player games, or when the full-screen
 //      startup controls popup shows on a touch phone.
+//   Seed repeat: loads ?seed=1 twice and fails unless water, ice, ground, structures, obstacles, the raider
+//      camp, every enemy's spawn spot and the first hunt day match between the loads (#299).
 //   3. Hardcore: the same start with STATE.difficulty = 'hardcore'; fails unless timeAlive
 //      advances over HARDCORE_MS of play. Hardcore's own multipliers once froze the tab (#327).
 // Every in-game page call goes through `ask`, so a hung main thread fails the run, not stalls it.
@@ -53,6 +55,30 @@ async function play(page, difficulty, ms) {
   const t0 = await ask(page, () => _phaserGame.scene.getScene('Game').timeAlive);
   await page.waitForTimeout(ms);
   return (await ask(page, () => _phaserGame.scene.getScene('Game').timeAlive)) - t0;
+}
+
+// Fingerprints the world a solo knight game builds: one hash or value per part, so a mismatch names the part.
+async function worldPrint(page) {
+  await ask(page, () => { // the enemies as spawned, before any of them moves
+    const g = _phaserGame.scene.getScene('Game'), place = g.placeRaiderCamp;
+    g.placeRaiderCamp = function (...a) {
+      place.apply(this, a);
+      window._spawnPrint = this.enemies.map(e => `${e.type}@${Math.round(e.spr.x)},${Math.round(e.spr.y)}`).join(' ');
+    };
+  });
+  await play(page, 'survival', 0);
+  return ask(page, () => {
+    const g = _phaserGame.scene.getScene('Game');
+    const hash = a => { let h = 2166136261; for (const v of a) h = Math.imul(h ^ v, 16777619); return h >>> 0; };
+    const str = s => hash(Array.from(s, c => c.charCodeAt(0)));
+    return {
+      water: hash(g._waterMap), ice: hash(g._iceMap), ground: hash(_biomeMap),
+      structures: str(g._structureLocs.map(l => `${l.x},${l.y}`).join(' ')),
+      obstacles: str(g.obstacles.getChildren().map(o => `${o.texture.key}@${o.x},${o.y}`).join(' ')),
+      camp: `${Math.round(g.raidCamp.x)},${Math.round(g.raidCamp.y)}`,
+      enemies: str(window._spawnPrint), huntDay: g.huntNextDay,
+    };
+  });
 }
 
 async function pass(browser, name, url, run, opts = {}) {
@@ -162,6 +188,17 @@ async function bossReach(page) {
       const w = await page.evaluate(() => CFG.W);
       if (w !== (opts.hasTouch ? 640 : 1280)) throw new Error(`canvas is ${w} wide`);
     }, opts);
+  }
+
+  // The same seed builds the same world, camp and enemies on every load (#299).
+  const prints = [];
+  for (const n of [1, 2]) {
+    failures += await pass(browser, `seed repeat ${n}`, base + '?seed=1&renderer=canvas', async page => { prints.push(await worldPrint(page)); });
+  }
+  if (prints.length === 2) {
+    const diff = Object.keys(prints[0]).filter(k => prints[0][k] !== prints[1][k]);
+    if (diff.length) { console.error(`::error::seed repeat: ?seed=1 differs between loads in ${diff.join(', ')}`); failures++; }
+    else console.log(`Smoke seed repeat OK (camp ${prints[0].camp}, hunt day ${prints[0].huntDay}).`);
   }
 
   failures += await pass(browser, 'in play', base + '?seed=1&renderer=canvas', async (page, posts) => {
